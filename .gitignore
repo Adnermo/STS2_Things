@@ -1,0 +1,41 @@
+# Build output
+bin/
+obj/
+build/
+
+# WorkBuddy session data
+.workbuddy/
+
+# .NET
+*.user
+*.suo
+*.vs/
+
+# Project files with local absolute paths
+*.csproj
+*.sln
+
+# Godot (素材在 things-images 单独管理)
+.import/
+.godot/
+*.import
+*.pck
+project.godot
+export_presets.cfg
+icon.svg
+sfx/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.sln.DotSettings
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+sts2-mod-dev-SKILL.md
