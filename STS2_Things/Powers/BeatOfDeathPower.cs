@@ -10,13 +10,13 @@ using MegaCrit.Sts2.Core.ValueProps;
 namespace STS2_Things.Powers;
 
 /// <summary>
-///     死亡律动 — Boss 身上的 Debuff，玩家每出一张牌 Boss 受到伤害
-///     完全模仿 StranglePower 的实现
+///     死亡律动 — Boss 身上的 Buff，玩家每出一张牌 Boss 受到伤害
+///     使用 Buff 类型以避免被人工制品抵消
 /// </summary>
 public sealed class 
     BeatOfDeathPower : PowerModel
 {
-    public override PowerType Type => PowerType.Debuff;
+    public override PowerType Type => PowerType.Buff;
 
     public override PowerStackType StackType => PowerStackType.Counter;
 

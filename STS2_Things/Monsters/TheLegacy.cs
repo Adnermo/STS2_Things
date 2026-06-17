@@ -23,29 +23,32 @@ namespace STS2_Things.Monsters;
 
 /// <summary>
 ///     腐化之遗 — Underdocks Boss
-///     开局: BeatOfDeathPower (玩家出牌扣2血) + HardenedShellPower (HP/4 层)
+///     开局: BeatOfDeathPower (玩家出牌扣2血) + HardenedShellPower (HP/3 层)
 ///     意图循环:
 ///     衰竭 → (回音 or 血弹 随机) → 另一招 → 强化 → 循环
-///     每轮随机决定先回音还是先血弹，保证不连续重复
+///     强化阶段:
+///     第1次: 1层人工制品
+///     第2次: 1层死亡律动 + 硬化外壳改成HP/4
+///     第3次: 眩晕戳刺(DazedPower)
+///     第4次: 2点力量 + 1层死亡律动
+///     之后循环: n+1层人工制品 + 外壳HP/(n+1) + 2点力量 + 1层死亡律动
 /// </summary>
 public sealed class TheLegacy : MonsterModel
 {
     // 对应CustomBgm "act1_boss_vantom" 的FMOD参数
     private const string _trackName = "vantom_progress";
-    private const int BloodDamage = 2;
+    private const int BloodDamage = 3;
 
-    private const int BloodCount = 6;
+    private const int BloodCount = 4;
 
     // 复用Vantom（暗黑Boss）的原版音效
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/vantom/vantom_inky_lance";
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/vantom/vantom_buff";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/vantom/vantom_dismember";
 
-    // 硬化外壳的 HP 除数: 开局用 [0]=4, 强化后用 [count]
-    private static readonly int[] _shellDivisors = { 4, 5, 6, 7, 8, 9, 10 };
-
     private bool _randomPickEcho;
     private int _strengthenCount;
+    private int _loopCount; // 循环计数器（第5次强化后开始）
     private volatile bool _heartbeatActive;
 
     protected override string VisualsPath =>
@@ -57,7 +60,7 @@ public sealed class TheLegacy : MonsterModel
     public override int MaxInitialHp => MinInitialHp;
 
     private int EchoDamage => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.DeadlyEnemies, 13, 10);
+        AscensionLevel.DeadlyEnemies, 13, 12);
 
     // ========== 入场 ==========
     public override async Task AfterAddedToRoom()
@@ -70,9 +73,9 @@ public sealed class TheLegacy : MonsterModel
         _ = HeartbeatLoop();
         // 死亡律动: 玩家每出一张牌扣 2 血
         await PowerCmd.Apply<BeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 2m, Creature, null);
-        // 硬化外壳: 层数 = 最大 HP / 4
+        // 硬化外壳: 层数 = 最大 HP / 3
         await PowerCmd.Apply<HardenedShellPower>(new ThrowingPlayerChoiceContext(), Creature,
-            Creature.MaxHp / 4m, Creature, null);
+            Creature.MaxHp / 3m, Creature, null);
     }
 
     // ========== 状态机 ==========
@@ -165,16 +168,48 @@ public sealed class TheLegacy : MonsterModel
         SfxCmd.Play(CastSfx);
         await CreatureCmd.TriggerAnim(Creature, "Cast", 0.5f);
 
-        // 力量 +1
-        await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, 2m, Creature, null);
-
-        // 硬化外壳层数递减: HP/4 → HP/5 → HP/6 → ... → HP/10(封顶)
         _strengthenCount++;
-        var idx = Math.Min(_strengthenCount, _shellDivisors.Length - 1);
-            var shell = Creature.Powers.OfType<HardenedShellPower>().FirstOrDefault();
+
+        switch (_strengthenCount)
+        {
+            case 1:
+                // 第1次强化：1层人工制品
+                await PowerCmd.Apply<ArtifactPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                break;
+            case 2:
+                // 第2次强化：1层死亡律动 + 硬化外壳改成HP/4
+                await PowerCmd.Apply<BeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                await SetShellDivisor(4);
+                break;
+            case 3:
+                // 第3次强化：眩晕戳刺(DazedPower)
+                await PowerCmd.Apply<DazedPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                break;
+            case 4:
+                // 第4次强化：2点力量 + 1层死亡律动
+                await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, 2m, Creature, null);
+                await PowerCmd.Apply<BeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                break;
+            default:
+                // 之后循环：第1次循环=2层人工制品+HP/5, 第2次=3层+HP/6, ...
+                _loopCount++;
+                var n = _loopCount;
+                // 先施死亡律动再施人工制品，避免人工制品抵消死亡律动
+                await PowerCmd.Apply<BeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                await PowerCmd.Apply<ArtifactPower>(new ThrowingPlayerChoiceContext(), Creature, n + 1m, Creature, null);
+                await SetShellDivisor(n + 4);
+                await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, 2m, Creature, null);
+                break;
+        }
+    }
+
+    private async Task SetShellDivisor(int divisor)
+    {
+        var shell = Creature.Powers.OfType<HardenedShellPower>().FirstOrDefault();
         if (shell != null)
         {
-            var target = Creature.MaxHp / (decimal)_shellDivisors[idx];
+            var target = Creature.MaxHp / (decimal)divisor;
             await PowerCmd.ModifyAmount(new ThrowingPlayerChoiceContext(), shell,
                 target - shell.Amount, Creature, null);
         }

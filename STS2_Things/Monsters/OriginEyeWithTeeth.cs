@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
+using HarmonyLib;
 using STS2_Things.Powers;
 
 namespace STS2_Things.Monsters;
@@ -22,9 +23,9 @@ public sealed class OriginEyeWithTeeth : MonsterModel
 {
     private const int _distractAmount = 2;
 
-    private readonly int HealAmount = 10;
+    private readonly int HealAmount = 6;
     protected override string VisualsPath => SceneHelper.GetScenePath("creature_visuals/eye_with_teeth"); //直接用原版
-    public override int MinInitialHp => 12;
+    public override int MinInitialHp => 9;
 
     public override int MaxInitialHp => MinInitialHp;
 
@@ -35,7 +36,21 @@ public sealed class OriginEyeWithTeeth : MonsterModel
     public override async Task AfterAddedToRoom()
     {
         await base.AfterAddedToRoom();
+        await ApplyIllusionPower();
+    }
+
+    /// <summary>
+    /// 施加IllusionPower并设置复活后跳转眩晕意图。
+    /// AfterAddedToRoom在Encounter生成时调用，动态召唤时需手动调用。
+    /// </summary>
+    public async Task ApplyIllusionPower()
+    {
         await PowerCmd.Apply<IllusionPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+        var illusion = Creature.GetPower<IllusionPower>();
+        if (illusion != null)
+        {
+            illusion.FollowUpStateId = "STUN_AFTER_REVIVE";
+        }
     }
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
@@ -43,10 +58,17 @@ public sealed class OriginEyeWithTeeth : MonsterModel
         var list = new List<MonsterState>();
         var HealBoss = new MoveState("HEAL_BOSS_MOVE", HealBossMove, new HealIntent());
         var GiveCard = new MoveState("DISTRACT_MOVE", DistractMove, new StatusIntent(_distractAmount));
+        // 复活后眩晕状态，执行完后回到正常循环
+        var StunAfterRevive = new MoveState("STUN_AFTER_REVIVE", _ => Task.CompletedTask, new StunIntent())
+        {
+            FollowUpState = GiveCard,
+            MustPerformOnceBeforeTransitioning = true
+        };
         GiveCard.FollowUpState = HealBoss;
         HealBoss.FollowUpState = GiveCard;
         list.Add(GiveCard);
         list.Add(HealBoss);
+        list.Add(StunAfterRevive);
         return new MonsterMoveStateMachine(list, GiveCard);
     }
 
@@ -77,5 +99,20 @@ public sealed class OriginEyeWithTeeth : MonsterModel
         creatureAnimator.AddAnyState("Dead", state,
             () => !CombatState.GetTeammatesOf(Creature).Any(t => t != null && t.IsPrimaryEnemy && t.IsAlive));
         return creatureAnimator;
+    }
+}
+
+/// <summary>
+/// 修复IllusionPower复活意图被非可转换状态（如眩晕）阻断的bug：
+/// 当SetMoveImmediate传入REVIVE_MOVE时，强制forceTransition=true，
+/// 确保怪物在任何状态下被杀都能正常切换到复活意图。
+/// </summary>
+[HarmonyPatch(typeof(MonsterModel), nameof(MonsterModel.SetMoveImmediate))]
+public static class IllusionReviveForceTransitionPatch
+{
+    static void Prefix(MoveState state, ref bool forceTransition)
+    {
+        if (state.StateId == "REVIVE_MOVE")
+            forceTransition = true;
     }
 }

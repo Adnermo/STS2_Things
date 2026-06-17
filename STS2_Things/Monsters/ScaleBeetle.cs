@@ -19,16 +19,15 @@ namespace STS2_Things.Monsters;
 
 /// <summary>
 ///     放缩巨甲虫 — Overgrowth Boss
-///     开局: 重构化（玩家 ScaleDown×1 + 自身 ScaleUp×1）
-///     循环: 撕咬 → 触角鞭打 → 蜕壳 → 缩小 → 循环
-///     ScaleDown: 每层缩小 15%，伤害 −15%
-///     ScaleUp:   每层放大 15%，伤害 +15%
+///     开局: 重构化（玩家 ScaleDown×1 + 自身 ScaleUp×1）+ 常驻 ScaleBeetlePower
+///     循环: 撕咬 → 触角鞭打 → 蜕壳 → 循环
+///     ScaleBeetlePower: 对玩家造成未被抵挡的伤害时，该玩家获得5层缩小
 /// </summary>
 public sealed class ScaleBeetle : MonsterModel
 {
     // 对应CustomBgm "act1_boss_vantom" 的FMOD参数
     private const string _trackName = "vantom_progress";
-    private const int MoltBlock = 26;
+    private const int MoltBlock = 14;
 
     protected override string VisualsPath =>
         SceneHelper.GetScenePath("creature_visuals/fallback");
@@ -45,6 +44,8 @@ public sealed class ScaleBeetle : MonsterModel
         await base.AfterAddedToRoom();
         // 初始化专属音乐参数（CustomBgm = act1_boss_vantom）
         NRunMusicController.Instance?.UpdateMusicParameter(_trackName, 1f);
+        // 常驻buff：对玩家造成未被抵挡伤害时施加缩小
+        await PowerCmd.Apply<ScaleBeetlePower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
     }
 
     public override Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature,
@@ -59,18 +60,15 @@ public sealed class ScaleBeetle : MonsterModel
     }
 
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 220, 210);
+        AscensionLevel.ToughEnemies, 210, 200);
 
     public override int MaxInitialHp => MinInitialHp;
 
     private int BiteDamage => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.DeadlyEnemies, 18, 16);
+        AscensionLevel.DeadlyEnemies, 14, 12);
 
     private int WhipDamage => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.DeadlyEnemies, 11, 10);
-
-    private int ShrinkDamage => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.DeadlyEnemies, 12, 10);
+        AscensionLevel.DeadlyEnemies, 5, 4);
 
     // ========== 状态机 ==========
 
@@ -88,28 +86,22 @@ public sealed class ScaleBeetle : MonsterModel
 
         // 触角鞭打 ×2
         var whipMove = new MoveState("WHIP_MOVE", WhipMove,
-            new MultiAttackIntent(WhipDamage, 2));
+            new MultiAttackIntent(WhipDamage, 3));
 
         // 蜕壳: 26 防御 + ScaleUp 再叠一层
         var moltMove = new MoveState("MOLT_MOVE", MoltMove,
             new DefendIntent(), new BuffIntent());
 
-        // 缩小: 伤害 + 玩家 ScaleDown 再叠一层
-        var shrinkMove = new MoveState("SHRINK_MOVE", ShrinkMove,
-            new SingleAttackIntent(ShrinkDamage), new DebuffIntent());
-
-        // 连线: 重构化(仅一次) → 撕咬 → 鞭打 → 蜕壳 → 缩小 → 撕咬...
+        // 连线: 重构化(仅一次) → 撕咬 → 鞭打 → 蜕壳 → 撕咬...
         reconstructMove.FollowUpState = biteMove;
         biteMove.FollowUpState = whipMove;
         whipMove.FollowUpState = moltMove;
-        moltMove.FollowUpState = shrinkMove;
-        shrinkMove.FollowUpState = biteMove;
+        moltMove.FollowUpState = biteMove;
 
         list.Add(reconstructMove);
         list.Add(biteMove);
         list.Add(whipMove);
         list.Add(moltMove);
-        list.Add(shrinkMove);
 
         return new MonsterMoveStateMachine(list, reconstructMove);
     }
@@ -140,7 +132,7 @@ public sealed class ScaleBeetle : MonsterModel
     {
         await DamageCmd.Attack(WhipDamage)
             .FromMonster(this)
-            .WithHitCount(2)
+            .WithHitCount(3)
             .WithAttackerAnim("Attack", 0.5f)
             .WithAttackerFx(null, AttackSfx)
             .Execute(null);
@@ -153,17 +145,6 @@ public sealed class ScaleBeetle : MonsterModel
 
         await CreatureCmd.GainBlock(Creature, MoltBlock, ValueProp.Unpowered, null);
         await PowerCmd.Apply<ScaleUpPower>(new ThrowingPlayerChoiceContext(),
-            Creature, 10m, Creature, null);
-    }
-
-    private async Task ShrinkMove(IReadOnlyList<Creature> targets)
-    {
-        await DamageCmd.Attack(ShrinkDamage)
-            .FromMonster(this)
-            .WithAttackerAnim("Attack", 0.5f)
-            .WithAttackerFx(null, AttackSfx)
-            .Execute(null);
-        await PowerCmd.Apply<ScaleDownPower>(new ThrowingPlayerChoiceContext(),
-            targets, 10m, Creature, null);
+            Creature, 15m, Creature, null);
     }
 }

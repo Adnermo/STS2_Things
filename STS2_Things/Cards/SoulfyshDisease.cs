@@ -25,13 +25,11 @@ public sealed class SoulfyshDisease : CardModel
 
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         new IHoverTip[] { HoverTipFactory.FromPower<SoulfyshDiseasePower>() }
-            .Concat(IsUpgraded
-                ? HoverTipFactory.FromEnchantment<Disperse>()
-                : Enumerable.Empty<IHoverTip>())
+            .Concat(HoverTipFactory.FromEnchantment<Disperse>())
             .Concat(new[] { HoverTipFactory.FromCard<Beckon>() });
 
     public SoulfyshDisease()
-        : base(4, CardType.Skill, CardRarity.Uncommon, TargetType.Self)
+        : base(3, CardType.Skill, CardRarity.Uncommon, TargetType.Self)
     {
     }
 
@@ -42,17 +40,14 @@ public sealed class SoulfyshDisease : CardModel
         if (cardPlay.Resources.EnergySpent == 0 && cardPlay.Resources.EnergyValue > 0)
         {
             _wasPlayedWithSly = true;
-            var beckon = CombatState.CreateCard<Beckon>(Owner);
-
-            if (IsUpgraded)
+            // 强化前放入2张带消散的Beckon，强化后放入1张
+            int beckonCount = IsUpgraded ? 1 : 2;
+            for (int i = 0; i < beckonCount; i++)
+            {
+                var beckon = CombatState.CreateCard<Beckon>(Owner);
                 CardCmd.Enchant<Disperse>(beckon, 1);
-
-            await CardPileCmd.Add(beckon, PileType.Discard);
-
-            CardModel copy = CreateClone();
-            CardCmd.PreviewCardPileAdd(
-                await CardPileCmd.AddGeneratedCardToCombat(copy, PileType.Discard, base.Owner),
-                2.2f);
+                await CardPileCmd.Add(beckon, PileType.Discard);
+            }
         }
 
         await PowerCmd.Apply<SoulfyshDiseasePower>(choiceContext,

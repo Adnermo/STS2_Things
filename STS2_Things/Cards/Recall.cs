@@ -33,7 +33,7 @@ public sealed class Recall : CardModel
     {
         await CreatureCmd.TriggerAnim(Owner.Creature, "Cast", Owner.Character.CastAnimDelay);
         await PowerCmd.Apply<RecallPower>(choiceContext,
-            Owner.Creature, 0m, Owner.Creature, this);
+            Owner.Creature, 1m, Owner.Creature, this);
     }
 
     protected override void OnUpgrade()

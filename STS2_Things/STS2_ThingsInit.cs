@@ -35,6 +35,7 @@ public static class STS2_ThingsInit
             ModHelper.AddModelToPool(typeof(EventRelicPool), typeof(WhiteFlag));
             ModHelper.AddModelToPool(typeof(EventRelicPool), typeof(CurseRemover));
             ModHelper.AddModelToPool(typeof(EventRelicPool), typeof(MagicGlove));
+            ModHelper.AddModelToPool(typeof(EventRelicPool), typeof(AlmondWater));
 
             // ---- Harmony 初始化 ----
             var harmony = new Harmony("STS2_ThingsInit");
@@ -106,7 +107,7 @@ public static class OvergrowthAllEventsPatch
 {
     private static void Postfix(ref IEnumerable<EventModel> __result)
     {
-        __result = __result.Concat([ModelDb.Event<RobberyFakeMerchant>()]).Distinct();
+        __result = __result.Concat([ModelDb.Event<RobberyFakeMerchant>(), ModelDb.Event<Backrooms>()]).Distinct();
     }
 }
 
@@ -115,7 +116,7 @@ public static class UnderdocksAllEventsPatch
 {
     private static void Postfix(ref IEnumerable<EventModel> __result)
     {
-        __result = __result.Concat([ModelDb.Event<RobberyFakeMerchant>()]).Distinct();
+        __result = __result.Concat([ModelDb.Event<RobberyFakeMerchant>(), ModelDb.Event<Backrooms>()]).Distinct();
     }
 }
 

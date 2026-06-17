@@ -83,7 +83,7 @@ public sealed class BowlbugProgenitor : MonsterModel
         var prepare = new MoveState("PREPARE_MOVE", PrepareMove,
             new UnknownIntent());
 
-        // 4. 休息：获得10层再生 + 回复(玩家数*10)生命
+        // 4. 休息：回复(玩家数*10)生命
         var rest = new MoveState("REST_MOVE", RestMove,
             new BuffIntent(), new HealIntent());
 
@@ -186,11 +186,9 @@ public sealed class BowlbugProgenitor : MonsterModel
         return Task.CompletedTask;
     }
 
-    /// <summary>4. 休息：获得10层再生 + 回复(玩家数*10)生命</summary>
+    /// <summary>4. 休息：回复(玩家数*10)生命</summary>
     private async Task RestMove(IReadOnlyList<Creature> targets)
     {
-        await PowerCmd.Apply<RegenPower>(new ThrowingPlayerChoiceContext(),
-            Creature, 10m, Creature, null);
         await CreatureCmd.Heal(Creature, PlayerCount * 10);
     }
 }

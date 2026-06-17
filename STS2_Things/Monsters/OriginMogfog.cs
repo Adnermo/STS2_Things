@@ -38,25 +38,25 @@ public class OriginFogmog : MonsterModel
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Append("res://images/monsters/origin_fogmog.png");
 
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 260, 254);
+        AscensionLevel.ToughEnemies, 240, 235);
 
     public override int MaxInitialHp => MinInitialHp;
 
     //高低进阶血量伤害
     private int SwipeDamage => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.DeadlyEnemies, 17, 10);
+        AscensionLevel.DeadlyEnemies, 12, 10);
 
     private int HeadbuttDamage => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.DeadlyEnemies, 22, 18);
+        AscensionLevel.DeadlyEnemies, 15, 13);
 
     private int BlockAmount => AscensionHelper.GetValueIfAscension(
         AscensionLevel.DeadlyEnemies, 15, 10);
 
     private decimal HealAmount => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.DeadlyEnemies, 13m, 10m);
+        AscensionLevel.DeadlyEnemies, 7m, 5m);
 
     private int TripleDamage => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.DeadlyEnemies, 7, 6);
+        AscensionLevel.DeadlyEnemies, 4, 4);
 
     public override CreatureAnimator GenerateAnimator(MegaSprite controller)
     {
@@ -113,6 +113,8 @@ public class OriginFogmog : MonsterModel
                     if (eye != null)
                     {
                         await PowerCmd.Apply<OriginGainEnergyPower>(new ThrowingPlayerChoiceContext(), eye, 1m, Creature, null);
+                        if (eye.Monster is OriginEyeWithTeeth oewt)
+                            await oewt.ApplyIllusionPower();
                     }
                 },
                 new SummonIntent()
@@ -181,6 +183,8 @@ public class OriginFogmog : MonsterModel
         if (eye != null)
         {
             await PowerCmd.Apply<OriginGainEnergyPower>(new ThrowingPlayerChoiceContext(), eye, 1m, Creature, null);
+            if (eye.Monster is OriginEyeWithTeeth oewt)
+                await oewt.ApplyIllusionPower();
         }
     }
 
@@ -194,7 +198,7 @@ public class OriginFogmog : MonsterModel
             .WithAttackerFx(null, AttackSfx)
             .WithHitFx("vfx/vfx_attack_slash")
             .Execute(null);
-        await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, 3m, Creature, null);
+        await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, 2m, Creature, null);
     }
 
     private async Task SwipeBlockMove(IReadOnlyList<Creature> targets)
