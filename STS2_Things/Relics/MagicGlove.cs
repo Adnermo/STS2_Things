@@ -43,6 +43,7 @@ public sealed class MagicGlove : RelicModel
         var list = (await CardSelectCmd.FromDeckForTransformation(
             prefs: new CardSelectorPrefs(CardSelectorPrefs.TransformSelectionPrompt, DynamicVars.Cards.IntValue),
             player: Owner)).ToList();
+        if (list.Count < 2) return;
         await CardCmd.Transform(list[0], finesse);
         await CardCmd.Transform(list[1], flashOfSteel);
     }

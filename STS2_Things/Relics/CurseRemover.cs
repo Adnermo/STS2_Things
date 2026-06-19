@@ -18,7 +18,7 @@ public class CurseRemover : RelicModel
 {
     private int _timesUsed;
 
-    public override RelicRarity Rarity => RelicRarity.Starter;
+    public override RelicRarity Rarity => RelicRarity.Ancient;
 
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         HoverTipFactory.FromEnchantment<Disperse>();

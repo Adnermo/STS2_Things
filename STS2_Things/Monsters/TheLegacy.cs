@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using Godot;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Ascension;
@@ -46,10 +48,9 @@ public sealed class TheLegacy : MonsterModel
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/vantom/vantom_buff";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/vantom/vantom_dismember";
 
-    private bool _randomPickEcho;
     private int _strengthenCount;
     private int _loopCount; // 循环计数器（第5次强化后开始）
-    private volatile bool _heartbeatActive;
+    private CancellationTokenSource _heartbeatCts;
 
     protected override string VisualsPath =>
         SceneHelper.GetScenePath("creature_visuals/fallback");
@@ -69,13 +70,16 @@ public sealed class TheLegacy : MonsterModel
         // 初始化专属音乐参数（CustomBgm = act1_boss_vantom）
         NRunMusicController.Instance?.UpdateMusicParameter(_trackName, 1f);
         // 心跳循环：血量越低跳得越快
-        _heartbeatActive = true;
-        _ = HeartbeatLoop();
+        _heartbeatCts = new CancellationTokenSource();
+        _ = HeartbeatLoop(_heartbeatCts.Token);
         // 死亡律动: 玩家每出一张牌扣 2 血
         await PowerCmd.Apply<BeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 2m, Creature, null);
         // 硬化外壳: 层数 = 最大 HP / 3
+        // 注意：HardenedShellPower 的 ShouldScaleInMultiplayer=true，PowerCmd.Apply 会自动缩放。
+        // 必须用缩放前的原始 HP（MonsterMaxHpBeforeModification）计算，否则会双重缩放导致层数超过 MaxHp。
+        var baseHp = Creature.MonsterMaxHpBeforeModification ?? Creature.MaxHp;
         await PowerCmd.Apply<HardenedShellPower>(new ThrowingPlayerChoiceContext(), Creature,
-            Creature.MaxHp / 3m, Creature, null);
+            baseHp / 3m, Creature, null);
     }
 
     // ========== 状态机 ==========
@@ -87,44 +91,28 @@ public sealed class TheLegacy : MonsterModel
         var exhaustMove = new MoveState("EXHAUST_MOVE", ExhaustMove,
             new StatusIntent(6));
 
-        // 回音(在先): 15/17 伤害 → 下接血弹
-        var echo1Move = new MoveState("ECHO1_MOVE", EchoMove,
-            new SingleAttackIntent(EchoDamage));
-        // 回音(在后): 15/17 伤害 → 下接强化
-        var echo2Move = new MoveState("ECHO2_MOVE", EchoMove,
+        // 回音: 12/14 伤害
+        var echoMove = new MoveState("ECHO_MOVE", EchoMove,
             new SingleAttackIntent(EchoDamage));
 
-        // 血弹(在先): 3×4 → 下接回音
-        var blood1Move = new MoveState("BLOOD1_MOVE", BloodMove,
-            new MultiAttackIntent(BloodDamage, BloodCount));
-        // 血弹(在后): 3×4 → 下接强化
-        var blood2Move = new MoveState("BLOOD2_MOVE", BloodMove,
+        // 血弹: 3×4
+        var bloodMove = new MoveState("BLOOD_MOVE", BloodMove,
             new MultiAttackIntent(BloodDamage, BloodCount));
 
-        // 强化: +1 力量
+        // 强化: 根据次数递增
         var strengthenMove = new MoveState("STRENGTHEN_MOVE", StrengthenMove,
             new BuffIntent());
 
-        // 条件分支: 衰竭后随机选回音或血弹
-        var firstDamage = new ConditionalBranchState("FIRST_DAMAGE");
-        firstDamage.AddState(echo1Move, () => _randomPickEcho);
-        firstDamage.AddState(blood1Move, () => true);
-
-        // 连线
-        exhaustMove.FollowUpState = firstDamage;
-        echo1Move.FollowUpState = blood2Move; // 回音1 → 血弹2 → 强化
-        blood1Move.FollowUpState = echo2Move; // 血弹1 → 回音2 → 强化
-        blood2Move.FollowUpState = strengthenMove;
-        echo2Move.FollowUpState = strengthenMove;
-        strengthenMove.FollowUpState = firstDamage; // 强化 → 回音/血弹（衰竭仅开局一次）
+        // 固定循环: 衰竭(仅开局) → 回音 → 血弹 → 强化 → 回音 → 血弹 → 强化 → ...
+        exhaustMove.FollowUpState = echoMove;
+        echoMove.FollowUpState = bloodMove;
+        bloodMove.FollowUpState = strengthenMove;
+        strengthenMove.FollowUpState = echoMove;
 
         list.Add(exhaustMove);
-        list.Add(echo1Move);
-        list.Add(echo2Move);
-        list.Add(blood1Move);
-        list.Add(blood2Move);
+        list.Add(echoMove);
+        list.Add(bloodMove);
         list.Add(strengthenMove);
-        list.Add(firstDamage);
 
         return new MonsterMoveStateMachine(list, exhaustMove);
     }
@@ -133,9 +121,6 @@ public sealed class TheLegacy : MonsterModel
 
     private async Task ExhaustMove(IReadOnlyList<Creature> targets)
     {
-        // 随机决定本轮先出哪招
-        _randomPickEcho = Random.Shared.Next(2) == 0;
-
         SfxCmd.Play(CastSfx);
         await CreatureCmd.TriggerAnim(Creature, "Cast", 0.5f);
 
@@ -221,8 +206,7 @@ public sealed class TheLegacy : MonsterModel
     {
         if (creature == Creature)
         {
-            _heartbeatActive = false;
-            var ctrl = NRunMusicController.Instance;
+            _heartbeatCts?.Cancel();
             // 死亡升调（vantom_progress=5 触发FMOD升调自动化）
             NRunMusicController.Instance?.UpdateMusicParameter(_trackName, 5f);
         }
@@ -231,12 +215,12 @@ public sealed class TheLegacy : MonsterModel
 
     public override void BeforeRemovedFromRoom()
     {
-        _heartbeatActive = false;
+        _heartbeatCts?.Cancel();
     }
 
     // ========== 心跳循环（半血后加速） ==========
 
-    private async Task HeartbeatLoop()
+    private async Task HeartbeatLoop(CancellationToken ct)
     {
         var files = new[]
         {
@@ -245,13 +229,28 @@ public sealed class TheLegacy : MonsterModel
         };
         var index = 0;
 
-        while (_heartbeatActive && Creature is { IsAlive: true })
+        try
         {
-            NativeSfxPlayer.Play(files[index], volumeDb: -10f);
-            index = (index + 1) % files.Length;
-            // 半血后心跳加速: 0.75s vs 正常 1.5s
-            float delay = Creature.CurrentHp <= Creature.MaxHp / 2 ? 0.75f : 1.5f;
-            await Task.Delay((int)(delay * 1000));
+            while (!ct.IsCancellationRequested)
+            {
+                // 检查 Creature 是否仍然有效（Creature 为纯C#类，检查 null 和 IsAlive）
+                if (Creature == null || !Creature.IsAlive)
+                    break;
+
+                NativeSfxPlayer.Play(files[index], volumeDb: -10f);
+                index = (index + 1) % files.Length;
+                // 半血后心跳加速: 0.75s vs 正常 1.5s
+                float delay = Creature.CurrentHp <= Creature.MaxHp / 2 ? 0.75f : 1.5f;
+                await Task.Delay(TimeSpan.FromSeconds(delay), ct);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 正常取消，忽略
+        }
+        catch (Exception e)
+        {
+            Log.Error($"[TheLegacy] HeartbeatLoop 异常: {e}");
         }
     }
 }

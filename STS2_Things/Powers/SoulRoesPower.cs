@@ -55,10 +55,8 @@ public sealed class SoulRoesPower : PowerModel
             soulRoe.StartStunned = true;
             soulRoe.StartMovePhase = i % 3;
 
-            await PowerCmd.Apply<MinionPower>(new ThrowingPlayerChoiceContext(),
-                await CreatureCmd.Add(soulRoe, CombatState,
-                    Owner.Side, slotName),
-                1m, Owner, null);
+            await CreatureCmd.Add(soulRoe, CombatState,
+                Owner.Side, slotName);
         }
     }
 }

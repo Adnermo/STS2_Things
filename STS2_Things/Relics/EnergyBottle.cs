@@ -7,7 +7,7 @@ using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 
-namespace STS2_Things;
+namespace STS2_Things.Relics;
 
 public class EnergyBottle : RelicModel
 {

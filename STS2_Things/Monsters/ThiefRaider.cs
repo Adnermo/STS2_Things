@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -36,13 +38,27 @@ public sealed class ThiefRaider : MonsterModel
         typeof(TrackerRubyRaider)
     };
 
-    private readonly HashSet<Type> _spawnedRaiders = new();
+    // 缓存 CreatureCmd.Add<T>(ICombatState, string) 泛型方法定义，避免每次召唤都反射查找
+    private static readonly MethodInfo AddCreatureMethod;
+
+    // 固定召唤顺序计数器
+    private int _nextRaiderIndex;
+    private bool _hasEscaped;
+
+    static ThiefRaider()
+    {
+        AddCreatureMethod = typeof(CreatureCmd).GetMethods()
+            .FirstOrDefault(m => m.Name == "Add" && m.IsGenericMethod
+                && m.GetParameters().Length == 2
+                && m.GetParameters()[0].ParameterType == typeof(ICombatState)
+                && m.GetParameters()[1].ParameterType == typeof(string));
+    }
 
     protected override string VisualsPath =>
         SceneHelper.GetScenePath("creature_visuals/fallback");
 
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 28, 26);
+        AscensionLevel.ToughEnemies, 17, 15);
 
     public override int MaxInitialHp => MinInitialHp;
 
@@ -124,33 +140,21 @@ public sealed class ThiefRaider : MonsterModel
 
     private async Task EscapeMove(IReadOnlyList<Creature> targets)
     {
-        // 收集场上已有的劫掠者类型
-        foreach (var enemy in CombatState.Enemies)
+        if (_hasEscaped) return; // 防止 Escape 失败时重复召唤
+        _hasEscaped = true;
+
+        // 固定顺序召唤1只劫掠者
+        var raiderType = _raiderTypes[_nextRaiderIndex % _raiderTypes.Length];
+        _nextRaiderIndex++;
+
+        var slotName = CombatState.Encounter.Slots
+            .FirstOrDefault(s => s.StartsWith("raider_") && CombatState.Enemies.All(c => c.SlotName != s),
+                null);
+        if (slotName != null && AddCreatureMethod != null)
         {
-            var t = enemy.Monster?.GetType();
-            if (t != null && _raiderTypes.Contains(t))
-                _spawnedRaiders.Add(t);
-        }
-
-        var rng = new Random();
-        for (var i = 0; i < 2; i++)
-        {
-            // 优先选未出现过的劫掠者
-            var candidates = _raiderTypes.Where(t => !_spawnedRaiders.Contains(t)).ToList();
-            if (candidates.Count == 0)
-                candidates = _raiderTypes.ToList();
-
-            var raiderType = candidates[rng.Next(candidates.Count)];
-            _spawnedRaiders.Add(raiderType);
-
-            var slotName = CombatState.Encounter.Slots
-                .FirstOrDefault(s => s.StartsWith("raider_") && CombatState.Enemies.All(c => c.SlotName != s),
-                    null);
-            if (slotName != null)
-            {
-                var mi = typeof(CreatureCmd).GetMethod("Add")!.MakeGenericMethod(raiderType);
-                await (Task)mi.Invoke(null, new object[] { CombatState, slotName })!;
-            }
+            // 使用静态缓存的泛型方法定义，避免每次召唤都反射查找
+            var mi = AddCreatureMethod.MakeGenericMethod(raiderType);
+            await (Task)mi.Invoke(null, new object[] { CombatState, slotName })!;
         }
 
         // 逃离

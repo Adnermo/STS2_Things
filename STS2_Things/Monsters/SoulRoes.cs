@@ -160,10 +160,8 @@ public sealed class SoulRoes : MonsterModel
             var soulRoe = (SoulRoe)ModelDb.Monster<SoulRoe>().ToMutable();
             soulRoe.StartMovePhase = phases[spawned];
 
-            await PowerCmd.Apply<MinionPower>(new ThrowingPlayerChoiceContext(),
-                await CreatureCmd.Add(soulRoe, CombatState,
-                    Creature.Side, slotName),
-                1m, Creature, null);
+            await CreatureCmd.Add(soulRoe, CombatState,
+                Creature.Side, slotName);
             spawned++;
         }
     }

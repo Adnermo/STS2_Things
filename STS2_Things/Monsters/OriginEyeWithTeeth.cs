@@ -22,8 +22,8 @@ namespace STS2_Things.Monsters;
 public sealed class OriginEyeWithTeeth : MonsterModel
 {
     private const int _distractAmount = 2;
+    private const int HealAmountPerPlayer = 6;
 
-    private readonly int HealAmount = 6;
     protected override string VisualsPath => SceneHelper.GetScenePath("creature_visuals/eye_with_teeth"); //直接用原版
     public override int MinInitialHp => 9;
 
@@ -56,28 +56,31 @@ public sealed class OriginEyeWithTeeth : MonsterModel
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
     {
         var list = new List<MonsterState>();
-        var HealBoss = new MoveState("HEAL_BOSS_MOVE", HealBossMove, new HealIntent());
-        var GiveCard = new MoveState("DISTRACT_MOVE", DistractMove, new StatusIntent(_distractAmount));
+        var healBoss = new MoveState("HEAL_BOSS_MOVE", HealBossMove, new HealIntent());
+        var giveCard = new MoveState("DISTRACT_MOVE", DistractMove, new StatusIntent(_distractAmount));
         // 复活后眩晕状态，执行完后回到正常循环
-        var StunAfterRevive = new MoveState("STUN_AFTER_REVIVE", _ => Task.CompletedTask, new StunIntent())
+        var stunAfterRevive = new MoveState("STUN_AFTER_REVIVE", _ => Task.CompletedTask, new StunIntent())
         {
-            FollowUpState = GiveCard,
+            FollowUpState = giveCard,
             MustPerformOnceBeforeTransitioning = true
         };
-        GiveCard.FollowUpState = HealBoss;
-        HealBoss.FollowUpState = GiveCard;
-        list.Add(GiveCard);
-        list.Add(HealBoss);
-        list.Add(StunAfterRevive);
-        return new MonsterMoveStateMachine(list, GiveCard);
+        giveCard.FollowUpState = healBoss;
+        healBoss.FollowUpState = giveCard;
+        list.Add(giveCard);
+        list.Add(healBoss);
+        list.Add(stunAfterRevive);
+        return new MonsterMoveStateMachine(list, giveCard);
     }
 
     private async Task HealBossMove(IReadOnlyList<Creature> targets)
     {
         var boss = Creature.CombatState.GetTeammatesOf(Creature)
-            .First(c => c.IsPrimaryEnemy);
+            .FirstOrDefault(c => c.IsPrimaryEnemy);
+        if (boss == null) return;
 
-        await CreatureCmd.Heal(boss, HealAmount);
+        // 多人游戏时回血按玩家数 scaling，与 OriginFogmog 的 HealMove 保持一致
+        var healAmount = HealAmountPerPlayer * Creature.CombatState.Players.Count;
+        await CreatureCmd.Heal(boss, healAmount);
     }
 
     private async Task DistractMove(IReadOnlyList<Creature> targets)

@@ -22,8 +22,9 @@ namespace STS2_Things.Events;
 
 public sealed class Backrooms : EventModel
 {
-    private int _searchDamage = 2;
-    private int _searchChance = 10; // 百分比
+    // 搜索伤害/概率统一以 DynamicVars 为唯一数据源，避免与实例字段不同步
+    private int SearchDamage => (int)DynamicVars.HpLoss.BaseValue;
+    private int SearchChance => (int)DynamicVars["SearchChance"].BaseValue;
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
@@ -45,30 +46,29 @@ public sealed class Backrooms : EventModel
 
     private async Task SearchExit()
     {
+        var damage = SearchDamage;
+        var chance = SearchChance;
+
         // 扣除生命值
         await CreatureCmd.Damage(
             new ThrowingPlayerChoiceContext(),
             Owner.Creature,
-            _searchDamage,
+            damage,
             ValueProp.Unblockable | ValueProp.Unpowered,
             null, null
         );
 
         // 判断是否找到出口
-        if (Rng.NextInt(100) < _searchChance)
+        if (Rng.NextInt(100) < chance)
         {
             // 找到出口！切换到出口页面
             ShowExitPage();
         }
         else
         {
-            // 没找到出口，增加扣血和概率
-            _searchDamage += 2;
-            _searchChance += 20;
-
-            // 更新动态变量用于本地化显示
-            DynamicVars["HpLoss"].BaseValue = _searchDamage;
-            DynamicVars["SearchChance"].BaseValue = _searchChance;
+            // 没找到出口，增加扣血和概率（唯一数据源：DynamicVars）
+            DynamicVars.HpLoss.BaseValue = damage + 2;
+            DynamicVars["SearchChance"].BaseValue = chance + 20;
 
             // 显示未找到出口的页面，可以继续寻找
             SetEventState(

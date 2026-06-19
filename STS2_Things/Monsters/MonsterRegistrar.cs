@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -5,6 +6,8 @@ using System.Reflection;
 using System.Text;
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.DevConsole;
+using MegaCrit.Sts2.Core.DevConsole.ConsoleCommands;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Acts;
@@ -13,6 +16,7 @@ using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using STS2_Things.Audio;
+using STS2_Things.Hooks;
 
 namespace STS2_Things.Monsters;
 
@@ -119,6 +123,8 @@ public static class MonsterRegistrar
             postfix: new HarmonyMethod(typeof(MonsterRegistrar), nameof(ForceBossSpawn)));
         harmony.Patch(typeof(NCombatRoom).GetMethod("_ExitTree"),
             postfix: new HarmonyMethod(typeof(MonsterRegistrar), nameof(OnCombatRoomExit)));
+        harmony.Patch(typeof(FightConsoleCmd).GetMethod(nameof(FightConsoleCmd.GetArgumentCompletions)),
+            postfix: new HarmonyMethod(typeof(MonsterRegistrar), nameof(InjectBossFightCompletions)));
         Log.Info("[MonsterRegistrar] 已初始化");
     }
 
@@ -170,10 +176,42 @@ public static class MonsterRegistrar
 
     private static void RegisterEncounter(Type encounterType, params Type[] acts)
     {
+        // 注意：不要在这里调用 ModelDb.Inject。游戏会在 ModelDb.Init 中自动扫描并实例化
+        // mod 程序集里的所有 AbstractModel 子类；提前 Inject 会导致重复注册，抛出 DuplicateModelException。
+
         if (acts == null || acts.Length == 0) acts = new[] { typeof(Overgrowth) };
         foreach (var act in acts)
             if (_encountersByAct.TryGetValue(act, out var set))
                 set.Add(encounterType);
+    }
+
+    /// <summary>
+    /// 将本 mod 注册的 Boss 遭遇加入 fight 命令的 Tab 补全列表（原版只补全普通/精英遭遇）。
+    /// </summary>
+    private static void InjectBossFightCompletions(ref CompletionResult __result)
+    {
+        if (__result == null) return;
+        var bossEntries = _encountersByAct.Values
+            .SelectMany(types => types)
+            .Distinct()
+            .Select(t => ModelDb.GetByIdOrNull<EncounterModel>(ModelDb.GetId(t)))
+            .Where(e => e is { RoomType: RoomType.Boss })
+            .Select(e => e!.Id.Entry)
+            .Where(entry => !string.IsNullOrEmpty(entry));
+
+        __result.Candidates = __result.Candidates.Concat(bossEntries).Distinct().ToList();
+    }
+
+    /// <summary>
+    /// 安全地通过反射调用 ModelDb.Encounter<T>()，避免 AmbiguousMatchException
+    /// </summary>
+    private static EncounterModel? GetEncounter(Type encounterType)
+    {
+        var method = typeof(ModelDb).GetMethods()
+            .FirstOrDefault(m => m.Name == "Encounter" && m.IsGenericMethod
+                && m.GetParameters().Length == 0);
+        if (method == null) return null;
+        return (EncounterModel?)method.MakeGenericMethod(encounterType).Invoke(null, null);
     }
 
     // ========== Harmony callbacks ==========
@@ -184,8 +222,8 @@ public static class MonsterRegistrar
         var added = new List<string>();
         foreach (var t in types)
         {
-            var e = (EncounterModel)typeof(ModelDb).GetMethod("Encounter")!.MakeGenericMethod(t).Invoke(null, null);
-            if (e != null)
+            var e = GetEncounter(t);
+            if (e != null && e.RoomType != RoomType.Boss) // Boss遭遇不注入普通遭遇池，仅通过BossDiscoveryOrder和SetBossEncounter注入
             {
                 __result = __result.Append(e);
                 added.Add(t.Name);
@@ -207,7 +245,7 @@ public static class MonsterRegistrar
         var added = new List<string>();
         foreach (var t in types)
         {
-            var e = (EncounterModel)typeof(ModelDb).GetMethod("Encounter")!.MakeGenericMethod(t).Invoke(null, null);
+            var e = GetEncounter(t);
             if (e != null && e.RoomType == RoomType.Boss)
             {
                 __result = __result.Append(e);
@@ -381,8 +419,7 @@ public static class MonsterRegistrar
             {
                 if (!_encountersByAct.TryGetValue(act.GetType(), out var set) || !set.Contains(e.EncounterType))
                     continue;
-                var encounter = (EncounterModel)typeof(ModelDb).GetMethod("Encounter")!
-                    .MakeGenericMethod(e.EncounterType).Invoke(null, null);
+                var encounter = GetEncounter(e.EncounterType);
                 if (encounter == null) continue;
                 act.SetBossEncounter(encounter);
                 Log.Info($"[MonsterRegistrar] Boss强制: {e.MonsterType.Name} → {act.GetType().Name}");
@@ -393,6 +430,9 @@ public static class MonsterRegistrar
     private static void OnCombatRoomExit()
     {
         NativeSfxPlayer.StopSequentialLoop();
+        NativeSfxPlayer.StopMusic();
+        NativeSfxPlayer.CleanupActivePlayers();
+        SfxHooks.ResetDeathSfx();
     }
 
     private sealed class Entry

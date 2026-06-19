@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
+using MegaCrit.Sts2.Core.Rooms;
 
 namespace STS2_Things.Relics;
 
@@ -18,7 +19,9 @@ public sealed class AlmondWater : RelicModel
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
-        new IntVar("Regen", 3)
+        new IntVar("NormalRegen", 1),
+        new IntVar("EliteRegen", 2),
+        new IntVar("BossRegen", 3)
     ];
 
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
@@ -32,10 +35,16 @@ public sealed class AlmondWater : RelicModel
         if (side == Owner.Creature.Side && combatState.RoundNumber == 1)
         {
             Flash();
+            int regenAmount = combatState.Encounter?.RoomType switch
+            {
+                RoomType.Boss => (int)DynamicVars["BossRegen"].BaseValue,
+                RoomType.Elite => (int)DynamicVars["EliteRegen"].BaseValue,
+                _ => (int)DynamicVars["NormalRegen"].BaseValue
+            };
             await PowerCmd.Apply<RegenPower>(
                 new ThrowingPlayerChoiceContext(),
                 Owner.Creature,
-                DynamicVars["Regen"].BaseValue,
+                regenAmount,
                 Owner.Creature,
                 null
             );

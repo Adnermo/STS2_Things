@@ -11,6 +11,8 @@ using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Audio;
 using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Rooms;
+using MegaCrit.Sts2.Core.Runs;
 using STS2_Things.Audio;
 using Array = Godot.Collections.Array;
 
@@ -18,7 +20,21 @@ namespace STS2_Things.Hooks;
 
 public static class SfxHooks
 {
-    private static readonly HashSet<int> _deathSfxPlayed = new();
+    // 使用 monster.Id.Entry 字符串作为 key，避免 GetHashCode 冲突；
+    // 在战斗结束时清空，防止长时间游戏内存无限增长
+    private static readonly HashSet<string> _deathSfxPlayed = new();
+
+    /// <summary>
+    /// 战斗结束时清理死亡音效记录，防止内存无限增长。
+    /// 由 MonsterRegistrar.OnCombatRoomExit 调用。
+    /// </summary>
+    public static void ResetDeathSfx()
+    {
+        lock (_deathSfxPlayed)
+        {
+            _deathSfxPlayed.Clear();
+        }
+    }
 
     private static string MapToNativePath(string fmodPath)
     {
@@ -149,6 +165,13 @@ public static class SfxHooks
         {
             if (customMusic == null) return true;
 
+            // 非战斗房间不接管背景音乐（例如涅奥房间），交给游戏原生处理
+            var currentRoom = RunManager.Instance.DebugOnlyGetState()?.CurrentRoom;
+            if (currentRoom == null || (currentRoom.RoomType != RoomType.Monster
+                && currentRoom.RoomType != RoomType.Elite
+                && currentRoom.RoomType != RoomType.Boss))
+                return true;
+
             // res:// → 原生播放
             if (customMusic.StartsWith("res://", StringComparison.OrdinalIgnoreCase))
             {
@@ -199,10 +222,10 @@ public static class SfxHooks
             if (monster == null) return;
             var entry = monster.Id.Entry.ToLowerInvariant();
             if (!CustomSfxMonsters.Entries.Contains(entry)) return;
-            var hash = monster.GetHashCode();
+            // 使用 entry 字符串作为 key，避免 GetHashCode 冲突
             lock (_deathSfxPlayed)
             {
-                if (!_deathSfxPlayed.Add(hash)) return;
+                if (!_deathSfxPlayed.Add(entry)) return;
             }
 
             if (monster.HasDeathSfx)

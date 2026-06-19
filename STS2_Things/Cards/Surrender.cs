@@ -38,7 +38,10 @@ public sealed class Surrender : CardModel
 
         var target = cardPlay.Target;
         var cardOwner = Owner; // 用闭包捕获
-        var originalStateId = target.Monster.MoveStateMachine.StateLog.Last().Id;
+        if (target?.Monster == null) return;
+        var stateLog = target.Monster.MoveStateMachine.StateLog;
+        if (stateLog.Count == 0) return;
+        var originalStateId = stateLog.Last().Id;
         var applyWeak = new MoveState(
             "DEBUFF_WEAK",
             async targets =>

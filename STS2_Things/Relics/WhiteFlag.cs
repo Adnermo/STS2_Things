@@ -13,7 +13,7 @@ namespace STS2_Things.Relics;
 
 public class WhiteFlag : RelicModel
 {
-    public override RelicRarity Rarity => RelicRarity.Starter;
+    public override RelicRarity Rarity => RelicRarity.Ancient;
 
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         HoverTipFactory.FromCardWithCardHoverTips<Surrender>()
@@ -23,8 +23,6 @@ public class WhiteFlag : RelicModel
     {
         CardModel surrender = Owner.RunState.CreateCard<Surrender>(Owner);
         CardModel shame = Owner.RunState.CreateCard<Shame>(Owner);
-        await CardPileCmd.Add(surrender, PileType.Deck);
-        await CardPileCmd.Add(shame, PileType.Deck);
 
         var surrenderResult = await CardPileCmd.Add(surrender, PileType.Deck);
         var shameResult = await CardPileCmd.Add(shame, PileType.Deck);

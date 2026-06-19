@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
+using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.ValueProps;
@@ -48,13 +49,30 @@ public sealed class ScaleUpPower : PowerModel
 
     public override Task AfterRemoved(Creature oldOwner)
     {
-        NCombatRoom.Instance?.GetCreatureNode(oldOwner)?.ScaleTo(1f, 0.75);
+        SafeScale(oldOwner, 1f);
         return Task.CompletedTask;
     }
 
     private void ApplyScale()
     {
-        NCombatRoom.Instance?.GetCreatureNode(Owner)?.ScaleTo(ScaleFactor, 0.75);
+        SafeScale(Owner, ScaleFactor);
+    }
+
+    private static void SafeScale(Creature creature, float target)
+    {
+        try
+        {
+            var combatRoom = NCombatRoom.Instance;
+            combatRoom?.GetCreatureNode(creature)?.ScaleTo(target, 0.75);
+        }
+        catch (ObjectDisposedException)
+        {
+            Log.Warn("[ScaleUpPower] 尝试缩放已释放的战斗节点，忽略。");
+        }
+        catch (NullReferenceException)
+        {
+            // NCombatRoom 或节点可能已被释放，忽略。
+        }
     }
 
     public override decimal ModifyDamageMultiplicative(Creature? target, decimal amount, ValueProp props,

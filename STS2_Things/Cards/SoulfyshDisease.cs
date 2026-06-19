@@ -5,6 +5,7 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Cards;
 using STS2_Things.Enchantments;
@@ -23,6 +24,11 @@ public sealed class SoulfyshDisease : CardModel
         CardKeyword.Sly
     };
 
+    protected override List<DynamicVar> CanonicalVars =>
+    [
+        new IntVar("BeckonCount", 2)
+    ];
+
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         new IHoverTip[] { HoverTipFactory.FromPower<SoulfyshDiseasePower>() }
             .Concat(HoverTipFactory.FromEnchantment<Disperse>())
@@ -40,7 +46,11 @@ public sealed class SoulfyshDisease : CardModel
         if (cardPlay.Resources.EnergySpent == 0 && cardPlay.Resources.EnergyValue > 0)
         {
             _wasPlayedWithSly = true;
-            // 强化前放入2张带消散的Beckon，强化后放入1张
+            // 奇巧时：复制本牌到弃牌堆 + 放入带消散的Beckon
+            var copy = CombatState.CreateCard<SoulfyshDisease>(Owner);
+            if (IsUpgraded) copy.UpgradeInternal();
+            await CardPileCmd.Add(copy, PileType.Discard);
+
             int beckonCount = IsUpgraded ? 1 : 2;
             for (int i = 0; i < beckonCount; i++)
             {
@@ -57,6 +67,7 @@ public sealed class SoulfyshDisease : CardModel
     protected override void OnUpgrade()
     {
         base.EnergyCost.UpgradeBy(-1);
+        DynamicVars["BeckonCount"].UpgradeValueBy(-1);
     }
 
     public override async Task AfterCardExhausted(PlayerChoiceContext choiceContext, CardModel card, bool causedByEthereal)

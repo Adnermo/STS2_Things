@@ -69,7 +69,10 @@ public class OriginFogmog : MonsterModel
         await base.AfterAddedToRoom();
         // 初始化专属音乐参数（CustomBgm = act1_boss_the_kin）
         NRunMusicController.Instance?.UpdateMusicParameter(_trackName, 1f);
-        await PowerCmd.Apply<OriginPower>(new ThrowingPlayerChoiceContext(), Creature, MinInitialHp / 2m, Creature,
+        // OriginPower 的 Amount 是半血阈值，ShouldScaleInMultiplayer=true 会自动按玩家数缩放。
+        // 必须用缩放前的原始 HP 计算，避免双重缩放导致阈值错误。
+        var baseHp = Creature.MonsterMaxHpBeforeModification ?? Creature.MaxHp;
+        await PowerCmd.Apply<OriginPower>(new ThrowingPlayerChoiceContext(), Creature, baseHp / 2m, Creature,
             null);
     }
 
@@ -85,46 +88,27 @@ public class OriginFogmog : MonsterModel
     }
 
     /// <summary>
-    /// 二阶段转场：当血量低于50%且尚未转阶段时触发音乐切换+转场音效+插入召唤意图。
+    /// 二阶段转场：音乐切换+转场音效。召唤由 OriginPower→STUNNED→ILLUSION_MOVE 完成。
     /// </summary>
     private void CheckPhaseTransition()
     {
         if (!_hasTransformed && Creature.CurrentHp <= Creature.MaxHp / 2m)
         {
-            _hasTransformed = true;
-            Log.Info("[OriginFogmog] Phase2 transition triggered!");
-            // 转场音效
-            SfxCmd.Play("event:/sfx/enemy/enemy_attacks/queen/queen_cast");
-            // 音乐推进到第二阶段
-            NRunMusicController.Instance?.UpdateMusicParameter(_trackName, 2f);
-
-            // 插入一个召唤意图，执行完后回到原状态机位置
-            var originalStateId = Creature.Monster.MoveStateMachine.StateLog.Last().Id;
-            var summonOnce = new MoveState(
-                "PHASE2_SUMMON",
-                async targets =>
-                {
-                    SfxCmd.Play(CastSfx);
-                    await CreatureCmd.TriggerAnim(Creature, "Summon", 0.75f);
-                    var slotName = CombatState.Encounter.Slots.FirstOrDefault(
-                        s => s.StartsWith("illusion") && CombatState.Enemies.All(c => c.SlotName != s),
-                        string.Empty);
-                    var eye = await CreatureCmd.Add<OriginEyeWithTeeth>(CombatState, slotName);
-                    if (eye != null)
-                    {
-                        await PowerCmd.Apply<OriginGainEnergyPower>(new ThrowingPlayerChoiceContext(), eye, 1m, Creature, null);
-                        if (eye.Monster is OriginEyeWithTeeth oewt)
-                            await oewt.ApplyIllusionPower();
-                    }
-                },
-                new SummonIntent()
-            )
-            {
-                FollowUpStateId = originalStateId,
-                MustPerformOnceBeforeTransitioning = true
-            };
-            Creature.Monster.SetMoveImmediate(summonOnce);
+            OnPhaseTransition();
         }
+    }
+
+    /// <summary>
+    /// 触发二阶段转场（音乐+音效），幂等。
+    /// 由 OriginPower 半血触发时调用，也可由 CheckPhaseTransition 兜底。
+    /// </summary>
+    public void OnPhaseTransition()
+    {
+        if (_hasTransformed) return;
+        _hasTransformed = true;
+        Log.Info("[OriginFogmog] Phase2 transition triggered!");
+        SfxCmd.Play("event:/sfx/enemy/enemy_attacks/queen/queen_cast");
+        NRunMusicController.Instance?.UpdateMusicParameter(_trackName, 2f);
     }
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
@@ -145,7 +129,7 @@ public class OriginFogmog : MonsterModel
             new SingleAttackIntent(HeadbuttDamage));
         var tripleMove = new MoveState("TRIPLE_MOVE", TripleMove,
             new MultiAttackIntent(TripleDamage, 3));
-        var healMove = new MoveState("HEAL_MOVE", TripleMove,
+        var healMove = new MoveState("HEAL_MOVE", HealMove,
             new HealIntent());
         // 随机分支
         var branch = new RandomBranchState("BRANCH");
@@ -173,12 +157,13 @@ public class OriginFogmog : MonsterModel
 
     private async Task IllusionMove(IReadOnlyList<Creature> targets)
     {
-        SfxCmd.Play(CastSfx); // fogmog_summon
-        await CreatureCmd.TriggerAnim(Creature, "Summon", 0.75f);
         var slotName = CombatState.Encounter.Slots.FirstOrDefault(
             s => s.StartsWith("illusion") && CombatState.Enemies.All(c => c.SlotName != s),
             string.Empty);
+        if (string.IsNullOrEmpty(slotName)) return;
 
+        SfxCmd.Play(CastSfx);
+        await CreatureCmd.TriggerAnim(Creature, "Summon", 0.75f);
         var eye = await CreatureCmd.Add<OriginEyeWithTeeth>(CombatState, slotName);
         if (eye != null)
         {

@@ -15,7 +15,6 @@ using MegaCrit.Sts2.Core.MonsterMoves;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Nodes.Audio;
-using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Powers;
 
@@ -24,12 +23,15 @@ namespace STS2_Things.Monsters;
 /// <summary>
 /// 盛碗虫族母 — Hive Act Boss
 /// 状态机循环：召唤 → 干扰/激励(交替) → 准备 → 休息 → 召唤...
-/// 护巢本能：累计受到>=20%最大HP伤害时召唤随机盛碗虫
+/// 护巢本能：累计受到>=20%最大HP伤害时召唤盛碗虫（固定顺序：卵→蜜→岩→丝循环）
 /// </summary>
 public sealed class BowlbugProgenitor : MonsterModel
 {
     // 对应CustomBgm "act1_b_boss_soul_fysh" 的FMOD参数
     private const string _trackName = "soulfysh_progress";
+
+    // 固定召唤顺序：卵→蜜→岩→丝 循环
+    public int NextBowlbugIndex { get; internal set; }
 
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 280, 260);
     public override int MaxInitialHp => MinInitialHp;
@@ -46,9 +48,12 @@ public sealed class BowlbugProgenitor : MonsterModel
     {
         await base.AfterAddedToRoom();
         NRunMusicController.Instance?.UpdateMusicParameter(_trackName, 1f);
-        // 护巢本能：计数=10%最大HP，每受1点伤害减1，归零召唤并重置
+        // 护巢本能：计数=20%最大HP，玩家造成伤害即计数减1，归零召唤2只并重置
         await PowerCmd.Apply<BowlbugProgenitorPower>(
-            new ThrowingPlayerChoiceContext(), Creature, Creature.MaxHp * 0.1m, Creature, null);
+            new ThrowingPlayerChoiceContext(), Creature, Creature.MaxHp * 0.2m, Creature, null);
+        // 护主：场上有盛碗虫存活时，玩家对族母伤害减半
+        await PowerCmd.Apply<ProtectTheMasterPower>(
+            new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
     }
 
     public override Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature,
@@ -79,28 +84,22 @@ public sealed class BowlbugProgenitor : MonsterModel
         var rally = new MoveState("RALLY_MOVE", RallyMove,
             new SummonIntent(), new BuffIntent());
 
-        // 3. 准备：什么都不做
+        // 3. 准备：全体怪物+3力量
         var prepare = new MoveState("PREPARE_MOVE", PrepareMove,
-            new UnknownIntent());
+            new BuffIntent());
 
         // 4. 休息：回复(玩家数*10)生命
         var rest = new MoveState("REST_MOVE", RestMove,
             new BuffIntent(), new HealIntent());
 
-        // 使用RandomBranchState + CannotRepeat实现干扰/激励交替
-        var branch = new RandomBranchState("DISRUPT_RALLY_BRANCH");
-        branch.AddBranch(disrupt, 0, MoveRepeatType.CannotRepeat, 1f);
-        branch.AddBranch(rally, 0, MoveRepeatType.CannotRepeat, 1f);
-
-        // 循环：召唤 → 随机分支(干扰/激励交替) → 准备 → 休息 → 召唤...
-        summon.FollowUpState = branch;
-        disrupt.FollowUpState = prepare;
+        // 固定循环：召唤 → 干扰 → 激励 → 准备 → 休息 → 召唤...
+        summon.FollowUpState = disrupt;
+        disrupt.FollowUpState = rally;
         rally.FollowUpState = prepare;
         prepare.FollowUpState = rest;
         rest.FollowUpState = summon;
 
         states.Add(summon);
-        states.Add(branch);
         states.Add(disrupt);
         states.Add(rally);
         states.Add(prepare);
@@ -113,8 +112,8 @@ public sealed class BowlbugProgenitor : MonsterModel
 
     private int PlayerCount => CombatState.Players.Count;
 
-    /// <summary>随机召唤1只盛碗虫（4种中随机）并眩晕，场上盛碗虫达到16只时取消</summary>
-    private async Task SummonRandomBowlbug()
+    /// <summary>按固定顺序召唤1只盛碗虫（卵→蜜→岩→丝循环），场上盛碗虫达到16只时取消</summary>
+    private async Task SummonNextBowlbug()
     {
         if (!CombatState.IsLiveCombat()) return;
 
@@ -131,32 +130,38 @@ public sealed class BowlbugProgenitor : MonsterModel
         SfxCmd.Play(CastSfx);
         await CreatureCmd.TriggerAnim(Creature, "Cast", 0.75f);
 
-        var idx = Rng.Chaotic.NextInt(4);
-        Creature creature = idx switch
+        // 固定顺序：0=卵, 1=蜜, 2=岩, 3=丝
+        Creature creature = NextBowlbugIndex switch
         {
-            0 => await CreatureCmd.Add<BowlbugSilk>(CombatState, slot),
-            1 => await CreatureCmd.Add<BowlbugRock>(CombatState, slot),
-            2 => await CreatureCmd.Add<BowlbugNectar>(CombatState, slot),
-            _ => await CreatureCmd.Add<BowlbugEgg>(CombatState, slot)
+            0 => await CreatureCmd.Add<BowlbugEgg>(CombatState, slot),
+            1 => await CreatureCmd.Add<BowlbugNectar>(CombatState, slot),
+            2 => await CreatureCmd.Add<BowlbugRock>(CombatState, slot),
+            _ => await CreatureCmd.Add<BowlbugSilk>(CombatState, slot)
         };
+        NextBowlbugIndex = (NextBowlbugIndex + 1) % 4;
 
         if (creature != null)
         {
             // 爪牙属性
             await PowerCmd.Apply<MinionPower>(new ThrowingPlayerChoiceContext(), creature, 1m, Creature, null);
-            // 召唤的盛碗虫只有原版60%的最大生命值
-            int newMaxHp = (int)(creature.MaxHp * 0.6);
+            // 召唤的盛碗虫只有原版50%的最大生命值
+            int newMaxHp = (int)(creature.MaxHp * 0.5);
             creature.SetMaxHpInternal(newMaxHp);
             creature.SetCurrentHpInternal(newMaxHp);
             // 新召唤的盛碗虫初始意图为眩晕
             await CreatureCmd.Stun(creature);
         }
+
+        // 召唤后刷新护巢本能描述，实时更新预告
+        var power = Creature.Powers.OfType<BowlbugProgenitorPower>().FirstOrDefault();
+        if (power != null)
+            power.RefreshDescription();
     }
 
     /// <summary>1. 召唤：召唤1只盛碗虫 + 获得(玩家数*20)防御</summary>
     private async Task SummonMove(IReadOnlyList<Creature> targets)
     {
-        await SummonRandomBowlbug();
+        await SummonNextBowlbug();
         await CreatureCmd.GainBlock(Creature, PlayerCount * 20, ValueProp.Unpowered, null, fast: true);
     }
 
@@ -171,7 +176,7 @@ public sealed class BowlbugProgenitor : MonsterModel
     /// <summary>2b. 激励：召唤1只盛碗虫 + 全体怪物+3力量</summary>
     private async Task RallyMove(IReadOnlyList<Creature> targets)
     {
-        await SummonRandomBowlbug();
+        await SummonNextBowlbug();
         // 全体怪物获得+3力量
         foreach (var enemy in CombatState.Enemies.Where(e => e.IsAlive))
         {
@@ -180,10 +185,14 @@ public sealed class BowlbugProgenitor : MonsterModel
         }
     }
 
-    /// <summary>3. 准备：休息1回合</summary>
-    private Task PrepareMove(IReadOnlyList<Creature> targets)
+    /// <summary>3. 准备：全体怪物+3力量</summary>
+    private async Task PrepareMove(IReadOnlyList<Creature> targets)
     {
-        return Task.CompletedTask;
+        foreach (var enemy in CombatState.Enemies.Where(e => e.IsAlive))
+        {
+            await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(),
+                enemy, 3m, Creature, null);
+        }
     }
 
     /// <summary>4. 休息：回复(玩家数*10)生命</summary>

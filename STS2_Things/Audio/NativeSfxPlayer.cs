@@ -13,6 +13,10 @@ public static class NativeSfxPlayer
 {
     private static readonly Dictionary<string, AudioStream> _streamCache = new();
     private static readonly List<AudioStreamPlayer> _activePlayers = new();
+    private static readonly object _activePlayersLock = new();
+    // 缓存目录到候选文件列表，避免每次播放随机变体都进行IO遍历
+    private static readonly Dictionary<string, string[]> _variantCache = new();
+    private static readonly object _variantCacheLock = new();
     private static AudioStreamPlayer _musicPlayer;
     private static AudioStreamPlayer _seqLooper;
     private static string[] _seqPaths;
@@ -249,12 +253,40 @@ public static class NativeSfxPlayer
         {
             sceneTree.Root.AddChild(player);
             player.Play();
-            _activePlayers.Add(player);
+            lock (_activePlayersLock)
+            {
+                _activePlayers.Add(player);
+            }
             player.Finished += () =>
             {
-                if (player.IsInsideTree()) player.QueueFree();
-                _activePlayers.Remove(player);
+                // 检查对象是否仍然有效（Godot 对象可能已被释放）
+                if (GodotObject.IsInstanceValid(player) && player.IsInsideTree())
+                    player.QueueFree();
+                lock (_activePlayersLock)
+                {
+                    _activePlayers.Remove(player);
+                }
             };
+        }
+    }
+
+    /// <summary>
+    /// 清理所有活跃的音效播放器，防止资源泄漏。
+    /// 由 MonsterRegistrar.OnCombatRoomExit 调用。
+    /// </summary>
+    public static void CleanupActivePlayers()
+    {
+        lock (_activePlayersLock)
+        {
+            foreach (var player in _activePlayers)
+            {
+                if (GodotObject.IsInstanceValid(player))
+                {
+                    if (player.Playing) player.Stop();
+                    if (player.IsInsideTree()) player.QueueFree();
+                }
+            }
+            _activePlayers.Clear();
         }
     }
 
@@ -272,9 +304,20 @@ public static class NativeSfxPlayer
     private static string ResolveRandomVariant(string prefixPath)
     {
         var lastSlash = prefixPath.LastIndexOf('/');
+        if (lastSlash < 0) return null;
         var dir = prefixPath[..lastSlash];
         var filePrefix = prefixPath[(lastSlash + 1)..];
-        var candidates = new List<string>();
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(filePrefix)) return null;
+
+        // 缓存 key: "dir|prefix"
+        var cacheKey = $"{dir}|{filePrefix}";
+        string[] candidates;
+        lock (_variantCacheLock)
+        {
+            if (_variantCache.TryGetValue(cacheKey, out candidates)) return PickVariant(candidates, filePrefix);
+        }
+
+        var list = new List<string>();
         var da = DirAccess.Open(dir);
         if (da != null)
         {
@@ -292,7 +335,7 @@ public static class NativeSfxPlayer
                         if (nameNoExt.Equals(filePrefix, StringComparison.OrdinalIgnoreCase)
                             || (nameNoExt.StartsWith(filePrefix + "-") && nameNoExt.Length > filePrefix.Length + 1 &&
                                 char.IsDigit(nameNoExt[filePrefix.Length + 1])))
-                            candidates.Add(dir + "/" + actualName);
+                            list.Add(dir + "/" + actualName);
                     }
                 }
 
@@ -302,7 +345,7 @@ public static class NativeSfxPlayer
             da.ListDirEnd();
         }
 
-        if (candidates.Count == 0)
+        if (list.Count == 0)
         {
             var absDir = ToAbsolutePath(dir);
             if (Directory.Exists(absDir))
@@ -313,18 +356,29 @@ public static class NativeSfxPlayer
                          || (nameNoExt.StartsWith(filePrefix + "-") && nameNoExt.Length > filePrefix.Length + 1 &&
                              char.IsDigit(nameNoExt[filePrefix.Length + 1])))
                         && IsAudioFile(Path.GetExtension(filePath)))
-                        candidates.Add(dir + "/" + Path.GetFileName(filePath));
+                        list.Add(dir + "/" + Path.GetFileName(filePath));
                 }
         }
 
-        if (candidates.Count == 0) return null;
-        var exact = candidates.Find(c =>
+        candidates = list.ToArray();
+        lock (_variantCacheLock)
+        {
+            _variantCache[cacheKey] = candidates;
+        }
+
+        return PickVariant(candidates, filePrefix);
+    }
+
+    private static string PickVariant(string[] candidates, string filePrefix)
+    {
+        if (candidates == null || candidates.Length == 0) return null;
+        var exact = Array.Find(candidates, c =>
         {
             var name = c[(c.LastIndexOf('/') + 1)..];
             var noExt = name[..name.LastIndexOf('.')];
             return noExt.Equals(filePrefix, StringComparison.OrdinalIgnoreCase);
         });
-        return exact ?? candidates[Random.Shared.Next(candidates.Count)];
+        return exact ?? candidates[Random.Shared.Next(candidates.Length)];
     }
 
     private static bool HasAudioExtension(string path)

@@ -36,6 +36,7 @@ public static class STS2_ThingsInit
             ModHelper.AddModelToPool(typeof(EventRelicPool), typeof(CurseRemover));
             ModHelper.AddModelToPool(typeof(EventRelicPool), typeof(MagicGlove));
             ModHelper.AddModelToPool(typeof(EventRelicPool), typeof(AlmondWater));
+            ModHelper.AddModelToPool(typeof(EventRelicPool), typeof(MedusaHair));
 
             // ---- Harmony 初始化 ----
             var harmony = new Harmony("STS2_ThingsInit");
@@ -50,7 +51,7 @@ public static class STS2_ThingsInit
 
             MonsterRegistrar.AddBoss<OriginFogmog>(
                 typeof(OriginFogmogBossEncounter),
-                0.52f, hasBackground: true, forceSpawn: false,
+                0.52f, hasBackground: true, forceSpawn: true,
                 acts: MonsterRegistrar.ActOvergrowth
             );
 
@@ -64,7 +65,7 @@ public static class STS2_ThingsInit
 
             MonsterRegistrar.AddElite<SoulRoes>(
                 typeof(SoulRoesEncounter),
-                acts: new[] { MonsterRegistrar.ActOvergrowth, MonsterRegistrar.ActUnderdocks }
+                acts: MonsterRegistrar.ActUnderdocks
             );
 
             MonsterRegistrar.AddBoss<TheLegacy>(
@@ -117,6 +118,15 @@ public static class UnderdocksAllEventsPatch
     private static void Postfix(ref IEnumerable<EventModel> __result)
     {
         __result = __result.Concat([ModelDb.Event<RobberyFakeMerchant>(), ModelDb.Event<Backrooms>()]).Distinct();
+    }
+}
+
+[HarmonyPatch(typeof(Hive), "get_AllEvents")]
+public static class HiveAllEventsPatch
+{
+    private static void Postfix(ref IEnumerable<EventModel> __result)
+    {
+        __result = __result.Concat([ModelDb.Event<Medusa>()]).Distinct();
     }
 }
 

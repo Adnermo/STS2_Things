@@ -14,7 +14,9 @@ namespace STS2_Things.Events;
 
 public sealed class RobberyFakeMerchant : EventModel
 {
-    private static readonly RelicModel[] FakeRelicPool = new RelicModel[] //所有假遗物
+    // 改为懒加载，避免类首次访问时 ModelDb 尚未初始化
+    private static RelicModel[] _fakeRelicPool;
+    private static RelicModel[] FakeRelicPool => _fakeRelicPool ??= new RelicModel[] //所有假遗物
     {
         ModelDb.Relic<FakeAnchor>(),
         ModelDb.Relic<FakeBloodVial>(),
@@ -27,7 +29,8 @@ public sealed class RobberyFakeMerchant : EventModel
         ModelDb.Relic<FakeVenerableTeaSet>()
     };
 
-    private static readonly RelicModel[] TrueRelicPool = new RelicModel[] //所有假遗物
+    private static RelicModel[] _trueRelicPool;
+    private static RelicModel[] TrueRelicPool => _trueRelicPool ??= new RelicModel[] //所有真遗物
     {
         ModelDb.Relic<Anchor>(),
         ModelDb.Relic<BloodVial>(),
@@ -92,6 +95,15 @@ public sealed class RobberyFakeMerchant : EventModel
 
     private Task Fight()
     {
+        // 假商人血量改为原版一半
+        var merchant = _combatStateForCombatLayout?.Enemies.FirstOrDefault();
+        if (merchant != null)
+        {
+            int halfHp = merchant.MaxHp / 2;
+            merchant.SetMaxHpInternal(halfHp);
+            merchant.SetCurrentHpInternal(halfHp);
+        }
+
         var extraRewards = TrueRelicPool
             .ToList()
             .UnstableShuffle(Rng)

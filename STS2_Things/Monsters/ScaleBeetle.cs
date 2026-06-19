@@ -35,7 +35,7 @@ public sealed class ScaleBeetle : MonsterModel
     // 复用KaiserCrab（重甲巨型Boss）的原版音效
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/kaiser_crab/kaiser_crab_attack_slam";
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/kaiser_crab/kaiser_crab_left_attack_scoop";
-    public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/kaiser_crab/kaiser_crab_left_attack_scoop";
+    public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/kaiser_crab/kaiser_crab_die";
 
     public override bool CanChangeScale => true;
 

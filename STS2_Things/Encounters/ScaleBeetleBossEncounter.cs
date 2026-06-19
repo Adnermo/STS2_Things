@@ -7,7 +7,7 @@ namespace STS2_Things.Encounters;
 
 public sealed class ScaleBeetleBossEncounter : ModBossEncounter
 {
-    protected override string IconName => "scale_bettle";
+    protected override string IconName => "scale_beetle";
 
     public override RoomType RoomType => RoomType.Boss;
 

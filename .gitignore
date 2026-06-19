@@ -1,44 +1,12 @@
-# Build output
-bin/
-obj/
-build/
+# 默认忽略所有内容
+*
 
-# WorkBuddy session data
-.workbuddy/
+# 只追踪以下文件/目录
+!.gitignore
+!LICENSE
+!README.md
+!STS2_Things/
 
-# .NET
-*.user
-*.suo
-*.vs/
-
-# Project files with local absolute paths
-*.csproj
-*.sln
-
-# Godot (素材在 things-images 单独管理)
-.import/
-.godot/
-*.import
-*.pck
-project.godot
-export_presets.cfg
-icon.svg
-sfx/
-
-# Logs
-*.log
-logs/
-
-# IDE
-.idea/
-.vscode/
-*.sln.DotSettings
-
-# OS junk
-.DS_Store
-Thumbs.db
-
-sts2-mod-dev-SKILL.md
-
-# 反编译游戏源码
-Slay the Spire 2_decompiled_version_107/
+# STS2_Things 内部忽略
+STS2_Things/bin/
+STS2_Things/obj/

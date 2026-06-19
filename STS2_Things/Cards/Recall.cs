@@ -12,15 +12,11 @@ namespace STS2_Things.Cards;
 
 /// <summary>
 /// 回溯 — Silent Uncommon Skill
-/// 0费，获得"本回合从弃牌堆抽牌"的Buff
-/// 强化：添加保留词条
+/// 1费，获得"本回合从弃牌堆抽牌"的Buff
+/// 强化：-1费
 /// </summary>
 public sealed class Recall : CardModel
 {
-    public override IEnumerable<CardKeyword> CanonicalKeywords => IsUpgraded
-        ? new[] { CardKeyword.Retain }
-        : System.Array.Empty<CardKeyword>();
-
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         new IHoverTip[] { HoverTipFactory.FromPower<RecallPower>() };
 
@@ -38,6 +34,6 @@ public sealed class Recall : CardModel
 
     protected override void OnUpgrade()
     {
-        AddKeyword(CardKeyword.Retain);
+        base.EnergyCost.UpgradeBy(-1);
     }
 }
