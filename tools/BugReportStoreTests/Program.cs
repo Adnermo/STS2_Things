@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using STS2_Things.Diagnostics;
 
-static class Tests
+static partial class Tests
 {
     private static int _checks;
     private static void Check(bool pass, string detail) { if (!pass) throw new Exception(detail); _checks++; }
@@ -20,6 +20,9 @@ static class Tests
         Directory.CreateDirectory(root);
         try
         {
+            ReplayTests();
+            FaultTests(root);
+            await FingerprintTests(root);
             var store = new BugReportStore(root);
             Check(!store.Begin("first", Metadata(), Snapshot("a")), "first observation starts a run");
             string runId = store.Current!["client_run_id"]!.GetValue<string>();
@@ -55,6 +58,8 @@ static class Tests
             Check((await outbox.SendAsync()).Reason == "nothing_pending", "empty queue is explicit");
 
             var large = restored.JournalForUpload();
+            large["checkpoint"] = BugReplayCodec.Encode(new JsonObject { ["schema_version"] = 20, ["players"] = new JsonArray(new JsonObject { ["net_id"] = 1 }),
+                ["acts"] = new JsonArray(), ["rng"] = new JsonObject { ["seed"] = "retained" } }, [1]);
             large["initial_state"] = new JsonObject { ["padding"] = new string('x', 400_000) };
             string bigId = outbox.Enqueue(large, "超限报告也必须保存描述");
             string full = File.ReadAllText(Path.Combine(root, "reports", bigId + ".json"));
@@ -62,6 +67,7 @@ static class Tests
             Check(Encoding.UTF8.GetByteCount(wire) <= BugReportOutbox.MaxBytes, "oversized report shrinks optional evidence");
             Check(full.Contains("超限报告也必须保存描述") || JsonNode.Parse(full)!["description"]!.GetValue<string>() == "超限报告也必须保存描述", "complete description saved locally");
             Check(JsonNode.Parse(wire)!["run"]!["upload_truncation"] is JsonArray, "truncation is explicit");
+            Check(JsonNode.DeepEquals(JsonNode.Parse(wire)!["run"]!["checkpoint"], large["checkpoint"]), "wire reduction retains native replay verbatim");
             Console.WriteLine($"BugReportStoreTests: PASS ({_checks} assertions)");
         }
         finally {

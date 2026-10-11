@@ -25,6 +25,10 @@ internal static class BugRunRecorder
     private static bool _ready;
     private static long _lastErrorPoll;
     private static GameAction? _reportedErrorAction;
+    private static long _combatCheckpointAt;
+    private static bool _startupWaitRecorded;
+    private static BugEngineLogger? _engineLogger;
+    [ThreadStatic] private static bool _drainingRuntimeErrors;
     internal static ReportSubmission? LastSubmission { get; private set; }
     private static string DataDir => Path.Combine(OS.GetUserDataDir(), "mod_data", "STS2_Things", "bug_reports");
     private static BugReportStore Store => _store ??= new(DataDir);
@@ -48,6 +52,28 @@ internal static class BugRunRecorder
 #endif
         CombatManager.Instance.TurnStarted += _ => Track("turn_started", persist: true);
         CombatManager.Instance.CombatEnded += _ => Track("combat_ended", persist: true);
+        // Start-of-room/turn fire-and-forget failures do not belong to ActionExecutor.
+        // Use the original logging callback; do not catch, replace or suppress tasks.
+        BugRuntimeFaults.InitializePersistence(Path.Combine(DataDir, "runtime-errors.json"));
+        Log.LogCallback += OnNativeLog;
+        _engineLogger = new BugEngineLogger();
+        OS.AddLogger(_engineLogger);
+        // A few native import errors occur before our initializer can subscribe.
+        string[] args = OS.GetCmdlineArgs();
+        int logArg = Array.IndexOf(args, "--log-file");
+        string startupLog = logArg >= 0 && logArg + 1 < args.Length ? args[logArg + 1]
+            : args.FirstOrDefault(arg => arg.StartsWith("--log-file=", StringComparison.Ordinal))?[11..]
+                ?? Path.Combine(OS.GetUserDataDir(), "logs", "godot.log");
+        BugRuntimeFaults.BackfillStartupLog(startupLog);
+        AppDomain.CurrentDomain.UnhandledException += (_, failure) =>
+        {
+            try
+            {
+                if (failure.ExceptionObject is Exception exception) BugRuntimeFaults.Capture(exception.ToString(), 0);
+                BugRuntimeFaults.Persist();
+            }
+            catch (Exception) { }
+        };
         if (Engine.GetMainLoop() is SceneTree tree) tree.ProcessFrame += PollFailedAction;
         _ready = true;
         var current = RunManager.Instance.DebugOnlyGetState();
@@ -73,13 +99,8 @@ internal static class BugRunRecorder
             if (_run is not null) Store.Archive(); // Pure frozen serialization; no live state reads.
             DetachExecutor();
             _reportedErrorAction = null;
-            var metadata = BugSnapshot.Object(new {
-                game_version = GameVersion(),
-                mod_version = typeof(BugRunRecorder).Assembly.GetName().Version?.ToString() ?? "unknown",
-                active_mods = ModManager.GetLoadedMods().Select(m => new {
-                    id = m.manifest?.id ?? "unknown", version = m.version?.ToString() ?? "unknown"
-                }).ToArray()
-            });
+            _combatCheckpointAt = 0; _startupWaitRecorded = false;
+            var metadata = RuntimeMetadata();
             bool resumed = Store.Begin(RunKey(run), metadata, BugSnapshot.Capture(run));
             _run = run;
             _executor = RunManager.Instance.ActionExecutor;
@@ -91,6 +112,106 @@ internal static class BugRunRecorder
             Track(resumed ? "run_resumed" : "run_first_observed", persist: true);
         }
         catch (Exception ex) { Log.Warn("[Things BugReport] Start journal: " + ex.GetType().Name); }
+    }
+
+    private static JsonObject RuntimeMetadata()
+    {
+        var metadata = BugSnapshot.Object(new {
+                game_version = GameVersion(),
+                game_code_mvid = typeof(MegaCrit.Sts2.Core.Models.AbstractModel).Assembly.ManifestModule.ModuleVersionId.ToString("N"),
+                rng_seed_type = typeof(RunRngSet).GetProperty("Seed")?.PropertyType.FullName,
+                mod_version = typeof(BugRunRecorder).Assembly.GetName().Version?.ToString() ?? "unknown",
+                active_mods = ModManager.GetLoadedMods().Select((m, index) => new {
+                    id = m.manifest?.id ?? "unknown", version = m.version?.ToString() ?? "unknown",
+                    name = m.manifest?.name,
+                    workshop_id = ModWorkshopId(m),
+                    load_index = index, source = m.modSource.ToString(),
+                    code = ModCode(m)
+                }).ToArray()
+            });
+        metadata["runtime_errors"] = BugRuntimeFaults.Snapshot();
+        metadata["game_file"] = BugFileFingerprints.Describe(typeof(MegaCrit.Sts2.Core.Models.AbstractModel).Assembly.Location);
+        metadata["mod_files"] = ModFiles();
+        // Only our fixed boolean/integer gameplay settings; never arbitrary mod config files.
+        metadata["things_config"] = BugSnapshot.Object(new {
+            session_active = Config.MultiplayerConfig.IsActive, session_locked = Config.MultiplayerConfig.IsLocked,
+            local = Config.ThingsModConfig.Entries.ToDictionary(e => e.Key, e => Config.ThingsModConfig.GetLocalValue(e.Key)),
+            effective = Config.ThingsModConfig.Entries.ToDictionary(e => e.Key,
+                e => Config.MultiplayerConfig.GetOverride(e.Key) ?? Config.ThingsModConfig.GetLocalValue(e.Key))
+        });
+        return metadata;
+    }
+
+    internal static void RecordCheckpoint(JsonObject checkpoint)
+    {
+        try
+        {
+            var run = RunManager.Instance.DebugOnlyGetState();
+            if (run is null) return;
+            if (!ReferenceEquals(_run, run)) OnStarted(run);
+            if (Store.Current is not null)
+            {
+                Store.Current["checkpoint"] = checkpoint.DeepClone();
+                _combatCheckpointAt = System.Environment.TickCount64;
+                _startupWaitRecorded = false;
+                Store.Track(new JsonObject { ["kind"] = "combat_checkpoint", ["at"] = DateTimeOffset.UtcNow.ToString("O"),
+                    ["detail"] = new JsonObject { ["available"] = checkpoint["available"]?.DeepClone(),
+                        ["encounter"] = checkpoint["encounter"]?.DeepClone() } });
+                Store.Persist();
+            }
+        }
+        catch (Exception) { /* Checkpoint observation must never interrupt room entry. */ }
+    }
+
+    private static string? ModWorkshopId(Mod mod)
+    {
+#if STS2_V111
+        if (mod.workshopId is ulong id) return id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+#endif
+        // 107.1 has no workshopId field. Infer only the public item ID from its
+        // original Steam cache layout; the local path itself is never reported.
+        if (mod.modSource != ModSource.SteamWorkshop) return null;
+        var directory = new DirectoryInfo(mod.path);
+        for (; directory.Parent is not null; directory = directory.Parent)
+        {
+            if (directory.Parent.Name == "2868840" && directory.Parent.Parent?.Name == "content"
+                && ulong.TryParse(directory.Name, out ulong item) && item != 0)
+                return item.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        return null;
+    }
+
+    private static object[] ModCode(Mod mod)
+    {
+#if STS2_V111
+        var assemblies = mod.assemblies;
+#else
+        var assemblies = mod.assembly is { } assembly ? new[] { assembly } : [];
+#endif
+        return assemblies.Where(a => !a.IsDynamic).Select(a => (object)new {
+            name = a.GetName().Name,
+            mvid = a.ManifestModule.ModuleVersionId.ToString("N"),
+            version = a.GetName().Version?.ToString()
+        }).ToArray();
+    }
+
+    private static JsonArray ModFiles()
+    {
+        var result = new JsonArray();
+        foreach (var mod in ModManager.GetLoadedMods())
+        {
+            var files = new JsonArray();
+            try
+            {
+                if (!Directory.Exists(mod.path)) continue;
+                foreach (string path in Directory.EnumerateFiles(mod.path).Where(p => Path.GetExtension(p).ToLowerInvariant() is ".dll" or ".pck").Order(StringComparer.OrdinalIgnoreCase).Take(20))
+                    files.Add(new JsonObject { ["file"] = Path.GetFileName(path), ["fingerprint"] = BugFileFingerprints.Describe(path) });
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            result.Add(new JsonObject { ["id"] = mod.manifest?.id, ["files"] = files });
+        }
+        return result;
     }
 
     private static string GameVersion()
@@ -150,6 +271,7 @@ internal static class BugRunRecorder
 
     private static void PollFailedAction()
     {
+        DrainRuntimeErrors();
         if (System.Environment.TickCount64 - _lastErrorPoll < 1000) return;
         _lastErrorPoll = System.Environment.TickCount64;
         if (RunManager.Instance.DebugOnlyGetState() is null && _run is not null)
@@ -158,10 +280,39 @@ internal static class BugRunRecorder
             DetachExecutor(); _run = null; return;
         }
         var action = _executor?.CurrentlyRunningAction;
+        var currentRun = RunManager.Instance.DebugOnlyGetState();
+        if (!_startupWaitRecorded && _combatCheckpointAt > 0
+            && System.Environment.TickCount64 - _combatCheckpointAt > 15_000
+            && currentRun?.CurrentRoom is MegaCrit.Sts2.Core.Rooms.CombatRoom
+            && currentRun.Players.Any(p => p.PlayerCombatState?.Phase.ToString() == "Start"))
+        {
+            _startupWaitRecorded = true;
+            Track("combat_start_wait", new JsonObject { ["elapsed_ms"] = System.Environment.TickCount64 - _combatCheckpointAt,
+                ["note"] = "observation_only_not_a_bug_verdict" }, persist: true);
+        }
         if (action?.Exception is not null && !ReferenceEquals(action, _reportedErrorAction))
         {
             _reportedErrorAction = action; Track("action_failed", ActionRecord(action), persist: true);
         }
+    }
+
+    private static void OnNativeLog(LogLevel level, string text, int skipFrames)
+    {
+        if (_drainingRuntimeErrors || level != LogLevel.Error) return;
+        try { BugRuntimeFaults.Capture(text, skipFrames); }
+        catch (Exception) { /* Diagnostics must never make a native error fatal. */ }
+    }
+
+    private static void DrainRuntimeErrors()
+    {
+        _drainingRuntimeErrors = true;
+        try
+        {
+            for (int i = 0; i < 32 && BugRuntimeFaults.TryTake(out var detail); i++)
+                if (RunManager.Instance.DebugOnlyGetState() is not null)
+                    Track("runtime_error", detail, persist: true);
+        }
+        finally { _drainingRuntimeErrors = false; }
     }
 
     private static void Track(string kind, JsonObject? detail = null, bool persist = false)
@@ -177,12 +328,13 @@ internal static class BugRunRecorder
                 ["act_index"] = run.CurrentActIndex, ["floor"] = run.ActFloor, ["room"] = run.CurrentRoom?.GetType().Name
             });
             Store.Update(BugSnapshot.Capture(run, TrackedActions.LastOrDefault()));
+            if (Store.Current is not null) Store.Current["runtime_errors"] = BugRuntimeFaults.Snapshot();
             if (persist) Store.Persist();
         }
         catch (Exception ex) { Log.Warn("[Things BugReport] Journal event: " + ex.GetType().Name); }
     }
 
-    internal static async Task<bool> SubmitAsync(string description, bool retryPending = false)
+    internal static async Task<bool> SubmitAsync(string description, bool retryPending = false, JsonObject? screenshot = null)
     {
         try
         {
@@ -192,8 +344,18 @@ internal static class BugRunRecorder
             {
                 string text = description.Trim();
                 if (text.Length < 2) { LastSubmission = new(false, null, "description_too_short", outbox.PendingCount); return false; }
+                DrainRuntimeErrors();
                 Track("report_requested", persist: true);
-                report = outbox.Enqueue(Store.JournalForUpload(), text);
+                var journal = Store.JournalForUpload();
+                foreach (var item in RuntimeMetadata()) journal[item.Key] = item.Value?.DeepClone();
+                if (screenshot is not null) journal["screenshot"] = screenshot.DeepClone();
+                journal["dropped_runtime_errors"] = BugRuntimeFaults.Dropped;
+                journal["report_context"] = RunManager.Instance.DebugOnlyGetState() is null ? "last_recorded_run_or_menu" : "active_run";
+                journal["capture_capabilities"] = new JsonObject { ["native_checkpoint"] = true, ["native_errors"] = true,
+                    ["mod_fingerprints"] = true, ["network_state"] = true, ["screenshot"] = true, ["raw_network_packets"] = false,
+                    ["third_party_config"] = "no_standard_export" };
+                BugReplayCodec.MakeJsonSafe(journal);
+                report = outbox.Enqueue(journal, text);
             }
             LastSubmission = await outbox.SendAsync(report).ConfigureAwait(false);
             return LastSubmission.Success;

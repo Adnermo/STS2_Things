@@ -1,5 +1,7 @@
 import DASHBOARD from "./dashboard.html";
 import {canonical, validateReport} from "./validation.js";
+import {decodeCheckpoint} from "./checkpoint.js";
+import {decodeScreenshot} from "./screenshot.js";
 
 const encoder = new TextEncoder();
 const HEADERS = {
@@ -105,6 +107,8 @@ async function login(req,env) {
 async function receive(req,env) {
   const {raw,data:p}=await readJson(req,300000);
   if(!validateReport(p))return respond({error:"invalid_report"},422);
+  if(p.run.checkpoint?.available){try{await decodeCheckpoint(p.run.checkpoint)}catch{return respond({error:"invalid_checkpoint"},422)}}
+  if(p.run.screenshot?.available){try{await decodeScreenshot(p.run.screenshot)}catch{return respond({error:"invalid_screenshot"},422)}}
   const bucket=await rateBucket(req,"intake");
   const id=crypto.randomUUID(),created=time();
   try {
@@ -185,6 +189,33 @@ async function reportRoute(req,env,id) {
   }
   return fail(405,"method_not_allowed");
 }
+async function checkpointRoute(env,id) {
+  if(!ID.test(id))return fail(404,"not_found");
+  const row=await env.DB.prepare("SELECT payload_json FROM reports WHERE id=?").bind(id).first();
+  if(!row)return fail(404,"not_found");
+  try {
+    const payload=JSON.parse(row.payload_json);
+    if(!payload.run?.checkpoint?.available)return fail(404,"checkpoint_unavailable");
+    const bytes=await decodeCheckpoint(payload.run.checkpoint);
+    return new Response(bytes,{headers:{...HEADERS,"content-disposition":'attachment; filename="things-checkpoint-'+id+'.save"'}});
+  }catch{return fail(422,"invalid_checkpoint")}
+}
+async function screenshotRoute(env,id) {
+  if(!ID.test(id))return fail(404,"not_found");
+  const row=await env.DB.prepare("SELECT payload_json FROM reports WHERE id=?").bind(id).first();
+  if(!row)return fail(404,"not_found");
+  try {
+    const image=JSON.parse(row.payload_json).run?.screenshot;
+    if(!image?.available)return fail(404,"screenshot_unavailable");
+    return new Response(await decodeScreenshot(image),{headers:{...HEADERS,"content-type":"image/jpeg"}});
+  }catch{return fail(422,"invalid_screenshot")}
+}
+async function exportRoute(env,id) {
+  if(!ID.test(id))return fail(404,"not_found");
+  const row=await env.DB.prepare("SELECT payload_json FROM reports WHERE id=?").bind(id).first();
+  if(!row)return fail(404,"not_found");
+  return new Response(row.payload_json,{headers:{...HEADERS,"content-disposition":'attachment; filename="sts2-report-'+id+'.json"'}});
+}
 export default {
   async fetch(request,env) {
     const url=new URL(request.url),path=url.pathname,method=request.method;
@@ -193,8 +224,8 @@ export default {
         try {
           await env.DB.prepare("SELECT id,status,developer_note,updated_at FROM reports LIMIT 0").all();
           await env.DB.prepare("SELECT bucket,count,updated_at FROM intake_rate LIMIT 0").all();
-          return respond({ok:true,service:"sts2-things-reports",version:"1.1.0",database:"ready",dashboard:true});
-        }catch{return respond({ok:false,service:"sts2-things-reports",version:"1.1.0",database:"unavailable"},503)}
+          return respond({ok:true,service:"sts2-things-reports",version:"1.2.0",database:"ready",dashboard:true,checkpoint:true,screenshot:true});
+        }catch{return respond({ok:false,service:"sts2-things-reports",version:"1.2.0",database:"unavailable"},503)}
       }
       if(path==="/api/reports"&&method==="POST")return await receive(request,env);
       if(path==="/"&&method==="GET")return Response.redirect(url.origin+"/admin",302);
@@ -209,6 +240,12 @@ export default {
         }
         if(path==="/api/admin/stats"&&method==="GET")return stats(env);
         if(path==="/api/admin/reports"&&method==="GET")return list(request,env);
+        const checkpoint=path.match(/^\/api\/admin\/reports\/([a-f0-9-]+)\/checkpoint$/i);
+        if(checkpoint&&method==="GET")return checkpointRoute(env,checkpoint[1]);
+        const screenshot=path.match(/^\/api\/admin\/reports\/([a-f0-9-]+)\/screenshot$/i);
+        if(screenshot&&method==="GET")return screenshotRoute(env,screenshot[1]);
+        const exported=path.match(/^\/api\/admin\/reports\/([a-f0-9-]+)\/export$/i);
+        if(exported&&method==="GET")return exportRoute(env,exported[1]);
         const m=path.match(/^\/api\/admin\/reports\/([a-f0-9-]+)$/i);
         if(m)return await reportRoute(request,env,m[1]);
       }

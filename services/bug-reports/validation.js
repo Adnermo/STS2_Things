@@ -1,4 +1,4 @@
-// Both original schema 1 and the diagnostic schema 2 are supported during client rollout.
+// All earlier clients remain supported during checkpoint rollout.
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value, max = 300) => typeof value === "string" && value.length <= max;
 const optional = (parent, key, check) => parent[key] === undefined || parent[key] === null || check(parent[key]);
@@ -44,18 +44,41 @@ function boundedTree(value, depth = 0, counter = {count: 0}) {
   if (typeof value === "string") return value.length <= 8000;
   if (Array.isArray(value)) return value.length <= 1500 && value.every(v => boundedTree(v, depth + 1, counter));
   return object(value) && Object.keys(value).length <= 128 && Object.entries(value).every(([key, v]) =>
-    key.length <= 150 && !["__proto__", "constructor", "prototype"].includes(key) && boundedTree(v, depth + 1, counter));
+    key.length <= 150 && !["__proto__", "constructor", "prototype"].includes(key)
+    && (key === "data" && value.format === "sts2-native-save" ? text(v, 150000)
+      : key === "data" && value.format === "things-screenshot" ? text(v, 80000) : boundedTree(v, depth + 1, counter)));
+}
+
+export function validScreenshot(value) {
+  if (!object(value) || typeof value.available !== "boolean") return false;
+  if (!value.available) return optional(value,"reason",v=>text(v,100));
+  return value.format === "things-screenshot" && value.encoding === "jpeg-base64"
+    && /^[a-f0-9]{64}$/.test(value.sha256 ?? "") && Number.isInteger(value.bytes) && value.bytes > 0 && value.bytes <= 60000
+    && Number.isInteger(value.width) && value.width > 0 && value.width <= 960
+    && Number.isInteger(value.height) && value.height > 0 && value.height <= 2000
+    && text(value.data,80000) && /^[A-Za-z0-9+/]+={0,2}$/.test(value.data);
+}
+
+export function validCheckpoint(value) {
+  if (!object(value) || typeof value.available !== "boolean") return false;
+  if (!value.available) return optional(value,"reason",v=>text(v,100));
+  return value.format === "sts2-native-save" && value.encoding === "gzip-base64" && value.schema === 1
+    && /^[a-f0-9]{64}$/.test(value.sha256 ?? "") && Number.isInteger(value.plain_bytes)
+    && value.plain_bytes > 0 && value.plain_bytes <= 2000000
+    && text(value.data,150000) && /^[A-Za-z0-9+/]+={0,2}$/.test(value.data)
+    && Number.isInteger(value.player_count) && value.player_count >= 1 && value.player_count <= 8;
 }
 
 export function validateReport(p) {
-  return object(p) && [1, 2].includes(p.schema) && p.source === "sts2_things"
+  return object(p) && [1, 2, 3].includes(p.schema) && p.source === "sts2_things"
     && /^[0-9a-f]{32}$/i.test(p.client_report_id ?? "") && text(p.description, 4000) && p.description.trim().length >= 2
-    && object(p.run) && [1, 2].includes(p.run.schema) && text(p.run.game_version ?? "unknown", 80)
+    && object(p.run) && [1, 2, 3].includes(p.run.schema) && text(p.run.game_version ?? "unknown", 80)
     && text(p.run.mod_version ?? "unknown", 80)
     && list(p.run.events, 700, event => object(event) && text(event.kind, 100)
       && optional(event, "at", v => text(v, 80)) && optional(event, "detail", v => text(v, 2000) || object(v)))
     && optional(p.run, "active_mods", v => list(v, 300, m => object(m) && id(m.id) && text(m.version, 80)))
-    && optional(p.run, "state", snapshot) && optional(p.run, "initial_state", snapshot) && boundedTree(p);
+    && optional(p.run, "state", snapshot) && optional(p.run, "initial_state", snapshot)
+    && optional(p.run, "checkpoint", validCheckpoint) && optional(p.run,"screenshot",validScreenshot) && boundedTree(p);
 }
 
 export function canonical(value) {

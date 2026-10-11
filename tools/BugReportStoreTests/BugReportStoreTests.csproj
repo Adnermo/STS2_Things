@@ -3,5 +3,8 @@
     <OutputType>Exe</OutputType><TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
-  <ItemGroup><Compile Include="../../STS2_Things/Diagnostics/BugReportStore.cs" Link="BugReportStore.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../STS2_Things/Diagnostics/BugReportStore.cs" Link="BugReportStore.cs" /><Compile Include="../../STS2_Things/Diagnostics/BugReplayCodec.cs" Link="BugReplayCodec.cs" />
+    <Compile Include="../../STS2_Things/Diagnostics/BugRuntimeFaults.cs" Link="BugRuntimeFaults.cs" />
+    <Compile Include="../../STS2_Things/Diagnostics/BugFileFingerprints.cs" Link="BugFileFingerprints.cs" />
+  </ItemGroup>
 </Project>

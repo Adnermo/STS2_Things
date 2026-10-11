@@ -5,6 +5,7 @@ import {createRequire} from "node:module";
 import {test, before, after} from "node:test";
 import {fileURLToPath} from "node:url";
 import {missingColumns} from "../migrate.mjs";
+import {gzipSync} from "node:zlib";
 
 // Prefer project dependencies; use the already installed Wrangler runtime on the author's machine.
 const require = createRequire(import.meta.url);
@@ -48,6 +49,43 @@ test("fresh schema and its second execution support admin queries and database h
 });
 test("legacy schema 1 and diagnostic schema 2 are accepted",async()=>{
   for(const schema of [1,2])assert.equal((await intake(payload(schema))).status,201);
+});
+test("schema 3 checkpoint is validated, authenticated and downloaded byte-for-byte",async()=>{
+  const native=Buffer.from(JSON.stringify({schema_version:20,players:[{net_id:1}],acts:[],rng:{seed:"checkpoint",rngs:{shuffle:{counter:37,s0:123}}}}));
+  const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",native)),b=>b.toString(16).padStart(2,"0")).join("");
+  const p=payload(3);p.run.checkpoint={schema:1,available:true,format:"sts2-native-save",encoding:"gzip-base64",data:gzipSync(native).toString("base64"),sha256:hash,plain_bytes:native.length,player_count:1};
+  const r=await intake(p);assert.equal(r.status,201);const id=(await r.json()).report_id;
+  const url="https://test.invalid/api/admin/reports/"+id+"/checkpoint";
+  assert.equal((await mf.dispatchFetch(url)).status,401);
+  const downloaded=await mf.dispatchFetch(url,{headers:{cookie:await auth()}});
+  assert.equal(downloaded.status,200);assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()),native);
+  assert.match(downloaded.headers.get("content-disposition"),/attachment/);
+  const bad=payload(3);bad.run.checkpoint={...p.run.checkpoint,sha256:"0".repeat(64)};assert.equal((await intake(bad)).status,422);
+});
+test("unavailable checkpoint is explicit and legacy reports have no fake replay",async()=>{
+  const p=payload(3);p.run.checkpoint={available:false,reason:"capture_failed"};assert.equal((await intake(p)).status,201);
+  const r=await intake(payload(2)),id=(await r.json()).report_id;
+  assert.equal((await mf.dispatchFetch("https://test.invalid/api/admin/reports/"+id+"/checkpoint",{headers:{cookie:await auth()}})).status,404);
+});
+test("F2 screenshot is private, integrity checked and served as JPEG",async()=>{
+  const bytes=Buffer.from([0xff,0xd8,0xff,0xe0,0x00,0x00,0xff,0xd9]);
+  const sha256=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),b=>b.toString(16).padStart(2,"0")).join("");
+  const p=payload(3);p.run.screenshot={available:true,format:"things-screenshot",encoding:"jpeg-base64",width:960,height:540,bytes:bytes.length,sha256,data:bytes.toString("base64")};
+  const uploaded=await intake(p);assert.equal(uploaded.status,201);const id=(await uploaded.json()).report_id;
+  const url="https://test.invalid/api/admin/reports/"+id+"/screenshot";
+  assert.equal((await mf.dispatchFetch(url)).status,401);
+  const r=await mf.dispatchFetch(url,{headers:{cookie:await auth()}});assert.equal(r.status,200);assert.equal(r.headers.get("content-type"),"image/jpeg");
+  assert.deepEqual(Buffer.from(await r.arrayBuffer()),bytes);
+  const bad=payload(3);bad.run.screenshot={...p.run.screenshot,sha256:"0".repeat(64)};assert.equal((await intake(bad)).status,422);
+});
+test("original JSON export preserves legacy uint64 literals without browser rounding",async()=>{
+  const p=payload(3);let raw=JSON.stringify(p);
+  raw=raw.replace('"seed":"test"','"seed":"test","legacy_rng":18446744073709551614');
+  const r=await mf.dispatchFetch("https://test.invalid/api/reports",{method:"POST",headers:{"content-type":"application/json","cf-connecting-ip":crypto.randomUUID()},body:raw});
+  assert.equal(r.status,201);const id=(await r.json()).report_id,url="https://test.invalid/api/admin/reports/"+id+"/export";
+  assert.equal((await mf.dispatchFetch(url)).status,401);
+  const downloaded=await mf.dispatchFetch(url,{headers:{cookie:await auth()}});
+  assert.equal(downloaded.status,200);assert.equal(await downloaded.text(),raw);
 });
 test("malformed nested arrays cannot poison admin rendering",async()=>{
   for(const mutate of [p=>p.run.active_mods=42,p=>p.run.state.players="wrong",p=>p.run.state.route={},

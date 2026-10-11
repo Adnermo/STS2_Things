@@ -59,9 +59,23 @@ internal static class ThingsFeedbackCategoryPatch
 [HarmonyPatch(typeof(NFeedbackCategoryDropdown), "OnDropdownItemSelected")]
 internal static class ThingsFeedbackSelectionPatch
 {
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextEdit, OriginalHint> Hints = new();
+    private sealed class OriginalHint(string text) { internal string Text { get; } = text; }
     private static void Postfix(NFeedbackCategoryDropdown __instance)
     {
-        if (!ThingsFeedbackCategoryPatch.Entries.Contains(__instance.CurrentCategory)) return;
+        bool ours = ThingsFeedbackCategoryPatch.Entries.Contains(__instance.CurrentCategory);
+        for (Node? parent = __instance.GetParent(); parent is not null; parent = parent.GetParent())
+            if (parent is NSendFeedbackScreen screen)
+            {
+                var input = (TextEdit)AccessTools.Field(typeof(NSendFeedbackScreen), "_descriptionInput").GetValue(screen)!;
+                var original = Hints.GetValue(input, field => new OriginalHint(field.PlaceholderText));
+                input.PlaceholderText = ours ? MegaCrit.Sts2.Core.Localization.LocManager.Instance.Language == "zhs"
+                    ? "随便说说哪里不对劲就行。\n游戏画面、异常、模组信息和匿名战前存档会自动附上。"
+                    : "Just tell us what went wrong.\nA game screenshot, errors, mods and an anonymous pre-combat save are attached automatically."
+                    : original.Text;
+                break;
+            }
+        if (!ours) return;
         var label = (MegaCrit.Sts2.addons.mega_text.MegaLabel)AccessTools.Field(
             typeof(NDropdown), "_currentOptionLabel").GetValue(__instance)!;
         label.SetTextAutoSize(ThingsFeedbackCategoryPatch.Title(__instance.CurrentCategory));
@@ -89,8 +103,11 @@ internal static class ThingsFeedbackSendPatch
     private static bool Prefix(FeedbackData data, Stream screenshotStream, Stream logsMemoryStream, ref Task<bool> __result)
     {
         if (!ThingsFeedbackCategoryPatch.Entries.Contains(data.category)) return true;
-        screenshotStream.Dispose(); logsMemoryStream.Dispose();
-        __result = BugRunRecorder.SubmitAsync(data.description ?? "", data.category == "things_bug_retry");
+        bool retry = data.category == "things_bug_retry";
+        System.Text.Json.Nodes.JsonObject? screenshot;
+        try { screenshot = retry ? null : BugScreenshotCapture.Capture(screenshotStream); }
+        finally { screenshotStream.Dispose(); logsMemoryStream.Dispose(); }
+        __result = BugRunRecorder.SubmitAsync(data.description ?? "", retry, screenshot);
         return false;
     }
 }

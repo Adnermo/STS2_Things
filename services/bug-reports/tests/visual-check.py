@@ -3,6 +3,7 @@ import json
 import os
 import pathlib
 import uuid
+import hashlib
 from datetime import datetime, timezone
 from playwright.sync_api import sync_playwright
 
@@ -74,4 +75,42 @@ with sync_playwright() as p:
         status = page.evaluate("""async url => (await fetch(url,{method:'DELETE',headers:{'Content-Type':'application/json'},body:'{}'})).status""", ROOT+"/api/admin/reports/"+rid)
         assert status == 200, f"Sample cleanup failed: {status}"
         print("CLEANUP: sample report deleted:", True)
+        fixture = os.environ.get("STS2_REPORT_FIXTURE")
+        if fixture:
+            assert ROOT.startswith("http://127.0.0.1:"), "Native fixtures stay on the local test server"
+            actual = json.loads(pathlib.Path(fixture).read_text(encoding="utf8"))
+            actual["client_report_id"] = uuid.uuid4().hex
+            upload = ctx.request.post(ROOT + "/api/reports", data=actual)
+            assert upload.status == 201, upload.text()
+            actual_id = upload.json()["report_id"]
+            try:
+                page.set_viewport_size({"width": 1600, "height": 1000})
+                page.locator("#search").fill(actual_id)
+                page.wait_for_timeout(600)
+                page.locator(".reportcard").first.click()
+                assert "加载失败" not in page.locator("#toast").inner_text(), "Native empty potion slots must render without errors"
+                assert "空槽" in page.locator("#tabContent").inner_text()
+                page.locator('[data-tab="diagnostics"]').click()
+                assert "Singleplayer" in page.locator("#tabContent").inner_text()
+                assert "STS2_Things" in page.locator("#tabContent").inner_text()
+                page.screenshot(path=str(out/"dashboard-diagnostics.png"), full_page=True)
+                page.locator('[data-tab="replay"]').click()
+                assert "下载原版还原存档" in page.locator("#tabContent").inner_text()
+                with page.expect_download() as download:
+                    page.get_by_role("button", name="下载原版还原存档").click()
+                downloaded = pathlib.Path(download.value.path()).read_bytes()
+                assert hashlib.sha256(downloaded).hexdigest() == actual["run"]["checkpoint"]["sha256"]
+                page.screenshot(path=str(out/"dashboard-replay.png"), full_page=True)
+                page.locator('[data-tab="combat"]').click()
+                page.locator("#tabContent img").wait_for(state="visible")
+                page.wait_for_function("document.querySelector('#tabContent img').naturalWidth > 0")
+                page.screenshot(path=str(out/"dashboard-combat.png"), full_page=True)
+                page.set_viewport_size({"width": 390,"height": 900})
+                page.locator('[data-tab="diagnostics"]').click()
+                page.screenshot(path=str(out/"dashboard-diagnostics-mobile.png"), full_page=True)
+                assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+                print("PASS: actual schema 3 diagnostics, private screenshot, integrity-checked native download, mobile layout")
+            finally:
+                deleted = page.evaluate("""async url => (await fetch(url,{method:'DELETE',headers:{'Content-Type':'application/json'},body:'{}'})).status""", ROOT + "/api/admin/reports/" + actual_id)
+                assert deleted == 200
         browser.close()

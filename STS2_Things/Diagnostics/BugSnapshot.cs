@@ -6,11 +6,14 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Godot;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
 
 namespace STS2_Things.Diagnostics;
 
@@ -30,7 +33,8 @@ internal static class BugSnapshot
             energy = card.EnergyCost.GetWithModifiers(CostModifiers.All), costs_x = card.EnergyCost.CostsX,
             stars = card.CurrentStarCost, type = card.Type.ToString(), target_type = card.TargetType.ToString(),
             playable = card.Pile?.Type == PileType.Hand ? (bool?)card.CanPlay() : null,
-            affliction = card.Affliction?.Id.ToString(), enchantment = card.Enchantment?.Id.ToString()
+            affliction = card.Affliction?.Id.ToString(), enchantment = card.Enchantment?.Id.ToString(),
+            native = JsonSerializer.SerializeToNode(card.ToSerializable(), JsonSerializationUtility.GetTypeInfo<MegaCrit.Sts2.Core.Saves.Runs.SerializableCard>())
         }; }
         catch (Exception ex) { return new { instance_id = InstanceId(card), id = card.Id.ToString(), unavailable = true, error = Error(ex) }; }
     }
@@ -52,18 +56,26 @@ internal static class BugSnapshot
         var manager = CombatManager.Instance;
         var combat = manager.DebugOnlyGetState();
         var action = RunManager.Instance.ActionExecutor?.CurrentlyRunningAction ?? waitingAction;
-        return Object(new {
+        var result = Object(new {
             seed = run.Rng.StringSeed, numeric_seed = run.Rng.Seed.ToString(), game_mode = run.GameMode.ToString(),
             ascension = run.AscensionLevel, current_act_index = run.CurrentActIndex, current_act = run.Act.Id.ToString(),
+            network_type = RunManager.Instance.NetService.Type.ToString(),
+            local_player_index = run.Players.ToList().FindIndex(LocalContext.IsMe),
+            network = new { connected = RunManager.Instance.NetService.IsConnected,
+                loading = RunManager.Instance.NetService.IsGameLoading, platform = RunManager.Instance.NetService.Platform.ToString(),
+                player_count = run.Players.Count },
+            rng = JsonSerializer.SerializeToNode(run.Rng.ToSerializable(), JsonSerializationUtility.GetTypeInfo<MegaCrit.Sts2.Core.Saves.Runs.SerializableRunRngSet>()),
             current_floor = run.ActFloor, total_floor = run.TotalFloor, map_coord = run.CurrentMapCoord?.ToString(),
             current_room = run.CurrentRoom?.GetType().Name, acts = run.Acts.Select(a => a.Id.ToString()).ToArray(),
             players = run.Players.Select((p, index) => new {
                 index, character = p.Character.Id.ToString(), hp = p.Creature.CurrentHp, max_hp = p.Creature.MaxHp,
                 block = p.Creature.Block, gold = p.Gold,
                 deck = p.Deck.Cards.Select(Card).ToArray(), relics = p.Relics.Select(r => r.Id.ToString()).ToArray(),
+                relic_states = p.Relics.Select(r => JsonSerializer.SerializeToNode(r.ToSerializable(), JsonSerializationUtility.GetTypeInfo<MegaCrit.Sts2.Core.Saves.Runs.SerializableRelic>())).ToArray(),
                 potions = p.PotionSlots.Select(potion => potion?.Id.ToString()).ToArray(), powers = Powers(p.Creature.Powers),
                 combat = p.PlayerCombatState is { } pc ? new {
                     energy = pc.Energy, stars = pc.Stars, turn = pc.TurnNumber, phase = pc.Phase.ToString(),
+                    orbs = pc.OrbQueue.Orbs.Select(o => new { id = o.Id.ToString(), passive = o.PassiveVal, evoke = o.EvokeVal }).ToArray(),
                     hand = pc.Hand.Cards.Select(Card).ToArray(), draw_pile = pc.DrawPile.Cards.Select(Card).ToArray(),
                     discard_pile = pc.DiscardPile.Cards.Select(Card).ToArray(), exhaust_pile = pc.ExhaustPile.Cards.Select(Card).ToArray(),
                     play_pile = pc.PlayPile.Cards.Select(Card).ToArray()
@@ -99,20 +111,39 @@ internal static class BugSnapshot
             execution = action is null ? null : new {
                 type = action.GetType().Name, id = action.Id, state = action.State.ToString(), error = Error(action.Exception)
             },
+            queues = CaptureQueues(run),
             ui = CaptureUi()
         });
+        return BugReplayCodec.SanitizeSnapshot(result, run.Players.Select(p => p.NetId).ToArray());
+    }
+
+    private static object? CaptureQueues(RunState run)
+    {
+        try
+        {
+            var queue = RunManager.Instance.ActionQueueSet;
+            return new { empty = queue.IsEmpty, next_action_id = Read(queue, "NextActionId"),
+                players = Items(Field(queue, "_actionQueues")).Select(q => new {
+                    player_index = run.Players.ToList().FindIndex(p => Equals(p.NetId, Read(q, "ownerId"))),
+                    paused = Read(q, "isPaused"), cancelling = Read(q, "isCancellingCombatActions"),
+                    actions = Items(Read(q, "actions")).OfType<GameAction>().Select(a => new {
+                        type = a.GetType().Name, id = a.Id, state = a.State.ToString(), error = Error(a.Exception) }).ToArray()
+                }).ToArray() };
+        }
+        catch (Exception ex) { return new { unavailable = true, error_type = ex.GetType().Name }; }
     }
 
     // Only fixed game fields cross the compatibility seam, never report/user-supplied reflection names.
     private static object? Field(object value, string name)
     {
         for (var type = value.GetType(); type is not null; type = type.BaseType)
-            if (type.GetField(name, BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly) is { } field)
+            if (type.GetField(name, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly) is { } field)
                 return field.GetValue(value);
         return null;
     }
 
-    private static object? Read(object? value, string name) => value?.GetType().GetProperty(name)?.GetValue(value);
+    private static object? Read(object? value, string name) => value?.GetType().GetProperty(name)?.GetValue(value)
+        ?? (value is null ? null : Field(value, name));
     private static List<object> Items(object? value) => value is IEnumerable items ? items.Cast<object>().Take(200).ToList() : [];
 
     private static object? CaptureUi()
@@ -120,17 +151,23 @@ internal static class BugSnapshot
         try
         {
             var hand = NPlayerHand.Instance;
-            if (hand is null) return null;
+            if (hand is null) return new { hand_present = false,
+                end_turn_present = NCombatRoom.Instance?.Ui?.GetNodeOrNull<Control>("EndTurnButton") is not null,
+                tree_paused = (Godot.Engine.GetMainLoop() as SceneTree)?.Paused, time_scale = Engine.TimeScale };
             var holders = hand.CardHolderContainer.GetChildren().Where(n => n.GetType().Name.Contains("HandCardHolder"))
                 .Concat(Items(Field(hand, "_selectedHandCardContainer") is { } container ? Read(container, "Holders") : null).OfType<Node>()).ToList();
             var selected = Items(Field(hand, "_selectedCards"));
             var prefs = Field(hand, "_prefs");
             var confirm = Field(hand, "_selectModeConfirmButton") as Control;
+            var endTurn = NCombatRoom.Instance?.Ui?.GetNodeOrNull<Control>("EndTurnButton");
             return new {
                 mode = hand.CurrentMode.ToString(), selection_active = hand.IsInCardSelection, in_card_play = hand.InCardPlay,
                 selected = selected.Select(InstanceId).ToArray(), min = Read(prefs, "MinSelect"), max = Read(prefs, "MaxSelect"),
                 confirm_enabled = confirm?.IsVisibleInTree() == true && Read(confirm, "IsEnabled") is true,
                 dragged_holder_index = Field(hand, "_draggedHolderIndex"), awaiting_queue = Items(Field(hand, "_holdersAwaitingQueue")).Count,
+                end_turn_present = endTurn is not null, end_turn_visible = endTurn?.IsVisibleInTree(),
+                end_turn_enabled = endTurn is not null ? Read(endTurn, "IsEnabled") : null,
+                tree_paused = hand.GetTree().Paused, time_scale = Engine.TimeScale,
                 holders = holders.Select(h => {
                     var card = Read(Read(h, "CardNode"), "Model");
                     var cardNode = Read(h, "CardNode") as Node;

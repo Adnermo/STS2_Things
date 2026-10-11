@@ -56,13 +56,14 @@ internal sealed class BugReportStore(string directory)
         {
             if (disk is not null) WriteAtomic(Path.Combine(DirectoryPath, "last-run.json"), disk.ToJsonString());
             Current = new JsonObject {
-                ["schema"] = 2, ["client_run_id"] = Guid.NewGuid().ToString("N"),
+                ["schema"] = 3, ["client_run_id"] = Guid.NewGuid().ToString("N"),
                 ["local_run_key"] = runKey, ["started_at"] = DateTimeOffset.UtcNow.ToString("O"),
                 ["events"] = new JsonArray(), ["initial_state"] = snapshot.DeepClone(),
                 ["initial_state_kind"] = "first_observed", ["state"] = snapshot.DeepClone(), ["dropped_events"] = 0
             };
         }
         foreach (var item in metadata) Current![item.Key] = item.Value?.DeepClone();
+        Current!["schema"] = 3;
         Update(snapshot);
         return restored;
     }
@@ -103,7 +104,7 @@ internal sealed class BugReportStore(string directory)
     {
         var journal = (JsonObject)(Current?.DeepClone() ?? ReadObject(CurrentPath)
             ?? ReadObject(Path.Combine(DirectoryPath, "last-run.json"))
-            ?? new JsonObject { ["schema"] = 2, ["events"] = new JsonArray(), ["state"] = null });
+            ?? new JsonObject { ["schema"] = 3, ["events"] = new JsonArray(), ["state"] = null });
         journal.Remove("local_run_key");
         return journal;
     }
@@ -132,7 +133,7 @@ internal sealed class BugReportOutbox(string directory, HttpClient client, Uri e
             }
         string id = Guid.NewGuid().ToString("N");
         var payload = new JsonObject {
-            ["schema"] = 2, ["source"] = "sts2_things", ["client_report_id"] = id,
+            ["schema"] = 3, ["source"] = "sts2_things", ["client_report_id"] = id,
             ["reported_at"] = DateTimeOffset.UtcNow.ToString("O"), ["description"] = description.Trim(),
             ["run"] = journal.DeepClone()
         };
@@ -185,6 +186,25 @@ internal sealed class BugReportOutbox(string directory, HttpClient client, Uri e
             run.Remove("initial_state");
             if (run["state"] is JsonObject lastState) lastState.Remove("route");
             changes.Add("initial_state/full route retained in local reports file");
+        }
+        if (Encoding.UTF8.GetByteCount(payload.ToJsonString()) > MaxBytes && run["state"] is JsonObject largeState)
+        {
+            // Preserve the native checkpoint and latest faults before secondary
+            // duplicate history. Full evidence is already durable in reports/.
+            while (events?.Count > 10) { events.RemoveAt(0); run["dropped_events"] = (run["dropped_events"]?.GetValue<int>() ?? 0) + 1; }
+            foreach (var player in (largeState["players"] as JsonArray ?? []).OfType<JsonObject>())
+            {
+                if (player["combat"] is JsonObject combat)
+                    foreach (string pile in new[] { "draw_pile", "discard_pile", "exhaust_pile", "play_pile" })
+                        if (combat[pile] is JsonArray cards && cards.Count > 50)
+                        { combat[pile + "_total"] = cards.Count; while (cards.Count > 50) cards.RemoveAt(cards.Count - 1); }
+            }
+            changes.Add("older events and oversized duplicate live piles; native checkpoint preserved");
+        }
+        if (Encoding.UTF8.GetByteCount(payload.ToJsonString()) > MaxBytes && run["screenshot"] is JsonObject image)
+        {
+            image.Remove("data"); image["available"] = false; image["reason"] = "upload_size_limit";
+            changes.Add("screenshot retained in local reports file");
         }
     }
 

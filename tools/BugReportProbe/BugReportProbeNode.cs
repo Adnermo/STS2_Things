@@ -18,6 +18,7 @@ using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.TestSupport;
+using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Unlocks;
 using STS2_Things.Cards;
 
@@ -36,14 +37,37 @@ public partial class BugReportProbeNode : Node
         {
             TestMode.TurnOnInternal();
             Check(OS.GetUserDataDir().Contains("ReportTest"),"probe uses independent user directory");
-            ProjectSettings.LoadResourcePack("D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck");
+            ProjectSettings.LoadResourcePack(System.Environment.GetEnvironmentVariable("THINGS_PROBE_GAME_PCK")
+                ?? "D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck");
             InitializeModelDb();
             SaveManager.Instance.InitSettingsDataForTest();SaveManager.Instance.InitPrefsDataForTest();
             var first=await Scenario("report-first");
             Invoke("Initialize");
             var initial=Current();
             string firstId=initial["client_run_id"]!.GetValue<string>();
-            Check(initial["schema"]!.GetValue<int>()==2,"new diagnostic schema");
+            Check(initial["schema"]!.GetValue<int>()==3,"new diagnostic schema");
+            Check(initial["game_code_mvid"]!.GetValue<string>().Length==32,"actual game code identity recorded");
+            Check(initial["state"]!["local_player_index"]!.GetValue<int>()==0,"local identity is an anonymous player slot");
+            Check(initial["state"]!["rng"]?["rngs"] is JsonObject || initial["state"]!["rng"]?["counters"] is JsonObject,"full current RNG streams recorded");
+            foreach(var act in first.Run.Acts) act.GenerateRooms(first.Run.Rng.UpFront,first.Run.UnlockState,false);
+            var replay=typeof(LeechParasite).Assembly.GetType("STS2_Things.Diagnostics.BugReplayCapture")!;
+            replay.GetMethod("Capture",BindingFlags.NonPublic|BindingFlags.Static)!.Invoke(null,[first.Run.CurrentRoom]);
+            var checkpoint=Current()["checkpoint"]!.AsObject();
+            Check(checkpoint["available"]!.GetValue<bool>(),"native pre-combat checkpoint can be captured");
+            using(var zipped=new MemoryStream(Convert.FromBase64String(checkpoint["data"]!.GetValue<string>())))
+            using(var gzip=new System.IO.Compression.GZipStream(zipped,System.IO.Compression.CompressionMode.Decompress))
+            using(var reader=new StreamReader(gzip))
+            {
+                string native=reader.ReadToEnd();var save=JsonNode.Parse(native)!;
+                Check(save["rng"]!["seed"]!.GetValue<string>()=="report-first","checkpoint preserves original seed");
+                Check(save["players"]![0]!["net_id"]!.GetValue<ulong>()==1,"checkpoint contains portable local identity");
+                Check(save["rng"]?["rngs"] is JsonObject || save["rng"]?["counters"] is JsonObject,"checkpoint contains native RNG state");
+                var parsed=System.Text.Json.JsonSerializer.Deserialize(native,JsonSerializationUtility.GetTypeInfo<SerializableRun>())!;
+                var restored=RunState.FromSerializable(parsed);
+                var restoredRng=System.Text.Json.JsonSerializer.SerializeToNode(restored.Rng.ToSerializable(),JsonSerializationUtility.GetTypeInfo<MegaCrit.Sts2.Core.Saves.Runs.SerializableRunRngSet>());
+                Check(JsonNode.DeepEquals(restoredRng,save["rng"]),"native load restores full RNG bits and counters exactly");
+                Check(restored.Players[0].Deck.Cards.Count==first.Player.Deck.Cards.Count,"native load restores actual deck");
+            }
             var hand=initial["state"]!["players"]![0]!["combat"]!["hand"]!.AsArray();
             Check(hand.Count==2,"actual model hand captured");
             Check(hand[0]!["instance_id"]!.GetValue<string>()!=hand[1]!["instance_id"]!.GetValue<string>(),"same-name cards have distinct IDs");
@@ -64,6 +88,37 @@ public partial class BugReportProbeNode : Node
             var handler=typeof(ActionExecutor).GetField("BeforeActionExecuted",BindingFlags.NonPublic|BindingFlags.Instance)?.GetValue(oldExecutor) as Delegate;
             Check(handler?.GetInvocationList().All(d=>d.Method.DeclaringType!=Recorder)!=false,"old executor is detached");
             Check(current["initial_state"]!["seed"]!.GetValue<string>()=="report-second","new initial snapshot belongs to second run");
+            // Room/turn startup tasks run outside ActionExecutor. Exercise the actual
+            // game's error logger while no action is running, just like a faulted
+            // fire-and-forget combat-start task.
+            Log.Error("System.MissingMethodException: Method not found: 'UInt32 MegaCrit.Sts2.Core.Runs.RunRngSet.get_Seed()'.\n"
+                + "   at ExampleMod.CombatStart.BeforeHandDraw(Player player) in C:\\PrivatePlayer\\Game\\test.cs:line 42\n"
+                + "Authorization: Bearer PRIVATE_TEST_CREDENTIAL\nSteamId: 76561199999999999");
+            await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+            Invoke("PollFailedAction");
+            var faults=Current()["events"]!.AsArray().Where(e=>e?["kind"]?.GetValue<string>()=="runtime_error").ToArray();
+            Check(faults.Length==1,"startup error outside action queue must be recorded");
+            string serialized=faults[0]!.ToJsonString();
+            Check(serialized.Contains("MissingMethodException") && serialized.Contains("ExampleMod.CombatStart.BeforeHandDraw"),"fault type and useful frames retained");
+            Check(!serialized.Contains("PrivatePlayer") && !serialized.Contains("PRIVATE_TEST_CREDENTIAL") && !serialized.Contains("76561199999999999"),"paths, auth and Steam identity excluded");
+            Check(faults[0]?["detail"]?["member"]?.GetValue<string>()?.Contains("get_Seed")==true,"missing API signature retained without raw error text");
+            GD.PushError("System.InvalidOperationException: private engine error\n at ExampleSkin.Orb.UpdateVisuals() in C:\\PrivatePlayer\\skin.cs:line 9");
+            await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+            Invoke("PollFailedAction");
+            Check(Current()["events"]!.AsArray().Any(e=>e?["kind"]?.GetValue<string>()=="runtime_error" && e?["detail"]?["type"]?.GetValue<string>()=="System.InvalidOperationException"),"native Godot errors also recorded");
+            try { await MegaCrit.Sts2.Core.Helpers.TaskHelper.RunSafely(Task.FromException(new MissingMethodException("Method not found: 'Example.Mod.Draw()'."))); }
+            catch (MissingMethodException) { }
+            await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);Invoke("PollFailedAction");
+            Check(Current()["runtime_errors"]!.AsArray().Any(e=>e?["member"]?.GetValue<string>()=="Example.Mod.Draw()"),"real native fire-and-forget task fault reaches report");
+            using(var image=Image.CreateEmpty(1200,700,false,Image.Format.Rgb8))
+            {
+                image.Fill(Colors.CornflowerBlue);
+                using var png=new MemoryStream(image.SavePngToBuffer());
+                var screenshot=typeof(LeechParasite).Assembly.GetType("STS2_Things.Diagnostics.BugScreenshotCapture")!
+                    .GetMethod("Capture",BindingFlags.NonPublic|BindingFlags.Static)!.Invoke(null,[png]) as JsonObject;
+                Check(screenshot?["available"]?.GetValue<bool>()==true && screenshot["bytes"]!.GetValue<int>()<=60_000,"native F2 image encodes a bounded screenshot");
+                Check(screenshot!["width"]!.GetValue<int>()==960,"F2 thumbnail preserves aspect ratio within native size limit");
+            }
             foreach(string name in new[]{"ThingsFeedbackCategoryPatch","ThingsFeedbackSendPatch","ThingsFeedbackReceiptPatch","ThingsFeedbackFailurePatch"})
                 Check(typeof(LeechParasite).Assembly.GetType("STS2_Things.Diagnostics."+name) is not null,"shipping F2 patch exists: "+name);
             Check(typeof(MegaCrit.Sts2.Core.Nodes.Screens.FeedbackScreen.NSendFeedbackScreen).GetMethod("SendFeedback",BindingFlags.NonPublic|BindingFlags.Static)!.GetParameters().Length==3,"current native F2 signature includes both owned streams");
