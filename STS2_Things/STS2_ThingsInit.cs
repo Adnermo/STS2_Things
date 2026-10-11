@@ -41,6 +41,7 @@ public static class STS2_ThingsInit
             var assembly = Assembly.GetExecutingAssembly();
             ScriptManagerBridge.LookupScriptsInAssembly(assembly);
             Sts2VersionCompatibility.InitializeBeforeModelDatabase();
+            ModCompatibility.Initialize();
 
             // 可配置门控：读取 user://mod_configs/STS2_Things.cfg（缺失时生成默认值），
             // 并尝试接入外部模组配置页框架（可选，非前置依赖）。

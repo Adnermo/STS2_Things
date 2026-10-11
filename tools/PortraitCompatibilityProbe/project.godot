@@ -1,0 +1,11 @@
+config_version=5
+
+[application]
+config/name="Things Portrait Compatibility Probe"
+run/main_scene="res://main.tscn"
+
+[dotnet]
+project/assembly_name="PortraitCompatibilityProbe"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
