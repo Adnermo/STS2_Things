@@ -14,7 +14,10 @@ public partial class NThingsCombatBackground : NCombatBackground
     {
         base._Ready();
         GetNode<Control>("Layer_00").ZIndex = -2;
-        GetNode<Control>("Layer_01").ZIndex = 1;
-        GetNode<Control>("Foreground").ZIndex = 3;
+        // One-layer native templates (e.g. Origin Fogmog) have no Layer_01.
+        if (GetNodeOrNull<Control>("Layer_01") is { } middleLayer)
+            middleLayer.ZIndex = 1;
+        if (GetNodeOrNull<Control>("Foreground") is { } foreground)
+            foreground.ZIndex = 3;
     }
 }

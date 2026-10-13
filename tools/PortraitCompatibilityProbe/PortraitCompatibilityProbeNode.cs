@@ -321,16 +321,20 @@ public partial class PortraitCompatibilityProbeNode : Node
     private void InitializeForeign(Assembly foreign)
     {
         if (!_initializedForeign.Add(foreign)) return;
-        foreign.GetType(foreign.GetName().Name + ".MainFile", true)!.GetMethod("Initialize")!.Invoke(null, null);
+        string typeNamespace = GetForeignNamespace(foreign);
+        foreign.GetType(typeNamespace + ".MainFile", true)!.GetMethod("Initialize")!.Invoke(null, null);
     }
 
     private void BindForeign(Assembly foreign)
     {
-        _foreignNamespace = foreign.GetName().Name!;
+        _foreignNamespace = GetForeignNamespace(foreign);
         _portrait = foreign.GetType(_foreignNamespace + ".PortraitPatch", true)!;
         _remember = _portrait.GetMethod("RememberDefaultState", PrivateStatic)!;
         _restore = _portrait.GetMethod("RestoreDefaultState", PrivateStatic)!;
     }
+
+    private static string GetForeignNamespace(Assembly foreign) => foreign.GetName().Name == "cutenecrobinderv0.7"
+        ? "cutenecrobinderv0_7" : foreign.GetName().Name!;
 
     private static void RegisterProbeMod(Assembly implementation)
     {

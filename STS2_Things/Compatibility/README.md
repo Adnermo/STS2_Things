@@ -10,7 +10,7 @@ Compatibility/
   Sts2VersionCompatibility.cs        游戏版本适配
 ```
 
-目前注册 BetterCallSpire、RegentCardsAnimeRework 和 LuolinCard；未安装对应模组时不打补丁，不新增强制依赖。配置页库的可选注册仍由 `Config/LibraryIntegration.cs` 管理，不混入玩法兼容。
+目前注册 BetterCallSpire、RegentCardsAnimeRework、LuolinCard、CuteNecrobinderCards 的卡图适配，以及 MomoLib 的本模组 WAV 音乐适配；未安装对应模组时不打补丁，不新增强制依赖。配置页库的可选注册仍由 `Config/LibraryIntegration.cs` 管理，不混入玩法兼容。
 
 新增第三方兼容时：
 
@@ -20,4 +20,4 @@ Compatibility/
 4. 玩法继续走原生命令；只修已证实的缺口，保留第三方正常功能。共享反射信息按目标方法／程序集保存。
 5. 根据支持版本验证未安装、单独安装、组合安装、失效引用与正常显示，记录真实验证层级。
 
-当前证据和限制见 `docs/mod-compatibility-20261012.md`。这里是扩展方式，不代表所有卡图包或所有第三方模组已兼容。
+当前证据和限制见 `docs/mod-compatibility-20261012.md` 和 `docs/latest-reports-20261013.md`。这里是扩展方式，不代表所有卡图包或所有第三方模组已兼容。

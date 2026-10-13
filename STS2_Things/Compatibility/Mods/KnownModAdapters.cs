@@ -13,5 +13,8 @@ internal static class KnownModAdapters
             PortraitCacheGuard.Install(assembly, "regentCardsAnimeRework", harmony)),
         new("LuolinCard", "LuolinCard", static (assembly, harmony) =>
             PortraitCacheGuard.Install(assembly, "LuolinCard", harmony)),
+        new("CuteNecrobinderCards", "cutenecrobinderv0.7", static (assembly, harmony) =>
+            PortraitCacheGuard.Install(assembly, "cutenecrobinderv0_7", harmony)),
+        new("MomoLib", "MomoLib", MomoLibCompatibility.Install),
     ];
 }
