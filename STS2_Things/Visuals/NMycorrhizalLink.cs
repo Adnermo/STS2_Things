@@ -60,9 +60,16 @@ public partial class NMycorrhizalLink : Node2D
         _age+=(float)delta;
         if(_pulse>=0){_pulse+=(float)delta;if(_pulse>1.15f)_pulse=-1;}
         var peer=twin.Partner?.Creature;
-        var other=peer?.GetCreatureNode()??_host.GetParent().GetChildren().OfType<NCreature>().FirstOrDefault(n=>n.Entity==peer);
-        var from=_host.Visuals.GetNodeOrNull<Node2D>("Visuals/RootSocket");
-        var to=other?.Visuals.GetNodeOrNull<Node2D>("Visuals/RootSocket");
+        Node? parent = _host.GetParent();
+        if (parent == null)
+        {
+            Visible=false;
+            _connected=false;
+            return;
+        }
+        var other=peer?.GetCreatureNode()??parent.GetChildren().OfType<NCreature>().FirstOrDefault(n=>n.Entity==peer);
+        var from=_host.Visuals?.GetNodeOrNull<Node2D>("Visuals/RootSocket");
+        var to=other?.Visuals?.GetNodeOrNull<Node2D>("Visuals/RootSocket");
         _connected=from!=null&&to!=null&&_host.Entity.IsAlive&&peer?.IsAlive==true;
         if(_connected)
         {

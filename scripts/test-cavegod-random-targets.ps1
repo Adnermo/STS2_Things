@@ -13,7 +13,7 @@ $taskProbe = Join-Path $taskRoot 'tools\CaveGodTargetProbe'
 $taskOutput = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $taskOutput -Force | Out-Null
 $env:DOTNET_ROOT = 'C:\Program Files\dotnet'
-& 'C:\Program Files\dotnet\dotnet.exe' build (Join-Path $taskProbe 'CaveGodTargetProbe.csproj') -c Debug --nologo "/p:ImplementationDll=$([IO.Path]::GetFullPath($ImplementationDll))" "/p:Sts2DataDir=$([IO.Path]::GetFullPath($DataDir))" *> (Join-Path $taskOutput 'build.log')
+& 'C:\Program Files\dotnet\dotnet.exe' build (Join-Path $taskProbe 'CaveGodTargetProbe.csproj') -t:Rebuild -c Debug --nologo "/p:ImplementationDll=$([IO.Path]::GetFullPath($ImplementationDll))" "/p:Sts2DataDir=$([IO.Path]::GetFullPath($DataDir))" *> (Join-Path $taskOutput 'build.log')
 if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath (Join-Path $taskOutput 'build.log') -Tail 15; throw 'Random target probe compile failed.' }
 $env:DOTNET_ROOT = Join-Path $taskRoot '.tmp\dotnet9'
 $env:DOTNET_MULTILEVEL_LOOKUP = '0'

@@ -156,7 +156,16 @@ public abstract class ThingsCaveGodHand : MonsterModel
         if (IsDown) action = Action.Down;
         else if (_needsRecovery) action = Action.Recover;
         IsStunned = action is Action.WeakStun or Action.Recover or Action.EscapeStun or Action.Down;
-        SetMoveImmediate((MoveState)MoveStateMachine!.States[MoveId(action)], forceTransition: true);
+        string moveId = MoveId(action);
+        if (!MoveStateMachine!.States.TryGetValue(moveId, out MonsterState? state) || state is not MoveState move)
+        {
+            // Another mod can replace the hand's move state machine after the
+            // encounter is built. Do not let one missing projection key abort
+            // AfterSideTurnStart and strand the player's card queue.
+            Log.Warn($"STS2_Things: Cave God hand state '{moveId}' is unavailable; keeping the native hand state.");
+            return;
+        }
+        SetMoveImmediate(move, forceTransition: true);
         // NCreature couples this switch to HP-bar visibility. The model's targeting hook
         // rejects stunned targets while still showing their health and healing intent.
         NCombatRoom.Instance?.GetCreatureNode(Creature)?.ToggleIsInteractable(IsHealthBarVisible);

@@ -32,7 +32,7 @@ internal static class ModCompatibility
         string name = assembly.GetName().Name ?? string.Empty;
         foreach (ModCompatibilityAdapter adapter in Mods.KnownModAdapters.All)
         {
-            if (name != adapter.AssemblyName || !Examined.Add((assembly, adapter.Id))) continue;
+            if (!name.Equals(adapter.AssemblyName, StringComparison.OrdinalIgnoreCase) || !Examined.Add((assembly, adapter.Id))) continue;
             string harmonyId = "Adnermo.STS2_Things.Compatibility." + adapter.Id;
             var harmony = new Harmony(harmonyId);
             try

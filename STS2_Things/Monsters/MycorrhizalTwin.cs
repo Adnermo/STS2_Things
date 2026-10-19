@@ -25,7 +25,7 @@ public abstract class MycorrhizalTwin : ThingsSpineMonster
     public int StrengthGift => IsRobust ? 3 : 1;
     public int ArmorGift => IsRobust ? 3 : 2;
     public int ScaleProtection(int value) => (int)Math.Round(value * (IsRobust ? 1.25m : .75m), MidpointRounding.AwayFromZero);
-    public MycorrhizalTwin? Partner => CombatState.Enemies.Select(c => c.Monster)
+    public MycorrhizalTwin? Partner => Creature.CombatState?.Enemies.Select(c => c.Monster)
         .OfType<MycorrhizalTwin>().FirstOrDefault(m => m != this && m.IsVanguard != IsVanguard && m.Creature.IsAlive);
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 98, 88);
     public override int MaxInitialHp => MinInitialHp;

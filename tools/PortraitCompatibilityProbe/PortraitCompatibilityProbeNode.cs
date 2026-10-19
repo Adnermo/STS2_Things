@@ -322,19 +322,29 @@ public partial class PortraitCompatibilityProbeNode : Node
     {
         if (!_initializedForeign.Add(foreign)) return;
         string typeNamespace = GetForeignNamespace(foreign);
-        foreign.GetType(typeNamespace + ".MainFile", true)!.GetMethod("Initialize")!.Invoke(null, null);
+        foreign.GetType(typeNamespace + ".MainFile", throwOnError: true, ignoreCase: true)!
+            .GetMethod("Initialize")!.Invoke(null, null);
     }
 
     private void BindForeign(Assembly foreign)
     {
         _foreignNamespace = GetForeignNamespace(foreign);
-        _portrait = foreign.GetType(_foreignNamespace + ".PortraitPatch", true)!;
+        _portrait = foreign.GetType(_foreignNamespace + ".PortraitPatch", throwOnError: true, ignoreCase: true)!;
         _remember = _portrait.GetMethod("RememberDefaultState", PrivateStatic)!;
         _restore = _portrait.GetMethod("RestoreDefaultState", PrivateStatic)!;
     }
 
-    private static string GetForeignNamespace(Assembly foreign) => foreign.GetName().Name == "cutenecrobinderv0.7"
-        ? "cutenecrobinderv0_7" : foreign.GetName().Name!;
+    private static string GetForeignNamespace(Assembly foreign)
+    {
+        string name = foreign.GetName().Name!;
+        string typeNamespace = name switch
+        {
+            "cutenecrobinderv0.7" => "cutenecrobinderv0_7",
+            "com.demo.midori_black_card" => "com_demo_midori_black_card",
+            _ => name
+        };
+        return foreign.GetType(typeNamespace + ".PortraitPatch", throwOnError: true, ignoreCase: true)!.Namespace!;
+    }
 
     private static void RegisterProbeMod(Assembly implementation)
     {

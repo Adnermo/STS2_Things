@@ -10,7 +10,7 @@ Compatibility/
   Sts2VersionCompatibility.cs        游戏版本适配
 ```
 
-目前注册 BetterCallSpire、RegentCardsAnimeRework、LuolinCard、CuteNecrobinderCards 的卡图适配，以及 MomoLib 的本模组 WAV 音乐适配；未安装对应模组时不打补丁，不新增强制依赖。配置页库的可选注册仍由 `Config/LibraryIntegration.cs` 管理，不混入玩法兼容。
+目前注册 BetterCallSpire、RegentCardsAnimeRework、LuolinCard、Life with spire、Diana111、Midori Black Card、AliceDefectCard、CuteNecrobinderCards 的卡图适配，以及 MomoLib 的本模组 WAV 音乐适配；未安装对应模组时不打补丁，不新增强制依赖。配置页库的可选注册仍由 `Config/LibraryIntegration.cs` 管理，不混入玩法兼容。
 
 新增第三方兼容时：
 

@@ -15,6 +15,7 @@ using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Characters;
+using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -59,6 +60,8 @@ public partial class CaveGodProbeNode : Node
                 .GetMethod("InitializeBeforeModelDatabase")!.Invoke(null, null);
             InitializeModelDb();
             EnsureScriptsLookedUp();
+            VerifyDetachedTwinPartner();
+            VerifyMissingProjectedHandMove();
             await VerifyCaveGodRandomTargets();
             GetTree().Quit();
         }
@@ -324,5 +327,31 @@ public partial class CaveGodProbeNode : Node
         {
             throw new InvalidOperationException(message);
         }
+    }
+
+    private static void VerifyDetachedTwinPartner()
+    {
+        Fixture fixture = Scenario();
+        MycorrhizalVanguard vanguard = Add<MycorrhizalVanguard>(fixture.State, "probe_vanguard");
+        MycorrhizalBulwark bulwark = Add<MycorrhizalBulwark>(fixture.State, "probe_bulwark");
+        Assert(vanguard.Partner == bulwark && bulwark.Partner == vanguard, "Living twins resolve each other as partners.");
+        fixture.State.RemoveCreature(bulwark.Creature);
+        Assert(bulwark.Creature.CombatState == null && bulwark.Partner == null,
+            "A retained visual model safely loses its partner after native combat removal.");
+        DeactivateSyntheticCombat();
+    }
+
+    private static void VerifyMissingProjectedHandMove()
+    {
+        Fixture fixture = Scenario();
+        ThingsCaveGodHand hand = fixture.Left;
+        string moveBefore = hand.NextMove.Id;
+        var externalMove = new MoveState("ANTHONY_MOVE_0", _ => Task.CompletedTask);
+        var externalMachine = new MonsterMoveStateMachine([externalMove], externalMove);
+        typeof(MonsterModel).GetField("_moveStateMachine", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(hand, externalMachine);
+        hand.Plan(ThingsCaveGodHand.Action.Rest);
+        Assert(hand.NextMove.Id == moveBefore, "An external move-state replacement keeps the last valid hand intent without aborting turn-start hooks.");
+        DeactivateSyntheticCombat();
     }
 }

@@ -14,13 +14,14 @@ internal static class PortraitCacheGuard
 
     internal static void Install(Assembly assembly, string typeNamespace, Harmony harmony)
     {
-        Type? patch = assembly.GetType(typeNamespace + ".PortraitPatch", false);
+        Type? patch = assembly.GetType(typeNamespace + ".PortraitPatch", throwOnError: false, ignoreCase: true);
         Type? state = patch?.GetNestedType("PortraitState", BindingFlags.NonPublic);
         PropertyInfo? texture = state?.GetProperty("Texture", BindingFlags.Public | BindingFlags.Instance);
         PropertyInfo? stretch = state?.GetProperty("StretchMode", BindingFlags.Public | BindingFlags.Instance);
         PropertyInfo? filter = state?.GetProperty("TextureFilter", BindingFlags.Public | BindingFlags.Instance);
         MethodInfo? remember = patch?.GetMethod("RememberDefaultState", BindingFlags.NonPublic | BindingFlags.Static);
         MethodInfo? restore = patch?.GetMethod("RestoreDefaultState", BindingFlags.NonPublic | BindingFlags.Static);
+        MethodInfo? resolve = patch?.GetMethod("TryResolveReplacementTexture", BindingFlags.NonPublic | BindingFlags.Static);
         if (texture?.PropertyType != typeof(Texture2D) || stretch?.PropertyType != typeof(TextureRect.StretchModeEnum)
             || (filter != null && filter.PropertyType != typeof(CanvasItem.TextureFilterEnum))
             || !MatchesCacheHelper(remember, state) || !MatchesCacheHelper(restore, state))
@@ -33,6 +34,8 @@ internal static class PortraitCacheGuard
         {
             harmony.Patch(remember!, prefix: new HarmonyMethod(typeof(PortraitCacheGuard), nameof(BeforeRemember)));
             harmony.Patch(restore!, prefix: new HarmonyMethod(typeof(PortraitCacheGuard), nameof(BeforeRestore)));
+            if (MatchesReplacementResolver(resolve))
+                harmony.Patch(resolve!, postfix: new HarmonyMethod(typeof(PortraitCacheGuard), nameof(AfterResolveReplacement)));
         }
         catch
         {
@@ -50,6 +53,24 @@ internal static class PortraitCacheGuard
             && args[2].ParameterType.IsGenericType
             && args[2].ParameterType.GetGenericTypeDefinition() == typeof(Dictionary<,>)
             && args[2].ParameterType.GenericTypeArguments.SequenceEqual(new[] { typeof(string), state });
+    }
+
+    private static bool MatchesReplacementResolver(MethodInfo? method)
+    {
+        if (method?.ReturnType != typeof(bool)) return false;
+        ParameterInfo[] args = method.GetParameters();
+        return args.Length == 4 && args[0].ParameterType == typeof(string)
+            && args[1].ParameterType == typeof(ulong) && args[2].ParameterType == typeof(int)
+            && args[3].IsOut && args[3].ParameterType == typeof(Texture2D).MakeByRefType();
+    }
+
+    private static void AfterResolveReplacement(ref bool __result, ref Texture2D? __3)
+    {
+        if (__result && __3 != null && !GodotObject.IsInstanceValid(__3))
+        {
+            __result = false;
+            __3 = null;
+        }
     }
 
     private static bool BeforeRemember(TextureRect? __1)
