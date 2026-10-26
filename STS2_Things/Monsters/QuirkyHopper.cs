@@ -254,7 +254,7 @@ public sealed class QuirkyHopper : MonsterModel
     {
         List<CardModel> candidates = CardPile
             .GetCards(player, PileType.Draw, PileType.Discard)
-            .Where(card => card.DeckVersion != null)
+            .Where(card => card.DeckVersion is { IsRemovable: true } && card.IsRemovable)
             .ToList();
         if (candidates.Count == 0)
         {

@@ -24,6 +24,9 @@ internal static class BugRunRecorder
     private static readonly HashSet<GameAction> TrackedActions = [];
     private static bool _ready;
     private static long _lastErrorPoll;
+    private static long _lastSnapshotAt;
+    private static bool _snapshotDirty, _journalDirty;
+    private const int SnapshotIntervalMs = 500;
     private static GameAction? _reportedErrorAction;
     private static long _combatCheckpointAt;
     private static bool _startupWaitRecorded;
@@ -110,6 +113,7 @@ internal static class BugRunRecorder
                 _executor.AfterActionExecuted += AfterAction;
             }
             Track(resumed ? "run_resumed" : "run_first_observed", persist: true);
+            FlushJournal(force: true);
         }
         catch (Exception ex) { Log.Warn("[Things BugReport] Start journal: " + ex.GetType().Name); }
     }
@@ -157,7 +161,8 @@ internal static class BugRunRecorder
                 Store.Track(new JsonObject { ["kind"] = "combat_checkpoint", ["at"] = DateTimeOffset.UtcNow.ToString("O"),
                     ["detail"] = new JsonObject { ["available"] = checkpoint["available"]?.DeepClone(),
                         ["encounter"] = checkpoint["encounter"]?.DeepClone() } });
-                Store.Persist();
+                _journalDirty = true;
+                FlushJournal(force: true);
             }
         }
         catch (Exception) { /* Checkpoint observation must never interrupt room entry. */ }
@@ -271,9 +276,9 @@ internal static class BugRunRecorder
 
     private static void PollFailedAction()
     {
-        DrainRuntimeErrors();
-        if (System.Environment.TickCount64 - _lastErrorPoll < 1000) return;
+        if (System.Environment.TickCount64 - _lastErrorPoll < 250) return;
         _lastErrorPoll = System.Environment.TickCount64;
+        DrainRuntimeErrors();
         if (RunManager.Instance.DebugOnlyGetState() is null && _run is not null)
         {
             try { Store.Archive(); } catch (IOException) { }
@@ -294,6 +299,8 @@ internal static class BugRunRecorder
         {
             _reportedErrorAction = action; Track("action_failed", ActionRecord(action), persist: true);
         }
+        try { FlushJournal(); }
+        catch (Exception ex) { Log.Warn("[Things BugReport] Journal snapshot: " + ex.GetType().Name); }
     }
 
     private static void OnNativeLog(LogLevel level, string text, int skipFrames)
@@ -327,11 +334,27 @@ internal static class BugRunRecorder
                 ["at"] = DateTimeOffset.UtcNow.ToString("O"), ["kind"] = kind, ["detail"] = detail?.DeepClone(),
                 ["act_index"] = run.CurrentActIndex, ["floor"] = run.ActFloor, ["room"] = run.CurrentRoom?.GetType().Name
             });
-            Store.Update(BugSnapshot.Capture(run, TrackedActions.LastOrDefault()));
-            if (Store.Current is not null) Store.Current["runtime_errors"] = BugRuntimeFaults.Snapshot();
-            if (persist) Store.Persist();
+            _snapshotDirty = true;
+            _journalDirty |= persist;
         }
         catch (Exception ex) { Log.Warn("[Things BugReport] Journal event: " + ex.GetType().Name); }
+    }
+
+    private static void FlushJournal(bool force = false)
+    {
+        if (_run is null || (!force && !_journalDirty)) return;
+        long now = System.Environment.TickCount64;
+        if (!force && now - _lastSnapshotAt < SnapshotIntervalMs) return;
+        if (_snapshotDirty || force)
+        {
+            Store.Update(BugSnapshot.Capture(_run, TrackedActions.LastOrDefault()));
+            if (Store.Current is not null) Store.Current["runtime_errors"] = BugRuntimeFaults.Snapshot();
+        }
+        _lastSnapshotAt = now;
+        _snapshotDirty = false;
+        _journalDirty = false;
+        if (force) Store.Persist();
+        else _ = Store.QueuePersist();
     }
 
     internal static async Task<bool> SubmitAsync(string description, bool retryPending = false, JsonObject? screenshot = null)
@@ -346,6 +369,7 @@ internal static class BugRunRecorder
                 if (text.Length < 2) { LastSubmission = new(false, null, "description_too_short", outbox.PendingCount); return false; }
                 DrainRuntimeErrors();
                 Track("report_requested", persist: true);
+                FlushJournal(force: true);
                 var journal = Store.JournalForUpload();
                 foreach (var item in RuntimeMetadata()) journal[item.Key] = item.Value?.DeepClone();
                 if (screenshot is not null) journal["screenshot"] = screenshot.DeepClone();
@@ -353,7 +377,9 @@ internal static class BugRunRecorder
                 journal["report_context"] = RunManager.Instance.DebugOnlyGetState() is null ? "last_recorded_run_or_menu" : "active_run";
                 journal["capture_capabilities"] = new JsonObject { ["native_checkpoint"] = true, ["native_errors"] = true,
                     ["mod_fingerprints"] = true, ["network_state"] = true, ["screenshot"] = true, ["raw_network_packets"] = false,
-                    ["third_party_config"] = "no_standard_export" };
+                    ["third_party_config"] = "no_standard_export", ["performance_monitors"] = true,
+                    ["automatic_snapshot_interval_ms"] = SnapshotIntervalMs, ["playability_evaluated"] = false,
+                    ["energy_cost_scope"] = "local; displayed hand cost also captured from UI" };
                 BugReplayCodec.MakeJsonSafe(journal);
                 report = outbox.Enqueue(journal, text);
             }

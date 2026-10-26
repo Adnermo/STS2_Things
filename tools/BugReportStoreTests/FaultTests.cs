@@ -19,7 +19,11 @@ static partial class Tests
         BugRuntimeFaults.BackfillStartupLog(log);
         Check(BugRuntimeFaults.Snapshot().Last()!["code"]!.GetValue<string>() == "index_out_of_bounds", "pre-initializer engine error backfilled");
         Check(BugRuntimeFaults.Snapshot().Last()!.ToJsonString().Contains("Example.Loader.Import"), "startup backfill retains actual failing method");
-        for (int i = 0; i < 40; i++) BugRuntimeFaults.Capture("runtime error", 0, ["Example.BoundedError"]);
+        for (int i = 0; i < 1000; i++) BugRuntimeFaults.Capture("same repeating error", 0, ["Example.RepeatingError"]);
+        var repeated = BugRuntimeFaults.Snapshot().Last()!;
+        Check(repeated["occurrences"]?.GetValue<int>() == 1000, "repeated errors keep a count without evicting unrelated faults");
+        Check(BugRuntimeFaults.Snapshot().Count == 3, "one repeated stack uses one bounded error record");
+        for (int i = 0; i < 40; i++) BugRuntimeFaults.Capture("runtime error " + i, 0, ["Example.BoundedError"]);
         Check(BugRuntimeFaults.Snapshot().Count == 32 && BugRuntimeFaults.Dropped > 0, "error storm is bounded and drops are declared");
         string recovery = Path.Combine(root,"runtime-errors.json");
         BugRuntimeFaults.InitializePersistence(recovery);BugRuntimeFaults.Persist();

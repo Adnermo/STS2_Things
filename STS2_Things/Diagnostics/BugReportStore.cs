@@ -11,6 +11,11 @@ internal sealed class BugReportStore(string directory)
     internal string DirectoryPath { get; } = directory;
     internal JsonObject? Current { get; private set; }
     private string CurrentPath => Path.Combine(DirectoryPath, "current-run.json");
+    private readonly object _writeGate = new();
+    private JsonObject? _pendingWrite;
+    private Task _writeTask = Task.CompletedTask;
+    private bool _writing;
+    private Exception? _writeFailure;
 
     internal static void WriteAtomic(string path, string value)
     {
@@ -90,7 +95,50 @@ internal sealed class BugReportStore(string directory)
 
     internal void Persist()
     {
-        if (Current is not null) WriteAtomic(CurrentPath, Current.ToJsonString());
+        QueuePersist().GetAwaiter().GetResult();
+        lock (_writeGate)
+            if (_writeFailure is { } failure) throw new IOException("Unable to persist the local report journal.", failure);
+    }
+
+    internal Task QueuePersist()
+    {
+        // Only freeze structural JSON on the game thread. The worker never reads
+        // game/Godot objects, and superseded pending snapshots can be coalesced.
+        if (Current is null) return Task.CompletedTask;
+        JsonObject frozen = (JsonObject)Current.DeepClone();
+        lock (_writeGate)
+        {
+            _pendingWrite = frozen;
+            if (!_writing)
+            {
+                _writing = true;
+                _writeTask = Task.Run(WritePending);
+            }
+            return _writeTask;
+        }
+    }
+
+    private void WritePending()
+    {
+        while (true)
+        {
+            JsonObject snapshot;
+            lock (_writeGate)
+            {
+                if (_pendingWrite is null) { _writing = false; return; }
+                snapshot = _pendingWrite;
+                _pendingWrite = null;
+            }
+            try
+            {
+                WriteAtomic(CurrentPath, snapshot.ToJsonString());
+                lock (_writeGate) _writeFailure = null;
+            }
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+            {
+                lock (_writeGate) _writeFailure = failure;
+            }
+        }
     }
 
     internal void Archive()

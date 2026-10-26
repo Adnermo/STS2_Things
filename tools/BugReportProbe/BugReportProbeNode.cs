@@ -29,7 +29,14 @@ public partial class BugReportProbeNode : Node
     private static string DirectoryPath => Path.Combine(OS.GetUserDataDir(),"mod_data/STS2_Things/bug_reports");
     public override void _Ready() { AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency; _ = Run(); }
     private static object? Invoke(string method, params object?[] args) => Recorder.GetMethod(method,BindingFlags.NonPublic|BindingFlags.Static)!.Invoke(null,args);
-    private static JsonObject Current() => JsonNode.Parse(File.ReadAllText(Path.Combine(DirectoryPath,"current-run.json")))!.AsObject();
+    private static JsonObject Current()
+    {
+        // Reading the durable artifact is an explicit barrier in this probe.
+        // Production event callbacks deliberately do not force per-event IO.
+        Invoke("DrainRuntimeErrors");
+        Recorder.GetMethod("FlushJournal", BindingFlags.NonPublic | BindingFlags.Static)?.Invoke(null, [true]);
+        return JsonNode.Parse(File.ReadAllText(Path.Combine(DirectoryPath,"current-run.json")))!.AsObject();
+    }
     private static void Check(bool test,string name) { if(!test)throw new Exception(name);_checks++; }
     private async Task Run()
     {
@@ -41,6 +48,12 @@ public partial class BugReportProbeNode : Node
                 ?? "D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck");
             InitializeModelDb();
             SaveManager.Instance.InitSettingsDataForTest();SaveManager.Instance.InitPrefsDataForTest();
+            if (OS.GetCmdlineUserArgs().Contains("--performance"))
+            {
+                await VerifyRecorderPerformance();
+                GetTree().Quit();
+                return;
+            }
             var first=await Scenario("report-first");
             Invoke("Initialize");
             var initial=Current();
@@ -131,11 +144,12 @@ public partial class BugReportProbeNode : Node
     {
         DeactivateSyntheticCombat();
         var player=Player.CreateForNewRun<Ironclad>(UnlockState.all,1);
-        var run=RunState.CreateForNewRun([player],ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),[],GameMode.Standard,0,seed);
+        var run=RunState.CreateForNewRun([player],ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),PerformanceModifiers(),GameMode.Standard,0,seed);
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
         typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance,new NetSingleplayerGameService());
         typeof(RunManager).GetProperty("ActionExecutor")!.SetValue(RunManager.Instance,new ActionExecutor(new ActionQueueSet([player])));
         typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,new AscensionManager(0));
+        foreach (var modifier in run.Modifiers) modifier.OnRunCreated(run);
         var encounter=ModelDb.AllEncounters.First(e=>e.Id.Entry=="SLIMES_WEAK").ToMutable();
         var room=new CombatRoom(encounter,run);run.PushRoom(room);room.CombatState.AddPlayer(player);player.ResetCombatState();
         player.Creature.SetMaxHpInternal(70);player.Creature.SetCurrentHpInternal(70);

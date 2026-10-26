@@ -40,6 +40,19 @@ static partial class Tests
             for (int i = 0; i < 750; i++) restored.Track(new JsonObject { ["kind"] = "sample" });
             Check(restored.Current!["events"]!.AsArray().Count == 700 && restored.Current["dropped_events"]!.GetValue<int>() == 51, "bounded event history declares drops");
             Check(restored.JournalForUpload()["local_run_key"] is null, "local fingerprint is not uploaded");
+            for (int i = 0; i < 100; i++)
+            {
+                restored.Update(Snapshot("queued", i));
+                _ = restored.QueuePersist();
+            }
+            restored.Update(Snapshot("queued-final", 42));
+            restored.Persist();
+            Check(BugReportStore.ReadObject(Path.Combine(root, "current-run.json"))!["state"]!["seed"]!.GetValue<string>() == "queued-final",
+                "a synchronous barrier waits behind coalesced async snapshots and persists the latest state");
+            restored.Begin("third", Metadata(), Snapshot("third"));
+            restored.Persist();
+            Check(BugReportStore.ReadObject(Path.Combine(root, "last-run.json"))!["state"]!["seed"]!.GetValue<string>() == "queued-final",
+                "switching runs cannot let a stale queued write overwrite the new or archived run");
 
             var handler = new Transport(); using var http = new HttpClient(handler);
             var outbox = new BugReportOutbox(root, http, new Uri("http://127.0.0.1/report"));

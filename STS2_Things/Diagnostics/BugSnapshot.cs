@@ -30,9 +30,12 @@ internal static class BugSnapshot
     {
         try { return new {
             instance_id = InstanceId(card), id = card.Id.ToString(), upgrade = card.CurrentUpgradeLevel,
-            energy = card.EnergyCost.GetWithModifiers(CostModifiers.All), costs_x = card.EnergyCost.CostsX,
+            // Observation must not re-run global cost or playability hooks. Those
+            // are gameplay paths (and can be expensive with rune/character mods).
+            // The existing UI snapshot retains the displayed cost when available.
+            energy = card.EnergyCost.GetWithModifiers(CostModifiers.Local), energy_scope = "local", costs_x = card.EnergyCost.CostsX,
             stars = card.CurrentStarCost, type = card.Type.ToString(), target_type = card.TargetType.ToString(),
-            playable = card.Pile?.Type == PileType.Hand ? (bool?)card.CanPlay() : null,
+            playable = (bool?)null,
             affliction = card.Affliction?.Id.ToString(), enchantment = card.Enchantment?.Id.ToString(),
             native = JsonSerializer.SerializeToNode(card.ToSerializable(), JsonSerializationUtility.GetTypeInfo<MegaCrit.Sts2.Core.Saves.Runs.SerializableCard>())
         }; }
@@ -110,6 +113,11 @@ internal static class BugSnapshot
             } : null,
             execution = action is null ? null : new {
                 type = action.GetType().Name, id = action.Id, state = action.State.ToString(), error = Error(action.Exception)
+            },
+            performance = new {
+                fps = Engine.GetFramesPerSecond(),
+                process_ms = Godot.Performance.GetMonitor(Godot.Performance.Monitor.TimeProcess) * 1000,
+                physics_ms = Godot.Performance.GetMonitor(Godot.Performance.Monitor.TimePhysicsProcess) * 1000
             },
             queues = CaptureQueues(run),
             ui = CaptureUi()

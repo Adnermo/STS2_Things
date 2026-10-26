@@ -221,6 +221,16 @@ public partial class QuirkyHopperProbeNode : Node
         Assert(selectedCurse.Type == CardType.Curse, "Curse priority did not win.");
         Assert(ReferenceEquals(selectedCurse.DeckVersion, cursed.CurseCard), "The selected curse lost its exact deck identity.");
 
+        Scenario eternal = CreateScenario("QUIRKY_ETERNAL", addCurse: false, addFirePotion: false,
+            configureDeck: static (run, player) => ReplaceDeck(player,
+                run.CreateCard<AscendersBane>(player), run.CreateCard<StrikeIronclad>(player)));
+        Assert(SelectCardToSteal(eternal.Hopper, eternal.Player).IsRemovable,
+            "Quirky Hopper must not steal Eternal cards such as Ascender's Bane.");
+        Scenario onlyEternal = CreateScenario("QUIRKY_ONLY_ETERNAL", addCurse: false, addFirePotion: false,
+            configureDeck: static (run, player) => ReplaceDeck(player, run.CreateCard<AscendersBane>(player)));
+        Assert(typeof(QuirkyHopper).GetMethod("SelectCardToSteal", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(onlyEternal.Hopper, [onlyEternal.Player]) is null, "An Eternal-only deck has no theft candidate.");
+
         Scenario common = CreateScenario(
             "QUIRKY_PRIORITY_COMMON",
             addCurse: false,

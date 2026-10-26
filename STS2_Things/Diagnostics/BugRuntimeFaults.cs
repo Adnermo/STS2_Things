@@ -10,6 +10,9 @@ internal static class BugRuntimeFaults
 {
     private static readonly ConcurrentQueue<JsonObject> Pending = new();
     private static readonly ConcurrentQueue<JsonObject> Recent = new();
+    private static readonly object RecordsLock = new();
+    private static readonly Dictionary<string, JsonObject> Repeated = new(StringComparer.Ordinal);
+    private static readonly Dictionary<JsonObject, string> RecordKeys = new();
     private static long _next;
     private static int _dropped;
     private static readonly string Session = Guid.NewGuid().ToString("N")[..8];
@@ -24,6 +27,14 @@ internal static class BugRuntimeFaults
     {
         if (text.StartsWith("[Things BugReport]", StringComparison.Ordinal)) return;
         text = text[..Math.Min(16000, text.Length)];
+        string[] functions = engineFunctions?.Take(20).ToArray() ?? [];
+        // Keep this private in-memory key bounded by the 32 retained records.
+        // It is never included in reports, disk snapshots or network payloads.
+        string key = text + "\n" + string.Join('\n', functions);
+        bool suppliedStack = functions.Length > 0 || text.Contains("\n", StringComparison.Ordinal);
+        if (suppliedStack)
+            lock (RecordsLock)
+                if (RecordRepeated(key)) return;
         var frames = new List<string>();
         foreach (string line in text.Split('\n'))
         {
@@ -39,7 +50,7 @@ internal static class BugRuntimeFaults
             if (frame.Contains(' ')) frame = frame[(frame.LastIndexOf(' ') + 1)..];
             if (frame.Length <= 250 && FrameName.IsMatch(frame) && frames.Count < 20) frames.Add(frame);
         }
-        foreach (string function in engineFunctions ?? [])
+        foreach (string function in functions)
         {
             string frame = function.Split('(')[0].Trim();
             if (frame.Contains(' ')) frame = frame[(frame.LastIndexOf(' ') + 1)..];
@@ -50,6 +61,7 @@ internal static class BugRuntimeFaults
         if (frames.Count == 0)
             frames.AddRange(new StackTrace(Math.Clamp(skipFrames, 0, 28) + 2).GetFrames()?.Take(12).Select(f =>
                 f.GetMethod()?.DeclaringType?.FullName + "." + f.GetMethod()?.Name) ?? []);
+        if (!suppliedStack) key += "\n" + string.Join('\n', frames);
         string type = ExceptionName.Match(text) is { Success: true } match ? match.Groups[1].Value : "LoggedError";
         var detail = new JsonObject { ["type"] = type, ["frames"] = new JsonArray(frames.Select(f => (JsonNode?)JsonValue.Create(f)).ToArray()) };
         var chain = ExceptionName.Matches(text).Select(m => m.Groups[1].Value).Distinct().Take(8).ToArray();
@@ -63,15 +75,47 @@ internal static class BugRuntimeFaults
         if (member.Success) detail["member"] = member.Groups[1].Value;
         detail["fault_id"] = "fault-" + Session + "-" + Interlocked.Increment(ref _next);
         detail["observed_at"] = DateTimeOffset.UtcNow.ToString("O");
-        Pending.Enqueue(detail);
-        Recent.Enqueue((JsonObject)detail.DeepClone());
-        while (Pending.Count > 32) Pending.TryDequeue(out _);
-        while (Recent.Count > 32) { if (Recent.TryDequeue(out _)) Interlocked.Increment(ref _dropped); }
+        lock (RecordsLock)
+        {
+            if (RecordRepeated(key)) return;
+            detail["occurrences"] = 1;
+            Repeated[key] = detail;
+            RecordKeys[detail] = key;
+            Pending.Enqueue(detail);
+            Recent.Enqueue(detail);
+            while (Pending.Count > 32) Pending.TryDequeue(out _);
+            while (Recent.Count > 32)
+                if (Recent.TryDequeue(out JsonObject? old))
+                {
+                    if (RecordKeys.Remove(old, out string? oldKey)) Repeated.Remove(oldKey);
+                    Interlocked.Increment(ref _dropped);
+                }
+        }
         SchedulePersist();
     }
 
-    internal static bool TryTake(out JsonObject? detail) => Pending.TryDequeue(out detail);
-    internal static JsonArray Snapshot() => new(Recent.Select(e => e.DeepClone()).ToArray());
+    private static bool RecordRepeated(string key)
+    {
+        if (!Repeated.TryGetValue(key, out JsonObject? record)) return false;
+        record["occurrences"] = record["occurrences"]!.GetValue<int>() + 1;
+        record["last_observed_at"] = DateTimeOffset.UtcNow.ToString("O");
+        SchedulePersist();
+        return true;
+    }
+
+    internal static bool TryTake(out JsonObject? detail)
+    {
+        lock (RecordsLock)
+        {
+            bool found = Pending.TryDequeue(out JsonObject? record);
+            detail = (JsonObject?)record?.DeepClone();
+            return found;
+        }
+    }
+    internal static JsonArray Snapshot()
+    {
+        lock (RecordsLock) return new(Recent.Select(e => e.DeepClone()).ToArray());
+    }
 
     internal static void InitializePersistence(string path)
     {
@@ -79,14 +123,18 @@ internal static class BugRuntimeFaults
         try
         {
             var prior = BugReportStore.ReadObject(path);
+            lock (RecordsLock)
             if (prior?["errors"] is JsonArray records)
+            {
                 foreach (var record in records.OfType<JsonObject>().TakeLast(32))
                 {
                     var restored = (JsonObject)record.DeepClone();
                     restored["from_previous_session"] = true;
                     Recent.Enqueue(restored);
                 }
-            while (Recent.Count > 32) Recent.TryDequeue(out _);
+                while (Recent.Count > 32)
+                    if (Recent.TryDequeue(out JsonObject? old) && RecordKeys.Remove(old, out string? oldKey)) Repeated.Remove(oldKey);
+            }
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
@@ -98,9 +146,16 @@ internal static class BugRuntimeFaults
         Interlocked.Exchange(ref _dirty, 1);
         if (Interlocked.CompareExchange(ref _writer, 1, 0) != 0) return;
         // Pure structural JSON and file IO; no Godot or game objects on this worker.
-        _ = Task.Run(() =>
+        _ = Task.Run(async () =>
         {
-            try { while (Interlocked.Exchange(ref _dirty, 0) == 1) Persist(); }
+            try
+            {
+                do
+                {
+                    await Task.Delay(500).ConfigureAwait(false);
+                    if (Interlocked.Exchange(ref _dirty, 0) == 1) Persist();
+                } while (Volatile.Read(ref _dirty) == 1);
+            }
             finally
             {
                 Interlocked.Exchange(ref _writer, 0);
@@ -112,6 +167,7 @@ internal static class BugRuntimeFaults
     internal static void Persist()
     {
         if (_path is not { } path) return;
+        Interlocked.Exchange(ref _dirty, 0);
         try
         {
             lock (DiskLock)

@@ -62,6 +62,12 @@ public partial class CaveGodProbeNode : Node
             EnsureScriptsLookedUp();
             VerifyDetachedTwinPartner();
             VerifyMissingProjectedHandMove();
+            if (OS.GetCmdlineUserArgs().Contains("--retaliation"))
+            {
+                await VerifyThornsRetaliation();
+                GetTree().Quit();
+                return;
+            }
             await VerifyCaveGodRandomTargets();
             GetTree().Quit();
         }

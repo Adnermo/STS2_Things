@@ -4,7 +4,10 @@ param(
  [string]$RuntimeDependencyDir,
  [string]$GamePck,
  [string]$ImplementationDll,
- [string]$OutputDir
+ [string]$OutputDir,
+ [switch]$Performance,
+ [switch]$Measure,
+ [string]$HexDll
 )
 $ErrorActionPreference='Stop'
 $taskRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -25,16 +28,20 @@ if($LASTEXITCODE -ne 0){throw 'Report native probe build failed'}
 $env:DOTNET_ROOT=Join-Path $taskRoot '.tmp/dotnet9'
 $env:DOTNET_MULTILEVEL_LOOKUP='0'
 $env:THINGS_PROBE_GAME_PCK=$taskPck
+$env:THINGS_PERF_HEX_DLL=if($HexDll){[IO.Path]::GetFullPath($HexDll)}else{''}
 $env:PATH=$env:DOTNET_ROOT+';'+$env:PATH
 $taskGodot='D:/Download/Godot_v4.5.1-stable_mono_win64/Godot_v4.5.1-stable_mono_win64/Godot_v4.5.1-stable_mono_win64_console.exe'
 $taskStdout=Join-Path $taskOut "native-$TargetVersion.log"
 $taskStderr=Join-Path $taskOut "native-$TargetVersion.stderr.log"
-$taskProcess=Start-Process -FilePath $taskGodot -ArgumentList @('--headless','--path',('"'+(Join-Path $taskRoot 'tools/BugReportProbe')+'"')) -WindowStyle Hidden -PassThru -RedirectStandardOutput $taskStdout -RedirectStandardError $taskStderr
+$taskArguments=@('--headless','--path',('"'+(Join-Path $taskRoot 'tools/BugReportProbe')+'"'))
+if($Performance){$taskArguments+=@('--','--performance');if($Measure){$taskArguments+='--measure'}}
+$taskProcess=Start-Process -FilePath $taskGodot -ArgumentList $taskArguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $taskStdout -RedirectStandardError $taskStderr
 try{
   if(-not $taskProcess.WaitForExit(30000)){throw 'Report native probe exceeded 30 seconds'}
   if($taskProcess.ExitCode -ne 0){Get-Content -LiteralPath $taskStderr -Tail 15;throw 'Report native probe failed'}
 }finally{if(-not $taskProcess.HasExited){Stop-Process -InputObject $taskProcess};$taskProcess.Dispose()}
 $taskErrors=Get-Content -LiteralPath $taskStderr | Where-Object {($_ -match '^ERROR:|SCRIPT ERROR') -and $_ -ne 'ERROR: System.InvalidOperationException: private engine error'}
 if($taskErrors){$taskErrors;throw 'Unexpected report native engine errors'}
-if(-not(Select-String -LiteralPath $taskStdout -Pattern 'BugReport native probe: PASS' -Quiet)){Get-Content -LiteralPath $taskStdout -Tail 10;throw 'Native report PASS marker missing'}
+$taskMarker=if($Performance){'REPORT_PERF'}else{'BugReport native probe: PASS'}
+if(-not(Select-String -LiteralPath $taskStdout -Pattern $taskMarker -Quiet)){Get-Content -LiteralPath $taskStdout -Tail 10;throw 'Native report PASS marker missing'}
 Get-Content -LiteralPath $taskStdout -Tail 3

@@ -35,7 +35,7 @@ public partial class BugReportProbeNode : Node
     {
         AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency;
         EnsureRuntimeDependency("System.IO.Hashing");
-        Type[] modTypes = typeof(SanguineLeech).Assembly.GetTypes();
+        Type[] modTypes = typeof(SanguineLeech).Assembly.GetTypes().Concat(LoadPerformanceHexTypes()).ToArray();
         Type[] modelTypes = AbstractModelSubtypes.All
             .Concat(modTypes.Where(type => !type.IsAbstract && typeof(AbstractModel).IsAssignableFrom(type)))
             .Distinct()
@@ -46,6 +46,7 @@ public partial class BugReportProbeNode : Node
         typeof(ReflectionHelper).GetField("_modTypes", BindingFlags.NonPublic | BindingFlags.Static)!
             .SetValue(null, modTypes);
         RegisterSyntheticMod(typeof(SanguineLeech).Assembly);
+        if (_performanceHex is not null) RegisterSyntheticMod(_performanceHex, "HextechRunes");
         // V111 exposes ModManager.State/ModManagerState, while V107.1 does not.
         // Seed it when present without creating a compile-time dependency on the
         // newer API so this same probe source validates both shipped targets.
@@ -119,15 +120,15 @@ public partial class BugReportProbeNode : Node
         return candidates.FirstOrDefault(File.Exists);
     }
 
-    private static void RegisterSyntheticMod(Assembly implementationAssembly)
+    private static void RegisterSyntheticMod(Assembly implementationAssembly, string id = "STS2_Things")
     {
         Type gameAssemblyMarker = typeof(ModManager);
         Type modType = gameAssemblyMarker.Assembly.GetType("MegaCrit.Sts2.Core.Modding.Mod", throwOnError: true)!;
         Type manifestType = gameAssemblyMarker.Assembly.GetType("MegaCrit.Sts2.Core.Modding.ModManifest", throwOnError: true)!;
         object mod = Activator.CreateInstance(modType)!;
         object manifest = Activator.CreateInstance(manifestType)!;
-        manifestType.GetField("id")!.SetValue(manifest, "STS2_Things");
-        manifestType.GetField("name")?.SetValue(manifest, "STS2_Things Probe");
+        manifestType.GetField("id")!.SetValue(manifest, id);
+        manifestType.GetField("name")?.SetValue(manifest, id + " Probe");
         manifestType.GetField("affectsGameplay")?.SetValue(manifest, true);
         modType.GetField("path")!.SetValue(mod, "probe://STS2_Things");
         modType.GetField("manifest")!.SetValue(mod, manifest);
@@ -146,7 +147,7 @@ public partial class BugReportProbeNode : Node
 
         IList mods = (IList)typeof(ModManager).GetField("_mods", BindingFlags.NonPublic | BindingFlags.Static)!
             .GetValue(null)!;
-        mods.Clear();
+        if (id == "STS2_Things") mods.Clear();
         mods.Add(mod);
     }
 

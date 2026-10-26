@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Commands.Builders;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -60,6 +61,7 @@ public sealed class ThingsCaveGodBody : MonsterModel
     private bool _rightLeads;
     private bool _releasingCaptives;
     private bool _applyingGrowth;
+    private bool _resolvingBodyAttack;
     public ThingsCaveGodLeftHand? LeftHand => CombatState?.Enemies.Select(c => c.Monster).OfType<ThingsCaveGodLeftHand>().FirstOrDefault();
     public ThingsCaveGodRightHand? RightHand => CombatState?.Enemies.Select(c => c.Monster).OfType<ThingsCaveGodRightHand>().FirstOrDefault();
     private IEnumerable<ThingsCaveGodHand> Hands => CombatState?.Enemies.Select(c => c.Monster).OfType<ThingsCaveGodHand>() ?? [];
@@ -88,7 +90,21 @@ public sealed class ThingsCaveGodBody : MonsterModel
     public override decimal ModifyDamageMultiplicative(Creature? target, decimal amount, ValueProp props,
         Creature? dealer, CardModel? cardSource, MegaCrit.Sts2.Core.Entities.Cards.CardPlay? cardPlay)
 #endif
-        => target == Creature && !CoreIsExposed ? 0m : 1m;
+        => target == Creature && !CoreIsExposed && !IsAttackRetaliation(props, dealer, cardSource) ? 0m : 1m;
+
+    private bool IsAttackRetaliation(ValueProp props, Creature? dealer, CardModel? cardSource) =>
+        _resolvingBodyAttack && !IsPhaseTransitionPending && !IsDefeated
+        && props.HasFlag(ValueProp.Unpowered) && dealer?.Side == CombatSide.Player && cardSource is null;
+
+    private async Task ExecuteBodyAttack(AttackCommand command)
+    {
+        // The body is the native attacker for these moves. Keep its buried
+        // targeting protection, but let Thorns/Flame Barrier hit that attacker
+        // during the native damage command, just as they hit ordinary monsters.
+        _resolvingBodyAttack = true;
+        try { await command.Execute(null); }
+        finally { _resolvingBodyAttack = false; }
+    }
     private int JabDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
     private int SlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 18, 16);
     private int GuardDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 9);
@@ -428,7 +444,7 @@ public sealed class ThingsCaveGodBody : MonsterModel
                 await Cmd.Wait(hit - previous);
             previous = hit;
             if (!CanAttack) return;
-            await DamageCmd.Attack(JabDamage).FromMonster(this).WithNoAttackerAnim().WithHitFx("vfx/vfx_attack_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_kick").Execute(null);
+            await ExecuteBodyAttack(DamageCmd.Attack(JabDamage).FromMonster(this).WithNoAttackerAnim().WithHitFx("vfx/vfx_attack_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_kick"));
         }
         await Cmd.Wait(CaveGodAnimTiming.ImpactSettle);
     }
@@ -441,7 +457,7 @@ public sealed class ThingsCaveGodBody : MonsterModel
             await background.WaitForAttackFrame("central_slam", CaveGodAnimTiming.CentralSlamHit, CaveGodAnimTiming.CentralSlamHit);
         else await Cmd.Wait(CaveGodAnimTiming.CentralSlamHit);
         if (!CanAttack) return;
-        await DamageCmd.Attack(damage).FromMonster(this).WithHitFx("vfx/vfx_heavy_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp").Execute(null);
+        await ExecuteBodyAttack(DamageCmd.Attack(damage).FromMonster(this).WithHitFx("vfx/vfx_heavy_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp"));
         await Cmd.Wait(CaveGodAnimTiming.ImpactSettle);
     }
     private async Task GuardMove(IReadOnlyList<Creature> _)
@@ -452,7 +468,7 @@ public sealed class ThingsCaveGodBody : MonsterModel
             await background.WaitForAttackFrame("double_fist_crush", CaveGodAnimTiming.DoubleFistCrushHit, CaveGodAnimTiming.DoubleFistCrushHit);
         else await Cmd.Wait(CaveGodAnimTiming.DoubleFistCrushHit);
         if (!CanAttack) return;
-        await DamageCmd.Attack(GuardDamage).FromMonster(this).WithHitFx("vfx/vfx_attack_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp").Execute(null);
+        await ExecuteBodyAttack(DamageCmd.Attack(GuardDamage).FromMonster(this).WithHitFx("vfx/vfx_attack_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp"));
         if (!CanAttack) return;
         foreach (ThingsCaveGodHand hand in Hands.Where(h => !h.IsDown && h.Creature.IsAlive))
             await CreatureCmd.GainBlock(hand.Creature, GuardBlock, ValueProp.Move, null);
@@ -470,7 +486,7 @@ public sealed class ThingsCaveGodBody : MonsterModel
         for (int i = 0; i < 2; i++)
         {
             if (!CanAttack) return;
-            await DamageCmd.Attack(CrushDamage).FromMonster(this).WithHitFx("vfx/vfx_heavy_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp").Execute(null);
+            await ExecuteBodyAttack(DamageCmd.Attack(CrushDamage).FromMonster(this).WithHitFx("vfx/vfx_heavy_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp"));
             if (i == 0) await Cmd.Wait(0.20f);
         }
         if (CanAttack) await PowerCmd.Apply<WeakPower>(new ThrowingPlayerChoiceContext(), targets.Where(c => c.IsAlive), 2m, Creature, null);
@@ -495,7 +511,7 @@ public sealed class ThingsCaveGodBody : MonsterModel
         else await Cmd.Wait(CaveGodAnimTiming.CentralSlamHit);
         if (!CanAttack) return;
         Background?.PlayCrystalBurstImpact();
-        await DamageCmd.Attack(BurstDamage).FromMonster(this).WithHitFx("vfx/vfx_heavy_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_eruption").Execute(null);
+        await ExecuteBodyAttack(DamageCmd.Attack(BurstDamage).FromMonster(this).WithHitFx("vfx/vfx_heavy_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_eruption"));
         if (!CanAttack) return;
         await CardPileCmd.AddToCombatAndPreview<ThingsCaveGodCrystalShard>(targets.Where(c => c.IsAlive && c.Player != null), PileType.Discard, ShardCount, null);
         await SetCrystalVein(0);
