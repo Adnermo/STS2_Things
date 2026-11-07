@@ -49,17 +49,10 @@ try
     var savedCache = gameAssembly.GetType("MegaCrit.Sts2.Core.Saves.Runs.SavedPropertiesTypeCache");
     var merchantBargainType = modAssembly.GetType(
         "STS2_Things.Features.MerchantBargain.MerchantBargainManager");
-    bool expectsMerchantBargain = savedCache == null;
-    if ((merchantBargainType != null) != expectsMerchantBargain)
-    {
-        throw new InvalidOperationException(
-            expectsMerchantBargain
-                ? "V111 implementation is missing MerchantBargainManager."
-                : "V107.1 implementation unexpectedly contains MerchantBargainManager.");
-    }
-    Console.WriteLine(expectsMerchantBargain
-        ? "V111 merchant bargain conditional contract: PASS"
-        : "V107.1 merchant bargain exclusion contract: PASS");
+    // Both supported targets have shipped merchant bargaining since v1.25.16.
+    if (merchantBargainType == null)
+        throw new InvalidOperationException("Implementation is missing MerchantBargainManager.");
+    Console.WriteLine("Merchant bargain presence: PASS");
     if (savedCache != null &&
         savedCache.GetMethod("Init", BindingFlags.Public | BindingFlags.Static) == null)
     {

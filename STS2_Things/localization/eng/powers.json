@@ -139,7 +139,7 @@
   "HUMAN_FACE_COLUMN_POWER.middleDescription": "[blue]{Amount}[/blue] layers remain.\nTakes [blue]50%[/blue] less damage.\nBreaking the bottom layer [gold]Stuns[/gold] the former middle layer for a turn.",
   "HUMAN_FACE_COLUMN_POWER.bottomDescription": "[blue]{Amount}[/blue] layers remain.\nBreaking the bottom layer [gold]Stuns[/gold] the former middle layer for a turn.",
   "BORROWED_SHADOW_POWER.title": "Borrowed Shadow",
-  "BORROWED_SHADOW_POWER.description": "When damaged by an attack, the attacker gains that much [gold]Block[/gold].",
+  "BORROWED_SHADOW_POWER.description": "When this enemy loses HP to a player's damage (including Orbs, Poison, and summons), that player gains that much [gold]Block[/gold].",
   "FLEETING_FADE_POWER.title": "Fading",
   "FLEETING_FADE_POWER.description": "Disappears in [blue]{Amount}[/blue] turns.",
   "FLEETING_FADE_POWER.smartDescription": "Disappears in [blue]{Amount}[/blue] turns.",

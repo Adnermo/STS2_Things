@@ -109,6 +109,11 @@ public partial class DepthsProbeNode : Node
                 await SampleDepthsBalance();await ReleaseProbeResources();
                 GD.Print($"Depths balance probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
             }
+            if(OS.GetCmdlineUserArgs().Contains("--fleeting-echo-combat-only"))
+            {
+                await VerifyFleetingEcho(render: false);await ReleaseProbeResources();
+                GD.Print($"Depths Fleeting Echo combat probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
+            }
             if(OS.GetCmdlineUserArgs().Contains("--fleeting-echo-only"))
             {
                 VerifyResources();

@@ -13,7 +13,7 @@ using STS2_Things.Powers;
 
 namespace STS2_Things.Monsters;
 
-/// <summary>A five-action survival encounter: attacking lends the attacker its shadow as Block.</summary>
+/// <summary>A five-action survival encounter: player damage is returned to its source as Block.</summary>
 public sealed class FleetingEcho : ThingsSpineMonster
 {
     public const int Lifetime = 5;

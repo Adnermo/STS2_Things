@@ -139,7 +139,7 @@
   "HUMAN_FACE_COLUMN_POWER.middleDescription": "剩余[blue]{Amount}[/blue]层。\n受到的伤害降低[blue]50%[/blue]。\n击碎底层后，原中层[gold]眩晕[/gold]一回合。",
   "HUMAN_FACE_COLUMN_POWER.bottomDescription": "剩余[blue]{Amount}[/blue]层。\n击碎底层后，原中层[gold]眩晕[/gold]一回合。",
   "BORROWED_SHADOW_POWER.title": "借影",
-  "BORROWED_SHADOW_POWER.description": "受到攻击伤害时，攻击者获得等量[gold]格挡[/gold]。",
+  "BORROWED_SHADOW_POWER.description": "受到玩家造成的伤害时，按实际失去的生命值为对应玩家提供等量[gold]格挡[/gold]。电球、中毒和召唤物伤害也会触发。",
   "FLEETING_FADE_POWER.title": "消逝",
   "FLEETING_FADE_POWER.description": "[blue]{Amount}[/blue]回合后消失。",
   "FLEETING_FADE_POWER.smartDescription": "[blue]{Amount}[/blue]回合后消失。",

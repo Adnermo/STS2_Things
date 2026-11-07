@@ -3,7 +3,9 @@ using Godot;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Orbs;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.ValueProps;
@@ -13,8 +15,9 @@ using STS2_Things.Powers;
 
 public partial class DepthsProbeNode
 {
-    private async Task VerifyFleetingEcho()
+    private async Task VerifyFleetingEcho(bool render = true)
     {
+        await VerifyFleetingEchoIndirectDamage();
         foreach (int count in new[] { 1, 4 })
         foreach (int asc in new[] { 0, 20 })
         {
@@ -29,8 +32,6 @@ public partial class DepthsProbeNode
                 await CreatureCmd.Damage(Choice, target, 4, ValueProp.Move, source);
             Assert(source.Block == 12, "Three four-damage hits produce twelve Block.");
             Assert(b.Players.Skip(1).All(p => p.Creature.Block == 0), "Other players receive no duplicated Block.");
-            await CreatureCmd.Damage(Choice, target, 9, ValueProp.Unpowered, source);
-            Assert(source.Block == 12, "Non-attack damage gives no Block.");
             await CreatureCmd.GainBlock(target, 5, ValueProp.Unpowered, null);
             await CreatureCmd.Damage(Choice, target, 8, ValueProp.Move, source);
             Assert(source.Block == 15, "Only three HP lost beyond the five Block are converted.");
@@ -89,7 +90,102 @@ public partial class DepthsProbeNode
             "Already ending combat does not continue the timer or create a second outcome.");
         DeactivateSyntheticCombat();
         GD.Print("PASS Fleeting Echo: 1/4 players, A0/A20, five attacks, owner-only Block, pets, lethal and overkill.");
-        await RenderFleetingEcho();
+        if (render) await RenderFleetingEcho();
+    }
+
+    private async Task VerifyFleetingEchoIndirectDamage()
+    {
+        var battle = await StrongBattle(ModelDb.Encounter<FleetingEchoWeak>(), 4, seed: "echo-indirect");
+        var echo = battle.Monster<FleetingEcho>().Creature;
+        var lightningOwner = battle.Players[0].Creature;
+        var poisonOwner = battle.Players[1].Creature;
+        var secondPoisonOwner = battle.Players[2].Creature;
+        var bystander = battle.Players[3].Creature;
+        var lightning = (LightningOrb)ModelDb.Orb<LightningOrb>().ToMutable();
+        lightning.Owner = battle.Players[0];
+
+        int hp = echo.CurrentHp;
+        await lightning.Passive(Choice, echo);
+        Assert(hp - echo.CurrentHp == 3, "Native Lightning passive inflicted 3 damage.");
+        int passiveBlock = lightningOwner.Block;
+        hp = echo.CurrentHp;
+        await lightning.Evoke(Choice);
+        Assert(hp - echo.CurrentHp == 8, "Native Lightning evoke inflicted 8 damage.");
+        int evokeBlock = lightningOwner.Block - passiveBlock;
+
+        await PowerCmd.Apply<PoisonPower>(Choice, echo, 5, poisonOwner, null);
+        Assert(poisonOwner.Block == 0, "Applying Poison alone does not award Block.");
+        await CreatureCmd.GainBlock(echo, 4, ValueProp.Unpowered, null);
+        battle.State.CurrentSide = CombatSide.Enemy;
+        hp = echo.CurrentHp;
+        await Hook.AfterSideTurnStart(battle.State, CombatSide.Enemy, [echo]);
+        Assert(hp - echo.CurrentHp == 5 && echo.Block == 4 && echo.GetPowerAmount<PoisonPower>() == 4,
+            "Native Poison bypasses Block, deals 5 HP damage, and decays once.");
+        Assert(passiveBlock == 3 && evokeBlock == 8 && poisonOwner.Block == 5,
+            $"Indirect damage Block mismatch: Lightning passive={passiveBlock}/3, evoke={evokeBlock}/8, Poison={poisonOwner.Block}/5.");
+        Assert(lightningOwner.Block == 11 && secondPoisonOwner.Block == 0 && bystander.Block == 0,
+            "Only the sources gain Block; Poison does not credit the Lightning owner or the party.");
+
+        // The Block is ready for the enemy attack on the same turn.
+        hp = poisonOwner.CurrentHp;
+        await CreatureCmd.Damage(Choice, poisonOwner, 5, ValueProp.Move, echo);
+        Assert(poisonOwner.CurrentHp == hp && poisonOwner.Block == 0, "Poison Block absorbs an enemy attack.");
+
+        await PowerCmd.Apply<PoisonPower>(Choice, echo, 3, secondPoisonOwner, null);
+        await CreatureCmd.Damage(Choice, echo, 2, ValueProp.Unblockable | ValueProp.Unpowered, null, null);
+        Assert(poisonOwner.Block == 0 && secondPoisonOwner.Block == 0 && lightningOwner.Block == 11,
+            "An identical but unattributed damage command does not count as Poison.");
+        await Hook.AfterSideTurnStart(battle.State, CombatSide.Enemy, [echo]);
+        Assert(poisonOwner.Block == 4 && secondPoisonOwner.Block == 3 && bystander.Block == 0,
+            "A shared Poison tick credits each applier for their own stacks only.");
+
+        await PowerCmd.Apply<AccelerantPower>(Choice, poisonOwner, 1, poisonOwner, null);
+        hp = echo.CurrentHp;
+#if STS2_V107_1
+        await Hook.AfterSideTurnStart(battle.State, CombatSide.Enemy, [echo]);
+#else
+        await echo.GetPower<PoisonPower>()!.Trigger(); // Same native entry used by Outbreak.
+#endif
+        Assert(hp - echo.CurrentHp == 11 && echo.GetPowerAmount<PoisonPower>() == 4,
+            "Accelerant still deals the original 6 + 5 damage and consumes two stacks.");
+        Assert(poisonOwner.Block == 9 && secondPoisonOwner.Block == 9 && bystander.Block == 0,
+            "After oldest-stack decay the two ticks credit 3+2 and 3+3 respectively.");
+
+        await PowerCmd.Remove<PoisonPower>(echo);
+        await PowerCmd.Remove<AccelerantPower>(poisonOwner);
+        await PowerCmd.Apply<PoisonPower>(Choice, echo, 2, null, null);
+        await Hook.AfterSideTurnStart(battle.State, CombatSide.Enemy, [echo]);
+        Assert(poisonOwner.Block == 9 && secondPoisonOwner.Block == 9 && bystander.Block == 0,
+            "Fresh unattributed Poison does not inherit the old stack owners.");
+
+        await PowerCmd.Apply<ThornsPower>(Choice, bystander, 4, bystander, null);
+        // The prior Lightning/Poison test left 4 Block on the Echo. Remove it so
+        // the Thorns test checks the actual unblocked retaliation.
+        await CreatureCmd.Damage(Choice, echo, 4, ValueProp.Unpowered, lightningOwner);
+        hp = bystander.CurrentHp;
+        await CreatureCmd.Damage(Choice, bystander, 6, ValueProp.Move, echo);
+        Assert(bystander.CurrentHp == hp - 2 && bystander.Block == 0 && lightningOwner.Block == 11,
+            "Player Thorns gain Block before the triggering hit; blocked damage gives no Block.");
+
+        await PowerCmd.Remove<PoisonPower>(echo);
+        await PowerCmd.Apply<PoisonPower>(Choice, echo, 100, secondPoisonOwner, null);
+        echo.SetCurrentHpInternal(2);
+        var sentinel = battle.State.CreateCreature(ModelDb.Monster<CrystalSnail>().ToMutable(), CombatSide.Enemy, "sentinel");
+        battle.State.AddCreature(sentinel);
+        await Hook.AfterSideTurnStart(battle.State, CombatSide.Enemy, [echo]);
+        Assert(echo.IsDead && secondPoisonOwner.Block == 11,
+            "Lethal Poison in an ongoing battle gives Block for only the remaining 2 HP.");
+        DeactivateSyntheticCombat();
+
+        battle = await StrongBattle(ModelDb.Encounter<FleetingEchoWeak>(), seed: "echo-poison-final");
+        echo = battle.Monster<FleetingEcho>().Creature;
+        poisonOwner = battle.Players[0].Creature;
+        await PowerCmd.Apply<PoisonPower>(Choice, echo, 20, poisonOwner, null);
+        echo.SetCurrentHpInternal(2);
+        await Hook.AfterSideTurnStart(battle.State, CombatSide.Enemy, [echo]);
+        Assert(echo.IsDead && poisonOwner.Block == 0, "Native Block gain still stops when the last enemy dies.");
+        DeactivateSyntheticCombat();
+        GD.Print("PASS Fleeting Echo indirect damage: Lightning passive/evoke, native Poison ticks, separate appliers, Thorns, overkill.");
     }
 
     private async Task RenderFleetingEcho()
