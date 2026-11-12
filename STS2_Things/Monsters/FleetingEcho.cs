@@ -20,7 +20,7 @@ public sealed class FleetingEcho : ThingsSpineMonster
     public override int MinInitialHp => 999;
     public override int MaxInitialHp => 999;
     public override float HpBarSizeReduction => 80f;
-    private int OpeningDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 26, 22);
+    private int OpeningDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 28, 24);
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Magic;
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/soul_fysh/soul_fysh_wave";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/soul_fysh/soul_fysh_intangible";

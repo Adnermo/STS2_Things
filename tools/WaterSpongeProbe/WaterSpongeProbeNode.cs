@@ -122,7 +122,7 @@ public partial class WaterSpongeProbeNode : Node
             Assert(s.Sponge.Creature.GetPower<AbsorbentSpongePower>() != null && s.Sponge.Water == 0, "Empty reservoir and passive at combat start.");
             Assert(s.Leeches.All(leech => leech.Creature.GetPower<LeechInfestationPower>() is { IsVisible: false, ShouldPlayVfx: false }),
                 "Leech exhaust hooks use a native hidden power without a HUD icon or application effect.");
-            Assert(s.Sponge.MinInitialHp == 44 && s.Sponge.MaxInitialHp == 48, "A0 sponge HP.");
+            Assert(s.Sponge.MinInitialHp == 46 && s.Sponge.MaxInitialHp == 50, "A0 sponge HP.");
             foreach (var player in s.Players)
             {
                 Assert(player.PlayerCombatState!.Hand.Cards.OfType<LeechParasite>().Count() == s.Leeches.Length, "Native opening hand hook puts each leech's parasite directly in hand.");
@@ -131,7 +131,7 @@ public partial class WaterSpongeProbeNode : Node
             }
         }
         var high = await Scenario(ascension: 20);
-        Assert(high.Sponge.MinInitialHp == 48 && high.Sponge.MaxInitialHp == 52, "Tough-enemy sponge HP.");
+        Assert(high.Sponge.MinInitialHp == 50 && high.Sponge.MaxInitialHp == 54, "Tough-enemy sponge HP.");
         GD.Print("PASS mixed pools, counts, opening parasites, multiplayer ownership and HP.");
     }
 
@@ -180,7 +180,7 @@ public partial class WaterSpongeProbeNode : Node
         s.Sponge.RollMove(s.Players.Select(p => p.Creature));
         Assert(s.Sponge.NextMove.Id == "SLAP_MOVE", "Unfilled Soak follows with Slap.");
         int hp = s.Player.Creature.CurrentHp; await s.Sponge.PerformMove();
-        Assert(s.Player.Creature.CurrentHp == hp - 9, "Slap uses native nine damage.");
+        Assert(s.Player.Creature.CurrentHp == hp - 10, "Slap uses native ten damage.");
         s.Sponge.RollMove(s.Players.Select(p => p.Creature));
         Assert(s.Sponge.NextMove.Id == "SOAK_MOVE", "Normal cycle returns to Soak.");
 
@@ -241,7 +241,7 @@ public partial class WaterSpongeProbeNode : Node
             for (int index = 0; index < s.Players.Count; index++)
             {
                 var player = s.Players[index];
-                Assert(player.Creature.CurrentHp == hp[index] - (ascension == 0 ? 15 : 17), "Spray damage and ascension apply to each player.");
+                Assert(player.Creature.CurrentHp == hp[index] - (ascension == 0 ? 17 : 19), "Spray damage and ascension apply to each player.");
                 Assert(player.Creature.GetPower<SpongeRinsePower>()?.Amount == 1, "Each player gains one independent Rinsed charge.");
                 var normal = await AddToDraw<StrikeIronclad>(s, player);
                 await CardPileCmd.Draw(Choice, 1, player);
@@ -269,7 +269,7 @@ public partial class WaterSpongeProbeNode : Node
         await PowerCmd.Apply<StrengthPower>(Choice, owner, 2, owner, null);
         await PowerCmd.Apply<SpongeReservoirPower>(Choice, cleansed.Sponge.Creature, 3, cleansed.Sponge.Creature, null);
         int before = owner.CurrentHp; await cleansed.Sponge.PerformMove();
-        Assert(before-owner.CurrentHp == 22, "Vulnerable affects the spray before being washed down.");
+        Assert(before-owner.CurrentHp == 25, "Vulnerable affects the spray before being washed down.");
         Assert(owner.GetPower<WeakPower>()?.Amount == 1 && owner.GetPower<VulnerablePower>()?.Amount == 1 && owner.GetPower<FrailPower>()?.Amount == 1 && owner.GetPower<LanternBlindnessPower>()?.Amount == 1, "Only one layer of each supported debuff is washed away.");
         Assert(owner.GetPower<StrengthPower>()?.Amount == 2, "Positive powers are preserved.");
         await PowerCmd.Apply<SpongeRinsePower>(Choice, owner, 9, owner, null);
@@ -354,7 +354,7 @@ public partial class WaterSpongeProbeNode : Node
                 int hp = s.Player.Creature.CurrentHp;
                 int hand = s.Player.PlayerCombatState.Hand.Cards.OfType<LeechParasite>().Count();
                 await leech.PerformMove();
-                Assert(move is "SIP_MOVE" or "SIP_AGAIN_MOVE" ? s.Player.Creature.CurrentHp == hp - 6 :
+                Assert(move is "SIP_MOVE" or "SIP_AGAIN_MOVE" ? s.Player.Creature.CurrentHp == hp - 7 :
                     move == "CURL_MOVE" ? leech.Creature.Block == SanguineLeech.CurlBlock :
                     s.Player.PlayerCombatState.Hand.Cards.OfType<LeechParasite>().Count() == hand + 1,
                     "The original action really executes before any queued refill.");

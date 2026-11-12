@@ -146,5 +146,7 @@
   "SILK_THREAD_POWER.smartDescription": "接下来[blue]{Amount}[/blue]个回合，抽牌后随机缠绕[blue]2[/blue]张手牌。先打出[gold]1[/gold]号牌，才能打出[gold]2[/gold]号牌。",
   "SILK_THREAD_POWER.unboundDescription": "当前缠绕已解除。下回合抽牌后，再缠绕[blue]2[/blue]张手牌。",
   "LEECH_MOTHER_SLUMBER_POWER.title": "沉眠",
-  "LEECH_MOTHER_SLUMBER_POWER.description": "再经过[blue]{Amount}[/blue]回合后，若未被攻击，则离开战斗。不会获得战斗奖励。[n]被攻击或受到伤害时醒来。"
+  "LEECH_MOTHER_SLUMBER_POWER.description": "再经过[blue]{Amount}[/blue]回合后，若未被攻击，则离开战斗。不会获得战斗奖励。[n]被攻击或受到伤害时醒来。",
+  "SHIFTY_PARTNERS_POWER.title": "诡谲双商",
+  "SHIFTY_PARTNERS_POWER.description": "攻击造成的伤害降低[blue]40%[/blue]。"
 }

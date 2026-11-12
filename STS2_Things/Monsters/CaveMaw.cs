@@ -26,11 +26,11 @@ public sealed class CaveMaw : ThingsSpineMonster
     public const int DebrisCount = 2;
     public const int BlockPerCard = 3;
     public const int StrengthPerMeal = 3;
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 106, 96);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 110, 100);
     public override int MaxInitialHp => MinInitialHp + 6;
     public override float HpBarSizeReduction => 60f;
     private int InitialPlating => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 12, 10);
-    private int BiteDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 8);
+    private int BiteDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10);
     private int PressDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Magic;
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_attack_light";

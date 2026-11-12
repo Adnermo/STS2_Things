@@ -121,7 +121,7 @@ public partial class SilkMothProbeNode : Node
             var s=await Scenario(weak,players);
             Assert(s.Encounter.MonstersWithSlots.Count==(weak?2:3),"One moth and one/two leeches.");
             Assert(s.Encounter.IsWeak==weak,"Native pool category.");
-            Assert(s.Moth.MinInitialHp==38 && s.Moth.MaxInitialHp==42,"Base HP range.");
+            Assert(s.Moth.MinInitialHp==40 && s.Moth.MaxInitialHp==44,"Base HP range.");
             Assert(s.Encounter.MonstersWithSlots.All(e=>s.Encounter.Slots.Contains(e.Item2!)),"All slots exist.");
             foreach(var player in s.Players)
                 Assert(player.PlayerCombatState!.Hand.Cards.OfType<LeechParasite>().Count()==(weak?1:2),"Native direct-hand parasite count.");
@@ -131,13 +131,13 @@ public partial class SilkMothProbeNode : Node
             s.Moth.RollMove(s.Players.Select(p=>p.Creature));
             Assert(s.Moth.NextMove.Id=="SWOOP_MOVE" && s.Moth.NextMove.Intents.Single() is SingleAttackIntent,"Swoop follows weave.");
             int hp=s.Player.Creature.CurrentHp;await s.Moth.PerformMove();
-            Assert(s.Player.Creature.CurrentHp==hp-10,"Swoop native damage.");
+            Assert(s.Player.Creature.CurrentHp==hp-12,"Swoop native damage.");
             s.Moth.RollMove(s.Players.Select(p=>p.Creature));
             Assert(s.Moth.NextMove.Intents.Single() is MultiAttackIntent,"Native multi-hit intent.");
             hp=s.Player.Creature.CurrentHp;await s.Moth.PerformMove();Assert(s.Player.Creature.CurrentHp==hp-10,"Two flutter hits.");
             s.Moth.RollMove(s.Players.Select(p=>p.Creature));Assert(s.Moth.NextMove.Id=="WEAVE_MOVE","Repeating cycle.");
         }
-        var tough=await Scenario(ascension:20);Assert(tough.Moth.MinInitialHp==42 && tough.Moth.MaxInitialHp==46,"Ascension HP.");
+        var tough=await Scenario(ascension:20);Assert(tough.Moth.MinInitialHp==44 && tough.Moth.MaxInitialHp==48,"Ascension HP.");
         GD.Print("PASS weak/strong pools, multiplayer targets, native intents, damage and cycle.");
     }
 

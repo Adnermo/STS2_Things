@@ -33,11 +33,11 @@ public sealed class HumanFaceColumn : ThingsSpineMonster
     public bool IsDizzy => NextMove?.Id == stunnedMoveId;
     public bool IsReplacement { get; private set; }
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 40, 34);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 42, 36);
     public override int MaxInitialHp => MinInitialHp + 6;
     public override float HpBarSizeReduction => 24f;
     // Budget for the complete column: at most three eight-damage attacks per turn.
-    private int KnockDamage => 8;
+    private int KnockDamage => 9;
     private int RattleDamage => 4;
     private int SealBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 14, 10);
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/workbug_rock/workbug_rock_attack";

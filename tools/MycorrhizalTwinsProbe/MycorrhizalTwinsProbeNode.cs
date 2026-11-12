@@ -83,7 +83,7 @@ public partial class MycorrhizalTwinsProbeNode : Node
             var s=await Scenario(count,asc);
             Assert(s.Encounter.MonstersWithSlots.Count==2&&s.Encounter.RoomType==RoomType.Elite,"Two elite monsters.");
             Assert(s.Tall.Creature.MaxHp==s.Short.Creature.MaxHp,"Equal scaled pools.");
-            Assert(s.Tall.MinInitialHp==(asc==0?88:98),"Hive-scale HP and ascension.");
+            Assert(s.Tall.MinInitialHp==(asc==0?94:104),"Hive-scale HP and ascension.");
             Assert(s.Tall.IsRobust&&!s.Short.IsRobust,"Exactly one robust form starts combat.");
             Assert(s.Tall.NextMove.Intents.Single() is SingleAttackIntent&&s.Short.NextMove.Intents.Single() is DefendIntent,"Roles start attack and defense.");
             int expected=((AttackIntent)s.Tall.NextMove.Intents.Single()).GetTotalDamage(s.Players.Select(p=>p.Creature),s.Tall.Creature);
@@ -108,7 +108,7 @@ public partial class MycorrhizalTwinsProbeNode : Node
         Assert(s.Tall.StrengthGift==1&&s.Short.ArmorGift==3,"Weak attack buff and strong defense buff follow form.");
         int weakIntent=((AttackIntent)s.Tall.NextMove.Intents.Single()).GetTotalDamage(s.Players.Select(p=>p.Creature),s.Tall.Creature);
         int hp=s.Player.Creature.CurrentHp;await s.Tall.PerformMove();
-        Assert(hp-s.Player.Creature.CurrentHp==weakIntent&&weakIntent==12,"Swapped weak form scales native damage including existing Strength.");
+        Assert(hp-s.Player.Creature.CurrentHp==weakIntent&&weakIntent==14,"Swapped weak form scales native damage including existing Strength.");
         await s.Short.PerformMove();s.Short.RollMove(s.Players.Select(p=>p.Creature));await s.Short.PerformMove();
         Assert(s.Tall.Creature.GetPower<PlatingPower>()?.Amount==3&&s.Short.Creature.GetPower<PlatingPower>()?.Amount==3,"Robust defender's stronger buff reaches both twins.");
         var fresh=await Scenario();await EndRound(fresh);Assert(!fresh.Tall.IsRobust&&fresh.Short.IsRobust,"Equal HP still swaps forms.");

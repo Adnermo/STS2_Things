@@ -20,10 +20,10 @@ public class SilkMoth : ThingsSpineMonster
     public void SetOpeningPhase(int phase) { AssertMutable(); _openingPhase = Math.Clamp(phase, 0, 2); }
     public const float WeaveContact = .62f;
     public const float SwoopContact = .48f;
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 42, 38);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 44, 40);
     public override int MaxInitialHp => MinInitialHp + 4;
     public override float HpBarSizeReduction => 130f;
-    protected virtual int SwoopDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10);
+    protected virtual int SwoopDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12);
     protected virtual int FlutterDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
     protected virtual int WeaveLayers => 1;
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/thieving_hopper/thieving_hopper_attack_hover";

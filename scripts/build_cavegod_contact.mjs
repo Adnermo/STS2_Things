@@ -1,18 +1,37 @@
 // Rebuild attack reach controls through the official Spine 4.2 runtime.
+// node scripts/build_cavegod_contact.mjs [BASE]  (default base: the tools/CaveGodRig motion bake)
 import fs from 'node:fs';
 import {load,pose,worldVertices} from '../tools/ScaleBeetleRig/runtime.mjs';
-const source=process.argv[2]??'source_assets/monsters/cave_god_motion/contact_base.spjson';
+const source=process.argv[2]??'build/cavegod_motion/motion_base.spjson';
 const destination='animations/monsters/cave_god/cave_god.spjson';
 const atlas='animations/monsters/cave_god/cave_god.atlas';
 const raw=JSON.parse(fs.readFileSync(source,'utf8'));
 let data=load(source,atlas);
 const clean=v=>Math.round(v*1e5)/1e5;
 const unwrap=(value,last)=>last==null?value:last+(((value-last+180)%360+360)%360-180);
-// These authored/mirrored clips did not end in the same local pose as idle.
-// Settle only their recovery tails, preserving the wind-up and all hit frames.
+// Drop keys a linear segment reproduces within tol; dense 120 Hz bakes otherwise bloat the file.
+const reduce=(keys,fields,tol)=>{
+ if(keys.length<3)return keys;
+ const keep=new Array(keys.length).fill(false);keep[0]=keep[keys.length-1]=true;
+ const stack=[[0,keys.length-1]];
+ while(stack.length){
+  const [a,b]=stack.pop();if(b-a<2)continue;
+  let worst=0,at=-1;
+  for(let i=a+1;i<b;i++){
+   const u=(keys[i].time-keys[a].time)/(keys[b].time-keys[a].time);
+   for(const f of fields){const e=Math.abs(keys[i][f]-(keys[a][f]+(keys[b][f]-keys[a][f])*u));if(e>worst){worst=e;at=i;}}
+  }
+  if(worst>tol){keep[at]=true;stack.push([a,at],[at,b]);}
+ }
+ return keys.filter((_,i)=>keep[i]);
+};
+const worldGap=(a,b)=>Math.max(...a.bones.map((bone,i)=>Math.hypot(bone.worldX-b.bones[i].worldX,bone.worldY-b.bones[i].worldY)));
+// Older hand-made clips did not end in the same local pose as idle. Settle only such recovery
+// tails, preserving the wind-up and hit frames; clips that already end on idle are left alone.
 for(const base of ['front_sweep_right','grab_slam','grab_slam_right'])for(const suffix of ['', '_angry']){
  const name=base+suffix,clip=raw.animations[name],duration=data.findAnimation(name).duration;
  const start=duration-.65,settled=duration-.12,idle=pose(data,'idle_front'+suffix,0);
+ if(worldGap(pose(data,name,duration),idle)<.5)continue;
  const times=[start,...Array.from({length:Math.ceil((duration-start)*120)},(_,i)=>Math.min(duration,start+(i+1)/120)),settled,duration]
   .filter((t,i,a)=>a.indexOf(t)===i).sort((a,b)=>a-b);
  const samples=times.map(t=>{const u=Math.max(0,Math.min(1,(t-start)/(settled-start)));return{t,w:u*u*u*(10-15*u+6*u*u),rig:pose(data,name,t)}});
@@ -77,7 +96,7 @@ for(const [name,clip] of Object.entries(raw.animations)){
    const angle=Math.atan2(b.c,b.a)*180/Math.PI-Math.atan2(root.c,root.a)*180/Math.PI;
    last=unwrap(angle,last);keys.push({time:clean(t),value:clean(last)});
   }
-  (clip.bones??={})[`hand${side}_contact_rotation`]={rotate:keys};
+  (clip.bones??={})[`hand${side}_contact_rotation`]={rotate:reduce(keys,['value'],.02)};
  }
 }
 for(const [base,impacts] of Object.entries(definitions))for(const suffix of ['', '_angry']){
@@ -93,7 +112,7 @@ for(const [base,impacts] of Object.entries(definitions))for(const suffix of ['',
    const endpoint=root.worldToLocal(forearm.localToWorld({x:forearm.data.length,y:0}));
    targets.push({time:clean(t),x:clean(endpoint.x-targetSetup.x),y:clean(endpoint.y-targetSetup.y)});
   }
-  clip.bones[`arm${side}_IK`].translate=targets;
+  clip.bones[`arm${side}_IK`].translate=reduce(targets,['x','y'],.04);
   (clip.transform??={})[`hand${side}_contact_rotation`]=[{mixRotate:1,mixX:0,mixY:0,mixScaleX:0,mixScaleY:0,mixShearY:0}];
  }
  // Explicit bend direction on all keys prevents elbow flips across transitions.
@@ -114,7 +133,7 @@ for(const [base,impacts] of Object.entries(definitions))for(const suffix of ['',
   }
  }
 }
-fs.writeFileSync(destination,JSON.stringify(raw,null,2)+'\n');
+fs.writeFileSync(destination,JSON.stringify(raw)+'\n');
 fs.writeFileSync('source_assets/monsters/cave_god_motion/contact_profiles.json',JSON.stringify(profiles,null,2)+'\n');
 const f=n=>`${Number(n).toFixed(5)}f`;
 const v=values=>`new Vector2(${values.map(f).join(', ')})`;

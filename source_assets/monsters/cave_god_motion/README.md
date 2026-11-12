@@ -1,4 +1,12 @@
-# Cave God 右手抓取动作
+# 活体巨岩动作素材
+
+## 2026-11-09 起的维护方式
+
+游戏内全部动作由 [`tools/CaveGodRig`](../../../tools/CaveGodRig/README.md) 重新编排生成。本目录的 `contact_base.spjson` 只提供骨架、插槽、蒙皮和旧素材自带的未用动画；生成器会替换其中所有游戏内片段。`card_snatch_motion.json` 继续作为偷牌时间合同，由探针和 `scripts/verify_project.py` 读取，其中的手腕路径数组只是历史记录。
+
+下方的右手烘焙、`build_cavegod_card_snatch.py` 等流程属于上一版动作；重新运行它们不会再影响游戏资源，除非随后又用它们的输出取代生成器。完整设计与验证见 [docs/cavegod-motion-redo-20261109.md](../../../docs/cavegod-motion-redo-20261109.md)。
+
+## 历史：右手抓取动作
 
 `right_grab_bake.json` 保存 Spine 原生运行时以 60 Hz 求解的手腕旋转轨迹。
 右臂和左臂的前臂长度、局部坐标不同，不能直接把左手 FK 角度取负当作右手。
@@ -36,6 +44,6 @@ python scripts\generate_right_animations.py
 `-SmoothPreview` 输出左手的 30 FPS 连续画面及其他变体的关键帧；测量始终为 120 Hz。预览中的玩家动画使用同一个手动时钟，防止导出耗时改变播放速度。
 # 2026-10-05 接触校准
 
-当前运行骨骼的接触控制由 `scripts/build_cavegod_contact.mjs` 生成。基准为本目录 `contact_base.spjson`，输出为游戏使用的 `cave_god.spjson`，同时生成 `contact_profiles.json` 和 `CaveGodContactProfiles.cs`。控制骨追加在原骨骼表末尾，不能插入表中，否则会破坏加权网格的数字索引。
+当前运行骨骼的接触控制由 `scripts/build_cavegod_contact.mjs` 生成。2026-11-09 起它的默认基准是 `tools/CaveGodRig` 输出的 `build/cavegod_motion/motion_base.spjson`（该文件本身以本目录 `contact_base.spjson` 的骨架为底）；输出为游戏使用的 `cave_god.spjson`，同时生成 `contact_profiles.json` 和 `CaveGodContactProfiles.cs`。控制骨追加在原骨骼表末尾，不能插入表中，否则会破坏加权网格的数字索引。
 
 旧的右侧动作或抓牌重建若需再次运行，应在不含接触控制的基准上完成，再运行接触生成脚本。当前实现及验证见 `docs/cavegod-contact-20261005.md`。

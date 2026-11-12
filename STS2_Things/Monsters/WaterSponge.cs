@@ -32,11 +32,11 @@ public sealed class WaterSponge : ThingsSpineMonster
     public int DamagePerWater => Math.Max(1, (int)Math.Ceiling(Creature.MaxHp * .10m));
     public int StoredDamage => Creature.GetPower<SpongeDamageProgressPower>()?.Damage ?? 0;
     public float VisibleWater => Math.Min(WaterCapacity, Water + StoredDamage / (float)DamagePerWater);
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 48, 44);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 50, 46);
     public override int MaxInitialHp => MinInitialHp + 4;
     public override float HpBarSizeReduction => 130f;
-    private int AttackDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 9);
-    private int SprayDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 17, 15);
+    private int AttackDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 10);
+    private int SprayDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 19, 17);
     private int SprayHealing => Math.Max(1, (int)Math.Ceiling(Creature.MaxHp * .10m));
     private int SoakBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 10, 8);
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_attack_light";

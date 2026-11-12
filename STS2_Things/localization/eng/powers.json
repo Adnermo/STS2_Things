@@ -146,5 +146,7 @@
   "SILK_THREAD_POWER.smartDescription": "For the next [blue]{Amount}[/blue] turns, bind [blue]2[/blue] random cards after drawing. Play card [gold]1[/gold] before card [gold]2[/gold].",
   "SILK_THREAD_POWER.unboundDescription": "The current link is released. Bind [blue]2[/blue] cards again after drawing next turn.",
   "LEECH_MOTHER_SLUMBER_POWER.title": "Slumber",
-  "LEECH_MOTHER_SLUMBER_POWER.description": "After [blue]{Amount}[/blue] more turns without being attacked, leaves combat. No combat rewards are granted.[n]Wakes when attacked or damaged."
+  "LEECH_MOTHER_SLUMBER_POWER.description": "After [blue]{Amount}[/blue] more turns without being attacked, leaves combat. No combat rewards are granted.[n]Wakes when attacked or damaged.",
+  "SHIFTY_PARTNERS_POWER.title": "Shifty Partners",
+  "SHIFTY_PARTNERS_POWER.description": "Attacks deal [blue]40%[/blue] less damage."
 }

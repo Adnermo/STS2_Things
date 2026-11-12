@@ -1175,37 +1175,28 @@ public partial class NCaveGodBossBackground : Node2D
         PlayHurtGroan(forceGroan);
     }
 
+    /// <summary>Spine MixBlend.add: hit_recoil stores pure flinch deltas from the rest pose.</summary>
+    private const int SpineMixBlendAdd = 3;
+
     private void SetHurtTrackAnimationBoth(string animName)
     {
-        MegaAnimationState? bodyState = _bodyController?.TryGetAnimationState();
-        MegaAnimationState? armsState = _armsController?.TryGetAnimationState();
-
-        if (bodyState != null && HasBossAnimation(_bodyController, animName))
+        foreach (MegaSprite? sprite in new[] { _bodyController, _armsController })
         {
-            bodyState.SetAnimation(animName, false, ReactionTrack);
-            using (TrackEntryScope(bodyState.GetCurrent(ReactionTrack), out MegaTrackEntry? track))
+            MegaAnimationState? state = sprite?.TryGetAnimationState();
+            if (state == null || !HasBossAnimation(sprite, animName)) continue;
+            state.SetAnimation(animName, false, ReactionTrack);
+            using (TrackEntryScope(state.GetCurrent(ReactionTrack), out MegaTrackEntry? track))
             {
                 if (track != null)
                 {
-                    track.BoundObject.Call("set_alpha", 0.38f);
+                    // Layered on whatever the main track plays (idle or an attack), so the flinch
+                    // never pulls a swing back toward the rest pose and ends without a pop.
+                    track.BoundObject.Call("set_mix_blend", SpineMixBlendAdd);
+                    track.BoundObject.Call("set_alpha", 1f);
                     track.SetMixDuration(0.15f);
                 }
             }
-            bodyState.AddEmptyAnimation(ReactionTrack);
-        }
-
-        if (armsState != null && HasBossAnimation(_armsController, animName))
-        {
-            armsState.SetAnimation(animName, false, ReactionTrack);
-            using (TrackEntryScope(armsState.GetCurrent(ReactionTrack), out MegaTrackEntry? track))
-            {
-                if (track != null)
-                {
-                    track.BoundObject.Call("set_alpha", 0.38f);
-                    track.SetMixDuration(0.15f);
-                }
-            }
-            armsState.AddEmptyAnimation(ReactionTrack);
+            state.AddEmptyAnimation(ReactionTrack);
         }
     }
 
@@ -1559,9 +1550,8 @@ public partial class NCaveGodBossBackground : Node2D
             using var currentTrackScope = TrackEntryScope(bodyState.GetCurrent(MainTrack), out MegaTrackEntry? currentTrack);
             if (currentTrack != null)
             {
-                string currentName = currentTrack.GetAnimationName();
-                if (currentName is "grab_player" or "grab_player_angry" or "grab_slam" or "grab_slam_angry"
-                    or "grab_player_right" or "grab_player_right_angry" or "grab_slam_right" or "grab_slam_right_angry")
+                // grab_player, grab_hold and grab_slam (left/right, normal/angry) all carry captives.
+                if (currentTrack.GetAnimationName().StartsWith("grab_", StringComparison.Ordinal))
                 {
                     bodyState.SetAnimation(idleAnim, true, MainTrack);
                     using var trackScope = TrackEntryScope(bodyState.GetCurrent(MainTrack), out MegaTrackEntry? track);
@@ -1574,9 +1564,7 @@ public partial class NCaveGodBossBackground : Node2D
             using var currentTrackScope = TrackEntryScope(armsState.GetCurrent(MainTrack), out MegaTrackEntry? currentTrack);
             if (currentTrack != null)
             {
-                string currentName = currentTrack.GetAnimationName();
-                if (currentName is "grab_player" or "grab_player_angry" or "grab_slam" or "grab_slam_angry"
-                    or "grab_player_right" or "grab_player_right_angry" or "grab_slam_right" or "grab_slam_right_angry")
+                if (currentTrack.GetAnimationName().StartsWith("grab_", StringComparison.Ordinal))
                 {
                     armsState.SetAnimation(idleAnim, true, MainTrack);
                     using var trackScope = TrackEntryScope(armsState.GetCurrent(MainTrack), out MegaTrackEntry? track);
@@ -1639,34 +1627,28 @@ public partial class NCaveGodBossBackground : Node2D
     }
 
     /// <summary>
-    /// Pauses Living Megalith's grab animation at apex (t = 2.20s) so the giant fist remains
-    /// suspended in the air holding the players while they choose cards and attack the claw.
+    /// Keeps the captives up beside the face while they choose cards and attack the claw: the raised
+    /// fist breathes, squeezes and shifts in the grab_hold loop instead of freezing one grab frame.
+    /// grab_player reaches the same hold pose from 1.90s, so the blend in is seamless.
     /// </summary>
     public void HoldGrabAnim()
     {
-        using (TrackEntryScope(_bodyController?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? trackBody))
+        string hold = (_isRightGrab ? "grab_hold_right" : "grab_hold") + (_isAngry ? "_angry" : "");
+        foreach (MegaSprite? sprite in new[] { _bodyController, _armsController })
         {
-            if (trackBody != null)
-            {
-                trackBody.SetTrackTime(2.60f);
-                trackBody.SetTimeScale(0f);
-            }
+            MegaAnimationState? state = sprite?.TryGetAnimationState();
+            if (state == null || !HasBossAnimation(sprite, hold)) continue;
+            state.SetAnimation(hold, true, MainTrack);
+            using var scope = TrackEntryScope(state.GetCurrent(MainTrack), out MegaTrackEntry? entry);
+            entry?.SetMixDuration(0.35f);
         }
-        using (TrackEntryScope(_armsController?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? trackArms))
-        {
-            if (trackArms != null)
-            {
-                trackArms.SetTrackTime(2.60f);
-                trackArms.SetTimeScale(0f);
-            }
-        }
-        Log.Info("[CaveGodBackground] Grab animation held precisely at apex 2.60s plateau.");
+        Log.Info($"[CaveGodBackground] Holding captives in '{hold}'.");
     }
 
     /// <summary>
     /// Plays the dedicated slam animation (grab_slam / grab_slam_angry) when captives are not freed in time.
-    /// Features an upward windup haul into the high sky, followed by a violent downward plunge slam at t = 0.75s.
-    /// Seamlessly connects to grab apex hold (mix duration = 0f) since bone frames are 100% pixel-aligned.
+    /// The fist hauls the captives up beside the head, then plunges them into the platform at t = 0.75s.
+    /// grab_slam starts from the grab_hold rest pose; a short blend absorbs the loop's breathing phase.
     /// </summary>
     public void ResumeSlamAnim()
     {
@@ -1678,13 +1660,12 @@ public partial class NCaveGodBossBackground : Node2D
         PrepareContactAim(slamAnim);
         SetTrackAnimationBoth(slamAnim, loop: false, MainTrack);
 
-        // 0f mix duration: initial pose of grab_slam is 100% pixel-aligned with grab_player at 2.60s plateau
-        using (TrackEntryScope(_bodyController?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? entryBody)) entryBody?.SetMixDuration(0f);
-        using (TrackEntryScope(_armsController?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? entryArms)) entryArms?.SetMixDuration(0f);
+        using (TrackEntryScope(_bodyController?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? entryBody)) entryBody?.SetMixDuration(0.15f);
+        using (TrackEntryScope(_armsController?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? entryArms)) entryArms?.SetMixDuration(0.15f);
 
         string idleAnim = _isAngry ? "idle_front_angry" : "idle_front";
         AddTrackAnimationBoth(idleAnim, delay: 0f, loop: true, MainTrack);
-        Log.Info($"[CaveGodBackground] Triggered dedicated slam animation '{slamAnim}' (seamless 0f blend from apex).");
+        Log.Info($"[CaveGodBackground] Triggered dedicated slam animation '{slamAnim}' (0.15s blend from the hold loop).");
     }
 
     public Marker2D? GetStolenCardPos(bool isLeft)

@@ -15,6 +15,8 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Models.Encounters;
 using MegaCrit.Sts2.Core.Models.Monsters;
+using MegaCrit.Sts2.Core.Models.Powers;
+using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -23,6 +25,7 @@ using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Unlocks;
 using STS2_Things.Encounters;
 using STS2_Things.Events;
+using STS2_Things.Powers;
 
 public partial class DepthsProbeNode : Node
 {
@@ -82,8 +85,12 @@ public partial class DepthsProbeNode : Node
                 int[] original = room.CombatState.Enemies.Select(c=>c.MaxHp).ToArray();
                 var prepare = typeof(RobberyFakeMerchantEncounter).GetMethod("PrepareForFight",BindingFlags.Instance|BindingFlags.NonPublic)!;
                 for(int callback=0;callback<=players;callback++)await (Task)prepare.Invoke(pair,[room.CombatState])!;
-                Assert(room.CombatState.Enemies.Select(c=>c.MaxHp).SequenceEqual(original.Select(h=>Math.Max(1,h/2))), "Health halved once despite all player callbacks");
+                Assert(room.CombatState.Enemies.Select(c=>c.MaxHp).SequenceEqual(original.Select(h=>Math.Max(1,h/3))), "Health cut to a third once despite all player callbacks");
                 Assert(room.CombatState.Enemies.All(c=>c.CurrentHp==c.MaxHp && c.Monster!.NextMove.Intents.Any()), "Both have correct HP and native move intents");
+                Assert(room.CombatState.Enemies.All(c=>c.Powers.OfType<ShiftyPartnersPower>().Count()==1 && !c.GetPower<ShiftyPartnersPower>()!.IsVisible
+                    && c.GetPower<StrengthPower>()==null), "Each merchant gets one hidden damage reduction and no Strength despite all player callbacks");
+                Assert(room.CombatState.Enemies.All(c=>c.Monster!.NextMove.Intents.OfType<AttackIntent>().Single().GetTotalDamage(party.Select(p=>p.Creature),c)==(ascension==0?7:9)),
+                    "Opening Swipe intent shows the reduced damage (13/15 x 0.6, rounded down)");
                 var scene = pair.CreateScene();
                 Assert(pair.Slots.All(s=>scene.HasNode(s)), "Both encounter markers present");scene.Free();
                 var bg = pair.CreateBackground(run.Act,run.Rng.UpFront);

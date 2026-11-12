@@ -102,7 +102,7 @@ public partial class LanternFishProbeNode : Node
         Assert(!s.Encounter.IsWeak, "Three fish belong to the strong hallway pool.");
         var fish = s.Encounter.MonstersWithSlots.Select(x => (LanternFish)x.Item1).ToArray();
         Assert(fish.Length == 3 && fish.Select(f => f.OpeningPhase).SequenceEqual([0,1,3]), "Three staggered fish.");
-        Assert(fish.All(f => f.MinInitialHp == 46 && f.MaxInitialHp == 50), "A0 HP.");
+        Assert(fish.All(f => f.MinInitialHp == 42 && f.MaxInitialHp == 46), "A0 HP.");
         string[] cycle = ["BITE_MOVE", "FLASH_MOVE", "TAIL_MOVE", "GUARD_MOVE"];
         for (int turn = 0; turn < 8; turn++)
         {
@@ -119,7 +119,7 @@ public partial class LanternFishProbeNode : Node
         GD.Print($"Encounter ID: {s.Encounter.Id.Entry}; monster ID: {fish[0].Id.Entry}; power ID: {ModelDb.Power<LanternBlindnessPower>().Id.Entry}");
         DeactivateSyntheticCombat();
         var high = Scenario(ascension: 20);
-        Assert(high.Encounter.MonstersWithSlots.All(x => x.Item1.MinInitialHp == 50 && x.Item1.MaxInitialHp == 54), "High ascension HP.");
+        Assert(high.Encounter.MonstersWithSlots.All(x => x.Item1.MinInitialHp == 46 && x.Item1.MaxInitialHp == 50), "High ascension HP.");
         DeactivateSyntheticCombat();
     }
 
@@ -265,7 +265,7 @@ public partial class LanternFishProbeNode : Node
         Assert(fish.Creature.Block == 9, "Native guard grants nine block.");
         int hp = s.Player.Creature.CurrentHp;
         await ((MoveState)moves["BITE_MOVE"]).PerformMove([s.Player.Creature]);
-        Assert(s.Player.Creature.CurrentHp == hp - 6, "Native bite damage.");
+        Assert(s.Player.Creature.CurrentHp == hp - 10, "Native bite damage.");
         hp = s.Player.Creature.CurrentHp;
         await ((MoveState)moves["TAIL_MOVE"]).PerformMove([s.Player.Creature]);
         Assert(s.Player.Creature.CurrentHp == hp - 10, "Native two-hit tail damage.");

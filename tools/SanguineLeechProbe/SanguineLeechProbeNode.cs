@@ -107,7 +107,7 @@ public partial class SanguineLeechProbeNode : Node
             string[] cycle=["SIP_MOVE","INFEST_MOVE","SIP_AGAIN_MOVE","CURL_MOVE"];
             foreach (var l in s.Leeches)
             {
-                Assert(l.MinInitialHp==30 && l.MaxInitialHp==34,"A0 HP range.");
+                Assert(l.MinInitialHp==32 && l.MaxInitialHp==36,"A0 HP range.");
                 for(int turn=0;turn<8;turn++)
                 {
                     var move=l.MoveStateMachine!.RollMove([s.Player.Creature],l.Creature,s.Run.Rng.MonsterAi);
@@ -117,7 +117,7 @@ public partial class SanguineLeechProbeNode : Node
             }
         }
         var high=Scenario(ascension:20);
-        Assert(high.Leeches.All(l=>l.MinInitialHp==34 && l.MaxInitialHp==38),"Tough-enemy HP range.");
+        Assert(high.Leeches.All(l=>l.MinInitialHp==36 && l.MaxInitialHp==40),"Tough-enemy HP range.");
         GD.Print("PASS pools, counts, HP and staggered move state machines.");
     }
 
@@ -240,7 +240,7 @@ public partial class SanguineLeechProbeNode : Node
             var s=Scenario(ascension:ascension);var l=s.Leeches[0];var enemy=l.Creature;
             enemy.SetCurrentHpInternal(enemy.MaxHp-12);int playerHp=s.Player.Creature.CurrentHp;
             await ((MoveState)l.MoveStateMachine!.States["SIP_MOVE"]).PerformMove([s.Player.Creature]);
-            int damage=ascension==0?6:7;
+            int damage=ascension==0?7:8;
             Assert(s.Player.Creature.CurrentHp==playerHp-damage,"Native siphon damage and ascension.");
             Assert(enemy.CurrentHp==enemy.MaxHp-12+damage,"Siphon heals actual life damage.");
             await CreatureCmd.GainBlock(s.Player.Creature,50,ValueProp.Unpowered,null);

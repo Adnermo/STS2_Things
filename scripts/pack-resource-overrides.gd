@@ -14,8 +14,8 @@ func _initialize() -> void:
 		before[path] = FileAccess.get_sha256(path)
 	var overrides := {}
 	for relative: String in args[2].split(","):
-		if relative.contains("..") or not ((relative.begins_with("scenes/") and relative.ends_with(".tscn")) or (relative.begins_with("STS2_Things/localization/") and relative.ends_with(".json"))):
-			_fail("Only explicit scenes or localization tables are allowed")
+		if relative.contains("..") or not ((relative.begins_with("scenes/") and relative.ends_with(".tscn")) or (relative.begins_with("STS2_Things/localization/") and relative.ends_with(".json")) or ((relative.begins_with("animations/") or relative.begins_with("STS2_Things/animations/")) and relative.ends_with(".spjson"))):
+			_fail("Only explicit scenes, localization tables or Spine skeleton JSON are allowed")
 			return
 		var path := "res://" + relative
 		if not paths.has(path):

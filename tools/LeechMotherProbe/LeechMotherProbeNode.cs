@@ -108,7 +108,7 @@ public partial class LeechMotherProbeNode : Node
     private static async Task AwakenedCombat(int players)
     {
         var f = await Scenario(players, ascension:20);
-        Assert(f.Mother.MinInitialHp == 89, "High ascension reference HP");
+        Assert(f.Mother.MinInitialHp == 93, "High ascension reference HP");
         await CreatureCmd.GainBlock(f.Mother.Creature, 1000, ValueProp.Unpowered, null);
         int hp = f.Mother.Creature.CurrentHp;
         var card = f.State.CreateCard<StrikeIronclad>(f.Players[0]);

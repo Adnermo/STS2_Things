@@ -101,7 +101,7 @@ public sealed class RobberyFakeMerchant : EventModel
 
     private async Task Fight()
     {
-        // 两名原版假商人分别半血，共享场景只调整一次。
+        // 两名原版假商人各为原版三分之一生命、攻击伤害降低 40%，合起来接近一层精英；共享场景只调整一次。
 #if STS2_V107_1
         var combatState = _combatStateForCombatLayout
             ?? throw new InvalidOperationException("Robbery Fake Merchant combat layout state is not initialized.");

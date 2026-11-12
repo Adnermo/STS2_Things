@@ -16,9 +16,9 @@ namespace STS2_Things.Monsters;
 public sealed class CrystalSnail : DepthsSnail
 {
     private MoveState? _bareBump;
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 31, 28);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 33, 30);
     public override int MaxInitialHp => MinInitialHp + 3;
-    private int BumpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 9, 8);
+    private int BumpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 9);
     private int OpeningShell => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, 6);
     private int RetreatShell => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, 6);
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([ModelDb.Card<SnailCrystalChip>().PortraitPath]);

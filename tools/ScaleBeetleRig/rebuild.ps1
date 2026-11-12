@@ -17,6 +17,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Spine packaging failed' }
     & $NodeExe verify.mjs
     if ($LASTEXITCODE -ne 0) { throw 'Runtime geometry regression failed' }
+    & $NodeExe seam_dump.mjs pkg\scale_beetle.spjson pkg\scale_beetle.atlas out\seam-bones.json 60
+    if ($LASTEXITCODE -ne 0) { throw 'Carapace seam sampling failed' }
+    & $PythonExe seams.py check out\seam-bones.json 4.0
+    if ($LASTEXITCODE -ne 0) { throw 'A hidden carapace cut edge shows during an animation' }
     if ($Deploy) {
         & $PythonExe package.py --deploy
         if ($LASTEXITCODE -ne 0) { throw 'Project asset deployment failed' }

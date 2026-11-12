@@ -6,7 +6,7 @@ namespace STS2_Things.Monsters;
 /// <summary>A sturdy silk caster: two upcoming player turns, one pair per turn.</summary>
 public sealed class GreatSilkMoth : SilkMoth
 {
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 66, 58);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 70, 62);
     public override int MaxInitialHp => MinInitialHp + 6;
     public override float HpBarSizeReduction => 55f;
     protected override int WeaveLayers => 2;
