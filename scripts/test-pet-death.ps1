@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('v107.1','v111')][string]$TargetVersion='v111',
+    [ValidateSet('v107.1','v113')][string]$TargetVersion='v113',
     [Parameter(Mandatory)][string]$ImplementationDll,
     [Parameter(Mandatory)][string]$PackagePck,
     [Parameter(Mandatory)][string]$OutputDir,
@@ -15,7 +15,7 @@ $taskRoot=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $taskProbe=Join-Path $taskRoot 'tools/PetDeathProbe'
 $taskOut=[IO.Path]::GetFullPath($OutputDir)
 New-Item -ItemType Directory -Path $taskOut -Force | Out-Null
-if(-not $DataDir){$DataDir=if($TargetVersion -eq 'v111'){'D:/Steam/steamapps/common/Slay the Spire 2/data_sts2_windows_x86_64'}else{Join-Path $taskRoot '.tmp/things-collision-v107-data'}}
+if(-not $DataDir){$DataDir=if($TargetVersion -eq 'v113'){'D:/Steam/steamapps/common/Slay the Spire 2/data_sts2_windows_x86_64'}else{Join-Path $taskRoot '.tmp/things-collision-v107-data'}}
 $env:PATH='C:/Program Files/dotnet;'+$env:PATH
 & dotnet build (Join-Path $taskProbe 'PetDeathProbe.csproj') -c Debug --nologo "/p:Sts2TargetVersion=$TargetVersion" "/p:Sts2DataDir=$([IO.Path]::GetFullPath($DataDir))" "/p:ImplementationDll=$([IO.Path]::GetFullPath($ImplementationDll))"
 if($LASTEXITCODE -ne 0){throw 'Pet death probe build failed'}

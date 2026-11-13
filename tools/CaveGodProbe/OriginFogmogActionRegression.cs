@@ -65,7 +65,7 @@ public partial class CaveGodProbeNode
         var players = Enumerable.Range(1,count).Select(i=>Player.CreateForNewRun<Ironclad>(UnlockState.all,(ulong)i)).ToArray();
         var run = RunState.CreateForTest(players, seed:"fogmog-actions");
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,new MegaCrit.Sts2.Core.Entities.Ascension.AscensionManager(0));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(0));
         var room = new CombatRoom(ModelDb.Encounter<OriginFogmogBossEncounter>().ToMutable(),run);
         run.PushRoom(room);
         foreach(var player in players)

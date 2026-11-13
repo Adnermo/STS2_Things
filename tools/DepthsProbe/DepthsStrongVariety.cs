@@ -61,7 +61,7 @@ public partial class DepthsProbeNode
         var run = CreateRun(seed ?? "variety-" + canonical.Id.Entry, players, ascension);
         run.CurrentActIndex = 1;
         typeof(RunManager).GetProperty("State", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(RunManager.Instance, run);
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, new AscensionManager(ascension));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, NativeAscension(ascension));
         typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance, new NetSingleplayerGameService());
         var encounter = canonical.ToMutable();
         run.AppendToMapPointHistory(MapPointType.Monster, RoomType.Monster, encounter.Id);

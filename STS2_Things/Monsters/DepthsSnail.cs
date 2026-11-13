@@ -50,7 +50,11 @@ public abstract class DepthsSnail : ThingsSpineMonster
             mender.RefreshRepairIntent();
     }
 
-    public override Task AfterDeath(PlayerChoiceContext context, Creature creature, bool prevented, float deathAnimLength)
+    public override Task AfterDeath(PlayerChoiceContext context, Creature creature,
+#if STS2_V113
+        MegaCrit.Sts2.Core.Models.CardModel? source,
+#endif
+        bool prevented, float deathAnimLength)
     {
         if (creature == Creature && !prevented) NotifyMenders();
         return Task.CompletedTask;

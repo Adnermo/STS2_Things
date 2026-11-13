@@ -12,7 +12,7 @@ namespace STS2_Things.Config;
 ///   - BaseLib：加载同目录可选桥程序集 <c>STS2_Things.BaseLibBridge.dll</c> 并调用其注册入口。
 ///
 /// 加载时序：模组不声明对两库的依赖，两库可能在本模组之后才加载。因此在
-/// ModManager.State 变为 Initialized（v111 全部模组加载完成）时经 Harmony 补丁重试一次；
+/// ModManager.State 变为 Initialized（v113 全部模组加载完成）时经 Harmony 补丁重试一次；
 /// 找不到该成员（如 v107.1）则跳过重试，仅依赖初始化时的检测。
 /// </summary>
 internal static class LibraryIntegration

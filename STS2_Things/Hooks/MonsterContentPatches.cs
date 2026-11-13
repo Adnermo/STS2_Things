@@ -8,7 +8,7 @@ using STS2_Things.Encounters;
 namespace STS2_Things.Hooks;
 
 /// <summary>
-/// V110/V111 会自动发现所有具体 MonsterModel/EncounterModel。Act 的候选遭遇仍是原版
+/// V110/V113 会自动发现所有具体 MonsterModel/EncounterModel。Act 的候选遭遇仍是原版
 /// 硬编码列表，因此只在这些消费点追加 canonical EncounterModel，并保持原版前缀
 /// 顺序不变、对所有 Mod 后缀使用官方 ContentSorter 排序。
 ///

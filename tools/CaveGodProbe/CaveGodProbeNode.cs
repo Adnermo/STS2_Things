@@ -49,7 +49,7 @@ public partial class CaveGodProbeNode : Node
             ProjectSettings.LoadResourcePack(System.Environment.GetEnvironmentVariable("THINGS_PROBE_GAME_PCK")
                 ?? "D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck");
             ProjectSettings.LoadResourcePack(System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")
-                ?? Path.Combine(root, "build/v111/STS2_Things.pck"));
+                ?? Path.Combine(root, "build/v113/STS2_Things.pck"));
             string? overlay=System.Environment.GetEnvironmentVariable("THINGS_PROBE_OVERLAY_PCK");
             if(!string.IsNullOrWhiteSpace(overlay))Assert(ProjectSettings.LoadResourcePack(overlay),"Recovery overlay mounted.");
             try
@@ -165,7 +165,7 @@ public partial class CaveGodProbeNode : Node
         }).ToArray();
         var run = RunState.CreateForTest(players, seed: "cavegod-regression", ascensionLevel: ascension);
         typeof(RunManager).GetProperty("State", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(RunManager.Instance, run);
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, new AscensionManager(ascension));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, ProbeRuntimeApi.Ascension(ascension));
         var room = new CombatRoom(ModelDb.Encounter<CaveGodBossEncounter>().ToMutable(), run);
         run.PushRoom(room);
         foreach (var player in players)
@@ -319,7 +319,7 @@ public partial class CaveGodProbeNode : Node
         await Act(s); // crush -> grab
         var selector = new TestCardSelector();
         for (int i = 0; i < s.State.Players.Count; i++) selector.PrepareToSelect(new[] { i % 2 });
-        using (CardSelectCmd.UseSelector(selector))
+        using (ProbeRuntimeApi.UseSelector(selector))
         {
             await Act(s);
             Assert(s.State.PlayerCreatures.All(c => c.HasPower<CaveGodPendingTrialPower>()),
@@ -647,7 +647,7 @@ public partial class CaveGodProbeNode : Node
             Assert(s.Left.StolenCards.Count == 1, "Left arm holds card before boss defeat.");
 
             // Defeat boss body directly
-            await s.Body.AfterDeath(Choice, s.Body.Creature, false, 0f);
+            await ProbeRuntimeApi.AfterDeath(s.Body, Choice, s.Body.Creature, false, 0f);
             Assert(s.Left.StolenCards.Count == 0, "Boss body defeat must release all held cards.");
             Assert(p.PlayerCombatState!.Hand!.Cards.Contains(card), "Card must be returned to Hand upon boss defeat.");
             DeactivateSyntheticCombat();
@@ -1080,12 +1080,12 @@ public partial class CaveGodProbeNode : Node
                     binder: null,
                     args: [state],
                     culture: null)
-                ?? throw new InvalidOperationException("Could not create the V111 combat turn state.");
+                ?? throw new InvalidOperationException("Could not create the V113 combat turn state.");
             turnState.GetType().GetProperty("IsInProgress")!.SetValue(turnState, true);
             turnState.GetType().GetProperty("IsStarting")!.SetValue(turnState, false);
             turnStateField.SetValue(manager, turnState);
         }
-        state.MultiplayerScalingModel?.OnCombatEntered(state);
+        ProbeRuntimeApi.EnterCombat(state);
         manager.StateTracker.SetState(state);
     }
 

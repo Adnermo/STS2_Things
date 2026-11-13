@@ -48,7 +48,7 @@ public partial class CaveGodProbeNode
             ("IsAutoPlay", false), ("PlayIndex", 0), ("PlayCount", 1)
         })
         {
-            // Player was added to CardPlay in v111; all other fields exist in both targets.
+            // Player was added to CardPlay in v113; all other fields exist in both targets.
             PropertyInfo? property = typeof(CardPlay).GetProperty(name);
             if (name != "Player" && property == null) throw new MissingMemberException(typeof(CardPlay).FullName, name);
             property?.SetValue(play, value);

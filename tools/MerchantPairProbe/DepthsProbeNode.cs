@@ -63,10 +63,10 @@ public partial class DepthsProbeNode : Node
             foreach (int ascension in new[] {0,20})
             {
                 var party = Enumerable.Range(1,players).Select(i => Player.CreateForNewRun<Ironclad>(UnlockState.all,(ulong)i)).ToList();
-                var run = RunState.CreateForNewRun(party,ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),[],GameMode.Standard,ascension,"merchant-pair");
+                var run = ProbeRuntimeApi.CreateForNewRun(party,ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),[],GameMode.Standard,ascension,"merchant-pair");
                 typeof(RunManager).GetProperty("State",BindingFlags.Instance|BindingFlags.NonPublic)!.SetValue(RunManager.Instance,run);
                 typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance,new NetSingleplayerGameService());
-                typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,new AscensionManager(ascension));
+                typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(ascension));
                 LocalContext.NetId = party[0].NetId;
                 var old = ModelDb.Encounter<FakeMerchantEventEncounter>().ToMutable();old.GenerateMonstersWithSlots(run);
                 Assert(old.MonstersWithSlots.Count == 1, "Native Fake Merchant event remains single");

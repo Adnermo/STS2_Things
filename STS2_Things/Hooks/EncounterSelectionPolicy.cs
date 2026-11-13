@@ -116,7 +116,12 @@ internal static class ConfiguredEncounterDrawPatch
 {
     private static IEnumerable<MethodBase> TargetMethods()
     {
+#if STS2_V113
+        yield return AccessTools.Method(typeof(ActModel), nameof(ActModel.GenerateRooms),
+            [typeof(Rng), typeof(MegaCrit.Sts2.Core.Unlocks.UnlockState), typeof(bool), typeof(bool)]);
+#else
         yield return AccessTools.Method(typeof(ActModel), nameof(ActModel.GenerateRooms));
+#endif
         yield return AccessTools.Method(typeof(ActModel), nameof(ActModel.ValidateRoomsAfterLoad));
         yield return AccessTools.Method(typeof(RunManager), nameof(RunManager.GenerateRooms));
     }

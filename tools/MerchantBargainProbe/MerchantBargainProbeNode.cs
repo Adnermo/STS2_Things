@@ -22,7 +22,11 @@ public partial class MerchantBargainProbeNode : Node
             VerifyAssetContract();
             VerifyOverlaySurface();
             VerifyPatchTargets();
+#if STS2_V107_1
             await MerchantMultiplayerRegression.Run();
+#else
+            await MerchantV113Regression.Run();
+#endif
             GD.Print("Merchant bargain behavior probe: PASS");
             GetTree().Quit(0);
         }
@@ -239,6 +243,7 @@ public partial class MerchantBargainProbeNode : Node
         MethodBase purchaseTarget = InvokeTargetMethod(
             assembly,
             "STS2_Things.Features.MerchantBargain.MerchantEntryOnTryPurchaseWrapperPatch");
+#if STS2_V107_1
         Assert(purchaseTarget.DeclaringType == typeof(MerchantEntry) &&
                purchaseTarget.Name == nameof(MerchantEntry.OnTryPurchaseWrapper),
             "Purchase patch resolved to the wrong member.");
@@ -247,6 +252,12 @@ public partial class MerchantBargainProbeNode : Node
                purchaseParameters[0].ParameterType == typeof(MerchantInventory) &&
                purchaseParameters[1].ParameterType == typeof(bool),
             "Purchase patch resolved to the wrong overload.");
+#else
+        Assert(purchaseTarget.DeclaringType == typeof(MegaCrit.Sts2.Core.Multiplayer.Game.MerchantSynchronizer) &&
+               purchaseTarget.Name == "PurchaseLocalEntry" &&
+               purchaseTarget.GetParameters().Single().ParameterType == typeof(MerchantEntry),
+            "V113 bargaining must intercept before the native synchronized purchase is broadcast.");
+#endif
 
         MethodBase costTarget = InvokeTargetMethod(
             assembly,

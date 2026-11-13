@@ -1,7 +1,7 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('v107.1', 'v111')]
+    [ValidateSet('v107.1', 'v113')]
     [string]$TargetVersion,
 
     [Parameter(Mandatory = $true)]
@@ -72,6 +72,7 @@ if (Test-Path -LiteralPath (Join-Path $portableDotnet 'dotnet.exe') -PathType Le
 Write-Host "Building Gravetide Slug behavior probe for $TargetVersion..."
 & dotnet build $ProbeProject -c Debug --nologo `
     "/p:Sts2DataDir=$DataDir" `
+    "/p:Sts2TargetVersion=$TargetVersion" `
     "/p:RuntimeDependencyDir=$RuntimeDependencyDir" `
     "/p:ImplementationDll=$ImplementationDll"
 if ($LASTEXITCODE -ne 0) {
@@ -80,7 +81,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # Both implementation assemblies intentionally share the same name and version.
 # MSBuild's incremental copy can therefore retain the previously tested target
-# when this project switches between v107.1 and v111. Overwrite the three target
+# when this project switches between v107.1 and v113. Overwrite the three target
 # binaries after every build so the Godot process always loads a coherent set.
 $probeBin = Join-Path $ProbeRoot '.godot\mono\temp\bin\Debug'
 foreach ($binary in @(

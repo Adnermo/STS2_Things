@@ -126,12 +126,10 @@ public sealed class ThingsBackrooms : EventModel
 
     private async Task Rest()
     {
-        await CreatureCmd.LoseMaxHp(
+        await STS2_Things.Compatibility.Sts2VersionCompatibility.LoseMaxHp(
             new ThrowingPlayerChoiceContext(),
             EventOwner.Creature,
-            DynamicVars["MaxHpLoss"].BaseValue,
-            false
-        );
+            DynamicVars["MaxHpLoss"].BaseValue);
         await CreatureCmd.Heal(EventOwner.Creature, DynamicVars.Heal.BaseValue);
         SetEventFinished(L10NLookup($"{Id.Entry}.pages.REST.description"));
     }

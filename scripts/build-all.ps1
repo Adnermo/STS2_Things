@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
@@ -9,11 +9,11 @@ param(
 
     [string]$DataDirV1071 = $env:STS2_DATA_DIR_V107_1,
 
-    [string]$DataDirV111 = $env:STS2_DATA_DIR_V111,
+    [string]$DataDirV113 = $env:STS2_DATA_DIR_V113,
 
     [string]$SourceRootV1071 = $env:STS2_SOURCE_ROOT_V107_1,
 
-    [string]$SourceRootV111 = $env:STS2_SOURCE_ROOT_V111,
+    [string]$SourceRootV113 = $env:STS2_SOURCE_ROOT_V113,
 
     [string]$BaseLibRef = $env:STS2_BASELIB_REF,
 
@@ -78,7 +78,7 @@ function Invoke-VersionBuild(
         $probeArguments = @{
             TargetVersion = $TargetVersion
             DataDir = $DataDir
-            RuntimeDependencyDir = $DataDirV111
+            RuntimeDependencyDir = $DataDirV113
             ImplementationDll = Join-Path (Split-Path $PSScriptRoot -Parent) "build\$TargetVersion\STS2_Things.dll"
         }
         if (-not [string]::IsNullOrWhiteSpace($GodotExe)) {
@@ -93,7 +93,7 @@ function Invoke-VersionBuild(
         $splitProbeArguments = @{
             TargetVersion = $TargetVersion
             DataDir = $DataDir
-            RuntimeDependencyDir = $DataDirV111
+            RuntimeDependencyDir = $DataDirV113
             ImplementationDll = Join-Path (Split-Path $PSScriptRoot -Parent) "build\$TargetVersion\STS2_Things.dll"
         }
         if (-not [string]::IsNullOrWhiteSpace($GodotExe)) {
@@ -108,7 +108,7 @@ function Invoke-VersionBuild(
         $collisionProbeArguments = @{
             TargetVersion = $TargetVersion
             DataDir = $DataDir
-            RuntimeDependencyDir = $DataDirV111
+            RuntimeDependencyDir = $DataDirV113
             ImplementationDll = Join-Path (Split-Path $PSScriptRoot -Parent) "build\$TargetVersion\STS2_Things.dll"
         }
         if (-not [string]::IsNullOrWhiteSpace($GodotExe)) {
@@ -123,7 +123,7 @@ function Invoke-VersionBuild(
         $modelIdProbeArguments = @{
             TargetVersion = $TargetVersion
             DataDir = $DataDir
-            RuntimeDependencyDir = $DataDirV111
+            RuntimeDependencyDir = $DataDirV113
             ImplementationDll = Join-Path (Split-Path $PSScriptRoot -Parent) "build\$TargetVersion\STS2_Things.dll"
             Pck = Join-Path (Split-Path $PSScriptRoot -Parent) "build\$TargetVersion\STS2_Things.pck"
         }
@@ -139,7 +139,7 @@ function Invoke-VersionBuild(
         $configProbeArguments = @{
             TargetVersion = $TargetVersion
             DataDir = $DataDir
-            RuntimeDependencyDir = $DataDirV111
+            RuntimeDependencyDir = $DataDirV113
             ImplementationDll = Join-Path (Split-Path $PSScriptRoot -Parent) "build\$TargetVersion\STS2_Things.dll"
             Pck = Join-Path (Split-Path $PSScriptRoot -Parent) "build\$TargetVersion\STS2_Things.pck"
         }
@@ -155,7 +155,7 @@ function Invoke-VersionBuild(
         $gravetideProbeArguments = @{
             TargetVersion = $TargetVersion
             DataDir = $DataDir
-            RuntimeDependencyDir = $DataDirV111
+            RuntimeDependencyDir = $DataDirV113
             ImplementationDll = Join-Path (Split-Path $PSScriptRoot -Parent) "build\$TargetVersion\STS2_Things.dll"
         }
         if (-not [string]::IsNullOrWhiteSpace($GodotExe)) {
@@ -166,12 +166,12 @@ function Invoke-VersionBuild(
             throw "$TargetVersion Gravetide Slug probe failed with exit code $LASTEXITCODE"
         }
 
-        if ($TargetVersion -in @('v107.1', 'v111')) {
+        if ($TargetVersion -in @('v107.1', 'v113')) {
             $merchantProbeScript = Join-Path $PSScriptRoot 'test-merchant-bargain.ps1'
             $merchantProbeArguments = @{
                 TargetVersion = $TargetVersion
                 DataDir = $DataDir
-                RuntimeDependencyDir = if(Test-Path (Join-Path $DataDir 'SmartFormat.dll')){$DataDir}else{$DataDirV111}
+                RuntimeDependencyDir = if(Test-Path (Join-Path $DataDir 'SmartFormat.dll')){$DataDir}else{$DataDirV113}
                 ImplementationDll = Join-Path (Split-Path $PSScriptRoot -Parent) "build\$TargetVersion\STS2_Things.dll"
             }
             if (-not [string]::IsNullOrWhiteSpace($GodotExe)) {
@@ -184,7 +184,7 @@ function Invoke-VersionBuild(
         }
     }
 
-    if ($TargetVersion -eq 'v111' -and -not $SkipVisualProbe) {
+    if ($TargetVersion -eq 'v113' -and -not $SkipVisualProbe) {
         $visualProbeScript = Join-Path $PSScriptRoot 'test-quirky-hopper-visual.ps1'
         $visualProbeArguments = @{}
         if (-not [string]::IsNullOrWhiteSpace($PythonExe)) {
@@ -207,17 +207,17 @@ if ([string]::IsNullOrWhiteSpace($DataDirV1071)) {
 if ([string]::IsNullOrWhiteSpace($GameDir)) {
     $GameDir = 'D:\Steam\steamapps\common\Slay the Spire 2'
 }
-if ([string]::IsNullOrWhiteSpace($DataDirV111)) {
-    $DataDirV111 = Join-Path $GameDir 'data_sts2_windows_x86_64'
+if ([string]::IsNullOrWhiteSpace($DataDirV113)) {
+    $DataDirV113 = Join-Path $GameDir 'data_sts2_windows_x86_64'
 }
 
 if ($SkipPck) {
     Invoke-VersionBuild 'v107.1' $DataDirV1071 $SourceRootV1071 $true ''
-    Invoke-VersionBuild 'v111' $DataDirV111 $SourceRootV111 $true ''
+    Invoke-VersionBuild 'v113' $DataDirV113 $SourceRootV113 $true ''
 }
 else {
-    Invoke-VersionBuild 'v111' $DataDirV111 $SourceRootV111 $false ''
-    $sharedPck = Join-Path (Split-Path $PSScriptRoot -Parent) 'build\v111\STS2_Things.pck'
+    Invoke-VersionBuild 'v113' $DataDirV113 $SourceRootV113 $false ''
+    $sharedPck = Join-Path (Split-Path $PSScriptRoot -Parent) 'build\v113\STS2_Things.pck'
     Invoke-VersionBuild 'v107.1' $DataDirV1071 $SourceRootV1071 $false $sharedPck
 
     $unifiedBuild = Join-Path $PSScriptRoot 'build-unified.ps1'
@@ -225,7 +225,7 @@ else {
         Configuration = $Configuration
         GameDir = $GameDir
         DataDirV1071 = $DataDirV1071
-        DataDirV111 = $DataDirV111
+        DataDirV113 = $DataDirV113
         Install = $Install
     }
     if (-not [string]::IsNullOrWhiteSpace($PythonExe)) {
@@ -242,14 +242,14 @@ else {
         if ([string]::IsNullOrWhiteSpace($baseLibDll)) {
             $baseLibDll = 'D:\Steam\steamapps\workshop\content\2868840\3737335127\BaseLib\BaseLib.dll'
         }
-        $bridgeDll = Join-Path (Split-Path $PSScriptRoot -Parent) 'build\v111\STS2_Things.BaseLibBridge.dll'
+        $bridgeDll = Join-Path (Split-Path $PSScriptRoot -Parent) 'build\v113\STS2_Things.BaseLibBridge.dll'
         if ((Test-Path -LiteralPath $baseLibDll -PathType Leaf) -and
             (Test-Path -LiteralPath $bridgeDll -PathType Leaf)) {
             Write-Host 'Running the BaseLib config bridge probe...'
             & (Join-Path $PSScriptRoot 'test-baselib-bridge.ps1') `
-                -DataDir $DataDirV111 `
-                -ImplementationDll (Join-Path (Split-Path $PSScriptRoot -Parent) 'build\v111\STS2_Things.dll') `
-                -RuntimeDependencyDir $DataDirV111 `
+                -DataDir $DataDirV113 `
+                -ImplementationDll (Join-Path (Split-Path $PSScriptRoot -Parent) 'build\v113\STS2_Things.dll') `
+                -RuntimeDependencyDir $DataDirV113 `
                 -BaseLibDll $baseLibDll `
                 -BridgeDll $bridgeDll
             if ($LASTEXITCODE -ne 0) {
@@ -270,9 +270,9 @@ else {
         if (Test-Path -LiteralPath $ritsuLibDll -PathType Leaf) {
             Write-Host 'Running the RitsuLib interop probe...'
             & (Join-Path $PSScriptRoot 'test-ritsulib-interop.ps1') `
-                -DataDir $DataDirV111 `
-                -ImplementationDll (Join-Path (Split-Path $PSScriptRoot -Parent) 'build\v111\STS2_Things.dll') `
-                -RuntimeDependencyDir $DataDirV111 `
+                -DataDir $DataDirV113 `
+                -ImplementationDll (Join-Path (Split-Path $PSScriptRoot -Parent) 'build\v113\STS2_Things.dll') `
+                -RuntimeDependencyDir $DataDirV113 `
                 -RitsuLibDll $ritsuLibDll
             if ($LASTEXITCODE -ne 0) {
                 throw "RitsuLib interop probe failed with exit code $LASTEXITCODE"
@@ -285,7 +285,7 @@ else {
 }
 
 if ($SkipPck) {
-    Write-Host 'Version-specific implementation artifacts are under build\v107.1 and build\v111.'
+    Write-Host 'Version-specific implementation artifacts are under build\v107.1 and build\v113.'
 }
 else {
     Write-Host 'Unified subscription artifacts are under build\unified.'

@@ -43,7 +43,7 @@ public partial class DepthsProbeNode
 
             // Original production method called by WinRun, including history
             // and save logic, rather than calling a bare ProgressSaveManager.
-            var victory = RunManager.Instance.OnEnded(isVictory: true);
+            var victory = NativeEndedRun(RunManager.Instance.OnEnded(isVictory: true));
             Assert(victory.GameMode == GameMode.Standard && victory.Ascension == 2,
                 "Real victory serialized as standard A2");
             Assert(victory.Acts[1].Id == ModelDb.Act<STS2_Things.Acts.Depths>().Id &&

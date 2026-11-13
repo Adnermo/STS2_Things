@@ -140,6 +140,9 @@ public sealed class OriginFogmog : ThingsSpineMonster
     }
 
     public override Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature,
+#if STS2_V113
+        MegaCrit.Sts2.Core.Models.CardModel? source,
+#endif
         bool wasRemovalPrevented, float deathAnimLength)
     {
         if (creature == Creature)

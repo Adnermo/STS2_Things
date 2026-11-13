@@ -31,6 +31,9 @@ public sealed class ThingsSplit : EnchantmentModel
         typeof(ForgeVar),
         typeof(GoldVar),
         typeof(HealVar),
+#if STS2_V113
+        typeof(HitCountVar),
+#endif
         typeof(HpLossVar),
         typeof(IntVar),
         typeof(MaxHpVar),
@@ -742,10 +745,20 @@ public sealed class ThingsSplit : EnchantmentModel
                 decimal currentUnsplitValue =
                     _unsplitDynamicValues?.GetValueOrDefault(value.Name, value.BaseValue) ??
                     value.BaseValue;
+                string savedName = value.Name;
+#if STS2_V113
+                // V113 moved attack repetitions from Repeat to HitCount. Only
+                // migrate when this card no longer has a distinct Repeat value.
+                if (value is HitCountVar && value.Name == HitCountVar.defaultName &&
+                    !Card.DynamicVars.ContainsKey("Repeat") &&
+                    !state.UnsplitDynamicValues.ContainsKey(savedName) &&
+                    state.UnsplitDynamicValues.ContainsKey("Repeat"))
+                    savedName = "Repeat";
+#endif
                 mergedUnsplitValues[value.Name] =
                     state.UnsplitDynamicValues.GetValueOrDefault(
-                        value.Name, currentUnsplitValue);
-                if (state.VisibleDynamicValues.TryGetValue(value.Name,
+                        savedName, currentUnsplitValue);
+                if (state.VisibleDynamicValues.TryGetValue(savedName,
                         out decimal visibleValue))
                 {
                     value.BaseValue = visibleValue;

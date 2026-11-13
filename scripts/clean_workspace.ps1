@@ -51,14 +51,14 @@ Get-ChildItem -LiteralPath $projectRoot -File -Force | ForEach-Object {
 $buildRoot = Join-Path $projectRoot 'build'
 Get-ChildItem -LiteralPath $buildRoot -Recurse -File -Force | ForEach-Object {
     $relative = [IO.Path]::GetRelativePath($buildRoot, $_.FullName).Replace('\', '/')
-    if ($relative -match '^(v107\.1|v111|unified|release|deliverables|imagegen)/') { return }
+    if ($relative -match '^(v107\.1|v113|unified|release|deliverables|imagegen)/') { return }
     if ($_.Extension -eq '.log') { Add-Candidate $_ 'old diagnostic log' }
     elseif ($_.Name -match '^(idle(_loop)?|attack|cast|hurt|die|summon|power_up|revive|slam|windup|frame)[_-][0-9]{3,}\.png$') {
         Add-Candidate $_ 'rendered animation frame (rebuildable)'
     }
     elseif (($relative -match '^v(108|109|109-probe|110)/' -or $_.DirectoryName -eq $buildRoot) -and
             $_.Extension -in @('.pck', '.dll', '.pdb')) {
-        Add-Candidate $_ 'obsolete diagnostic build; supported builds use v107.1/v111/unified'
+        Add-Candidate $_ 'obsolete diagnostic build; supported builds use v107.1/v113/unified'
     }
 }
 

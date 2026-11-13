@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('v107.1','v111')][string]$TargetVersion='v111',
+    [ValidateSet('v107.1','v113')][string]$TargetVersion='v113',
     [string]$GodotExe='D:\Download\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64_console.exe',
     [string]$ImplementationDll='',
     [string]$PackagePck='',
@@ -33,7 +33,7 @@ $taskStdout=Join-Path $taskBuild "$taskMode.stdout.log"
 $taskStderr=Join-Path $taskBuild "$taskMode.stderr.log"
 $taskArgs=@('--path',('"'+$taskProbe+'"'),'--rendering-method','gl_compatibility')
 if($Visual){
-    if($TargetVersion -ne 'v111'){throw 'Visual fixture uses the v111 game PCK'}
+    if($TargetVersion -ne 'v113'){throw 'Visual fixture uses the v113 game PCK'}
     $taskArgs+=@('--','--visual')
 }else{$taskArgs+=@('--headless')}
 $taskProcess=Start-Process -FilePath $GodotExe -ArgumentList $taskArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput $taskStdout -RedirectStandardError $taskStderr

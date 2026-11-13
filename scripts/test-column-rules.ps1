@@ -1,13 +1,13 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('v107.1','v111')][string]$TargetVersion='v107.1',
+    [ValidateSet('v107.1','v113')][string]$TargetVersion='v107.1',
     [string]$ImplementationDll='',
     [string]$PackagePck='',
     [string]$OutputDir='build/human-face-column-update-20261007/native'
 )
 $ErrorActionPreference='Stop'
 $taskRoot=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$dataDir=if($TargetVersion -eq 'v111'){'D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64'}else{Join-Path $taskRoot '.tmp/things-collision-v107-data'}
+$dataDir=if($TargetVersion -eq 'v113'){'D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64'}else{Join-Path $taskRoot '.tmp/things-collision-v107-data'}
 $taskProbe=Join-Path $taskRoot ('.tmp/column-rules-'+$TargetVersion.Replace('.','-'))
 $taskOut=[IO.Path]::GetFullPath((Join-Path $taskRoot $OutputDir))
 if(-not $ImplementationDll){$ImplementationDll=Join-Path $taskRoot "build/$TargetVersion/STS2_Things.dll"}

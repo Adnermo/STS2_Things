@@ -102,9 +102,9 @@ public partial class DepthsProbeNode : Node
     {
         DeactivateSyntheticCombat();
         var party=Enumerable.Range(1,count).Select(i=>Player.CreateForNewRun<Necrobinder>(UnlockState.all,(ulong)i)).ToList();
-        var run=RunState.CreateForNewRun(party,ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),[],GameMode.Standard,0,"pet-death-fixed-seed");
+        var run=ProbeRuntimeApi.CreateForNewRun(party,ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),[],GameMode.Standard,0,"pet-death-fixed-seed");
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,new AscensionManager(0));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(0));
         typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance,new NetSingleplayerGameService());
         var encounter=(canonical??ModelDb.Encounter<LouseProgenitorNormal>()).ToMutable();
         run.AppendToMapPointHistory(MapPointType.Monster,RoomType.Monster,encounter.Id);

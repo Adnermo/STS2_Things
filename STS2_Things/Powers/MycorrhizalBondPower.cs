@@ -71,7 +71,11 @@ public sealed class MycorrhizalBondPower : PowerModel
         await twin.FinishPose("exchange",1.55f,.9f);
     }
 
-    public override async Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature, bool wasRemovalPrevented, float deathAnimLength)
+    public override async Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature,
+#if STS2_V113
+        MegaCrit.Sts2.Core.Models.CardModel? source,
+#endif
+        bool wasRemovalPrevented, float deathAnimLength)
     {
         if (wasRemovalPrevented || creature.IsAlive || creature == Owner || !Owner.IsAlive ||
             Owner.Monster is not MycorrhizalTwin twin || creature.Monster is not MycorrhizalTwin dead ||

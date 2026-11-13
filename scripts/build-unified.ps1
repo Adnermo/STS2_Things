@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
@@ -11,7 +11,7 @@ param(
     [string]$DataDirV1071,
 
     [Parameter(Mandatory)]
-    [string]$DataDirV111,
+    [string]$DataDirV113,
 
     [string]$BaseLibRef = $env:STS2_BASELIB_REF,
 
@@ -24,8 +24,8 @@ $Root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $BuildDir = Join-Path $Root 'build\unified'
 $BootstrapProject = Join-Path $Root 'bootstrap\STS2_Things.Bootstrap.csproj'
 $ImplementationV1071 = Join-Path $Root 'build\v107.1\STS2_Things.dll'
-$ImplementationV111 = Join-Path $Root 'build\v111\STS2_Things.dll'
-$SharedPck = Join-Path $Root 'build\v111\STS2_Things.pck'
+$ImplementationV113 = Join-Path $Root 'build\v113\STS2_Things.dll'
+$SharedPck = Join-Path $Root 'build\v113\STS2_Things.pck'
 $Manifest = Join-Path $Root 'STS2_Things.json'
 
 if ([string]::IsNullOrWhiteSpace($GameDir)) {
@@ -33,18 +33,18 @@ if ([string]::IsNullOrWhiteSpace($GameDir)) {
 }
 $GameDir = [IO.Path]::GetFullPath($GameDir)
 $DataDirV1071 = [IO.Path]::GetFullPath($DataDirV1071)
-$DataDirV111 = [IO.Path]::GetFullPath($DataDirV111)
+$DataDirV113 = [IO.Path]::GetFullPath($DataDirV113)
 
 foreach ($path in @(
     $BootstrapProject,
     $ImplementationV1071,
-    $ImplementationV111,
+    $ImplementationV113,
     $SharedPck,
     $Manifest,
     (Join-Path $DataDirV1071 'sts2.dll'),
     (Join-Path $DataDirV1071 '0Harmony.dll'),
-    (Join-Path $DataDirV111 'sts2.dll'),
-    (Join-Path $DataDirV111 '0Harmony.dll')
+    (Join-Path $DataDirV113 'sts2.dll'),
+    (Join-Path $DataDirV113 '0Harmony.dll')
 )) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Unified build input was not found: $path"
@@ -57,7 +57,7 @@ Write-Host 'Building unified STS2_Things bootstrap...'
 & dotnet build $BootstrapProject -c $Configuration --nologo `
     "/p:Sts2DataDir=$DataDirV1071" `
     "/p:ImplementationV1071=$ImplementationV1071" `
-    "/p:ImplementationV111=$ImplementationV111"
+    "/p:ImplementationV113=$ImplementationV113"
 if ($LASTEXITCODE -ne 0) {
     throw "Unified bootstrap build failed with exit code $LASTEXITCODE"
 }
@@ -72,23 +72,23 @@ Copy-Item -LiteralPath $SharedPck -Destination (Join-Path $BuildDir 'STS2_Things
 Copy-Item -LiteralPath $Manifest -Destination (Join-Path $BuildDir 'STS2_Things.json') -Force
 
 # 可选 BaseLib 配置页桥：随统一包发布（无 BaseLib 时不会被加载）。
-$bridgeSource = Join-Path $Root 'build\v111\STS2_Things.BaseLibBridge.dll'
+$bridgeSource = Join-Path $Root 'build\v113\STS2_Things.BaseLibBridge.dll'
 if (Test-Path -LiteralPath $bridgeSource) {
     Copy-Item -LiteralPath $bridgeSource `
         -Destination (Join-Path $BuildDir 'STS2_Things.BaseLibBridge.dll') -Force
     Write-Host 'BaseLib config bridge: copied into the unified package.'
 }
 else {
-    Write-Warning 'BaseLib config bridge is missing from build\v111; the unified package ships without it.'
+    Write-Warning 'BaseLib config bridge is missing from build\v113; the unified package ships without it.'
 }
 
 $packageProbe = Join-Path $PSScriptRoot 'verify-unified-package.ps1'
 & $packageProbe `
     -DataDirV1071 $DataDirV1071 `
-    -DataDirV111 $DataDirV111 `
+    -DataDirV113 $DataDirV113 `
     -BootstrapDll (Join-Path $BuildDir 'STS2_Things.dll') `
     -ImplementationV1071 $ImplementationV1071 `
-    -ImplementationV111 $ImplementationV111
+    -ImplementationV113 $ImplementationV113
 if ($LASTEXITCODE -ne 0) {
     throw "Unified package probe failed with exit code $LASTEXITCODE"
 }
@@ -102,7 +102,7 @@ if ((Test-Path -LiteralPath $PythonExe -PathType Leaf) -and
     (Test-Path -LiteralPath $validator -PathType Leaf)) {
     & $PythonExe -X utf8 $validator `
         (Join-Path $BuildDir 'STS2_Things.json') `
-        --source-root (Join-Path (Split-Path $Root -Parent) 'STS2-V111') `
+        --source-root (Join-Path (Split-Path $Root -Parent) 'STS2-V113') `
         --require-artifacts --strict
     if ($LASTEXITCODE -ne 0) {
         throw "Unified package validation failed with exit code $LASTEXITCODE"

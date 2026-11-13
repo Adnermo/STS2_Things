@@ -12,7 +12,7 @@ internal static class Sts2VersionCompatibility
 {
     // V107.1 can return a non-null wrapper for an empty native track. Normalize
     // it before reading: calling through that wrapper dereferences a null object.
-    // V111 already returns null for an empty track and owns disposable wrappers.
+    // V113 already returns null for an empty track and owns disposable wrappers.
     public static IDisposable? TrackEntryScope(MegaTrackEntry? entry, out MegaTrackEntry? track)
     {
         if (entry?.BoundObject == null || !GodotObject.IsInstanceValid(entry.BoundObject))
@@ -58,6 +58,24 @@ internal static class Sts2VersionCompatibility
 #endif
         // V110 folds SavedProperty discovery into ModelIdSerializationCache.Init(),
         // which deterministically scans every model after ModelDb.Init().
+    }
+
+#if STS2_V113
+    public static void ToggleIsInteractable(this MegaCrit.Sts2.Core.Nodes.Combat.NCreature node, bool on)
+        => node.SetIsInteractable(on, changeVisibilityImmediately: true);
+    public static void AnimEnableUi(this MegaCrit.Sts2.Core.Nodes.Combat.NCreature node)
+        => node.GetNodeOrNull<MegaCrit.Sts2.Core.Nodes.Combat.NCreatureStateDisplay>("%HealthBar")
+            ?.AnimateIn(MegaCrit.Sts2.Core.Entities.UI.HealthBarAnimMode.FromHidden);
+#endif
+
+    public static System.Threading.Tasks.Task LoseMaxHp(
+        MegaCrit.Sts2.Core.GameActions.Multiplayer.PlayerChoiceContext context, Creature creature, decimal amount)
+    {
+#if STS2_V113
+        return MegaCrit.Sts2.Core.Commands.CreatureCmd.LoseMaxHp(context, creature, amount, null);
+#else
+        return MegaCrit.Sts2.Core.Commands.CreatureCmd.LoseMaxHp(context, creature, amount, false);
+#endif
     }
 
     public static void SetCreatureNodeVisible(Creature creature, bool visible)

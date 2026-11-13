@@ -3,11 +3,13 @@
 同时支持以下 Slay the Spire 2 分支的原生 Mod 工程：
 
 - 兼容正式版：`v0.107.1`
-- 当前正式版：`v0.111.0`
+- 当前 Beta：`v0.113.0`（Steam public-beta）
 
-当前版本：`1.25.26`。统一包运行时会按游戏 API 自动选择内嵌的 V107.1 或 V111 实现；本地开发安装与正式发布的记录分别保留。
+当前版本：`1.25.27`。统一包运行时按真实游戏 API 选择 V107.1 或 V113 实现。[新版差异与适配](docs/MIGRATION_V113.md) · [双版本合同](docs/DUAL_VERSION_SUPPORT.md)。
 
 ## 内容
+
+- 1.25.27 适配 v0.113.0 Beta 的死亡、商店同步、巨岩交互、章节生成、联机与 F2 API，保留 v0.107.1；不调整本轮玩法数值。[更新说明](docs/release-1.25.27.md)。
 
 - 1.25.26 重做活体巨岩与放缩巨甲虫的整套骨骼动作。巨岩全身参与发力与回弹，抬拳在肩内侧蓄力，重编二阶段变身与死亡，抓住玩家时改为握拳循环，受击改为叠加抽动；甲虫的撕咬有后仰、飞扑与咬住甩头，三连鞭由身体把力传到触角末端，整副甲壳一起运动，不再错开露出贴图切口。两只 Boss 的打击帧与玩法不变。同时小幅上调深处普通怪与自制精英，并把诡谲之店的双商人降到大约一只一层精英的强度。[数值调整](docs/depths-balance-20261110.md) · [巨岩动作设计与验证](docs/cavegod-motion-redo-20261109.md) · [甲虫动作设计与验证](docs/scale-beetle-motion-redo-20261109.md) · [更新说明](docs/release-1.25.26.md)。
 - 1.25.25 修复余影魔「借影」漏算电球、中毒等间接伤害；格挡按实际伤害返还给对应玩家。[更新说明](docs/release-1.25.25.md)。
@@ -137,7 +139,7 @@
 - Godot：`4.5.1 Mono`
 - .NET：`9.0`
 - C#：`13`
-- V111 基线：`v0.111.0` / commit `41cef1ea`
+- V113 Beta 基线：`v0.113.0` / commit `16ac0fe3`
 
 工程仅使用游戏原生 API、Godot、Harmony 与官方工具链，不依赖 RitsuLib 或 BaseLib。
 
@@ -148,7 +150,7 @@
 ```powershell
 .\scripts\build-all.ps1 `
   -DataDirV1071 "D:\path\to\v0.107.1\data_sts2_windows_x86_64" `
-  -DataDirV111 "D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64"
+  -DataDirV113 "D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64"
 ```
 
 它会依次编译两套实现、导出一次共用 PCK、构建引导 DLL，并对两套真实游戏程序集执行选择、类型加载、Harmony 与保存缓存探针。追加 `-Install` 可安装统一包。
@@ -162,10 +164,10 @@
   -SourceRoot "D:\path\to\STS2-V107.1"
 ```
 
-V111 单目标诊断构建：
+V113 单目标诊断构建：
 
 ```powershell
-.\scripts\build.ps1 -TargetVersion v111
+.\scripts\build.ps1 -TargetVersion v113
 ```
 
 发布工件位于：
@@ -175,9 +177,9 @@ V111 单目标诊断构建：
 版本专用诊断/回退构件位于：
 
 - `build/v107.1/STS2_Things.json|dll|pck`
-- `build/v111/STS2_Things.json|dll|pck`
+- `build/v113/STS2_Things.json|dll|pck`
 
-统一 manifest 的最低版本为 `v0.107.1`。所有订阅玩家下载完全相同的三件套；引导 DLL 只加载当前游戏对应的实现。多人游戏中的所有玩家仍必须使用相同游戏版本和相同 Mod 构建。
+统一 manifest 的最低版本为 `v0.107.1`。所有订阅玩家下载完全相同的四文件统一包；引导 DLL 只加载当前游戏对应的实现。多人游戏中的所有玩家仍必须使用相同游戏版本和相同 Mod 构建。
 
 ## 项目结构
 

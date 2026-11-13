@@ -1,7 +1,7 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('v107.1', 'v111')]
+    [ValidateSet('v107.1', 'v113')]
     [string]$TargetVersion,
 
     [Parameter(Mandatory = $true)]
@@ -65,6 +65,7 @@ if (Test-Path -LiteralPath (Join-Path $portableDotnet 'dotnet.exe') -PathType Le
 Write-Host "Building ModelId namespace probe for $TargetVersion..."
 & dotnet build $ProbeProject -t:Rebuild -c Debug --nologo `
     "/p:Sts2DataDir=$DataDir" `
+    "/p:Sts2TargetVersion=$TargetVersion" `
     "/p:RuntimeDependencyDir=$RuntimeDependencyDir" `
     "/p:ImplementationDll=$ImplementationDll"
 if ($LASTEXITCODE -ne 0) {

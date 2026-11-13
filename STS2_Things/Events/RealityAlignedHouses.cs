@@ -118,8 +118,8 @@ public sealed class RealityAlignedHouses : EventModel
             .FirstOrDefault();
         if (selected == null || EventOwner.Creature.IsDead) { FinishWithoutSelection(); return; }
 
-        await CreatureCmd.LoseMaxHp(new ThrowingPlayerChoiceContext(), EventOwner.Creature,
-            DynamicVars["AddressMaxHpLoss"].BaseValue, false);
+        await STS2_Things.Compatibility.Sts2VersionCompatibility.LoseMaxHp(new ThrowingPlayerChoiceContext(), EventOwner.Creature,
+            DynamicVars["AddressMaxHpLoss"].BaseValue);
         if (EventOwner.Creature.IsDead) { Finish("DEATH"); return; }
         CardCmd.Enchant<PerfectFit>(selected, 1m);
         // One native upgrade preview shows the finished card with its address.

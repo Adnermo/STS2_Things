@@ -39,7 +39,7 @@ public partial class ConfigNetworkLiveProbe : Node
 
     private static PeerVersionInfo Version => new()
     {
-        version = "v0.111.0", idDatabaseHash = ModelIdSerializationCache.Hash,
+        version = "v0.113.0", idDatabaseHash = ModelIdSerializationCache.Hash,
         gameplayAffectingMods = ["STS2_Things-1.11.0", "ConfigNetworkProbe"], otherMods = [],
     };
 
@@ -92,9 +92,10 @@ public partial class ConfigNetworkLiveProbe : Node
             var client = new NetClientGameService(Version);
             _service = client;
             // The production JoinFlow constructor attaches configuration before connecting.
-            _ = new JoinFlow(client);
             client.RegisterMessageHandler<ConfigNetworkProbeMessage>(HandleClient);
             var initializer = new ENetClientConnectionInitializer(_role == "client2" ? 3UL : 2UL, "127.0.0.1", _port);
+            _ = Activator.CreateInstance(typeof(JoinFlow), typeof(JoinFlow).GetConstructors().Single().GetParameters().Length == 2
+                ? [client, initializer] : new object[] { client });
             if (await initializer.Connect(client) is { } error) throw new Exception(error.ToString());
         }
         catch (Exception error) { Fail(error); }

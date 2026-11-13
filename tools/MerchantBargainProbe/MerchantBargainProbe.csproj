@@ -54,4 +54,5 @@
           DestinationFolder="$(TargetDir)"
           SkipUnchangedFiles="true" />
   </Target>
+  <ItemGroup><Compile Include="../ProbeSupport/ProbeRuntimeApi.cs" Link="ProbeRuntimeApi.cs" /></ItemGroup>
 </Project>

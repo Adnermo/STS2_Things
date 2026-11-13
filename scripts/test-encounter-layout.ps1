@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('v107.1', 'v111')][string]$TargetVersion = 'v107.1',
+    [ValidateSet('v107.1', 'v113')][string]$TargetVersion = 'v107.1',
     [Parameter(Mandatory)][string]$DataDir,
     [Parameter(Mandatory)][string]$ImplementationDll,
     [Parameter(Mandatory)][string]$PackagePck,

@@ -6,9 +6,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v107.1'">$(DefineConstants);STS2_V107_1</DefineConstants>
     <Sts2DataDir Condition="'$(Sts2DataDir)' == ''">D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64</Sts2DataDir>
     <RuntimeDependencyDir Condition="'$(RuntimeDependencyDir)' == ''">D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64</RuntimeDependencyDir>
-    <ImplementationDll Condition="'$(ImplementationDll)' == ''">$(MSBuildProjectDirectory)\..\..\build\v110\STS2_Things.dll</ImplementationDll>
+    <ImplementationDll Condition="'$(ImplementationDll)' == ''">$(MSBuildProjectDirectory)\..\..\build\v113\STS2_Things.dll</ImplementationDll>
   </PropertyGroup>
 
   <ItemGroup>
@@ -51,4 +52,5 @@
           DestinationFolder="$(TargetDir)"
           SkipUnchangedFiles="true" />
   </Target>
+  <ItemGroup><Compile Include="../ProbeSupport/ProbeRuntimeApi.cs" Link="ProbeRuntimeApi.cs" /></ItemGroup>
 </Project>

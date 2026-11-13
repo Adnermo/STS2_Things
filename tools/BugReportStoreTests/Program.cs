@@ -12,7 +12,7 @@ static partial class Tests
             ["hand"] = new JsonArray(new JsonObject { ["id"] = "CARD.LEECH_PARASITE", ["energy"] = 1 })
         } })
     };
-    private static JsonObject Metadata() => new() { ["game_version"] = "v0.111.0", ["mod_version"] = "test", ["active_mods"] = new JsonArray() };
+    private static JsonObject Metadata() => new() { ["game_version"] = "v0.113.0", ["mod_version"] = "test", ["active_mods"] = new JsonArray() };
 
     public static async Task Main()
     {

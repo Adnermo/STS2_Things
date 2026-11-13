@@ -32,12 +32,10 @@ public sealed class ThingsMagicGlove : RelicModel
 
     public override async Task AfterObtained()
     {
-        await CreatureCmd.LoseMaxHp(
+        await STS2_Things.Compatibility.Sts2VersionCompatibility.LoseMaxHp(
             new ThrowingPlayerChoiceContext(),
             Owner.Creature,
-            DynamicVars.HpLoss.BaseValue,
-            false
-        );
+            DynamicVars.HpLoss.BaseValue);
         CardModel finesse = Owner.RunState.CreateCard<Finesse>(Owner);
         CardModel flashOfSteel = Owner.RunState.CreateCard<FlashOfSteel>(Owner);
         var list = (await CardSelectCmd.FromDeckForTransformation(

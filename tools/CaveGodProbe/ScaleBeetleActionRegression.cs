@@ -24,7 +24,6 @@ using STS2_Things.Monsters;
 using STS2_Things.Powers;
 using STS2_Things.Visuals;
 using MegaCrit.Sts2.Core.Entities.Cards;
-using MegaCrit.Sts2.Core.Models.Singleton;
 using MegaCrit.Sts2.Core.ValueProps;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 
@@ -94,7 +93,7 @@ public partial class CaveGodProbeNode
         var players = Enumerable.Range(1,count).Select(i=>Player.CreateForNewRun<Ironclad>(UnlockState.all,(ulong)i)).ToArray();
         var run = RunState.CreateForTest(players, seed:"scale-beetle-actions");
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,new MegaCrit.Sts2.Core.Entities.Ascension.AscensionManager(0));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(0));
         var room = new CombatRoom(ModelDb.Encounter<ScaleBeetleBossEncounter>().ToMutable(),run);
         run.PushRoom(room);
         foreach(var player in players)
@@ -185,7 +184,7 @@ public partial class CaveGodProbeNode
                     foreach(var player in state.PlayerCreatures)Assert(player.GetPowerAmount<ThingsScaleDownPower>()==35,"Player ScaleDown stacks changed (passive hits plus reconstruct)");
                     if(clip=="molt")
                     {
-                        decimal factor=count<=2?count:count*MultiplayerScalingModel.GetMultiplayerScaling(state.Encounter,state.RunState.CurrentActIndex);
+                        decimal factor=count<=2?count:count*ProbeRuntimeApi.MultiplayerScaling(state.Encounter,state.RunState.CurrentActIndex);
                         Assert(BeetleBlockInput==14&&boss.Creature.Block==(int)(14*factor),"Molt block was not scaled exactly once by the game");
                     }
                     using var finished=new MegaSprite(sprite).GetAnimationState().GetCurrent(0);

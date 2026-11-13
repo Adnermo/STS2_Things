@@ -14,12 +14,21 @@ internal static class ConfigSessionAttachPatch
     private static IEnumerable<MethodBase> TargetMethods()
     {
         yield return AccessTools.Constructor(typeof(StartRunLobby),
+#if STS2_V113
+            [typeof(GameMode), typeof(bool), typeof(INetGameService), typeof(IStartRunLobbyListener), typeof(int)]);
+#else
             [typeof(GameMode), typeof(INetGameService), typeof(IStartRunLobbyListener), typeof(int)]);
+#endif
         yield return AccessTools.Constructor(typeof(LoadRunLobby),
             [typeof(INetGameService), typeof(ILoadRunLobbyListener), typeof(SerializableRun)]);
         foreach (ConstructorInfo constructor in AccessTools.GetDeclaredConstructors(typeof(NetClientGameService)))
             yield return constructor;
+#if STS2_V113
+        if (AccessTools.Constructor(typeof(JoinFlow), [typeof(INetClientGameService),
+                typeof(MegaCrit.Sts2.Core.Multiplayer.Connection.IClientConnectionInitializer)]) is { } joinConstructor)
+#else
         if (AccessTools.Constructor(typeof(JoinFlow), [typeof(INetClientGameService)]) is { } joinConstructor)
+#endif
             yield return joinConstructor;
     }
 

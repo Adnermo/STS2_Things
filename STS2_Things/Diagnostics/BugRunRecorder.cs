@@ -100,6 +100,23 @@ internal static class ThingsFeedbackSelectionPatch
 [HarmonyPatch(typeof(NSendFeedbackScreen), "SendFeedback")]
 internal static class ThingsFeedbackSendPatch
 {
+#if STS2_V113
+    private static bool Prefix(FeedbackData data, byte[] screenshotBytes,
+        MegaCrit.Sts2.Core.DevConsole.ConsoleCommands.FeedbackLogFiles logFiles, ref Task<bool> __result)
+    {
+        if (!ThingsFeedbackCategoryPatch.Entries.Contains(data.category)) return true;
+        bool retry = data.category == "things_bug_retry";
+        System.Text.Json.Nodes.JsonObject? screenshot;
+        try
+        {
+            using var stream = new MemoryStream(screenshotBytes, writable: false);
+            screenshot = retry ? null : BugScreenshotCapture.Capture(stream);
+        }
+        finally { logFiles.Dispose(); }
+        __result = BugRunRecorder.SubmitAsync(data.description ?? "", retry, screenshot);
+        return false;
+    }
+#else
     private static bool Prefix(FeedbackData data, Stream screenshotStream, Stream logsMemoryStream, ref Task<bool> __result)
     {
         if (!ThingsFeedbackCategoryPatch.Entries.Contains(data.category)) return true;
@@ -110,6 +127,7 @@ internal static class ThingsFeedbackSendPatch
         __result = BugRunRecorder.SubmitAsync(data.description ?? "", retry, screenshot);
         return false;
     }
+#endif
 }
 
 [HarmonyPatch(typeof(NSendFeedbackScreen), "OnFeedbackSuccess")]

@@ -1,3 +1,4 @@
+using STS2_Things.Compatibility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -100,7 +101,11 @@ public abstract class ThingsCaveGodHand : MonsterModel
     public override bool ShouldFadeAfterDeath => false;
     public override bool ShouldDisappearFromDoom => false;
     public override float DeathAnimLengthOverride => 0f;
+#if STS2_V113
+    public bool IsHealthBarVisible => !IsDown && !IsGrabbing;
+#else
     public override bool IsHealthBarVisible => !IsDown && !IsGrabbing;
+#endif
     public override bool ShouldAllowHitting(Creature creature) => creature != Creature || _applyingGrowth || (!IsProtectedRecovery && !IsGrabbing);
     public override bool ShouldAllowTargeting(Creature target) => target != Creature || (!IsProtectedRecovery && !IsGrabbing);
 
@@ -286,9 +291,17 @@ public abstract class ThingsCaveGodHand : MonsterModel
         if (!wasExposed) await body.ExposeCore(this);
     }
 
-    public override async Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature, bool wasRemovalPrevented, float deathAnimLength)
+    public override async Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature,
+#if STS2_V113
+        MegaCrit.Sts2.Core.Models.CardModel? source,
+#endif
+        bool wasRemovalPrevented, float deathAnimLength)
     {
-        await base.AfterDeath(choiceContext, creature, wasRemovalPrevented, deathAnimLength);
+        await base.AfterDeath(choiceContext, creature,
+#if STS2_V113
+            source,
+#endif
+            wasRemovalPrevented, deathAnimLength);
         if (creature == Creature)
         {
             await ReleaseStolenCards();

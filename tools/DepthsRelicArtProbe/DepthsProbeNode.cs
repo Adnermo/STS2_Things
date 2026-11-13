@@ -65,7 +65,7 @@ public partial class DepthsProbeNode : Node
             SaveManager.Instance.SettingsSave.Language = "zhs";
             LocManager.Initialize();
             var player = Player.CreateForNewRun<Ironclad>(UnlockState.all, 1UL);
-            var run = RunState.CreateForNewRun([player], ActModel.GetDefaultList().Select(a => a.ToMutable()).ToList(),
+            var run = ProbeRuntimeApi.CreateForNewRun([player], ActModel.GetDefaultList().Select(a => a.ToMutable()).ToList(),
                 [], GameMode.Standard, 0, "relic-art-render");
             typeof(RunManager).GetProperty("State", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(RunManager.Instance, run);
             typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance, new NetSingleplayerGameService());
@@ -155,7 +155,7 @@ public partial class DepthsProbeNode : Node
 #if STS2_V107_1
                     "v107.1",
 #else
-                    "v111",
+                    "v113",
 #endif
                 relics = rows.Select(r => r.Key).ToArray(),
                 render = "Real NRelic / NRelicInventoryHolder, native counter, focus tween and disabled shader; isolated host, not a full client",

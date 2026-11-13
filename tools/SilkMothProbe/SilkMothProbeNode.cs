@@ -45,7 +45,7 @@ public partial class SilkMothProbeNode : Node
             _root=Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"),"../.."));
             TestMode.TurnOnInternal();
             ProjectSettings.LoadResourcePack("D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck");
-            string pack=System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")??Path.Combine(_root,"build/silk_moth/v111/STS2_Things.pck");
+            string pack=System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")??Path.Combine(_root,"build/silk_moth/v113/STS2_Things.pck");
             if(File.Exists(pack)) Assert(ProjectSettings.LoadResourcePack(pack),"Shipping PCK mounts.");
             SaveManager.Instance.InitSettingsDataForTest();SaveManager.Instance.InitPrefsDataForTest();
             SaveManager.Instance.SettingsSave.Language="eng";LocManager.Initialize();InitializeModelDb();LocManager.Initialize();
@@ -64,10 +64,10 @@ public partial class SilkMothProbeNode : Node
     {
         DeactivateSyntheticCombat();
         var party=Enumerable.Range(1,players).Select(i=>Player.CreateForNewRun<Ironclad>(UnlockState.all,(ulong)i)).ToList();
-        var run=RunState.CreateForNewRun(party,ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),[],GameMode.Standard,ascension,"silk-moth-probe");
+        var run=ProbeRuntimeApi.CreateForNewRun(party,ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),[],GameMode.Standard,ascension,"silk-moth-probe");
         run.CurrentActIndex=1;
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,new AscensionManager(ascension));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(ascension));
         typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance,new NetSingleplayerGameService());
         EncounterModel encounter=(trio?ModelDb.Encounter<SilkMothTrio>() as EncounterModel:weak?ModelDb.Encounter<SilkMothWeak>():ModelDb.Encounter<SilkMothEncounter>()).ToMutable();
         run.AppendToMapPointHistory(MapPointType.Monster,RoomType.Monster,encounter.Id);

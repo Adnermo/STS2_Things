@@ -35,7 +35,7 @@ public partial class LanternFishProbeNode : Node
             ProjectSettings.LoadResourcePack(System.Environment.GetEnvironmentVariable("THINGS_PROBE_GAME_PCK")
                 ?? "D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck");
             if (OS.GetCmdlineUserArgs().Contains("--visual"))
-                ProjectSettings.LoadResourcePack(Path.Combine(root, "build/lantern_fish/v111/STS2_Things.pck"));
+                ProjectSettings.LoadResourcePack(Path.Combine(root, "build/lantern_fish/v113/STS2_Things.pck"));
             SaveManager.Instance.InitSettingsDataForTest();
             SaveManager.Instance.SettingsSave.Language = "eng";
             MegaCrit.Sts2.Core.Localization.LocManager.Initialize();
@@ -74,9 +74,9 @@ public partial class LanternFishProbeNode : Node
     private static Fixture Scenario(int players = 1, int ascension = 0, string seed = "lantern-depths")
     {
         var party = Enumerable.Range(1, players).Select(i => Player.CreateForNewRun<Ironclad>(UnlockState.all, (ulong)i)).ToList();
-        var run = RunState.CreateForNewRun(party, ActModel.GetDefaultList().Select(a => a.ToMutable()).ToList(), [], GameMode.Standard, ascension, seed);
+        var run = ProbeRuntimeApi.CreateForNewRun(party, ActModel.GetDefaultList().Select(a => a.ToMutable()).ToList(), [], GameMode.Standard, ascension, seed);
         typeof(RunManager).GetProperty("State", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(RunManager.Instance, run);
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, new MegaCrit.Sts2.Core.Entities.Ascension.AscensionManager(ascension));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, ProbeRuntimeApi.Ascension(ascension));
         var encounter = (LanternFishEncounter)ModelDb.Encounter<LanternFishEncounter>().ToMutable();
         run.AppendToMapPointHistory(MegaCrit.Sts2.Core.Map.MapPointType.Monster, RoomType.Monster, encounter.Id);
         var room = new CombatRoom(encounter, run); run.PushRoom(room);

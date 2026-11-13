@@ -1,12 +1,12 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('v107.1','v111')][string]$TargetVersion='v111',
+    [ValidateSet('v107.1','v113')][string]$TargetVersion='v113',
     [string]$DataDir='D:/Steam/steamapps/common/Slay the Spire 2/data_sts2_windows_x86_64',
     [string]$RuntimeDependencyDir='D:/Steam/steamapps/common/Slay the Spire 2/data_sts2_windows_x86_64',
     [string]$VanillaPck='D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck',
-    [string]$ImplementationDll='build/bug-report-fix-20261009/v111/STS2_Things.dll',
+    [string]$ImplementationDll='build/bug-report-fix-20261009/v113/STS2_Things.dll',
     [string]$PackagePck='build/depths-event-relics-20261009/package/STS2_Things.pck',
-    [string]$OutputDir='build/depths-event-relics-20261009/native/v111'
+    [string]$OutputDir='build/depths-event-relics-20261009/native/v113'
 )
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path

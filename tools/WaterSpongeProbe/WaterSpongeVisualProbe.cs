@@ -91,7 +91,7 @@ public partial class WaterSpongeProbeNode
             await Capture(weak ? "weak_pair" : "strong_colony");
             foreach (var power in new PowerModel[] { ModelDb.Power<AbsorbentSpongePower>(), ModelDb.Power<SpongeReservoirPower>(), ModelDb.Power<SpongeRinsePower>(), ModelDb.Power<LanternBlindnessPower>(), ModelDb.Power<LeechInfestationPower>() })
             {
-                // V111's original AtlasResourceLoader resolves new mod powers via
+                // V113's original AtlasResourceLoader resolves new mod powers via
                 // its documented BigIcon fallback; V107 reads the 64px .tres.
                 Assert(power.Icon.GetSize() == (loader == null ? new Vector2(64, 64) : new Vector2(256, 256)), "Native version-specific HUD icon resolution: " + power.Id);
                 Assert(power.BigIcon.GetSize() == new Vector2(256, 256), "Native flash/hover icon: " + power.Id);

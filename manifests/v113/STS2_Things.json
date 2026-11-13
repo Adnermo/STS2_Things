@@ -3,10 +3,10 @@
   "name": "尖塔：琐事",
   "author": "Adnermo",
   "description": "基于原版游戏内容进行的拓展。",
-  "version": "1.25.17",
+  "version": "1.25.27",
   "has_pck": true,
   "has_dll": true,
   "dependencies": [],
   "affects_gameplay": true,
-  "min_game_version": "v0.111.0"
+  "min_game_version": "v0.113.0"
 }

@@ -28,7 +28,10 @@ public static class MultiplayerConfigChecks
         ThingsModConfig.SetValue(ThingsModConfig.NeowRelicWhiteFlagEnabled, false);
         var (host, hostWire) = ConfigNetworkFake.Host();
         var listener = DispatchProxy.Create<IStartRunLobbyListener, ConfigSilentListener>();
-        var lobby = new StartRunLobby(GameMode.Standard, host, listener, 4);
+        var lobby = (StartRunLobby)Activator.CreateInstance(typeof(StartRunLobby),
+            typeof(StartRunLobby).GetConstructors().Any(c => c.GetParameters().Length == 5)
+                ? [GameMode.Standard, false, host, listener, 4]
+                : new object[] { GameMode.Standard, host, listener, 4 })!;
         Assert(MultiplayerConfig.IsHost && !MultiplayerConfig.IsLocked, "Host lobby was not attached by its constructor.");
         ThingsModConfig.SetValue(ThingsModConfig.FeatureCustomBgmEnabled, false);
         var preview = (ThingsConfigSnapshotMessage)hostWire.Sent.Last();

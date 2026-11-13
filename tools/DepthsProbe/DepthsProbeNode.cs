@@ -51,7 +51,7 @@ public partial class DepthsProbeNode : Node
             TestMode.TurnOnInternal();
             Assert(ProjectSettings.LoadResourcePack(System.Environment.GetEnvironmentVariable("THINGS_PROBE_GAME_PCK")
                 ?? "D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck"), "Target game resources mounted.");
-            string package=System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK") ?? Path.Combine(_root,"build/depths/v111/STS2_Things.pck");
+            string package=System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK") ?? Path.Combine(_root,"build/depths/v113/STS2_Things.pck");
             Assert(ProjectSettings.LoadResourcePack(package),"Packaged mod mounted.");
             AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency;
             EnsureRuntimeDependency("System.IO.Hashing");
@@ -237,7 +237,7 @@ public partial class DepthsProbeNode : Node
     private static RunState CreateRun(string seed,int players=1,int ascension=0)
     {
         var party=Enumerable.Range(1,players).Select(i=>Player.CreateForNewRun<Ironclad>(UnlockState.all,(ulong)i)).ToList();
-        return RunState.CreateForNewRun(party,[ModelDb.Act<Overgrowth>().ToMutable(),ModelDb.Act<Depths>().ToMutable(),ModelDb.Act<Glory>().ToMutable()],[],GameMode.Standard,ascension,seed);
+        return NativeRun(party,[ModelDb.Act<Overgrowth>().ToMutable(),ModelDb.Act<Depths>().ToMutable(),ModelDb.Act<Glory>().ToMutable()],GameMode.Standard,ascension,seed);
     }
 
     private void VerifyRoomsAndSaves()

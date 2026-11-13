@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('v107.1','v111')][string]$TargetVersion='v111',
+    [ValidateSet('v107.1','v113')][string]$TargetVersion='v113',
     [string]$ImplementationDll='',
     [string]$PackagePck='',
     [string]$OutputDir='',
@@ -30,7 +30,7 @@ $env:DOTNET_ROOT=Join-Path $taskRoot '.tmp\dotnet9';$env:DOTNET_MULTILEVEL_LOOKU
 $taskMode=if($Visual){'visual'}else{"behavior-$TargetVersion"}
 $taskStdout=Join-Path $taskBuild "$taskMode.stdout.log";$taskStderr=Join-Path $taskBuild "$taskMode.stderr.log"
 $taskArgs=@('--path',('"'+$taskProbe+'"'),'--rendering-method','gl_compatibility')
-if($Visual -or $Motion){if($TargetVersion -ne 'v111'){throw 'Visual fixture requires v111'};$taskArgs+=@('--','--visual');if($Motion){$taskArgs+='--motion'}}else{$taskArgs+=@('--headless')}
+if($Visual -or $Motion){if($TargetVersion -ne 'v113'){throw 'Visual fixture requires v113'};$taskArgs+=@('--','--visual');if($Motion){$taskArgs+='--motion'}}else{$taskArgs+=@('--headless')}
 $taskProcess=Start-Process -FilePath $taskGodot -ArgumentList $taskArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput $taskStdout -RedirectStandardError $taskStderr
 try{
     $taskStart=Get-Date

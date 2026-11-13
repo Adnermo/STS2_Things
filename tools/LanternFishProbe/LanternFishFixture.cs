@@ -46,7 +46,7 @@ public partial class LanternFishProbeNode : Node
         typeof(ReflectionHelper).GetField("_modTypes", BindingFlags.NonPublic | BindingFlags.Static)!
             .SetValue(null, modTypes);
         RegisterSyntheticMod(typeof(LanternFish).Assembly);
-        // V111 exposes ModManager.State/ModManagerState, while V107.1 does not.
+        // V113 exposes ModManager.State/ModManagerState, while V107.1 does not.
         // Seed it when present without creating a compile-time dependency on the
         // newer API so this same probe source validates both shipped targets.
         PropertyInfo? managerState = typeof(ModManager).GetProperty(
@@ -175,12 +175,12 @@ public partial class LanternFishProbeNode : Node
                     binder: null,
                     args: [state],
                     culture: null)
-                ?? throw new InvalidOperationException("Could not create the V111 combat turn state.");
+                ?? throw new InvalidOperationException("Could not create the V113 combat turn state.");
             turnState.GetType().GetProperty("IsInProgress")!.SetValue(turnState, true);
             turnState.GetType().GetProperty("IsStarting")!.SetValue(turnState, false);
             turnStateField.SetValue(manager, turnState);
         }
-        state.MultiplayerScalingModel?.OnCombatEntered(state);
+        ProbeRuntimeApi.EnterCombat(state);
         manager.StateTracker.SetState(state);
     }
 

@@ -29,7 +29,7 @@ public partial class LanternFishProbeNode
         Assert(status is GDExtensionManager.LoadStatus.Ok or GDExtensionManager.LoadStatus.AlreadyLoaded, "Spine extension loaded.");
         ScriptManagerBridge.LookupScriptsInAssembly(typeof(NCard).Assembly);
         ScriptManagerBridge.LookupScriptsInAssembly(typeof(LanternFish).Assembly);
-        // V111 creates atlas .tres resources dynamically during normal game startup.
+        // V113 creates atlas .tres resources dynamically during normal game startup.
         Type? atlasLoaderType = typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Assets.AtlasResourceLoader");
         ResourceFormatLoader? atlasLoader = atlasLoaderType == null ? null : (ResourceFormatLoader)Activator.CreateInstance(atlasLoaderType)!;
         if (atlasLoader != null) ResourceLoader.AddResourceFormatLoader(atlasLoader, atFront: true);

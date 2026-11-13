@@ -12,16 +12,24 @@ namespace STS2_Things.Features.MerchantBargain;
 [HarmonyPatch]
 internal static class MerchantEntryOnTryPurchaseWrapperPatch
 {
-    private static MethodBase TargetMethod()
+#if STS2_V113
+    private static MethodBase TargetMethod() => AccessTools.Method(
+        typeof(MegaCrit.Sts2.Core.Multiplayer.Game.MerchantSynchronizer),
+        nameof(MegaCrit.Sts2.Core.Multiplayer.Game.MerchantSynchronizer.PurchaseLocalEntry),
+        [typeof(MerchantEntry)])!;
+
+    private static bool Prefix(MegaCrit.Sts2.Core.Multiplayer.Game.MerchantSynchronizer __instance,
+        MerchantEntry entry, ref Task<bool> __result)
     {
-        return AccessTools.Method(
-            typeof(MerchantEntry),
-            nameof(MerchantEntry.OnTryPurchaseWrapper),
-            [typeof(MerchantInventory), typeof(bool)])
-            ?? throw new MissingMethodException(
-                typeof(MerchantEntry).FullName,
-                nameof(MerchantEntry.OnTryPurchaseWrapper));
+        if (!MerchantBargainManager.TryIntercept(entry, __instance.GetInventoryFor(entry.Player),
+                ignoreCost: false, out Task<bool> bargainResult)) return true;
+        __result = bargainResult;
+        return false;
     }
+#else
+    private static MethodBase TargetMethod() => AccessTools.Method(
+        typeof(MerchantEntry), nameof(MerchantEntry.OnTryPurchaseWrapper),
+        [typeof(MerchantInventory), typeof(bool)])!;
 
     private static bool Prefix(
         MerchantEntry __instance,
@@ -41,6 +49,7 @@ internal static class MerchantEntryOnTryPurchaseWrapperPatch
         __result = bargainResult;
         return false;
     }
+#endif
 }
 
 [HarmonyPatch]
@@ -64,7 +73,11 @@ internal static class MerchantEntryCostPatch
     }
 }
 
+#if STS2_V113
+[HarmonyPatch(typeof(NStandardMerchantRoom), nameof(NStandardMerchantRoom.AssetPaths), MethodType.Getter)]
+#else
 [HarmonyPatch(typeof(NMerchantRoom), nameof(NMerchantRoom.AssetPaths), MethodType.Getter)]
+#endif
 internal static class MerchantBargainAssetPreloadPatch
 {
     [HarmonyPostfix]

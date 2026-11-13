@@ -134,7 +134,14 @@ public partial class BugReportProbeNode : Node
             }
             foreach(string name in new[]{"ThingsFeedbackCategoryPatch","ThingsFeedbackSendPatch","ThingsFeedbackReceiptPatch","ThingsFeedbackFailurePatch"})
                 Check(typeof(LeechParasite).Assembly.GetType("STS2_Things.Diagnostics."+name) is not null,"shipping F2 patch exists: "+name);
-            Check(typeof(MegaCrit.Sts2.Core.Nodes.Screens.FeedbackScreen.NSendFeedbackScreen).GetMethod("SendFeedback",BindingFlags.NonPublic|BindingFlags.Static)!.GetParameters().Length==3,"current native F2 signature includes both owned streams");
+            var send = typeof(MegaCrit.Sts2.Core.Nodes.Screens.FeedbackScreen.NSendFeedbackScreen)
+                .GetMethod("SendFeedback",BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static)!;
+#if STS2_V107_1
+            Check(send.GetParameters().Length==3,"legacy native F2 signature includes both owned streams");
+#else
+            Check(send.GetParameters().Length==5 && send.GetParameters()[1].ParameterType==typeof(byte[]),
+                "beta native F2 signature carries screenshot bytes and owned FeedbackLogFiles");
+#endif
             Invoke("DetachExecutor");DeactivateSyntheticCombat();
             GD.Print($"BugReport native probe: PASS ({_checks} assertions)");GetTree().Quit();
         }
@@ -144,11 +151,17 @@ public partial class BugReportProbeNode : Node
     {
         DeactivateSyntheticCombat();
         var player=Player.CreateForNewRun<Ironclad>(UnlockState.all,1);
-        var run=RunState.CreateForNewRun([player],ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),PerformanceModifiers(),GameMode.Standard,0,seed);
+        var run=ProbeRuntimeApi.CreateForNewRun([player],ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),PerformanceModifiers(),GameMode.Standard,
+#if !STS2_V107_1
+            false,
+#endif
+            0,seed);
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
         typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance,new NetSingleplayerGameService());
         typeof(RunManager).GetProperty("ActionExecutor")!.SetValue(RunManager.Instance,new ActionExecutor(new ActionQueueSet([player])));
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,new AscensionManager(0));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,(typeof(AscensionManager).GetConstructor([typeof(int)]) is { } legacyAscension
+            ? legacyAscension.Invoke([0])
+            : typeof(AscensionManager).GetConstructor([typeof(GameMode),typeof(int)])!.Invoke([GameMode.Standard,0])));
         foreach (var modifier in run.Modifiers) modifier.OnRunCreated(run);
         var encounter=ModelDb.AllEncounters.First(e=>e.Id.Entry=="SLIMES_WEAK").ToMutable();
         var room=new CombatRoom(encounter,run);run.PushRoom(room);room.CombatState.AddPlayer(player);player.ResetCombatState();

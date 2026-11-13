@@ -66,10 +66,10 @@ public partial class DepthsProbeNode : Node
             {
                 DeactivateSyntheticCombat();
                 var players=Enumerable.Range(1,count).Select(i=>Player.CreateForNewRun<Ironclad>(UnlockState.all,(ulong)i)).ToList();
-                var run=RunState.CreateForNewRun(players,ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),[],GameMode.Standard,0,"beetle-background");
+                var run=ProbeRuntimeApi.CreateForNewRun(players,ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),[],GameMode.Standard,0,"beetle-background");
                 typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
                 typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance,new NetSingleplayerGameService());
-                typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,new AscensionManager(0));
+                typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(0));
                 var encounter=ModelDb.Encounter<ScaleBeetleBossEncounter>().ToMutable();
                 var room=new CombatRoom(encounter,run);run.PushRoom(room);
                 foreach(var p in players){p.ResetCombatState();room.CombatState.AddPlayer(p);}

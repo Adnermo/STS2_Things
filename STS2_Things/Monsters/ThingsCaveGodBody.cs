@@ -1,3 +1,4 @@
+using STS2_Things.Compatibility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -78,7 +79,11 @@ public sealed class ThingsCaveGodBody : MonsterModel
     public override float DeathAnimLengthOverride => 7.20f;
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 140, 130);
     public override int MaxInitialHp => MinInitialHp;
+#if STS2_V113
+    public bool IsHealthBarVisible => IsWeakPhase;
+#else
     public override bool IsHealthBarVisible => IsWeakPhase;
+#endif
     public override bool ShouldAllowHitting(Creature creature) => creature != Creature || _applyingGrowth || CoreIsExposed;
     public override bool ShouldAllowTargeting(Creature target) => target != Creature || CoreIsExposed;
     private bool CoreIsExposed => IsWeakPhase && !IsPhaseTransitionPending && !IsDefeated;
@@ -400,7 +405,11 @@ public sealed class ThingsCaveGodBody : MonsterModel
         finally { _releasingCaptives = false; }
     }
 
-    public override async Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature, bool wasRemovalPrevented, float deathAnimLength)
+    public override async Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature,
+#if STS2_V113
+        MegaCrit.Sts2.Core.Models.CardModel? source,
+#endif
+        bool wasRemovalPrevented, float deathAnimLength)
     {
         if (creature != Creature || wasRemovalPrevented || IsDefeated) return;
         IsDefeated = true;

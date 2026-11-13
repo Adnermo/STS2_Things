@@ -109,12 +109,12 @@ public partial class DepthsProbeNode : Node
     {
         DeactivateSyntheticCombat();
         var players = Enumerable.Range(1,count).Select(i => Player.CreateForNewRun<Ironclad>(UnlockState.all,(ulong)i)).ToList();
-        var run = RunState.CreateForNewRun(players, ActModel.GetDefaultList().Select(a => a.ToMutable()).ToList(), [], GameMode.Standard,0,seed);
+        var run = ProbeRuntimeApi.CreateForNewRun(players, ActModel.GetDefaultList().Select(a => a.ToMutable()).ToList(), [], GameMode.Standard,0,seed);
         foreach (var p in players)
             if (!p.RelicGrabBag.IsPopulated) p.RelicGrabBag.Populate(p,run.Rng.UpFront);
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
         typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance,new NetSingleplayerGameService());
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,new AscensionManager(0));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(0));
         LocalContext.NetId = players[0].NetId;
         return run;
     }

@@ -120,7 +120,7 @@ public sealed class CaveMaw : ThingsSpineMonster
             // Keep native pile notifications and card-view cleanup. Skipping
             // visuals leaves consumed hand holders alive; the meal VFX owns
             // only its separate decorative card, not the original hand view.
-            // V107 returns Task, V111 returns a pile result. The final pile is
+            // V107 returns Task, V113 returns a pile result. The final pile is
             // authoritative on both versions, including redirected moves.
             await CardCmd.Exhaust(context, card);
             if (card.Pile?.Type != PileType.Exhaust) continue;

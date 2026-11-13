@@ -4,7 +4,7 @@ using System.Runtime.Loader;
 
 internal static class RuntimeDependencies
 {
-    // The game's v111 module initializer loads Sentry before the probe's _Ready.
+    // The game's v113 module initializer loads Sentry before the probe's _Ready.
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2255", Justification = "Godot hosts this standalone probe application as a library.")]
     [ModuleInitializer]
     internal static void Initialize()

@@ -7,7 +7,12 @@ namespace STS2_Things.Hooks;
 // GenerateRooms appends native shared events independently of AllEvents.
 // Also clean a persisted pool immediately before drawing, so existing runs
 // receive the same policy without changing completed rooms or other acts.
+#if STS2_V113
+[HarmonyPatch(typeof(ActModel), nameof(ActModel.GenerateRooms),
+    [typeof(MegaCrit.Sts2.Core.Random.Rng), typeof(MegaCrit.Sts2.Core.Unlocks.UnlockState), typeof(bool), typeof(bool)])]
+#else
 [HarmonyPatch(typeof(ActModel), nameof(ActModel.GenerateRooms))]
+#endif
 internal static class DepthsGeneratedEventsPatch
 {
     private static void Postfix(ActModel __instance) => DepthsEventPool.RemoveNativeEvents(__instance);

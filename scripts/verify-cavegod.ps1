@@ -14,7 +14,7 @@ $probeRoot = Join-Path $projectRoot 'tools/CaveGodProbe'
 New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 
 & $DotnetExe build (Join-Path $projectRoot 'STS2_Things.csproj') -c Release --nologo `
-    -p:Sts2TargetVersion=v111 -o (Join-Path $outputRoot 'candidate') |
+    -p:Sts2TargetVersion=v113 -o (Join-Path $outputRoot 'candidate') |
     Tee-Object -FilePath (Join-Path $outputRoot 'release-build.log')
 if ($LASTEXITCODE -ne 0) { throw "Release build failed: $LASTEXITCODE" }
 

@@ -50,7 +50,7 @@ internal static class BugRunRecorder
         if (_ready) return;
         RunManager.Instance.RunStarted += OnStarted;
         RunManager.Instance.RoomEntered += () => Track("room_entered", persist: true);
-#if STS2_V111
+#if STS2_V113
         CombatManager.Instance.CombatBegan += _ => Track("combat_started", persist: true);
 #endif
         CombatManager.Instance.TurnStarted += _ => Track("turn_started", persist: true);
@@ -170,7 +170,7 @@ internal static class BugRunRecorder
 
     private static string? ModWorkshopId(Mod mod)
     {
-#if STS2_V111
+#if STS2_V113
         if (mod.workshopId is ulong id) return id.ToString(System.Globalization.CultureInfo.InvariantCulture);
 #endif
         // 107.1 has no workshopId field. Infer only the public item ID from its
@@ -188,7 +188,7 @@ internal static class BugRunRecorder
 
     private static object[] ModCode(Mod mod)
     {
-#if STS2_V111
+#if STS2_V113
         var assemblies = mod.assemblies;
 #else
         var assemblies = mod.assembly is { } assembly ? new[] { assembly } : [];

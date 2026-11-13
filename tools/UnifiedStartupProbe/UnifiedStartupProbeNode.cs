@@ -33,10 +33,10 @@ public partial class UnifiedStartupProbeNode : Node
             SaveManager.Instance.InitPrefsDataForTest();
             SaveManager.Instance.SettingsSave.Language = "eng";
             ModManager.ResetForTests();
-            // V111 deliberately skips DLL/PCK loading in native test mode.
+            // V113 deliberately skips DLL/PCK loading in native test mode.
             // Keep real startup behavior until all initialization has completed.
             TestMode.IsOn = false;
-            Require(SemanticVersion.TryFromString(args[2] == "v107.1" ? "v0.107.1" : "v0.111.0", out var version),
+            Require(SemanticVersion.TryFromString(args[2] == "v107.1" ? "v0.107.1" : "v0.113.0", out var version),
                 "Invalid target version.");
             await ModManager.Initialize(new PackageFileIo(args[0]),
                 new ModSettings { PlayerAgreedToModLoading = true }, version);

@@ -21,6 +21,9 @@ public sealed class OriginGainEnergyPower : PowerModel
         new[] { new DynamicVar("Energy", 1m) };
 
     public override async Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature,
+#if STS2_V113
+        MegaCrit.Sts2.Core.Models.CardModel? source,
+#endif
         bool wasRemovalPrevented, float deathAnimLength)
     {
         if (creature != Owner)

@@ -151,6 +151,9 @@ public sealed class SilkThreadPower : PowerModel
     }
 
     public override async Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature,
+#if STS2_V113
+        MegaCrit.Sts2.Core.Models.CardModel? source,
+#endif
         bool wasRemovalPrevented, float deathAnimLength)
     {
         if (!wasRemovalPrevented && (creature == Owner || creature.Monster is SilkMoth &&

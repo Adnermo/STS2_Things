@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v107.1'">$(DefineConstants);STS2_V107_1</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="sts2" HintPath="$(Sts2DataDir)/sts2.dll" Private="true" />
@@ -16,4 +17,5 @@
   <Target Name="CopyRuntime" AfterTargets="Build">
     <Copy SourceFiles="@(ProbeDependency)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
+  <ItemGroup><Compile Include="../ProbeSupport/ProbeRuntimeApi.cs" Link="ProbeRuntimeApi.cs" /></ItemGroup>
 </Project>

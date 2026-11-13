@@ -1,3 +1,4 @@
+#if STS2_V107_1
 using System.Collections;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -103,7 +104,7 @@ public static class MerchantMultiplayerRegression
     private static async Task Party(int count)
     {
         var players = Enumerable.Range(1, count).Select(i => Player.CreateForNewRun<Ironclad>(UnlockState.all, (ulong)i)).ToList();
-        var run = RunState.CreateForNewRun(players, ActModel.GetDefaultList().Select(a => a.ToMutable()).ToList(), [],
+        var run = ProbeRuntimeApi.CreateForNewRun(players, ActModel.GetDefaultList().Select(a => a.ToMutable()).ToList(), [],
             GameMode.Standard, 0, "merchant-bargain-party-" + count);
         typeof(RunManager).GetProperty("State", PrivateStatic | BindingFlags.Instance)!
             .SetValue(RunManager.Instance, run);
@@ -240,3 +241,5 @@ public static class MerchantMultiplayerRegression
         MessageTypes.Initialize();
     }
 }
+
+#endif

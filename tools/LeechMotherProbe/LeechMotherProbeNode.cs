@@ -63,10 +63,10 @@ public partial class LeechMotherProbeNode : Node
     {
         DeactivateSyntheticCombat();
         var party = Enumerable.Range(1, players).Select(i => Player.CreateForNewRun<Ironclad>(UnlockState.all, (ulong)i)).ToList();
-        var run = RunState.CreateForNewRun(party, ActModel.GetDefaultList().Select(a => a.ToMutable()).ToList(), [], GameMode.Standard, ascension, "leech-mother-native");
+        var run = ProbeRuntimeApi.CreateForNewRun(party, ActModel.GetDefaultList().Select(a => a.ToMutable()).ToList(), [], GameMode.Standard, ascension, "leech-mother-native");
         run.CurrentActIndex = 1;
         typeof(RunManager).GetProperty("State", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(RunManager.Instance, run);
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, new AscensionManager(ascension));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, ProbeRuntimeApi.Ascension(ascension));
         typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance, new NetSingleplayerGameService());
         var encounter = (LeechMotherEncounter)ModelDb.Encounter<LeechMotherEncounter>().ToMutable();
         run.AppendToMapPointHistory(MapPointType.Monster, RoomType.Monster, encounter.Id);

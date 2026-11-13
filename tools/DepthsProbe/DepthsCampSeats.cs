@@ -22,7 +22,7 @@ public partial class DepthsProbeNode
         Vector2[] seats=[new(650.8f,715.8f),new(1264.8f,722.8f),new(775.8f,658.8f),new(1117.8f,656.8f)];
         var party=new List<Player>{Player.CreateForNewRun<Ironclad>(UnlockState.all,1),Player.CreateForNewRun<Silent>(UnlockState.all,2),
             Player.CreateForNewRun<Defect>(UnlockState.all,3),Player.CreateForNewRun<Necrobinder>(UnlockState.all,4)};
-        var run=RunState.CreateForNewRun(party,[ModelDb.Act<Overgrowth>().ToMutable(),ModelDb.Act<Depths>().ToMutable(),ModelDb.Act<Glory>().ToMutable()],[],GameMode.Standard,0,"native-camp-seating");
+        var run=NativeRun(party,[ModelDb.Act<Overgrowth>().ToMutable(),ModelDb.Act<Depths>().ToMutable(),ModelDb.Act<Glory>().ToMutable()],GameMode.Standard,0,"native-camp-seating");
         run.CurrentActIndex=1;
         var actors=new List<NRestSiteCharacter>();
         foreach(int i in new[]{2,3,0,1})

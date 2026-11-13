@@ -1,13 +1,13 @@
 [CmdletBinding()]
 param(
-    [string]$ImplementationDll='build/leech_mother/v111/STS2_Things.dll',
+    [string]$ImplementationDll='build/leech_mother/v113/STS2_Things.dll',
     [string]$PackagePck='build/scale-beetle-background-20261009/package/STS2_Things.pck',
     [string]$OutputDir='build/scale-beetle-background-20261009/native'
 )
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $env:PATH='C:/Program Files/dotnet;'+$env:PATH
-& dotnet build (Join-Path $root 'tools/ScaleBeetleBackgroundProbe/ScaleBeetleBackgroundProbe.csproj') -c Debug --nologo "/p:ImplementationDll=$([IO.Path]::GetFullPath($ImplementationDll))" "/p:Sts2TargetVersion=v111"
+& dotnet build (Join-Path $root 'tools/ScaleBeetleBackgroundProbe/ScaleBeetleBackgroundProbe.csproj') -c Debug --nologo "/p:ImplementationDll=$([IO.Path]::GetFullPath($ImplementationDll))" "/p:Sts2TargetVersion=v113"
 if($LASTEXITCODE -ne 0){throw 'Background probe build failed'}
 $env:DOTNET_ROOT=Join-Path $root '.tmp/dotnet9';$env:DOTNET_MULTILEVEL_LOOKUP='0'
 $env:THINGS_PROBE_PCK=[IO.Path]::GetFullPath($PackagePck)

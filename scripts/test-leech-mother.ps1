@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('v107.1','v111')][string]$TargetVersion='v111',
+    [ValidateSet('v107.1','v113')][string]$TargetVersion='v113',
     [string]$ImplementationDll='',
     [string]$PackagePck='',
     [string]$OutputDir='',
@@ -10,7 +10,7 @@ $ErrorActionPreference='Stop'
 $taskRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $taskOut=if($OutputDir){[IO.Path]::GetFullPath($OutputDir)}else{Join-Path $taskRoot 'build/leech_mother'}
 New-Item -ItemType Directory -Force -Path $taskOut|Out-Null
-$taskData=if($TargetVersion -eq 'v107.1'){Join-Path $taskRoot '.tmp/things-collision-v107-data'}else{Join-Path $taskRoot '.tmp/verified-v111-runtime'}
+$taskData=if($TargetVersion -eq 'v107.1'){Join-Path $taskRoot '.tmp/things-collision-v107-data'}else{Join-Path $taskRoot '.tmp/verified-v113-runtime'}
 if(-not $ImplementationDll){$ImplementationDll=Join-Path $taskRoot "build/leech_mother/$TargetVersion/STS2_Things.dll"}
 $env:PATH='C:/Program Files/dotnet;'+$env:PATH
 & dotnet build (Join-Path $taskRoot 'tools/LeechMotherProbe/LeechMotherProbe.csproj') --nologo "/p:Sts2TargetVersion=$TargetVersion" "/p:Sts2DataDir=$taskData" "/p:ImplementationDll=$([IO.Path]::GetFullPath($ImplementationDll))"

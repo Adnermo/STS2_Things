@@ -39,7 +39,7 @@ if (!File.Exists(gamePath) ||
 var expectedResource = expectedTarget switch
 {
     "v107.1" => "STS2_Things.Implementations.v107.1.dll",
-    "v111" => "STS2_Things.Implementations.v111.dll",
+    "v113" => "STS2_Things.Implementations.v113.dll",
     _ => throw new ArgumentOutOfRangeException(nameof(expectedTarget), expectedTarget, null)
 };
 const string expectedAssemblyName = "STS2_Things";
@@ -108,7 +108,7 @@ try
     var expectedResources = new[]
     {
         "STS2_Things.Implementations.v107.1.dll",
-        "STS2_Things.Implementations.v111.dll"
+        "STS2_Things.Implementations.v113.dll"
     };
     if (!resources.SequenceEqual(expectedResources, StringComparer.Ordinal))
     {
@@ -188,12 +188,12 @@ try
     }
 
     var v1071Models = embeddedModelNames["STS2_Things.Implementations.v107.1.dll"];
-    var v111Models = embeddedModelNames["STS2_Things.Implementations.v111.dll"];
-    if (!v1071Models.SetEquals(v111Models))
+    var v113Models = embeddedModelNames["STS2_Things.Implementations.v113.dll"];
+    if (!v1071Models.SetEquals(v113Models))
     {
         throw new InvalidOperationException(
-            "V107.1 and V111 implementation model sets differ: " +
-            DescribeSetDifference(v1071Models, v111Models));
+            "V107.1 and V113 implementation model sets differ: " +
+            DescribeSetDifference(v1071Models, v113Models));
     }
 
     var modManager = gameAssembly.GetType(
@@ -224,7 +224,7 @@ try
     else
     {
         if (savedPropertiesTypeCache is not null)
-            throw new InvalidOperationException("V111 still exposes SavedPropertiesTypeCache.");
+            throw new InvalidOperationException("V113 still exposes SavedPropertiesTypeCache.");
         if (modManager.GetMethod(
                 "AssociateAssemblyWithMod",
                 BindingFlags.Public | BindingFlags.Static,

@@ -85,7 +85,7 @@ public partial class CaveGodProbeNode : Node
         }).ToArray();
         var run = RunState.CreateForTest(players, seed: "cavegod-regression", ascensionLevel: ascension);
         typeof(RunManager).GetProperty("State", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(RunManager.Instance, run);
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, new AscensionManager(ascension));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, ProbeRuntimeApi.Ascension(ascension));
         var room = new CombatRoom(ModelDb.Encounter<CaveGodBossEncounter>().ToMutable(), run);
         run.PushRoom(room);
         foreach (var player in players)
@@ -118,7 +118,7 @@ public partial class CaveGodProbeNode : Node
         await Hook.BeforeSideTurnStart(s.State, CombatSide.Enemy, s.State.Enemies.ToArray());
         foreach (var enemy in s.State.Enemies.ToList())
             if (enemy.IsAlive && enemy.Monster != null) await enemy.Monster.PerformMove();
-        // The after-side hook was added in v111. These fixtures have no turn-end
+        // The after-side hook was added in v113. These fixtures have no turn-end
         // powers; retain the hook where the native target exposes it.
         if (typeof(Hook).GetMethod("AfterSideTurnEnd") is { } afterSide)
             await (Task)afterSide.Invoke(null, [s.State, CombatSide.Enemy, s.State.Enemies.ToArray()])!;
@@ -235,12 +235,12 @@ public partial class CaveGodProbeNode : Node
                     binder: null,
                     args: [state],
                     culture: null)
-                ?? throw new InvalidOperationException("Could not create the V111 combat turn state.");
+                ?? throw new InvalidOperationException("Could not create the V113 combat turn state.");
             turnState.GetType().GetProperty("IsInProgress")!.SetValue(turnState, true);
             turnState.GetType().GetProperty("IsStarting")!.SetValue(turnState, false);
             turnStateField.SetValue(manager, turnState);
         }
-        state.MultiplayerScalingModel?.OnCombatEntered(state);
+        ProbeRuntimeApi.EnterCombat(state);
         manager.StateTracker.SetState(state);
     }
 

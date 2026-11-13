@@ -4,7 +4,7 @@ param(
     [string]$DataDirV1071,
 
     [Parameter(Mandatory)]
-    [string]$DataDirV111,
+    [string]$DataDirV113,
 
     [Parameter(Mandatory)]
     [string]$BootstrapDll,
@@ -13,7 +13,7 @@ param(
     [string]$ImplementationV1071,
 
     [Parameter(Mandatory)]
-    [string]$ImplementationV111
+    [string]$ImplementationV113
 )
 
 Set-StrictMode -Version Latest
@@ -21,17 +21,17 @@ $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $Project = Join-Path $Root 'tools\UnifiedPackageProbe\UnifiedPackageProbe.csproj'
 $DataDirV1071 = [IO.Path]::GetFullPath($DataDirV1071)
-$DataDirV111 = [IO.Path]::GetFullPath($DataDirV111)
+$DataDirV113 = [IO.Path]::GetFullPath($DataDirV113)
 $BootstrapDll = [IO.Path]::GetFullPath($BootstrapDll)
 $ImplementationV1071 = [IO.Path]::GetFullPath($ImplementationV1071)
-$ImplementationV111 = [IO.Path]::GetFullPath($ImplementationV111)
+$ImplementationV113 = [IO.Path]::GetFullPath($ImplementationV113)
 
 foreach ($probe in @(
     @($DataDirV1071, 'v107.1', $ImplementationV1071),
-    @($DataDirV111, 'v111', $ImplementationV111)
+    @($DataDirV113, 'v113', $ImplementationV113)
 )) {
     & dotnet run --project $Project -c Release -- `
-        $probe[0] $BootstrapDll $probe[1] $probe[2] $DataDirV111
+        $probe[0] $BootstrapDll $probe[1] $probe[2] $DataDirV113
     if ($LASTEXITCODE -ne 0) {
         throw "Unified $($probe[1]) package probe failed with exit code $LASTEXITCODE"
     }

@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.Loader;
 using HarmonyLib;
 
@@ -44,7 +44,20 @@ try
     var gameAssembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(gameDll);
     var modAssembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(modDll);
     var harmony = new Harmony($"Adnermo.STS2_Things.TargetProbe.{Guid.NewGuid():N}");
-    harmony.PatchAll(modAssembly);
+    var patchFailures = new List<string>();
+    foreach (var patchType in modAssembly.GetTypes().Where(type =>
+                 type.GetCustomAttributes(typeof(HarmonyPatch), false).Length > 0))
+    {
+        try { harmony.CreateClassProcessor(patchType).Patch(); }
+        catch (Exception error)
+        {
+            string failure = $"{patchType.FullName}: {error.GetBaseException().Message}";
+            patchFailures.Add(failure);
+            Console.Error.WriteLine($"PATCH_TARGET_FAIL {failure}");
+        }
+    }
+    if (patchFailures.Count > 0)
+        throw new InvalidOperationException($"{patchFailures.Count} patch target contracts failed.");
 
     var savedCache = gameAssembly.GetType("MegaCrit.Sts2.Core.Saves.Runs.SavedPropertiesTypeCache");
     var merchantBargainType = modAssembly.GetType(
@@ -84,7 +97,7 @@ try
                  })
         {
             if (modelIdCache.GetMethod(member, BindingFlags.Public | BindingFlags.Static) == null)
-                throw new InvalidOperationException($"V111 unified serialization cache is missing {member}.");
+                throw new InvalidOperationException($"V113 unified serialization cache is missing {member}.");
         }
 
         var curseRemover = modAssembly.GetType("STS2_Things.Relics.ThingsCurseRemover", throwOnError: true)!;
@@ -94,9 +107,9 @@ try
                 attribute.AttributeType.FullName ==
                 "MegaCrit.Sts2.Core.Saves.Runs.SavedPropertyAttribute") != true)
         {
-            throw new InvalidOperationException("V111 ThingsCurseRemover.TimesUsed is missing SavedProperty metadata.");
+            throw new InvalidOperationException("V113 ThingsCurseRemover.TimesUsed is missing SavedProperty metadata.");
         }
-        Console.WriteLine("V111 unified SavedProperty cache contract: PASS");
+        Console.WriteLine("V113 unified SavedProperty cache contract: PASS");
     }
 
     Console.WriteLine($"Harmony target probe: PASS ({modAssembly.GetName().Version})");

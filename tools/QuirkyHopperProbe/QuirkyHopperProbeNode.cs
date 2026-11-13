@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Reflection;
 using System.Runtime.Loader;
 using Godot;
@@ -65,7 +65,7 @@ public partial class QuirkyHopperProbeNode : Node
         typeof(ReflectionHelper).GetField("_modTypes", BindingFlags.NonPublic | BindingFlags.Static)!
             .SetValue(null, modTypes);
         RegisterSyntheticMod(typeof(QuirkyHopper).Assembly);
-        // V111 exposes ModManager.State/ModManagerState, while V107.1 does not.
+        // V113 exposes ModManager.State/ModManagerState, while V107.1 does not.
         // Seed it when present without creating a compile-time dependency on the
         // newer API so this same probe source validates both shipped targets.
         PropertyInfo? managerState = typeof(ModManager).GetProperty(
@@ -349,7 +349,7 @@ public partial class QuirkyHopperProbeNode : Node
         Action<RunState, Player>? configureDeck = null)
     {
         Player player = Player.CreateForNewRun<Ironclad>(UnlockState.all, 1UL);
-        RunState runState = RunState.CreateForNewRun(
+        RunState runState = ProbeRuntimeApi.CreateForNewRun(
             [player],
             ActModel.GetDefaultList().Select(act => act.ToMutable()).ToList(),
             [],

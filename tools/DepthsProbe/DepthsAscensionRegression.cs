@@ -20,13 +20,13 @@ public partial class DepthsProbeNode
         var originalProgress = saveManager.Progress;
         try
         {
-            foreach (var (act, mode, ascension, previous, expected) in new[]
+            foreach (var (act, mode, ascension, previous, expected, isCustom) in new[]
             {
-                ("depths", GameMode.Standard, 0, 0, 1),
-                ("depths", GameMode.Standard, 2, 2, 3),
-                ("depths", GameMode.Standard, 2, 3, 3),
-                ("hive", GameMode.Standard, 2, 2, 3),
-                ("depths", GameMode.Custom, 2, 2, 2),
+                ("depths", GameMode.Standard, 0, 0, 1, false),
+                ("depths", GameMode.Standard, 2, 2, 3, false),
+                ("depths", GameMode.Standard, 2, 3, 3, false),
+                ("hive", GameMode.Standard, 2, 2, 3, false),
+                ("depths", Enum.TryParse<GameMode>("Custom", out var custom) ? custom : GameMode.Standard, 2, 2, 2, true),
             })
             {
                 // The caller already walked the real native RunManager from act 1
@@ -40,6 +40,7 @@ public partial class DepthsProbeNode
                     && snapshot.Acts[1].Id == (act == "depths" ? ModelDb.Act<STS2_Things.Acts.Depths>().Id : ModelDb.Act<Hive>().Id),
                     "Real run serialization keeps the alternate act in slot 2 and Glory in slot 3.");
                 snapshot.GameMode = mode;
+                typeof(SerializableRun).GetProperty("IsCustomGame")?.SetValue(snapshot, isCustom);
                 saveManager.Progress = ProgressState.CreateDefault();
                 var character = saveManager.Progress.GetOrCreateCharacterStats(ModelDb.Character<Ironclad>().Id);
                 character.MaxAscension = previous;

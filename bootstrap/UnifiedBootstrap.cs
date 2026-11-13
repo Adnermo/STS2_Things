@@ -13,9 +13,9 @@ public static class UnifiedBootstrap
 {
     private const string ModId = "STS2_Things";
     private const string V1071Target = "v107.1";
-    private const string V111Target = "v111";
+    private const string V113Target = "v113";
     private const string V1071Resource = "STS2_Things.Implementations.v107.1.dll";
-    private const string V111Resource = "STS2_Things.Implementations.v111.dll";
+    private const string V113Resource = "STS2_Things.Implementations.v113.dll";
     private const string ImplementationAssemblyName = "STS2_Things";
     private const string LegacyHarmonyId = "Adnermo.STS2_Things.UnifiedBootstrap.V1071";
 
@@ -41,8 +41,8 @@ public static class UnifiedBootstrap
             SelectedTarget = DetectTarget(_gameAssembly);
             _implementationAssembly = LoadImplementation(SelectedTarget);
 
-            if (SelectedTarget == V111Target)
-                AssociateV111Implementation(_gameAssembly, _implementationAssembly);
+            if (SelectedTarget == V113Target)
+                AssociateV113Implementation(_gameAssembly, _implementationAssembly);
             else
                 InstallV1071RegistrationBridge(_gameAssembly);
 
@@ -59,7 +59,7 @@ public static class UnifiedBootstrap
         return DetectTarget(gameAssembly) switch
         {
             V1071Target => V1071Resource,
-            V111Target => V111Resource,
+            V113Target => V113Resource,
             _ => throw new InvalidOperationException("Unsupported STS2 target.")
         };
     }
@@ -81,27 +81,28 @@ public static class UnifiedBootstrap
         if (parameterCounts.SequenceEqual([6]) &&
             gameAssembly.GetType("MegaCrit.Sts2.Core.Combat.CombatId") is not null)
         {
-            // v0.110.x and v0.111.x both carry the six-parameter damage hook and
-            // CombatId. v0.111.0 reworked the connection layer and introduced
-            // the handshake manager; its presence identifies the v111 target.
-            if (gameAssembly.GetType(
-                    "MegaCrit.Sts2.Core.Multiplayer.Connection.HandshakeManager") is not null)
-                return V111Target;
+            var deathHook = abstractModel.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .SingleOrDefault(method => method.Name == "AfterDeath");
+            // V113 adds a card-source parameter to death hooks and splits merchant rooms.
+            // These fingerprints distinguish it from the incompatible V110/V111 ABI.
+            if (deathHook?.GetParameters() is { Length: 5 } deathParameters &&
+                deathParameters[2].ParameterType.FullName == "MegaCrit.Sts2.Core.Models.CardModel" &&
+                gameAssembly.GetType("MegaCrit.Sts2.Core.Nodes.Rooms.NStandardMerchantRoom") is not null)
+                return V113Target;
 
             throw new NotSupportedException(
-                "STS2_Things 1.25.26 supports STS2 v0.107.1 and v0.111.x; " +
-                "detected a v0.110.x assembly. Update the game to v0.111.x or " +
-                "install the previous mod release that supports v0.110.x.");
+                "STS2_Things 1.25.27 supports STS2 v0.107.1 and v0.113.0; " +
+                "detected an older modern API. Update the beta branch or use an earlier mod release.");
         }
 
         throw new NotSupportedException(
-            "STS2_Things 1.25.26 supports STS2 v0.107.1 and v0.111.x. " +
+            "STS2_Things 1.25.27 supports STS2 v0.107.1 and v0.113.0. " +
             $"Detected ModifyDamageMultiplicative parameter counts: {string.Join(", ", parameterCounts)}.");
     }
 
     private static Assembly LoadImplementation(string target)
     {
-        var resourceName = target == V1071Target ? V1071Resource : V111Resource;
+        var resourceName = target == V1071Target ? V1071Resource : V113Resource;
         var bootstrapAssembly = typeof(UnifiedBootstrap).Assembly;
         using var stream = bootstrapAssembly.GetManifestResourceStream(resourceName)
             ?? throw new MissingManifestResourceException(
@@ -121,7 +122,7 @@ public static class UnifiedBootstrap
         return implementation;
     }
 
-    private static void AssociateV111Implementation(
+    private static void AssociateV113Implementation(
         Assembly gameAssembly,
         Assembly implementationAssembly)
     {

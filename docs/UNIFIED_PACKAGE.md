@@ -1,58 +1,27 @@
 # STS2_Things 统一订阅包
 
-## 目的
-
-Steam Workshop 的单个条目只能保存一套 `content/`。从 `1.8.0` 开始，所有玩家下载同一套：
+1.25.27 支持 **v0.107.1 / v0.113.0 public-beta**。Steam 单条目仍使用同一套四文件，由引导按真实 API 选实现：
 
 ```text
-STS2_Things.json   min_game_version=v0.107.1
-STS2_Things.dll    统一引导与两个内嵌实现
-STS2_Things.pck    两版共用资源
-STS2_Things.BaseLibBridge.dll    可选配置集成桥，随统一包分发
+STS2_Things.json               min_game_version=v0.107.1
+STS2_Things.dll                引导，内嵌 v107.1 与 v113 实现
+STS2_Things.pck                两版共用资源
+STS2_Things.BaseLibBridge.dll  可选设置库集成桥
 ```
 
-Steam 不负责按分支选文件。选择发生在游戏加载引导 DLL 时。
+## 启动
 
-## 启动顺序
+1. 原生 ModManager 加载统一 DLL/PCK。
+2. 五参数伤害 Hook 选择 v107.1；六参数伤害 Hook、CombatId、带 CardModel 来源的五参数死亡 Hook、NStandardMerchantRoom 同时成立时选择 v113。其他现代 ABI 返回明确的版本诊断。
+3. v113 使用官方 `AssociateAssemblyWithMod`；v107.1 保留类型追加及 assembly 提升桥。
+4. 调用所选实现的 initializer。未选实现不加载、不扫描模型、不安装补丁。
 
-1. 原生 ModManager 加载 `STS2_Things.dll` 与 PCK。
-2. `UnifiedBootstrap` 检查当前 `AbstractModel.ModifyDamageMultiplicative` 签名、V110/V111 的
-   `CombatId` 类型，以及 v0.111.0 新增的 `HandshakeManager` 类型。
-3. 五参数选择内嵌 `v107.1.dll`；六参数且存在 `CombatId` 时，存在 `HandshakeManager` 选择内嵌
-   `v111.dll`，缺失则判定为 v0.110.x 并明确拒绝（提示升级游戏或回退旧版 Mod）。
-4. 引导层在 `ModelDb` 和多人缓存初始化前注册选中的程序集。
-5. 引导层调用原有 `STS2_ThingsInit.Initialize()`；业务注册与 Harmony 仍由版本专用实现负责。
-6. 未选中的实现始终停留在嵌入资源中。
+## 交付门禁
 
-未知签名会直接终止 Mod 初始化并报告支持范围，不会猜测最近版本。
+- 两实现及引导版本一致，编译零警告零错误；分别验证 Harmony 和 SavedProperty 合同。
+- 固定的两个嵌入资源与独立 DLL 的 SHA256 一致，Mod 模型集合相同（本次各 160 个）。
+- 两版原生加载、深处事件、涅奥及章节推进检查；新版完整客户端烟雾验证。
+- 共用 PCK 挂载核验；ZIP CRC、四文件条目与 SHA256 一致。
+- 仅交付四运行文件，不含调试桥、原版客户端/依赖、原画、源码、日志或凭据。
 
-## V107.1 特殊桥
-
-V107.1 的 `Mod` 只有单个 `assembly` 字段，且加载器在 initializer 返回后才把引导程序集写入该字段。
-因此引导层安装两个窄补丁：
-
-- `ReflectionHelper.ModTypes` Postfix：在 `ModelDb.Init()` 发现模型时追加选中实现的类型。
-- `ModelIdSerializationCache.Init` Prefix：把已加载 `STS2_Things` Mod 的 assembly 切换为实现程序集，
-  使旧版模型 ID、网络 hash、控制台和后续类型扫描都使用真实业务程序集。
-
-这两个补丁不改变玩法状态、RNG 或模型顺序，只恢复旧加载器没有提供的多程序集归属能力。
-
-## V111 原生路径
-
-V111 直接调用官方 `ModManager.AssociateAssemblyWithMod`。随后
-`AssemblyInfo.Init()`、`ModelDb.Init()`、`ContentSorter` 与统一保存属性缓存会把实现类型归属到
-`STS2_Things` manifest。v0.111.0 的加载器合同（外置 manifest、DLL/PCK basename、`[ModInitializer]`、
-统一 `ModelIdSerializationCache`）与 v0.110.x 一致。
-
-## 门禁
-
-- 两套实现分别以 `TreatWarningsAsErrors=true` 编译。
-- 两套实现分别执行 Harmony target 和 SavedProperty 合同探针。
-- 引导 DLL 必须且只能包含两个固定名称的实现资源。
-- 嵌入资源 SHA256 必须与版本专用构件逐字节一致。
-- 两套 `sts2.dll` 都必须能加载选中的实现全部类型；当前两版各发现相同数量的具体 `AbstractModel`。
-- V107.1 合成 Mod 必须通过类型追加和 assembly 提升验证。
-- 最终运行目录只包含 manifest、引导 DLL、共用 PCK 和 BaseLib 可选配置桥；不包含原版依赖、MCP 调试桥或后端配置。
-- V111 还必须完成实际 Steam 启动烟雾测试。
-
-跨游戏版本联机不在支持范围；同一局内所有玩家仍必须使用同一游戏版本。
+1.25.27 的 Steam 与 GitHub 使用同一套已验证运行文件。所有联机玩家需同一游戏版本及统一包。详见 [双版本实现](DUAL_VERSION_SUPPORT.md) 和 [V113 迁移](MIGRATION_V113.md)。

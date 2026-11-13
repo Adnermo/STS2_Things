@@ -53,8 +53,8 @@ public sealed class MycelialBank : EventModel
     {
         if (IsFinished || !CanLong) return;
         await OpenAccount(true);
-        await CreatureCmd.LoseMaxHp(new ThrowingPlayerChoiceContext(), EventOwner.Creature,
-            MycelialDeposit.LongPrincipal, false);
+        await STS2_Things.Compatibility.Sts2VersionCompatibility.LoseMaxHp(new ThrowingPlayerChoiceContext(), EventOwner.Creature,
+            MycelialDeposit.LongPrincipal);
         Finish(EventOwner.Creature.IsDead ? "DEATH" : "LONG");
     }
 

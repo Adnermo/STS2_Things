@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('v107.1','v111')][string]$TargetVersion='v111',
+    [ValidateSet('v107.1','v113')][string]$TargetVersion='v113',
     [string]$DataDir='D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64',
     [string]$RuntimeDependencyDir='D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64',
     [string]$GodotExe='D:\Download\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64_console.exe',

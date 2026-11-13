@@ -37,7 +37,7 @@ public partial class DepthsProbeNode
             var run = CreateRun("native-spent-camp-" + count, count);
             run.CurrentActIndex = 1;
             typeof(RunManager).GetProperty("State", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(RunManager.Instance, run);
-            typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, new AscensionManager(0));
+            typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, NativeAscension(0));
             typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance, new NetSingleplayerGameService());
             run.Map = run.Act.CreateMap(run, false);
             var point = run.Map.GetAllMapPoints().First(p => p.PointType == MapPointType.RestSite);

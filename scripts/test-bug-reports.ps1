@@ -1,5 +1,5 @@
 param(
- [ValidateSet('v107.1','v111')][string]$TargetVersion='v111',
+ [ValidateSet('v107.1','v113')][string]$TargetVersion='v113',
  [string]$DataDir,
  [string]$RuntimeDependencyDir,
  [string]$GamePck,
@@ -7,13 +7,14 @@ param(
  [string]$OutputDir,
  [switch]$Performance,
  [switch]$Measure,
- [string]$HexDll
+ [string]$HexDll,
+ [string]$GodotExe=$env:GODOT_4_5_1_MONO
 )
 $ErrorActionPreference='Stop'
 $taskRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $taskOut=if($OutputDir){[IO.Path]::GetFullPath($OutputDir)}else{Join-Path $taskRoot ('build/bug-report-validation-'+[Guid]::NewGuid().ToString('N').Substring(0,8))}
 New-Item -ItemType Directory -Path $taskOut -Force | Out-Null
-$taskData=if($DataDir){[IO.Path]::GetFullPath($DataDir)}else{Join-Path $taskRoot $(if($TargetVersion -eq 'v111'){'.tmp/verified-v111-runtime'}else{'.tmp/things-collision-v107-data'})}
+$taskData=if($DataDir){[IO.Path]::GetFullPath($DataDir)}else{Join-Path $taskRoot $(if($TargetVersion -eq 'v113'){'.tmp/verified-v113-runtime'}else{'.tmp/things-collision-v107-data'})}
 $taskRuntime=if($RuntimeDependencyDir){[IO.Path]::GetFullPath($RuntimeDependencyDir)}else{$taskData}
 $taskPck=if($GamePck){[IO.Path]::GetFullPath($GamePck)}else{Join-Path (Split-Path $taskData) 'SlayTheSpire2.pck'}
 if(-not(Test-Path -LiteralPath $taskPck -PathType Leaf)){throw 'Pass -GamePck for the full matching game version; a reference DLL is not a client resource pack'}
@@ -30,7 +31,7 @@ $env:DOTNET_MULTILEVEL_LOOKUP='0'
 $env:THINGS_PROBE_GAME_PCK=$taskPck
 $env:THINGS_PERF_HEX_DLL=if($HexDll){[IO.Path]::GetFullPath($HexDll)}else{''}
 $env:PATH=$env:DOTNET_ROOT+';'+$env:PATH
-$taskGodot='D:/Download/Godot_v4.5.1-stable_mono_win64/Godot_v4.5.1-stable_mono_win64/Godot_v4.5.1-stable_mono_win64_console.exe'
+$taskGodot=if($GodotExe){$GodotExe}else{'D:/Godot/Godot_v4.5.1-stable_mono_win64_console.exe'}
 $taskStdout=Join-Path $taskOut "native-$TargetVersion.log"
 $taskStderr=Join-Path $taskOut "native-$TargetVersion.stderr.log"
 $taskArguments=@('--headless','--path',('"'+(Join-Path $taskRoot 'tools/BugReportProbe')+'"'))

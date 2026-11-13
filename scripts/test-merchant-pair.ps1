@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('v107.1','v111')][string]$TargetVersion='v111',
+    [ValidateSet('v107.1','v113')][string]$TargetVersion='v113',
     [Parameter(Mandatory)][string]$GameRoot,
     [Parameter(Mandatory)][string]$ImplementationDll,
     [string]$PackagePck='build/merchant-pair-attack-split-20261010/package/STS2_Things.pck',

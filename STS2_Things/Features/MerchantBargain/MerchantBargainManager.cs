@@ -176,7 +176,13 @@ internal static class MerchantBargainManager
         bool success = false;
         try
         {
+            #if STS2_V113
+            var synchronizer = MegaCrit.Sts2.Core.Runs.RunManager.Instance.MerchantSynchronizer;
+            MerchantBargainSync.AnnouncePrice(synchronizer, entry, negotiatedPrice);
+            success = await synchronizer.PurchaseLocalEntry(entry);
+#else
             success = await entry.OnTryPurchaseWrapper(inventory);
+#endif
             if (success)
             {
                 state.Session.MarkPurchaseSucceeded();
@@ -191,7 +197,9 @@ internal static class MerchantBargainManager
         }
     }
 
-    private static void SetPriceOverride(MerchantEntry entry, int price)
+    internal static void ClearPriceOverride(MerchantEntry entry) => PriceOverrides.Remove(entry);
+
+    internal static void SetPriceOverride(MerchantEntry entry, int price)
     {
         PriceOverrides.Remove(entry);
         PriceOverrides.Add(entry, new PriceOverride { Price = price });

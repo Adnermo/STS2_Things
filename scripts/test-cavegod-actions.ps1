@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ImplementationDll = 'build\v111\STS2_Things.dll',
+    [string]$ImplementationDll = 'build\v113\STS2_Things.dll',
     [switch]$NoImages,
     [switch]$BakeRightGrab,
     [switch]$BakeCardSnatch,

@@ -49,7 +49,7 @@ public partial class SanguineLeechProbeNode : Node
             TestMode.TurnOnInternal();
             ProjectSettings.LoadResourcePack("D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck");
             string pack=System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")
-                ?? Path.Combine(_root,"build/sanguine_leech/v111/STS2_Things.pck");
+                ?? Path.Combine(_root,"build/sanguine_leech/v113/STS2_Things.pck");
             if (File.Exists(pack)) ProjectSettings.LoadResourcePack(pack);
             SaveManager.Instance.InitSettingsDataForTest();
             SaveManager.Instance.InitPrefsDataForTest();
@@ -73,10 +73,10 @@ public partial class SanguineLeechProbeNode : Node
     {
         DeactivateSyntheticCombat();
         var party = Enumerable.Range(1,players).Select(i => Player.CreateForNewRun<Ironclad>(UnlockState.all,(ulong)i)).ToList();
-        var run = RunState.CreateForNewRun(party, ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),[],GameMode.Standard,ascension,"leech-native-probe");
+        var run = ProbeRuntimeApi.CreateForNewRun(party, ActModel.GetDefaultList().Select(a=>a.ToMutable()).ToList(),[],GameMode.Standard,ascension,"leech-native-probe");
         run.CurrentActIndex = 1;
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,new AscensionManager(ascension));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(ascension));
         typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance,new NetSingleplayerGameService());
         EncounterModel encounter = (weak ? ModelDb.Encounter<SanguineLeechWeak>() as EncounterModel : ModelDb.Encounter<SanguineLeechEncounter>()).ToMutable();
         run.AppendToMapPointHistory(MapPointType.Monster,RoomType.Monster,encounter.Id);

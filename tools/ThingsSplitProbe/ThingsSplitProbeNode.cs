@@ -36,6 +36,9 @@ public partial class ThingsSplitProbeNode : Node
             InstallThingsSplitPatches();
             VerifyEligibility();
             VerifyKnownAndUnknownDynamicVars();
+#if !STS2_V107_1
+            VerifyHitCountVar();
+#endif
             VerifyBasicStrikeLifecycle();
             VerifyPermanentMutationClearCloneAndSave();
             VerifyAllNumericValuesAndRounding();
@@ -444,7 +447,7 @@ public partial class ThingsSplitProbeNode : Node
 
     private static void VerifyStarCostLifecycle()
     {
-        // Canonical star costs drift between game versions (v0.111.0 lowered
+        // Canonical star costs drift between game versions (v0.113.0 lowered
         // Alignment from 3 to 2). Derive both expectations from the current
         // vanilla model instead of hardcoding balance numbers.
         VerifyFixedStarCost<Comet>();
@@ -571,16 +574,51 @@ public partial class ThingsSplitProbeNode : Node
         card.AddDamage(3m);
         card.SetRepeats(2m);
         Assert(card.DynamicVars.Damage.BaseValue == 8m &&
-               card.DynamicVars.Repeat.BaseValue == 2m,
+               ReadSovereignRepeats(card) == 2m,
             "Split Sovereign Blade did not retain its visible forge mutations.");
 
         card.UpgradeInternal();
         card.FinalizeUpgradeInternal();
         card.DowngradeInternal();
         Assert(card.DynamicVars.Damage.BaseValue == 8m &&
-               card.DynamicVars.Repeat.BaseValue == 2m,
+               ReadSovereignRepeats(card) == 2m,
             "Split Sovereign Blade lost its forge mutations during downgrade.");
     }
+
+    private static decimal ReadSovereignRepeats(CardModel card)
+        => card.DynamicVars.TryGetValue("HitCount", out DynamicVar? hits)
+            ? hits.BaseValue : card.DynamicVars.Repeat.BaseValue;
+
+#if !STS2_V107_1
+    private static void VerifyHitCountVar()
+    {
+        var card = ModelDb.Card<Barricade>().ToMutable();
+        var hits = new HitCountVar(5);
+        var vars = new DynamicVarSet([hits]);
+        vars.InitializeWithOwner(card);
+        typeof(CardModel).GetField("_dynamicVars", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(card, vars);
+        CardCmd.Enchant<ThingsSplit>(card, 1m);
+        Assert(hits.BaseValue == 3m, "Beta HitCount must split with the same rounding as legacy Repeat.");
+        card.ClearEnchantmentInternal();
+        Assert(hits.BaseValue == 5m, "Clearing the enchantment must restore the native hit count.");
+
+        var original = MutableCard<SovereignBlade>();
+        original.SetRepeats(5m);
+        CardCmd.Enchant<ThingsSplit>(original, 1m);
+        string oldState = ((ThingsSplit)original.Enchantment!).SplitState.Replace(
+            Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("HitCount")),
+            Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("Repeat")), StringComparison.Ordinal);
+        var restored = MutableCard<SovereignBlade>();
+        CardCmd.Enchant<ThingsSplit>(restored, 1m);
+        var restoredSplit = (ThingsSplit)restored.Enchantment!;
+        restoredSplit.SplitState = oldState;
+        typeof(ThingsSplit).GetMethod("ApplyPendingSerializedState", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(restoredSplit, null);
+        Assert(ReadSovereignRepeats(restored) == 3m, "A legacy Repeat snapshot must restore visible HitCount.");
+        restored.ClearEnchantmentInternal();
+        Assert(ReadSovereignRepeats(restored) == 5m, "Clearing a migrated legacy snapshot must retain its full hit count.");
+    }
+#endif
 
     private static void VerifyGrowthLifecycle<TCard>(
         TCard card,
@@ -812,7 +850,7 @@ public partial class ThingsSplitProbeNode : Node
 
         CuttingItClose eventModel = await CreateStartedEvent(player);
         var selector = new CapturingCardSelector();
-        using (CardSelectCmd.UseSelector(selector))
+        using (ProbeRuntimeApi.UseSelector(selector))
         {
             await eventModel.CurrentOptions[0].Chosen();
         }
@@ -841,7 +879,7 @@ public partial class ThingsSplitProbeNode : Node
         var option = eventModel.CurrentOptions[0];
         var selector = new TestCardSelector();
         selector.PrepareToSelect([original]);
-        using (CardSelectCmd.UseSelector(selector))
+        using (ProbeRuntimeApi.UseSelector(selector))
         {
             await option.Chosen();
         }
@@ -893,7 +931,7 @@ public partial class ThingsSplitProbeNode : Node
         var option = eventModel.CurrentOptions[1];
         var selector = new TestCardSelector();
         selector.PrepareToSelect([original]);
-        using (CardSelectCmd.UseSelector(selector))
+        using (ProbeRuntimeApi.UseSelector(selector))
         {
             await option.Chosen();
         }
@@ -923,7 +961,7 @@ public partial class ThingsSplitProbeNode : Node
         CuttingItClose eventModel = await CreateStartedEvent(player);
         var selector = new TestCardSelector();
         selector.PrepareToSelect([original]);
-        using (CardSelectCmd.UseSelector(selector))
+        using (ProbeRuntimeApi.UseSelector(selector))
         {
             await eventModel.CurrentOptions[0].Chosen();
         }
@@ -955,7 +993,7 @@ public partial class ThingsSplitProbeNode : Node
         EventOption option = eventModel.CurrentOptions[0];
         var selector = new TestCardSelector();
         selector.PrepareToSelect(Array.Empty<CardModel>());
-        using (CardSelectCmd.UseSelector(selector))
+        using (ProbeRuntimeApi.UseSelector(selector))
         {
             await option.Chosen();
         }
@@ -977,7 +1015,7 @@ public partial class ThingsSplitProbeNode : Node
         EventOption option = eventModel.CurrentOptions[1];
         var selector = new TestCardSelector();
         selector.PrepareToSelect(Array.Empty<CardModel>());
-        using (CardSelectCmd.UseSelector(selector))
+        using (ProbeRuntimeApi.UseSelector(selector))
         {
             await option.Chosen();
         }
@@ -998,7 +1036,7 @@ public partial class ThingsSplitProbeNode : Node
         EventOption localOption = completedLocal.CurrentOptions[1];
         var selector = new TestCardSelector();
         selector.PrepareToSelect(Array.Empty<CardModel>());
-        using (CardSelectCmd.UseSelector(selector))
+        using (ProbeRuntimeApi.UseSelector(selector))
         {
             await localOption.Chosen();
         }
@@ -1035,14 +1073,14 @@ public partial class ThingsSplitProbeNode : Node
 
         var improviseSelector = new TestCardSelector();
         improviseSelector.PrepareToSelect([improviseOriginal]);
-        using (CardSelectCmd.UseSelector(improviseSelector))
+        using (ProbeRuntimeApi.UseSelector(improviseSelector))
         {
             await improviseEvent.CurrentOptions[0].Chosen();
         }
 
         var throwSelector = new TestCardSelector();
         throwSelector.PrepareToSelect([throwOriginal]);
-        using (CardSelectCmd.UseSelector(throwSelector))
+        using (ProbeRuntimeApi.UseSelector(throwSelector))
         {
             await throwEvent.CurrentOptions[1].Chosen();
         }
@@ -1087,6 +1125,7 @@ public partial class ThingsSplitProbeNode : Node
 
     private static async Task<CuttingItClose> CreateStartedEvent(Player owner)
     {
+        ProbeRuntimeApi.PrepareSelectors(owner.RunState);
         CuttingItClose canonical = ModelDb.Event<CuttingItClose>();
         var probeVars = new DynamicVarSet([new StringVar("Enchantment", "Split")]);
         probeVars.InitializeWithOwner(canonical);
