@@ -1,0 +1,3 @@
+# Copy to .dev.vars (gitignored) for local testing and scripts/publish-r2-release.ps1
+WEBDAV_USERNAME=adnermo
+WEBDAV_PASSWORD=REPLACE_WITH_STRONG_PASSWORD
