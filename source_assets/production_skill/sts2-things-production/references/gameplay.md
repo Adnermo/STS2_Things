@@ -18,7 +18,7 @@
 
 动态随从、状态图标、卡面和分阶段资源进入对应预载集合。怪物死亡与战斗退出后，抓取的玩家、原牌手牌节点、装饰卡面和 UI Tween 分别按其拥有关系清理；吞噬卡牌不能只播一张装饰图而把原手牌节点留在空中。
 
-吞牌优先沿用完整的原版消耗退场流程。`skipVisuals` 在已验证版本中还可能跳过牌堆通知和手牌节点清理，不只是关掉粒子；确需使用时先核实当前版本的行为和原节点清理归属。验证同时比较牌堆模型、手牌／出牌区节点与装饰副本，确认已移出的牌不能继续拖动。具体案例见 `docs/cave-maw-card-cleanup-20261006.md`。
+吞牌优先沿用完整的原版消耗退场流程。`skipVisuals` 在已验证版本中还可能跳过牌堆通知和手牌节点清理，不只是关掉粒子；确需使用时先核实当前版本的行为和原节点清理归属。验证同时比较牌堆模型、手牌／出牌区节点与装饰副本，确认已移出的牌不能继续拖动。具体案例见 `docs/archive/cave-maw-card-cleanup-20261006.md`。
 
 音乐设置按用户约定：关闭模组指定 BGM 时恢复原版音乐，保留战斗音效。可选配置库按项目既有零依赖桥接方式接入，不把其无意变成强制前置。
 
@@ -41,4 +41,4 @@
 
 共享事件、地图操作使用原版网络选择／操作协议与同步 RNG；个人交易只改对应玩家。图像噪声、动画相位等本地效果不消耗共享战斗 RNG。房主配置、回流牌、宠物归属、取消选择、死亡途中及退出清理各按相关改动覆盖。
 
-现有实现与兼容陷阱见 `docs/MONSTER_PIPELINE_V108.md`、`docs/native-combat-ui-20261004.md`、`docs/native-descriptions-20261004.md`、`docs/CONFIGURATION.md`；旧版文章中的玩法草案以最新源码和 [项目选择](project-decisions.md) 为准。
+现有实现与兼容陷阱见 `docs/archive/MONSTER_PIPELINE_V108.md`、`docs/archive/native-combat-ui-20261004.md`、`docs/archive/native-descriptions-20261004.md`、`docs/CONFIGURATION.md`；旧版文章中的玩法草案以最新源码和 [项目选择](project-decisions.md) 为准。

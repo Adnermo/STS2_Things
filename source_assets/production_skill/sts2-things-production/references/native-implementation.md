@@ -40,4 +40,4 @@
 - **事件池。** 深处 `AllEvents` 原生覆写仍会经过 `GenerateRooms` 追加共享事件；`ModifyNextEvent` 也不等价于清理保存池。先查生成和读档两条路径。
 - **已原生化的正例。** 蜗牛壳用格挡清除／破裂 Hook；缠丝用原生 Affliction 和 Queen 式卡牌场景；双生子换血用 `CreatureCmd.SetCurrentHp`；洞胃吞牌用完整消耗退场；熄火休息用原生订阅策略。
 
-当前项目审查依据在 `docs/native-implementation-review-20261007.md`，此前迁移记录在 `docs/native-harmony-20261007.md`。这些记录说明具体版本的证据与限制，不冻结后续接口或实现。尤其区分“适合迁移”“已经迁移”“已经验证”。
+当前项目审查依据在 `docs/archive/native-implementation-review-20261007.md`，此前迁移记录在 `docs/archive/native-harmony-20261007.md`。这些记录说明具体版本的证据与限制，不冻结后续接口或实现。尤其区分“适合迁移”“已经迁移”“已经验证”。

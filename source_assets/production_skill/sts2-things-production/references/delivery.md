@@ -38,4 +38,4 @@ MCP 和脚本操作路线由 `sts2-workbench` 提供。使用当前配方、参�
 
 最终给出实际结果、简短验证及限制、可打开预览／包路径、安装和发布状态。文件与宣称来自同一构件；未运行实机时明确说明，避免将历史检查写成这次已执行。
 
-工具记录与项目维护参考：`docs/WORKSPACE_LAYOUT.md`、`docs/UNIFIED_PACKAGE.md`、`docs/DUAL_VERSION_SUPPORT.md`、`docs/v107-startup-hotfix-20261006.md`、`docs/depths-encounter-variety-validation.md`。
+工具记录与项目维护参考：`docs/WORKSPACE_LAYOUT.md`、`docs/UNIFIED_PACKAGE.md`、`docs/DUAL_VERSION_SUPPORT.md`、`docs/archive/v107-startup-hotfix-20261006.md`、`docs/archive/depths-encounter-variety-validation.md`。

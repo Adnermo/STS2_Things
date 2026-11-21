@@ -8,4 +8,4 @@
 
 `render_native.gd` 在项目 Godot／Spine 环境中输出连续帧和动作混合片段；参数为输出目录及可选 FPS。离线帧检查不能替代实际动作与画风审核。历史制作记录中，1416 帧无蒙皮翻面，睡眠闭环、睡→醒及收招姿态连续；原生渲染补查了 506 帧及混合片段。
 
-运行资产位于 `STS2_Things/animations/monsters/leech_mother/`，玩法与边界测试入口为 `scripts/test-leech-mother.ps1`。最终发布验证与机制见 `docs/release-1.25.13.md`。`out/`、`pkg/` 和预览目录是生成物，不提交 Git。
+运行资产位于 `STS2_Things/animations/monsters/leech_mother/`，玩法与边界测试入口为 `scripts/test-leech-mother.ps1`。最终发布验证与机制见 `docs/releases/release-1.25.13.md`。`out/`、`pkg/` 和预览目录是生成物，不提交 Git。

@@ -10,7 +10,7 @@
 
 ## 动作
 
-2026-11-09 起的动作由 `anims.py` 重新编排，设计与验证见 [docs/scale-beetle-motion-redo-20261109.md](../../docs/scale-beetle-motion-redo-20261109.md)。
+2026-11-09 起的动作由 `anims.py` 重新编排，设计与验证见 [docs/archive/scale-beetle-motion-redo-20261109.md](../../docs/archive/scale-beetle-motion-redo-20261109.md)。
 
 | 动画 | 秒 | 设计与接入 |
 | --- | ---: | --- |

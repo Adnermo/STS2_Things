@@ -15,8 +15,8 @@
 | `tools/ScaleBeetleRig/` | 放缩巨甲虫分件、动作、官方运行时和引擎轮廓检查 |
 | `source_assets/monsters/scale_beetle_rig_patches/` | 巨甲虫已选用的局部补绘、限定蒙版与来源清单 |
 | `tools/OriginFogmogRig/legacy_v2/` | 旧雾菇生成源码，仅供历史编辑参考 |
-| `scripts/` | 构建、验证、资产处理及清理入口 |
-| `docs/`、`design/` | 架构、版本差异、设计与维护说明 |
+| `scripts/` | 核心构建、测试、审计、发布及清理脚本；历史一次性资产/发布脚本归档于 `scripts/archive/` |
+| `docs/`、`design/` | 核心维护指南与美术规范；发布记录、版本迁移、问题报告与历史研发日志分别归档于 `docs/releases/`、`docs/migrations/`、`docs/reports/`、`docs/archive/` |
 | `build/v111.1/`、`build/v113.1/`、`build/unified/` | 支持版本的诊断构件与统一发布包 |
 | `build/*backup*`、`build/**/before`、`build/**/original` 等 | 可能保存唯一源码的回滚材料，清理器保留 |
 | `.tmp/`、`tmp/`、`output/` | 本地工具、实验与中间产物；其中仍有独有脚本和候选原画，不能整体删除 |

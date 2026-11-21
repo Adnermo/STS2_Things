@@ -35,4 +35,4 @@ godot --path <项目根目录> --script res://tools/GreatSilkMothRig/render_nati
 python tools/GreatSilkMothRig/make_native_preview.py <输出目录>
 ```
 
-最终资产位于 `STS2_Things/animations/monsters/great_silk_moth/`，游戏接入场景为 `scenes/creature_visuals/great_silk_moth.tscn`。初版机制见 `docs/great-silk-moth-20261008.md`；当前精修与原生预览见 `docs/great-silk-moth-animation-polish-20261008.md`。
+最终资产位于 `STS2_Things/animations/monsters/great_silk_moth/`，游戏接入场景为 `scenes/creature_visuals/great_silk_moth.tscn`。初版机制见 `docs/archive/great-silk-moth-20261008.md`；当前精修与原生预览见 `docs/archive/great-silk-moth-animation-polish-20261008.md`。

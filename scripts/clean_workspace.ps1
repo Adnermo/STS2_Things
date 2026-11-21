@@ -26,9 +26,18 @@ function Assert-ProjectPath([string]$Path) {
     return $full
 }
 
+function Get-RelativePathCompat([string]$BaseDir, [string]$TargetPath) {
+    $baseFull = [IO.Path]::GetFullPath($BaseDir).TrimEnd('\', '/') + '\'
+    $targetFull = [IO.Path]::GetFullPath($TargetPath)
+    if ($targetFull.StartsWith($baseFull, [StringComparison]::OrdinalIgnoreCase)) {
+        return $targetFull.Substring($baseFull.Length).Replace('\', '/')
+    }
+    return [Uri]::UnescapeDataString((New-Object Uri $baseFull).MakeRelativeUri((New-Object Uri $targetFull)).ToString())
+}
+
 function Add-Candidate([IO.FileInfo]$File, [string]$Reason) {
     $full = Assert-ProjectPath $File.FullName
-    $relative = [IO.Path]::GetRelativePath($projectRoot, $full).Replace('\', '/')
+    $relative = Get-RelativePathCompat $projectRoot $full
     # Historical sources and rollback copies can be the only remaining copy.
     if ($relative -match '(?i)(^|/)([^/]*(backup|before|baseline|original|modified|rollback|installed)[^/]*)(/|$)') { return }
     if ($relative.StartsWith('build/origin-fogmog-repair/') -or
@@ -50,7 +59,7 @@ Get-ChildItem -LiteralPath $projectRoot -File -Force | ForEach-Object {
 # Remove regenerable frame sequences, not image-generation candidates or artwork.
 $buildRoot = Join-Path $projectRoot 'build'
 Get-ChildItem -LiteralPath $buildRoot -Recurse -File -Force | ForEach-Object {
-    $relative = [IO.Path]::GetRelativePath($buildRoot, $_.FullName).Replace('\', '/')
+    $relative = Get-RelativePathCompat $buildRoot $_.FullName
     if ($relative -match '^(v111\.1|v113\.1|unified|release|deliverables|imagegen)/') { return }
     if ($_.Extension -eq '.log') { Add-Candidate $_ 'old diagnostic log' }
     elseif ($_.Name -match '^(idle(_loop)?|attack|cast|hurt|die|summon|power_up|revive|slam|windup|frame)[_-][0-9]{3,}\.png$') {
@@ -66,7 +75,7 @@ Get-ChildItem -LiteralPath $buildRoot -Recurse -File -Force | ForEach-Object {
 foreach ($scope in @('tools', 'bootstrap', 'bridges')) {
     $directory = Join-Path $projectRoot $scope
     Get-ChildItem -LiteralPath $directory -Recurse -File -Force | ForEach-Object {
-        $relative = [IO.Path]::GetRelativePath($directory, $_.FullName).Replace('\', '/')
+        $relative = Get-RelativePathCompat $directory $_.FullName
         if ($relative -match '(^|/)(\.godot|bin|obj|__pycache__)/') {
             Add-Candidate $_ 'generated probe/compiler cache'
         }

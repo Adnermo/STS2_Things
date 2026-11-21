@@ -20,4 +20,4 @@ Compatibility/
 4. 玩法继续走原生命令；只修已证实的缺口，保留第三方正常功能。共享反射信息按目标方法／程序集保存。
 5. 根据支持版本验证未安装、单独安装、组合安装、失效引用与正常显示，记录真实验证层级。
 
-当前证据和限制见 `docs/mod-compatibility-20261012.md` 和 `docs/latest-reports-20261013.md`。这里是扩展方式，不代表所有卡图包或所有第三方模组已兼容。
+当前证据和限制见 `docs/archive/mod-compatibility-20261012.md` 和 `docs/reports/latest-reports-20261013.md`。这里是扩展方式，不代表所有卡图包或所有第三方模组已兼容。

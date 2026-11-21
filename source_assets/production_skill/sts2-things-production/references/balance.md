@@ -16,7 +16,7 @@
 
 ## 事件战斗
 
-事件里的战斗按同章精英对照：列出总生命、第 1 回合、前四回合平均与最高，以及按固定输出集火的承伤，并说明是否计入格挡。2026-11-11 用户反馈诡谲之店的双商人改前就很难，要求更简单并参考一层精英；1.25.26 改为每名三分之一生命、攻击 ×0.6（隐藏增益），落在一层精英范围内，见 `docs/depths-balance-20261110.md`。原版怪物需要整体降伤时用乘法，不用负力量，避免多段攻击被逐段扣光。
+事件里的战斗按同章精英对照：列出总生命、第 1 回合、前四回合平均与最高，以及按固定输出集火的承伤，并说明是否计入格挡。2026-11-11 用户反馈诡谲之店的双商人改前就很难，要求更简单并参考一层精英；1.25.26 改为每名三分之一生命、攻击 ×0.6（隐藏增益），落在一层精英范围内，见 `docs/archive/depths-balance-20261110.md`。原版怪物需要整体降伤时用乘法，不用负力量，避免多段攻击被逐段扣光。
 
 同一条反馈列出多项并用“也是”连接时，逐项确认调整方向，不从前一项推断后一项同向。
 
@@ -29,4 +29,4 @@
 - 章节要有足够的普通、精英、事件与 Boss 条目，正常从第一层奖励界面能推进到新第二章。检查禁用配置后的空池回退、原生遭遇队列和存档恢复。
 - 老存档已生成的队列和当前战斗实体不随数值／组合修改强行重排，说明新内容何时生效。
 
-当前池与数值查询 `STS2_Things/Acts/Depths.cs`、相关 Monster／Encounter 及配置源码；最新调整见 `docs/depths-balance-20261110.md`，上次回调见 `docs/depths-nerf-20261007.md`，历史对照见 `docs/depths-balance-20261006.md`、`docs/depths-encounter-variety.md`、`docs/cavegod-act2-audit-20261005.md`。后者是特定 Boss 的历史审查，不意味着所有 Boss 都应一起增血或降低伤害。
+当前池与数值查询 `STS2_Things/Acts/Depths.cs`、相关 Monster／Encounter 及配置源码；最新调整见 `docs/archive/depths-balance-20261110.md`，上次回调见 `docs/archive/depths-nerf-20261007.md`，历史对照见 `docs/archive/depths-balance-20261006.md`、`docs/archive/depths-encounter-variety.md`、`docs/archive/cavegod-act2-audit-20261005.md`。后者是特定 Boss 的历史审查，不意味着所有 Boss 都应一起增血或降低伤害。

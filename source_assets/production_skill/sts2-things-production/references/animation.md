@@ -40,4 +40,4 @@
 
 修改蒙皮或大幅动作时，可沿完整片段密集采样加权网格，检查可见区域的三角形翻面、局部塌陷、权重归一和待机闭环，再查看导出后的原生插值与混合。JSON 合法或几个关键姿态正常，不代表中间帧也正常；采样数量依动作风险选择，不以某次的骨数、帧数或断言数作为固定门槛。原生／实机验证按 [验证与交付](delivery.md) 的当次范围执行。
 
-已处理问题索引：`docs/origin-fogmog-repair-20261002.md`、`docs/scale-beetle-impact-20261003.md`、`docs/scale-beetle-motion-redo-20261109.md`（甲壳切口）、`docs/cavegod-contact-20261005.md`、`docs/cavegod-recovery-20261005.md`、`docs/fleeting-echo-animation-polish.md`。这些记录提供具体陷阱与处理示例，不要求其他角色使用相同骨架或求解方法。
+已处理问题索引：`docs/archive/origin-fogmog-repair-20261002.md`、`docs/archive/scale-beetle-impact-20261003.md`、`docs/archive/scale-beetle-motion-redo-20261109.md`（甲壳切口）、`docs/archive/cavegod-contact-20261005.md`、`docs/archive/cavegod-recovery-20261005.md`、`docs/archive/fleeting-echo-animation-polish.md`。这些记录提供具体陷阱与处理示例，不要求其他角色使用相同骨架或求解方法。

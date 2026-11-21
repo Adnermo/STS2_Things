@@ -32,13 +32,13 @@
 
 ## 项目维护入口
 
-- 2026-10-07 用户要求“审查一下全mod，有什么能用原版实现方法实现的地方。把参考原版实现做进准则skill”：新增原版实现复用流程。接口证据来自当前双目标实际程序集和 `docs/native-implementation-review-20261007.md`；具体候选是审查建议，不提升为所有任务必须迁移或必须删除 Harmony 的要求。
+- 2026-10-07 用户要求“审查一下全mod，有什么能用原版实现方法实现的地方。把参考原版实现做进准则skill”：新增原版实现复用流程。接口证据来自当前双目标实际程序集和 `docs/archive/native-implementation-review-20261007.md`；具体候选是审查建议，不提升为所有任务必须迁移或必须删除 Harmony 的要求。
 
 本次新增的工程细节来自已发生的制作／修复，不作为新用户偏好或固定技术方案：
 
-- 余影魔两次动作精修和白色反色要求，及 `docs/fleeting-echo-animation-polish.md`：相邻肢体切片残边、指节实际位置、手指串权重、支撑关节求解和连续网格翻面检查；不推广具体骨数、帧数或 FABRIK 为所有角色的要求。
-- 用户现场复现洞胃吞牌后残留、拖动悬空，及 `docs/cave-maw-card-cleanup-20261006.md`：原牌与装饰副本分别管理，核对 `skipVisuals` 的牌堆通知／节点生命周期。
-- 余影魔已接受的攻击换格挡与多人适配，及 `docs/fleeting-echo-implementation.md`：实际生命损失、超杀、宠物所属和原版结束战斗时停止加格挡的边界。
+- 余影魔两次动作精修和白色反色要求，及 `docs/archive/fleeting-echo-animation-polish.md`：相邻肢体切片残边、指节实际位置、手指串权重、支撑关节求解和连续网格翻面检查；不推广具体骨数、帧数或 FABRIK 为所有角色的要求。
+- 用户现场复现洞胃吞牌后残留、拖动悬空，及 `docs/archive/cave-maw-card-cleanup-20261006.md`：原牌与装饰副本分别管理，核对 `skipVisuals` 的牌堆通知／节点生命周期。
+- 余影魔已接受的攻击换格挡与多人适配，及 `docs/archive/fleeting-echo-implementation.md`：实际生命损失、超杀、宠物所属和原版结束战斗时停止加格挡的边界。
 - 当前聊天对洞胃弱池单体、两张碎屑、双生子专精／换血／狂暴、收音水母限定牌型与层数回合、人面柱转向与分层免伤，以及实用事件选项的明确要求；对应制作记录用于查具体实现，不冻结后续数值。
 
 `AGENTS.md`、`docs/event-design-guidelines.md`、`docs/event-art-guidelines.md`、`design/image_generation_preferences.md` 是现有明确约定。其余原生管线、版本兼容、制作与回归记录提供技术依据，应按当前版本解释；旧记录里的模型数、测试次数、数值和路径不是固定交付门槛。

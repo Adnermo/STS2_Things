@@ -36,4 +36,4 @@
 
 将最终图与原版同类图并看，检查轮廓、比例、明暗分块、色彩、纹理密度和小尺寸识别。再在实际资源使用场景检查卡框裁切、界面遮挡、脚底／座位接触和前景层次。低多边形拼面、写实材质或过亮特效破坏画风时，针对问题改提示词或回炉，并重新看最终版。
 
-项目示例：`docs/cavegod-ui-art-20261005.md`、`docs/COLLISION_CARD_STYLE_AUDIT_V109.md`、`design/image_generation_preferences.md`。其中旧版本尺寸和色板分析属于该类资产，不是跨类别统一参数。
+项目示例：`docs/archive/cavegod-ui-art-20261005.md`、`docs/archive/COLLISION_CARD_STYLE_AUDIT_V109.md`、`design/image_generation_preferences.md`。其中旧版本尺寸和色板分析属于该类资产，不是跨类别统一参数。

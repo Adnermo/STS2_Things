@@ -1,0 +1,62 @@
+name: Bug 报告 / Bug Report
+description: 反馈游戏崩溃、机制异常、文本显示或联机不同步问题
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > **提示**：如在游戏中遇到异常，建议优先在游戏内按 **`F2`** 选择「尖塔：琐事」直接提交（会自动附带模组指纹、异常堆栈与战局快照）。若无法通过 F2 提交，请填写以下信息。
+
+  - type: dropdown
+    id: game_version
+    attributes:
+      label: 游戏版本 / Game Version
+      options:
+        - v0.111.1 (正式版 / Main)
+        - v0.113.1 (public-beta)
+        - 其他版本（请在下方补充）
+    validations:
+      required: true
+
+  - type: input
+    id: mod_version
+    attributes:
+      label: 模组版本 / Mod Version
+      placeholder: 例如 2.0.2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: play_mode
+    attributes:
+      label: 游玩模式 / Play Mode
+      options:
+        - 单人标准模式 / Singleplayer Standard
+        - 单人恐惧模式 / Singleplayer Dread
+        - 单人急速模式 / Singleplayer Blitz
+        - 多人联机 / Multiplayer Co-op
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述与复现步骤 / Description & Reproduction Steps
+      placeholder: |
+        1. 进入……
+        2. 打出…… / 触发……
+        3. 实际发生了什么，预期应该发生什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: other_mods
+    attributes:
+      label: 同开的其他模组 / Other Installed Mods
+      placeholder: 如 BaseLib、RitsuLib、卡图包等（无则留空）
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 报错日志或截图 / Logs or Screenshots
+      placeholder: 可直接粘贴日志片段或拖入截图

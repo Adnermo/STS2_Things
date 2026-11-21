@@ -9,7 +9,7 @@ namespace STS2_Things.Powers;
 
 /// <summary>
 /// The Shifty Shop's two native Fake Merchants hit softer than the vanilla one, so the pair fights
-/// like a single Act 1 elite (docs/depths-balance-20261110.md). Native intents include the reduction
+/// like a single Act 1 elite (docs/archive/depths-balance-20261110.md). Native intents include the reduction
 /// through the same hook. A buff, not a debuff, so debuff-counting cards gain nothing from it.
 /// </summary>
 public sealed class ThingsShiftyPartnersPower : ThingsPowerModel

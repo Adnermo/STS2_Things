@@ -45,4 +45,4 @@
 
 ## 1.11.3 实机地图复核
 
-上述 1.11.2 记录之后，修复了横路在章节切换时读取等待删除的旧节点而造成黑屏的问题。第一版石板资源保持相同，现已在真实 `NMapScreen` 中查看底、中、顶三段及首领区域，检查滚动与拼接。实机截图位于 `build/act_map_black_screen/map-bottom`、`map-middle`、`map-top`，操作步骤和复现记录见 `docs/act-map-black-screen-20261004.md`。
+上述 1.11.2 记录之后，修复了横路在章节切换时读取等待删除的旧节点而造成黑屏的问题。第一版石板资源保持相同，现已在真实 `NMapScreen` 中查看底、中、顶三段及首领区域，检查滚动与拼接。实机截图位于 `build/act_map_black_screen/map-bottom`、`map-middle`、`map-top`，操作步骤和复现记录见 `docs/archive/act-map-black-screen-20261004.md`。

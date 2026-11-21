@@ -21,4 +21,4 @@
 
 项目使用独立 Godot 用户目录；运行脚本检查进程退出码、stderr 和结果标记，异常或超时即失败。共享 SDK 构建状态要求不同目标顺序运行。
 
-诊断记录与限制见 `docs/pet-death-investigation-20261009.md`。
+诊断记录与限制见 `docs/reports/pet-death-investigation-20261009.md`。

@@ -1,0 +1,23 @@
+name: 功能与平衡建议 / Feature & Balance Suggestion
+description: 提出新机制想法、怪物/事件平衡性反馈或第三方模组兼容请求
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: 建议类型 / Category
+      options:
+        - 平衡性反馈（怪物 / 精英 / Boss / 事件）
+        - 玩法与内容建议
+        - 视觉 / 音效 / 本地化优化
+        - 第三方模组兼容请求
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: 具体说明 / Details
+      placeholder: 请描述你遇到的体验痛点或具体改进想法（若是第三方模组兼容请求，请附带对方的 Steam 工坊链接与版本号）
+    validations:
+      required: true

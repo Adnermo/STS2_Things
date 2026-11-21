@@ -10,7 +10,7 @@ namespace STS2_Things.Encounters;
 public sealed class ThingsRobberyFakeMerchantEncounter : EncounterModel
 {
     // Together the two merchants match one Act 1 elite: a third of the native HP each,
-    // and ShiftyPartnersPower scales their attacks (docs/depths-balance-20261110.md).
+    // and ShiftyPartnersPower scales their attacks (docs/archive/depths-balance-20261110.md).
     private const int HealthDivisor = 3;
     private bool _prepared;
     public override RoomType RoomType => RoomType.Monster;
