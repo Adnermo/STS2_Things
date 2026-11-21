@@ -1,0 +1,49 @@
+{
+  "id": "DepthsLostPick",
+  "name_zhs": "失镐矿偶",
+  "revision": "v3_lineless_chalky_vanilla",
+  "design_source": "design/act2_depths_monsters_v01.md",
+  "generator": "built-in image-generator",
+  "raw_master": "character_raw.jpg",
+  "final_rgba": "character_final.png",
+  "prompt_file": "character_prompt.txt",
+  "extraction_mode": "white studio ground + border BFS + interior pocket punch + 2px inward color decontamination",
+  "final_size": [
+    1200,
+    1200
+  ],
+  "final_margins": {
+    "canvas": [
+      1200,
+      1200
+    ],
+    "bbox": [
+      179,
+      158,
+      841,
+      868
+    ],
+    "left_pct": 14.9,
+    "right_pct": 15.0,
+    "top_pct": 13.2,
+    "bottom_pct": 14.5
+  },
+  "raw_margins": {
+    "left_pct": 9.0,
+    "right_pct": 8.9,
+    "top_pct": 7.6,
+    "bottom_pct": 7.6,
+    "bbox": [
+      92,
+      78,
+      841,
+      868
+    ],
+    "canvas": [
+      1024,
+      1024
+    ],
+    "seed_count_pct": 68.2
+  },
+  "sha256": "41b15f8014bd2a3786bd35166492206274a2de23ad08d55b12393d96e24d7a7b"
+}

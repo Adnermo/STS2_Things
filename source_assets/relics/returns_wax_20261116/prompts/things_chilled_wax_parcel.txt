@@ -1,0 +1,8 @@
+# Relic: 冰镇的蜡封匣 / Chilled Wax Parcel
+# References: STS2-V111/images/relics/vexing_puzzlebox.png | STS2-V111/images/relics/fresnel_lens.png
+
+Slay the Spire 2 relic inventory icon of a chilled glacial wax courier parcel, in the exact official game art style of the reference images. Single isolated prop centered in a 1:1 square canvas with ~70% fill and clear margins on all sides. Plain solid white background, no drop shadow, no floating particles or snowflakes outside the silhouette.
+
+Subject: One compact courier parcel box in 3/4 perspective tilt, made of slate-iron metal corner brackets and frost-dusted pale-indigo wood planks. The parcel is bound tightly with a pale silver-white cord. On the top center of the box is a crisp, faceted pale-cyan glacial wax seal, with spiky translucent ice-blue frost crystals clinging directly to the parcel's upper edge and corner fittings (solid ice crystals attached directly to the box, strictly NO floating snowflakes, particles, or mist outside the tight charcoal outline).
+
+Art style: Hand-painted chunky gouache illustration, stylized slightly-cartoon prop, thick uneven dark charcoal hand-drawn outline enclosing the outer silhouette and facets. 2-3 matte opaque color planes per material (slate iron, frost-dusted pale indigo, silver-white cord, pale cyan glacial wax, crisp crystalline ice highlights). Bold unmistakable silhouette readable at 32x32 pixels. Strictly NO letters, numbers, or glyphs.

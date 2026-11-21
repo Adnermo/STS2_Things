@@ -1,0 +1,8 @@
+# Relic: 窄口取景器 / Narrow Viewfinder
+# References: STS2-V111/images/relics/vexing_puzzlebox.png | STS2-V111/images/relics/fresnel_lens.png
+
+Slay the Spire 2 relic inventory icon of a narrow optical viewfinder block, in the exact official game art style of the reference images. Single isolated prop centered in a 1:1 square canvas with ~70% fill and generous margins on all sides. Plain solid white background, no drop shadow, no glow outside the silhouette, no ground shadow.
+
+Subject: One heavy compact tarnished-brass and dark-slate rectangular optical narrow-slit viewfinder block / peep-gauge tilted in 3/4 isometric perspective. On the front face is a beveled bronze rectangular bezel holding a crisp glowing narrow horizontal viewing slit lens, glowing with pale amber-gold and cool cyan glass reflections. On the side of the slate-and-brass block is one chunky riveted brass focusing thumbwheel knob.
+
+Art style: Hand-painted chunky gouache illustration, stylized slightly-cartoon prop, thick uneven dark charcoal hand-drawn outline enclosing the outer silhouette and structural edges. 2-3 matte opaque color planes per material (dark slate stone/metal, tarnished brass gold, glowing cyan and amber lens glass). Bold unmistakable silhouette readable at 32x32 pixels. Strictly NO readable text or numbers.

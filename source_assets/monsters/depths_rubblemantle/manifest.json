@@ -1,0 +1,50 @@
+{
+  "id": "DepthsRubblemantle",
+  "name_zhs": "砾背兽",
+  "archetype": "Archetype 3: Weird Fauna / Burrowing Cave Beast",
+  "revision": "v2_atlas_locked",
+  "design_source": "design/act2_depths_monsters_v01.md",
+  "generator": "built-in image-generator",
+  "raw_master": "character_raw.jpg",
+  "final_rgba": "character_final.png",
+  "prompt_file": "character_prompt.txt",
+  "extraction_mode": "green chroma key + connected-component filter + 3px inward color decontamination",
+  "final_size": [
+    1280,
+    1280
+  ],
+  "final_margins": {
+    "canvas": [
+      1280,
+      1280
+    ],
+    "bbox": [
+      195,
+      206,
+      890,
+      888
+    ],
+    "left_pct": 15.2,
+    "right_pct": 15.2,
+    "top_pct": 16.1,
+    "bottom_pct": 14.5
+  },
+  "raw_margins": {
+    "left_pct": 7.2,
+    "right_pct": 5.9,
+    "top_pct": 8.4,
+    "bottom_pct": 4.9,
+    "bbox": [
+      74,
+      86,
+      890,
+      888
+    ],
+    "canvas": [
+      1024,
+      1024
+    ],
+    "seed_count_pct": 47.8
+  },
+  "sha256": "359540704f39e3bd74b455f3c069673269bd8637d0be0da9bc122e87bcf7d209"
+}

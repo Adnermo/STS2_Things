@@ -1,0 +1,8 @@
+# Relic: 退货收据 / Return Receipt
+# References: STS2_Things/images/relics/things_shadow_claim_ticket.png | STS2-V111/images/relics/seal_of_gold.png
+
+Slay the Spire 2 relic inventory icon of a return receipt, in the exact official game art style of the reference images. Single isolated prop centered in a 1:1 square canvas with ~70% fill and clear margins on all sides. An isolated cutout on a transparent background, no drop shadow, no glow, no background box, no white sticker outline.
+
+Subject: One small folded and notched yellowed-cream parchment return receipt slip tilted at a ~30 degree angle, with a perforated tear notch along one edge. A plump terracotta-crimson wax stamp seal on one corner, with a short knotted hemp twine string loop trailing tightly along the slip's edge (kept tightly within the silhouette). On the parchment face, simple chunky sepia brush blotches and dashes representing stamped lines (strictly NO readable letters, numbers, text, or glyphs).
+
+Art style: Hand-painted chunky gouache illustration, slightly-cartoon prop, thick uneven dark charcoal hand-drawn outline enclosing the silhouette, coarse visible brush marks, 2-3 matte opaque color planes per material (warm parchment cream, terracotta red wax, coarse sepia ink). Crisp unmistakable silhouette readable at 32x32 pixels.

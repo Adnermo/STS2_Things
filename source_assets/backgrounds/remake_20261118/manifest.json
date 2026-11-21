@@ -1,0 +1,116 @@
+{
+  "remake_date": "2026-11-18",
+  "generator": "Antigravity built-in image-generator + sts2-background-art pipeline",
+  "untouched_preserved": [
+    "things_the_legacy_boss_encounter",
+    "things_human_face_tower_boss_encounter",
+    "things_depths map_bgs",
+    "things_robbery_fake_merchant_encounter"
+  ],
+  "assets": [
+    {
+      "id": "cave_skylight",
+      "master": "bg_remake_cave_skylight_1794979676469.jpg",
+      "outputs": [
+        "images\\rooms\\cave_skylight\\cave_skylight_00.png",
+        "images\\rooms\\cave_skylight\\cave_skylight_occlusion.png"
+      ],
+      "sha256_00": "c4cbd685614d458021901d276c3d908bea1146017c1351bf4039fc38197a68a8"
+    },
+    {
+      "id": "cave_riverbend",
+      "master": "bg_remake_cave_riverbend_1794979661503.jpg",
+      "outputs": [
+        "images\\rooms\\cave_riverbend\\cave_riverbend_00.png",
+        "images\\rooms\\cave_riverbend\\cave_riverbend_occlusion.png"
+      ],
+      "sha256_00": "1d3fd43892bb992c9946d137a4251e5d8905f18798c6d32a30b7494b22c8941a"
+    },
+    {
+      "id": "cave_quartz",
+      "master": "bg_remake_cave_quartz_1794979716790.jpg",
+      "outputs": [
+        "images\\rooms\\cave_quartz\\cave_quartz_00.png",
+        "images\\rooms\\cave_quartz\\cave_quartz_occlusion.png"
+      ],
+      "sha256_00": "de93a62df8ed28733cea9a23cf34e89b8e7c57035355e9a0ceac75e292ea10d7"
+    },
+    {
+      "id": "cave_rootfungus",
+      "master": "bg_remake_cave_rootfungus_1794979719835.jpg",
+      "outputs": [
+        "images\\rooms\\cave_rootfungus\\cave_rootfungus_00.png",
+        "images\\rooms\\cave_rootfungus\\cave_rootfungus_occlusion.png"
+      ],
+      "sha256_00": "72f06c4454197d8a167114ce2f6a6ab93a43c89c09c84f0052f358a2fede47ed"
+    },
+    {
+      "id": "sunken_bell_vault",
+      "master": "bg_sunken_bell_vault_v3_1794944868818.jpg",
+      "outputs": [
+        "images\\rooms\\sunken_bell_vault\\sunken_bell_vault_00.png",
+        "images\\rooms\\sunken_bell_vault\\sunken_bell_vault_occlusion.png"
+      ],
+      "sha256_00": "a756c5947644795f336aa8687bfcf3a827f4e0b0d9f8ecb275527f99f5579e2a"
+    },
+    {
+      "id": "hollow_grotto",
+      "master": "bg_remake_hollow_grotto_1794979672673.jpg",
+      "sha256_00": "b951df3a7877d9c8401bf209f467f0822a7526cf0648a68605712e70eee79c6e"
+    },
+    {
+      "id": "hollow_grotto_moss",
+      "master": "bg_remake_hollow_grotto_moss_final_1794979708849.jpg",
+      "sha256_00": "9e37fc30175295d5576477edaf3837ac0d4c49507716cf2c5a50790040ca44e1"
+    },
+    {
+      "id": "hollow_grotto_ember",
+      "master": "bg_remake_hollow_grotto_ember_1794979717535.jpg",
+      "sha256_00": "0288fc5daffe2f83d4542796ccad63d40bac15f66209619089f161265399176a"
+    },
+    {
+      "id": "hollow_grotto_violet",
+      "master": "bg_remake_hollow_grotto_violet_1794979714633.jpg",
+      "sha256_00": "af13e3aaa396754cd26382d01f0d19339319ed97a5db64243fa1b9635e8ca5f3"
+    },
+    {
+      "id": "origin_fogmog_boss",
+      "master": "bg_remake_origin_fogmog_1794980072502.jpg",
+      "sha256_bg": "515bf54c74a2bc03ca1ce711517d16d836f8f9924d405049c10ebc9d1f945983"
+    },
+    {
+      "id": "bowlbug_progenitor_boss",
+      "master": "bg_remake_bowlbug_progenitor_1794980102431.jpg",
+      "sha256_bg": "bfa8cd1addc6d9eb4463c12546ece522fa91be90719546e413451ca6611921c2"
+    },
+    {
+      "id": "scale_beetle_boss",
+      "master": "bg_remake_scale_beetle_v3_1794980100749.jpg",
+      "sha256_bg": "948a205905e32eb38fa1eb7497f3245cdaedb5e14e3fd1fa517b72c214478080"
+    },
+    {
+      "id": "gravetide_slug_boss",
+      "master": "bg_remake_gravetide_slug_1794980040952.jpg",
+      "sha256_far": "2810fabd2e9c330a68d0c0bac99bd754611d9b82e7a5e0fee9ce4d142e2319a4"
+    },
+    {
+      "id": "cave_god_boss",
+      "masters": [
+        "bg_remake_cavegod_far_blue_1794980020714.jpg",
+        "bg_remake_cavegod_far_red_1794980186345.jpg",
+        "bg_remake_cavegod_platform_1794980037391.jpg"
+      ],
+      "sha256_blue": "43c457af050ac26521241102d0953a069dbee2aa3924edbc8722d38a4cd1f74d",
+      "sha256_red": "0cf48425e0aacb13595a18139acb152bec61146c72d209b125cc1ef3f5a30963",
+      "sha256_platform": "444f8dd6f7bb2ed4e95459c84758b66d879a008ec15de02076c783c60d6c55e7"
+    },
+    {
+      "id": "depths_camp",
+      "masters": [
+        "bg_remake_depths_camp_bg_1794980050294.jpg",
+        "bg_remake_depths_camp_props_1794980103548.jpg"
+      ],
+      "sha256_bg": "586ab012628a33346ca444c4fd29d033b298a3f5c398e99afbeba5f2efb0c931"
+    }
+  ]
+}

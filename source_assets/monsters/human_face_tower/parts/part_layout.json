@@ -1,0 +1,182 @@
+{
+  "wrath_throat_bg": {
+    "sub_box": [
+      126,
+      192,
+      414,
+      324
+    ],
+    "size": [
+      288,
+      132
+    ]
+  },
+  "wrath_teeth_upper": {
+    "sub_box": [
+      158,
+      198,
+      384,
+      264
+    ],
+    "size": [
+      226,
+      66
+    ]
+  },
+  "wrath_teeth_lower": {
+    "sub_box": [
+      158,
+      250,
+      384,
+      314
+    ],
+    "size": [
+      226,
+      64
+    ]
+  },
+  "wrath_crack_glow": {
+    "sub_box": [
+      192,
+      30,
+      352,
+      136
+    ],
+    "size": [
+      160,
+      106
+    ]
+  },
+  "lament_throat_bg": {
+    "sub_box": [
+      164,
+      212,
+      376,
+      304
+    ],
+    "size": [
+      212,
+      92
+    ]
+  },
+  "lament_tear_glow": {
+    "sub_box": [
+      108,
+      142,
+      438,
+      326
+    ],
+    "size": [
+      330,
+      184
+    ]
+  },
+  "bastion_throat_bg": {
+    "sub_box": [
+      166,
+      224,
+      374,
+      280
+    ],
+    "size": [
+      208,
+      56
+    ]
+  },
+  "bastion_clamp_intact": {
+    "sub_box": [
+      130,
+      206,
+      406,
+      286
+    ],
+    "size": [
+      276,
+      80
+    ]
+  },
+  "bastion_clamp_split_l": {
+    "sub_box": [
+      142,
+      207,
+      277,
+      284
+    ],
+    "size": [
+      135,
+      77
+    ]
+  },
+  "bastion_clamp_split_r": {
+    "sub_box": [
+      256,
+      206,
+      396,
+      285
+    ],
+    "size": [
+      140,
+      79
+    ]
+  },
+  "bastion_keystone_glow": {
+    "sub_box": [
+      220,
+      206,
+      312,
+      286
+    ],
+    "size": [
+      92,
+      80
+    ]
+  },
+  "mockery_throat_bg": {
+    "sub_box": [
+      142,
+      190,
+      438,
+      264
+    ],
+    "size": [
+      296,
+      74
+    ]
+  },
+  "mockery_eye_sclera": {
+    "sub_box": [
+      116,
+      126,
+      446,
+      178
+    ],
+    "size": [
+      330,
+      52
+    ]
+  },
+  "mockery_pupils": {
+    "sub_box": [
+      142,
+      126,
+      446,
+      178
+    ],
+    "size": [
+      304,
+      52
+    ]
+  },
+  "mockery_spark_glow": {
+    "sub_box": [
+      328,
+      148,
+      412,
+      224
+    ],
+    "size": [
+      84,
+      76
+    ]
+  }
+}

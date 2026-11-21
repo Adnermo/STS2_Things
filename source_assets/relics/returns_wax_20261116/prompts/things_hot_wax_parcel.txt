@@ -1,0 +1,8 @@
+# Relic: 发烫的蜡封匣 / Hot Wax Parcel
+# References: STS2-V111/images/relics/vexing_puzzlebox.png | STS2-V111/images/relics/seal_of_gold.png
+
+Slay the Spire 2 relic inventory icon of a hot wax courier parcel, in the exact official game art style of the reference images. Single isolated prop centered in a 1:1 square canvas with ~70% fill and clear margins on all sides. Plain solid white background, no drop shadow, no glow or embers outside the silhouette.
+
+Subject: One compact courier parcel box in 3/4 perspective tilt, made of dark charred-timber wood with tarnished-brass corner fittings and a brass front latch. The box is bound tightly with coarse brown leather straps. Topping the box is an oversized, plump bright molten glowing orange-crimson wax seal that has hot thick molten amber-red droplets oozing directly down over the front latch and face of the box. All melting wax droplets cling directly to the parcel box (strictly NO floating embers, NO flying sparks, NO particles floating outside the tight outline).
+
+Art style: Hand-painted chunky gouache illustration, stylized slightly-cartoon prop, thick uneven dark charcoal hand-drawn outline enclosing the outer silhouette. 2-3 matte opaque color planes per material (charred dark wood, warm brass, leather strap, glowing molten crimson-orange wax). Bold unmistakable silhouette readable at 32x32 pixels. Strictly NO letters, numbers, or glyphs.

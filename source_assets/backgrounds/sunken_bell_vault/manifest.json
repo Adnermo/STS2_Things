@@ -1,0 +1,54 @@
+{
+  "id": "sunken_bell_vault",
+  "raw_size": [
+    1376,
+    768
+  ],
+  "deliverables": {
+    "full_1920x1080": "sunken_bell_vault_1920x1080.png",
+    "plate_2048x960": "sunken_bell_vault_2048x960_plate.png",
+    "combat_mockup": "sunken_bell_vault_combat_mockup.jpg",
+    "audit_6panel": "sunken_bell_vault_audit_6panel.jpg",
+    "vanilla_comparison": "sunken_bell_vault_vanilla_comparison.jpg"
+  },
+  "sha256_1920x1080": "35d2b2c1cd432dbb6217791cd5cdaa1bceb29950562fcd57eeace2641e901dbf",
+  "sha256_2048x960": "1ac6f0e44491bd6274decb346c8b06d550dc43db87548b3b6433077dd72a4177",
+  "metrics_new": {
+    "median_luma": 45.73,
+    "mean_luma": 45.35,
+    "p95_luma": 85.85,
+    "floor_median_luma": 52.73,
+    "floor_grad_mean": 0.75,
+    "floor_grad_p90": 1.76,
+    "bottom_fg_median_luma": 11.67
+  },
+  "metrics_vanilla_benchmarks": {
+    "ceremonial_beast_boss": {
+      "median_luma": 30.44,
+      "mean_luma": 34.45,
+      "p95_luma": 63.9,
+      "floor_median_luma": 52.67,
+      "floor_grad_mean": 0.76,
+      "floor_grad_p90": 2.2,
+      "bottom_fg_median_luma": 14.41
+    },
+    "queen_boss": {
+      "median_luma": 22.59,
+      "mean_luma": 25.08,
+      "p95_luma": 48.9,
+      "floor_median_luma": 13.12,
+      "floor_grad_mean": 0.68,
+      "floor_grad_p90": 1.99,
+      "bottom_fg_median_luma": 8.0
+    },
+    "overgrowth_v1": {
+      "median_luma": 22.67,
+      "mean_luma": 24.98,
+      "p95_luma": 42.88,
+      "floor_median_luma": 37.05,
+      "floor_grad_mean": 0.54,
+      "floor_grad_p90": 1.24,
+      "bottom_fg_median_luma": 12.66
+    }
+  }
+}

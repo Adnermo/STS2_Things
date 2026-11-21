@@ -1,0 +1,156 @@
+[
+  {
+    "slug": "things_collision",
+    "title": "对撞 (Collision)",
+    "category": "Ironclad Uncommon Attack",
+    "master": "source_assets\\card_portraits_cd_remake_20261114\\masters\\things_collision-master.jpg",
+    "target": "images/packed/card_portraits/ironclad/things_collision.png",
+    "size": [
+      1000,
+      760
+    ],
+    "mode": "RGBA",
+    "sha256": "27d86ba634d9fe512778b6690bb3983968b2ee85d3850a5c1aac968f34d2d7db",
+    "status": "remade_cd_style"
+  },
+  {
+    "slug": "things_reuse",
+    "title": "再利用 (Reuse)",
+    "category": "Defect Rare Power",
+    "master": "source_assets\\card_portraits_cd_remake_20261114\\masters\\things_reuse-master.jpg",
+    "target": "images/packed/card_portraits/defect/things_reuse.png",
+    "size": [
+      1000,
+      760
+    ],
+    "mode": "RGBA",
+    "sha256": "f1e973ea7fb0ee0c27e8ecf5dcf2639a9533b719bbb91dd9c3ed775c37ae16d9",
+    "status": "remade_cd_style"
+  },
+  {
+    "slug": "things_pack_up",
+    "title": "整顿 (Pack Up)",
+    "category": "Silent Uncommon Skill",
+    "master": "source_assets\\card_portraits_cd_remake_20261114\\masters\\things_pack_up-master.jpg",
+    "target": "images/packed/card_portraits/silent/things_pack_up.png",
+    "size": [
+      1000,
+      760
+    ],
+    "mode": "RGBA",
+    "sha256": "b5c39b8c62ac0f42857529a860f8b3451877d18c5fd6fd35917535d6d06df1af",
+    "status": "remade_cd_style"
+  },
+  {
+    "slug": "things_recall",
+    "title": "追忆 (Recall)",
+    "category": "Silent Rare Skill",
+    "master": "source_assets\\card_portraits_cd_remake_20261114\\masters\\things_recall-master.jpg",
+    "target": "images/packed/card_portraits/silent/things_recall.png",
+    "size": [
+      1000,
+      760
+    ],
+    "mode": "RGBA",
+    "sha256": "7d6470ace35cea100d306ec64f6c3fc041ad04781da2ef631bb930a86459ffb1",
+    "status": "remade_cd_style"
+  },
+  {
+    "slug": "things_soulfysh_disease",
+    "title": "异鱼症 (Soulfysh Disease)",
+    "category": "Silent Uncommon Skill",
+    "master": "source_assets\\card_portraits_cd_remake_20261114\\masters\\things_soulfysh_disease-master.jpg",
+    "target": "images/packed/card_portraits/silent/things_soulfysh_disease.png",
+    "size": [
+      1000,
+      760
+    ],
+    "mode": "RGBA",
+    "sha256": "7a281135779efe84e43942fd784548520e1b14e6009532a53b930d82130c9c8e",
+    "status": "remade_cd_style"
+  },
+  {
+    "slug": "things_leech_parasite",
+    "title": "寄生 (Parasitism)",
+    "category": "Token Status",
+    "master": null,
+    "target": "images/cards/things_leech_parasite.png",
+    "size": [
+      1000,
+      760
+    ],
+    "mode": "RGB",
+    "sha256": "8cab7f4523ba44f12a34f101022e364ac92c17606aedc133c72b2632e320e943",
+    "status": "retained_original"
+  },
+  {
+    "slug": "things_snail_crystal_chip",
+    "title": "晶片 (Crystal Chip)",
+    "category": "Token Attack",
+    "master": "source_assets\\card_portraits_cd_remake_20261114\\masters\\things_snail_crystal_chip-master.jpg",
+    "target": "images/packed/card_portraits/token/things_snail_crystal_chip.png",
+    "size": [
+      1000,
+      760
+    ],
+    "mode": "RGB",
+    "sha256": "f0645039f0ff8743711d7f1d5637198868f92fe75e4fbc6ccf459a5dcaf66050",
+    "status": "remade_cd_style"
+  },
+  {
+    "slug": "things_cave_god_broken_blade_trial",
+    "title": "断刃 (Broken Blade)",
+    "category": "Token Status (Trial)",
+    "master": "source_assets\\card_portraits_cd_remake_20261114\\masters\\things_cave_god_broken_blade_trial-master.jpg",
+    "target": "images/packed/card_portraits/token/things_cave_god_broken_blade_trial.png",
+    "size": [
+      1000,
+      760
+    ],
+    "mode": "RGB",
+    "sha256": "209535b2894d9d7847e595b20a42d46a5f5969ff5d8e46b2cac41e5de0e7978e",
+    "status": "remade_cd_style"
+  },
+  {
+    "slug": "things_cave_god_shattered_shield_trial",
+    "title": "碎盾 (Shattered Shield)",
+    "category": "Token Status (Trial)",
+    "master": "source_assets\\card_portraits_cd_remake_20261114\\masters\\things_cave_god_shattered_shield_trial-master.jpg",
+    "target": "images/packed/card_portraits/token/things_cave_god_shattered_shield_trial.png",
+    "size": [
+      1000,
+      760
+    ],
+    "mode": "RGB",
+    "sha256": "bc7a41db4724a13b0d828a108bd639f82191b09e2939b0e8c7b1e2e83968855d",
+    "status": "remade_cd_style"
+  },
+  {
+    "slug": "things_cave_god_crystal_shard",
+    "title": "晶簇 (Crystal Shard)",
+    "category": "Token Portrait",
+    "master": "source_assets\\card_portraits_cd_remake_20261114\\masters\\things_cave_god_crystal_shard-master.jpg",
+    "target": "images/packed/card_portraits/token/things_cave_god_crystal_shard.png",
+    "size": [
+      1000,
+      760
+    ],
+    "mode": "RGB",
+    "sha256": "b90c40cea9c8ed070b4f3be4eab51463a004455a0bae52f7865121a866f458d2",
+    "status": "remade_cd_style"
+  },
+  {
+    "slug": "things_surrender",
+    "title": "诈降 (Surrender)",
+    "category": "Event Ancient Skill (606x852)",
+    "master": null,
+    "target": "images/packed/card_portraits/event/things_surrender.png",
+    "size": [
+      606,
+      852
+    ],
+    "mode": "RGBA",
+    "sha256": "68c747cc96956b8dd13b98e47c64cf0c391c04f43add7281a7b24bc93c4cc793",
+    "status": "retained_original"
+  }
+]

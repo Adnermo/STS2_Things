@@ -1,0 +1,50 @@
+{
+  "things_return_receipt": {
+    "crop": [
+      75,
+      54,
+      925,
+      963
+    ],
+    "holes_removed": [],
+    "sha256_big": "eb74dbc6405db98357c315837b80d683d05526bc6d7ee0a163b6edd474c1ff8e",
+    "sha256_packed": "b45a4f91f928daae2715f5e3accb052330bb2cc1f4c9371b79863dc1950e7e39",
+    "sha256_outline": "a99e7113b57373b85af37fdb4a7fa7f50c312eea46a2f2a3fc484c74f9bb1976"
+  },
+  "things_narrow_viewfinder": {
+    "crop": [
+      53,
+      45,
+      987,
+      969
+    ],
+    "holes_removed": [],
+    "sha256_big": "2a1ef994394a22d30b7f82f01af6c7a733085909eb7f24544a61e094c1bf1e6d",
+    "sha256_packed": "4d588bb3326c4e72ca5d64c7e7f18cd40153aa7afe8e9579dea9f6f26b2d3213",
+    "sha256_outline": "c795e1b72c2ab4063d06da73cebac5f7477d7ec5009f6287ab69dfcce08a41ed"
+  },
+  "things_hot_wax_parcel": {
+    "crop": [
+      40,
+      66,
+      984,
+      969
+    ],
+    "holes_removed": [],
+    "sha256_big": "16f05e56cd915736bff5ee356046e8981bdc166103beb72ddf06a0bea98b0f47",
+    "sha256_packed": "5c5c496e4e0b4e296271f05a537d6bcbb3a0f62586cf3ba4167d5f16bf4b62a7",
+    "sha256_outline": "c8c4ee02721cd94b6a585b5cd2e5429bfc194ea23b6a88020ca7a159db347f3d"
+  },
+  "things_chilled_wax_parcel": {
+    "crop": [
+      78,
+      6,
+      956,
+      1021
+    ],
+    "holes_removed": [],
+    "sha256_big": "d54908d6155a62ac5a563428814311f222c6d905fc93624d97c1636a076c3a47",
+    "sha256_packed": "21ddebf8a55124ee6f9ac53c858260f6c58ea9e86fcfede039936341acba44d0",
+    "sha256_outline": "2ef0286ca82c3c8807f9d23f674f48b0e93f4ae1ae856be60cd858fc29acd7f1"
+  }
+}

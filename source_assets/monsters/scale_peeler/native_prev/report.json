@@ -1,0 +1,24 @@
+{
+	"durations": {
+		"attack": 1.05999994277954,
+		"cast": 1.39999997615814,
+		"die": 1.45000004768372,
+		"flurry": 1.32000005245209,
+		"hurt": 0.579999983310699,
+		"idle_loop": 4.0,
+		"power_up": 0.949999988079071,
+		"revive": 1.10000002384186,
+		"slam": 1.27999997138977,
+		"summon": 0.949999988079071
+	},
+	"fps": 6.0,
+	"frames": 10,
+	"position": [
+		820,
+		760
+	],
+	"renderer": "native Spine/Godot",
+	"scale": 0.75,
+	"spine": "4.2.0",
+	"spjson": "res://STS2_Things/animations/monsters/scale_peeler/scale_peeler.spjson"
+}

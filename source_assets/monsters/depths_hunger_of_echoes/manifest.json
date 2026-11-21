@@ -1,0 +1,51 @@
+{
+  "id": "DepthsHungerOfEchoes",
+  "name_zhs": "饥响者",
+  "rank": "Elite",
+  "archetype": "Elite Eyeless Acoustic Predator (1:1 Swatch Cat5+Cat6)",
+  "revision": "v2_low_line_vanilla",
+  "design_source": "design/act2_depths_monsters_v01.md",
+  "generator": "built-in image-generator",
+  "raw_master": "character_raw.jpg",
+  "final_rgba": "character_final.png",
+  "prompt_file": "character_prompt.txt",
+  "extraction_mode": "green chroma key + connected-component filter + 3px inward color decontamination",
+  "final_size": [
+    1280,
+    1280
+  ],
+  "final_margins": {
+    "canvas": [
+      1280,
+      1280
+    ],
+    "bbox": [
+      200,
+      183,
+      880,
+      911
+    ],
+    "left_pct": 15.6,
+    "right_pct": 15.6,
+    "top_pct": 14.3,
+    "bottom_pct": 14.5
+  },
+  "raw_margins": {
+    "left_pct": 5.5,
+    "right_pct": 8.6,
+    "top_pct": 7.4,
+    "bottom_pct": 3.6,
+    "bbox": [
+      56,
+      76,
+      880,
+      911
+    ],
+    "canvas": [
+      1024,
+      1024
+    ],
+    "seed_count_pct": 69.0
+  },
+  "sha256": "076fbf19d19572feef6c5811316beddc09e8c9c1c43300dbceed07f6fe1ec0d2"
+}

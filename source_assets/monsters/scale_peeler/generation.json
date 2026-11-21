@@ -1,0 +1,21 @@
+{
+  "model": "antigravity-builtin-image-generator",
+  "mode": "image-generator subagent with vanilla STS2 visual references",
+  "monster_references": [
+    "STS2-V111/animations/monsters/tunneler/tunneler.png",
+    "STS2-V111/animations/monsters/decimillipede/decimillipede.png",
+    "STS2-V111/animations/monsters/slumbering_beetle/slumberingbeetle.png",
+    "STS2-V111/animations/monsters/chomper/chomper.png"
+  ],
+  "power_references": [
+    "sts2-power-art/resources/sts2_stone_power_board.png",
+    "source_assets/ui/depths_icons_v2/reference_native.png"
+  ],
+  "files": {
+    "character_generated.png": "8cdc1b516b08a45cfc5496e698b402f67ab852f6a8224a3fa5a062f4123cf9fd",
+    "character_final.png": "9aaa60d35b46f1351a9c53373e672cb46f918aae66ab2cc4468d111eba69d5e7",
+    "power_generated.png": "3718ad247df9d6d882430d1ffa9864f4c4ae24bba58e3d38e14e7d48ee2fb9fd",
+    "things_armor_siphon_power.png": "b88e29499a2e49d89f078255a39c990e02c5e6aff89d50c7c22e73e8e63222d3",
+    "things_armor_siphon_power_packed.png": "94f25cdb187b6105e96769f29b3de8613b9a4b81f60ea151b78f2fc911f7b8cf"
+  }
+}
