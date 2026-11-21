@@ -3,20 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://lvwgetvyvt1o"
-path.bptc="res://.godot/imported/cave_rootfungus_00.png-d49f6c40388519878f14229502d51c1f.bptc.ctex"
+path="res://.godot/imported/cave_rootfungus_00.png-d49f6c40388519878f14229502d51c1f.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://images/rooms/cave_rootfungus/cave_rootfungus_00.png"
-dest_files=["res://.godot/imported/cave_rootfungus_00.png-d49f6c40388519878f14229502d51c1f.bptc.ctex"]
+dest_files=["res://.godot/imported/cave_rootfungus_00.png-d49f6c40388519878f14229502d51c1f.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=true
 compress/lossy_quality=1.0
 compress/uastc_level=2

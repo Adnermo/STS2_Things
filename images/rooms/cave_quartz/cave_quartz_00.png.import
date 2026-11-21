@@ -3,20 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cr2r8jw41ubwe"
-path.bptc="res://.godot/imported/cave_quartz_00.png-0117495f2c779609bdddbb4a9657aec6.bptc.ctex"
+path="res://.godot/imported/cave_quartz_00.png-0117495f2c779609bdddbb4a9657aec6.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://images/rooms/cave_quartz/cave_quartz_00.png"
-dest_files=["res://.godot/imported/cave_quartz_00.png-0117495f2c779609bdddbb4a9657aec6.bptc.ctex"]
+dest_files=["res://.godot/imported/cave_quartz_00.png-0117495f2c779609bdddbb4a9657aec6.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=true
 compress/lossy_quality=1.0
 compress/uastc_level=2

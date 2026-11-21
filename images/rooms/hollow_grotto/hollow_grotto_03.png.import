@@ -3,20 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dyqm4lertytq3"
-path.bptc="res://.godot/imported/hollow_grotto_03.png-a8736838ed7a571e2158f02b8115f862.bptc.ctex"
+path="res://.godot/imported/hollow_grotto_03.png-a8736838ed7a571e2158f02b8115f862.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://images/rooms/hollow_grotto/hollow_grotto_03.png"
-dest_files=["res://.godot/imported/hollow_grotto_03.png-a8736838ed7a571e2158f02b8115f862.bptc.ctex"]
+dest_files=["res://.godot/imported/hollow_grotto_03.png-a8736838ed7a571e2158f02b8115f862.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=true
 compress/lossy_quality=1.0
 compress/uastc_level=2

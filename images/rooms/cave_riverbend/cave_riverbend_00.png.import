@@ -3,20 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bx7xs1m8s472q"
-path.bptc="res://.godot/imported/cave_riverbend_00.png-3d3c2916bd048b2c8bbb1d2547768f67.bptc.ctex"
+path="res://.godot/imported/cave_riverbend_00.png-3d3c2916bd048b2c8bbb1d2547768f67.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://images/rooms/cave_riverbend/cave_riverbend_00.png"
-dest_files=["res://.godot/imported/cave_riverbend_00.png-3d3c2916bd048b2c8bbb1d2547768f67.bptc.ctex"]
+dest_files=["res://.godot/imported/cave_riverbend_00.png-3d3c2916bd048b2c8bbb1d2547768f67.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=true
 compress/lossy_quality=1.0
 compress/uastc_level=2

@@ -3,20 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://btwwyygrgdraw"
-path.bptc="res://.godot/imported/cave_skylight_occlusion.png-bb0b0764366f504af8e79246ff575c15.bptc.ctex"
+path="res://.godot/imported/cave_skylight_occlusion.png-bb0b0764366f504af8e79246ff575c15.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://images/rooms/cave_skylight/cave_skylight_occlusion.png"
-dest_files=["res://.godot/imported/cave_skylight_occlusion.png-bb0b0764366f504af8e79246ff575c15.bptc.ctex"]
+dest_files=["res://.godot/imported/cave_skylight_occlusion.png-bb0b0764366f504af8e79246ff575c15.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=true
 compress/lossy_quality=1.0
 compress/uastc_level=2
