@@ -54,6 +54,8 @@ public sealed class ThingsGravetideSlug : GravetideSlugBase
     protected override string VisualsPath =>
         SceneHelper.GetScenePath("creature_visuals/gravetide_slug");
 
+    public override float HpBarSizeReduction => 140f;
+
     public override Vector2 ExtraDeathVfxPadding => new(1.8f, 1.8f);
 
     public override IEnumerable<string> AssetPaths => base.AssetPaths

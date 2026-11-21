@@ -1,3 +1,4 @@
+using Godot;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -18,6 +19,10 @@ public sealed class ThingsChromaticSlimeMediumAmber : ThingsChromaticSlimeMedium
     public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 27, 25);
 
     internal override int OpeningBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 9, 8);
+    protected override string? PreferredSkinName => "amber";
+    protected override float? VariantBoundsTop => -178f;
+    protected override Vector2? VariantCenterPos => new(0f, -88f);
+    protected override Vector2? VariantIntentPos => new(-4f, -214f);
     protected override string? PreferredAttackAnimation => "attack_amber";
     protected override string? PreferredPowerUpAnimation => "power_amber";
     private int BashDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6);

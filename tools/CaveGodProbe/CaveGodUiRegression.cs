@@ -26,7 +26,7 @@ public partial class CaveGodProbeNode
         Assert(status is GDExtensionManager.LoadStatus.Ok or GDExtensionManager.LoadStatus.AlreadyLoaded, "Spine unavailable.");
         GetTree().Root.Size = new Vector2I(1920, 1080);
         var bg = GD.Load<PackedScene>("res://scenes/backgrounds/things_cave_god_boss_encounter/things_cave_god_boss_encounter_background.tscn").Instantiate<Control>();
-        bg.Position = new Vector2(983, 540);
+        bg.Position = new Vector2(983, 575);
         bg.Scale = Vector2.One * 0.75f;
         bg.GetNode("Layer_00").AddChild(GD.Load<PackedScene>("res://scenes/backgrounds/things_cave_god_boss_encounter/layers/things_cave_god_boss_encounter_bg_00_a.tscn").Instantiate());
         bg.GetNode("Foreground").AddChild(GD.Load<PackedScene>("res://scenes/backgrounds/things_cave_god_boss_encounter/layers/things_cave_god_boss_encounter_fg_a.tscn").Instantiate());
@@ -35,7 +35,7 @@ public partial class CaveGodProbeNode
         var arms = bg.GetNode<Node2D>("CaveGodArms");
         var rig = new MegaSprite(arms);
         var state = Scenario();
-        var enemies = new Control { Position = new Vector2(983, 540), Scale = Vector2.One * 0.75f };
+        var enemies = new Control { Position = new Vector2(983, 575), Scale = Vector2.One * 0.75f };
         AddChild(enemies);
         var slots = GD.Load<PackedScene>("res://scenes/encounters/things_cave_god_boss_encounter.tscn").Instantiate<Control>();
         slots.Position = new Vector2(-960, -540);
@@ -76,8 +76,8 @@ public partial class CaveGodProbeNode
             failures.Add($"body torso hitbox too small: {bodyRect}");
         if (!bodyRect.HasPoint(bodyNode.VfxSpawnPosition))
             failures.Add($"body VFX spawn {bodyNode.VfxSpawnPosition} outside torso hitbox {bodyRect}");
-        if (bodyHp.GlobalPosition.Y < 50f || bodyHp.GlobalPosition.Y > 130f)
-            failures.Add($"body boss HP bar out of top band: {bodyHp.GlobalPosition}");
+        if (bodyHp.GlobalPosition.Y < 152f || bodyHp.GlobalPosition.Y > 210f)
+            failures.Add($"body boss HP bar out of relic-safe top band: {bodyHp.GlobalPosition}");
         for (int i = 0; i < 2; i++)
         {
             var hp = creatures[i].GetNode<Control>("%HealthBar");

@@ -126,6 +126,7 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
     public override bool ShouldFadeAfterDeath => false;
     public override bool ShouldDisappearFromDoom => false;
     public override float DeathAnimLengthOverride => 7.20f;
+    public override float HpBarSizeReduction => 120f;
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 270, 250) + (Sts2VersionSeam.IsDread() ? 20 : 0);
     public override int MaxInitialHp => MinInitialHp;
 

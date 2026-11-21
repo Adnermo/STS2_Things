@@ -529,12 +529,16 @@ public sealed partial class DepthsActMusicController : Node
 
         if (_threadedRequestedPaths.Count > 0)
         {
+            List<string>? stillInProgress = null;
             foreach (string path in _threadedRequestedPaths)
             {
                 try
                 {
-                    if (ResourceLoader.LoadThreadedGetStatus(path) == ResourceLoader.ThreadLoadStatus.Loaded)
+                    ResourceLoader.ThreadLoadStatus status = ResourceLoader.LoadThreadedGetStatus(path);
+                    if (status == ResourceLoader.ThreadLoadStatus.Loaded)
                         _ = ResourceLoader.LoadThreadedGet(path);
+                    else if (status == ResourceLoader.ThreadLoadStatus.InProgress)
+                        (stillInProgress ??= []).Add(path);
                 }
                 catch (Exception)
                 {
@@ -542,6 +546,11 @@ public sealed partial class DepthsActMusicController : Node
                 }
             }
             _threadedRequestedPaths.Clear();
+            if (stillInProgress != null)
+            {
+                foreach (string path in stillInProgress)
+                    _threadedRequestedPaths.Add(path);
+            }
         }
     }
 
@@ -791,6 +800,14 @@ public sealed partial class DepthsActMusicController : Node
 
         try
         {
+            ResourceLoader.ThreadLoadStatus existing = ResourceLoader.LoadThreadedGetStatus(path);
+            if (existing == ResourceLoader.ThreadLoadStatus.InProgress ||
+                existing == ResourceLoader.ThreadLoadStatus.Loaded)
+            {
+                _threadedRequestedPaths.Add(path);
+                return;
+            }
+
             Error err = ResourceLoader.LoadThreadedRequest(path, "", useSubThreads: false, ResourceLoader.CacheMode.Reuse);
             if (err == Error.Ok)
                 _threadedRequestedPaths.Add(path);

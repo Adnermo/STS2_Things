@@ -8,7 +8,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 [node name="crystal" type="Marker2D" parent="."]
-position = Vector2(1105,795)
+position = Vector2(1105, 750)
 [node name="slime" type="Marker2D" parent="."]
 position = Vector2(1405,790)
 [node name="rock" type="Marker2D" parent="."]

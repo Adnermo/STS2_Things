@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Encounters;
 using MegaCrit.Sts2.Core.Models;
@@ -27,6 +28,10 @@ public sealed class ThingsGravetideSlugBossEncounter : ModBossEncounter
     public override bool HasScene => true;
 
     protected override bool HasCustomBackground => true;
+
+    public override float GetCameraScaling() => 0.88f;
+
+    public override Vector2 GetCameraOffset() => new Vector2(-20f, -15f);
 
     public override IEnumerable<string> ExtraAssetPaths =>
     [

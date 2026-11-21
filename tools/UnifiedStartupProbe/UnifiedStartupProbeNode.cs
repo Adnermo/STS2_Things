@@ -36,8 +36,14 @@ public partial class UnifiedStartupProbeNode : Node
             // Native test mode skips DLL/PCK loading across both v0.111.1 and v0.113.1.
             // Keep real startup behavior until all initialization has completed.
             TestMode.IsOn = false;
-            Require(args[2] is "v111.1" or "v113.1", $"Invalid target '{args[2]}'; expected 'v111.1' or 'v113.1'.");
-            Require(SemanticVersion.TryFromString(args[2] == "v111.1" ? "v0.111.1" : "v0.113.1", out var version),
+            Require(args[2] is "v111.0" or "v111.1" or "v113.1", $"Invalid target '{args[2]}'; expected 'v111.0', 'v111.1', or 'v113.1'.");
+            string semverString = args[2] switch
+            {
+                "v111.0" => "v0.111.0",
+                "v111.1" => "v0.111.1",
+                _ => "v0.113.1",
+            };
+            Require(SemanticVersion.TryFromString(semverString, out var version),
                 "Invalid target version.");
             await ModManager.Initialize(new PackageFileIo(args[0]),
                 new ModSettings { PlayerAgreedToModLoading = true }, version);
@@ -48,13 +54,14 @@ public partial class UnifiedStartupProbeNode : Node
             Type bootstrap = AppDomain.CurrentDomain.GetAssemblies()
                 .Single(a => a.GetName().Name == "STS2_Things.Bootstrap")
                 .GetType("STS2_Things.Bootstrap.UnifiedBootstrap", true)!;
-            Require((string?)bootstrap.GetProperty("SelectedTarget")!.GetValue(null) == args[2],
+            string expectedSelectedTarget = args[2] == "v111.0" ? "v111.1" : args[2];
+            Require((string?)bootstrap.GetProperty("SelectedTarget")!.GetValue(null) == expectedSelectedTarget,
                 "Published bootstrap selected the wrong game version.");
             Type[] modTypes = ReflectionHelper.ModTypes;
             Require(modTypes.Any(t => t.FullName == "STS2_Things.Acts.ThingsDepths"), "ThingsDepths was not discovered.");
             Type initType = modTypes.Single(t => t.FullName == "STS2_ThingsInit");
-            Require((string?)initType.GetField("ModVersion")?.GetValue(null) == "2.0.2",
-                "STS2_ThingsInit.ModVersion is not 2.0.2.");
+            Require((string?)initType.GetField("ModVersion")?.GetValue(null) == "2.0.3",
+                "STS2_ThingsInit.ModVersion is not 2.0.3.");
             Type? assemblyInfo = typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Modding.AssemblyInfo");
             assemblyInfo?.GetMethod("Init")?.Invoke(null, null);
             MethodInfo init = typeof(ModelDb).GetMethods().Single(m => m.Name == "Init");

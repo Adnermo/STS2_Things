@@ -35,6 +35,8 @@ public sealed class ThingsGravetideSlugCorpse : ThingsMonsterModel
 
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Slime;
 
+    public override float HpBarSizeReduction => 60f;
+
     [SavedProperty]
     public bool DelayDigestionUntilNextEnemyTurn
     {

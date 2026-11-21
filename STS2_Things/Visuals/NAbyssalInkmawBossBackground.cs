@@ -51,7 +51,7 @@ public partial class NAbyssalInkmawBossBackground : Node2D
     public const float AllyVisualScale = 0.67f;
 
     public static readonly Vector2 BodyRigPos = new(0f, -24f);
-    public static readonly Vector2 BossHudLocalOffset = new(0f, -14f);
+    public static readonly Vector2 BossHudLocalOffset = new(0f, -58f);
     public static readonly Vector2 LeftWaterTentaclePos = new(-470f, 32f);
     public static readonly Vector2 RightWaterTentaclePos = new(470f, 32f);
     public static readonly Vector2 LeftFloorTentaclePos = new(-475f, 152f);
@@ -61,10 +61,10 @@ public partial class NAbyssalInkmawBossBackground : Node2D
 
     public static readonly Vector2 LeftWaterHudLocalOffset = new(-470f, 82f);
     public static readonly Vector2 RightWaterHudLocalOffset = new(470f, 82f);
-    public static readonly Vector2 LeftFloorHudLocalOffset = new(-475f, 166f);
-    public static readonly Vector2 RightFloorHudLocalOffset = new(475f, 166f);
-    public static readonly Vector2 OuterLeftSmallHudLocalOffset = new(-735f, 198f);
-    public static readonly Vector2 OuterRightSmallHudLocalOffset = new(735f, 198f);
+    public static readonly Vector2 LeftFloorHudLocalOffset = new(-465f, 132f);
+    public static readonly Vector2 RightFloorHudLocalOffset = new(465f, 132f);
+    public static readonly Vector2 OuterLeftSmallHudLocalOffset = new(-695f, 148f);
+    public static readonly Vector2 OuterRightSmallHudLocalOffset = new(695f, 148f);
 
     private const float NativeAllyLocalY = 200f;
     private const int BackgroundZIndex = -20;
@@ -1149,8 +1149,16 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         Vector2 rightOffset = _rightFloorBreach ? RightFloorHudLocalOffset : RightWaterHudLocalOffset;
         Vector2 leftGlobal = shakenCenterGlobal + leftOffset * targetGlobalScale;
         Vector2 rightGlobal = shakenCenterGlobal + rightOffset * targetGlobalScale;
-        Vector2 outerLeftSmallGlobal = shakenCenterGlobal + OuterLeftSmallHudLocalOffset * targetGlobalScale;
-        Vector2 outerRightSmallGlobal = shakenCenterGlobal + OuterRightSmallHudLocalOffset * targetGlobalScale;
+        float uiScale = viewportSize.Y / 1080f;
+        float majorAbsX = MathF.Max(MathF.Abs(leftOffset.X), MathF.Abs(rightOffset.X)) * targetGlobalScale;
+        float maxSafeEdgeX = MathF.Max(0f, viewportSize.X * 0.5f - 78f * uiScale);
+        float outerSmallX = MathF.Min(
+            MathF.Min(
+                OuterRightSmallHudLocalOffset.X * targetGlobalScale,
+                MathF.Max(majorAbsX + 195f * uiScale, viewportSize.X * 0.5f - 165f * uiScale)),
+            maxSafeEdgeX);
+        Vector2 outerLeftSmallGlobal = shakenCenterGlobal + new Vector2(-outerSmallX, OuterLeftSmallHudLocalOffset.Y * targetGlobalScale);
+        Vector2 outerRightSmallGlobal = shakenCenterGlobal + new Vector2(outerSmallX, OuterRightSmallHudLocalOffset.Y * targetGlobalScale);
 
         if (NCombatRoom.Instance is { } room)
         {

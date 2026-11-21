@@ -73,6 +73,7 @@ public sealed class ThingsBowlbugProgenitor : ThingsSpineMonster
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/egg_layer/egg_layer_lay";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/egg_layer/egg_layer_die";
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Insect;
+    public override float HpBarSizeReduction => 90f;
     public override Vector2 ExtraDeathVfxPadding => new(1.35f, 1.8f);
 
     public override async Task AfterAddedToRoom()

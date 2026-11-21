@@ -12,4 +12,4 @@ position = Vector2(1040,708)
 [node name="rock" type="Marker2D" parent="."]
 position = Vector2(1425,774)
 [node name="slime" type="Marker2D" parent="."]
-position = Vector2(1745,766)
+position = Vector2(1715, 766)

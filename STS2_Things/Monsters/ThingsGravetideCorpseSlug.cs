@@ -33,6 +33,8 @@ public class ThingsGravetideCorpseSlug : GravetideSlugBase
 
     public override bool ShouldShowInCompendium => false;
 
+    public override float HpBarSizeReduction => 30f;
+
     public override async Task AfterAddedToRoom()
     {
         await base.AfterAddedToRoom();

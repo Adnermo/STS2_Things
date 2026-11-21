@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Sts2TargetVersion Condition="'$(Sts2TargetVersion)' == ''">v113.1</Sts2TargetVersion>
-    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v111.1'">$(DefineConstants);STS2_V111_1</DefineConstants>
+    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v111.0' or '$(Sts2TargetVersion)' == 'v111.1'">$(DefineConstants);STS2_V111_1</DefineConstants>
     <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v113.1'">$(DefineConstants);STS2_V113_1</DefineConstants>
   </PropertyGroup>
   <ItemGroup>

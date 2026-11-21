@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('v111.1', 'v113.1')][string]$TargetVersion = 'v113.1',
+    [ValidateSet('v111.0', 'v111.1', 'v113.1')][string]$TargetVersion = 'v113.1',
     [string]$DataDir = '',
     [string]$RuntimeDependencyDir = '',
     [string]$Package = '',
@@ -14,7 +14,10 @@ $taskRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $probe = Join-Path $taskRoot 'tools\UnifiedStartupProbe'
 
 if ([string]::IsNullOrWhiteSpace($DataDir)) {
-    if ($TargetVersion -eq 'v111.1') {
+    if ($TargetVersion -eq 'v111.0') {
+        $DataDir = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v111\7c9537e2a06e\game\data_sts2_windows_x86_64'
+    }
+    elseif ($TargetVersion -eq 'v111.1') {
         $DataDir = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v111.1\b0460083b012\game\data_sts2_windows_x86_64'
     }
     else {

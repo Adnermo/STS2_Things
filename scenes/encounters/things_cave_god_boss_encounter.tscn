@@ -19,4 +19,4 @@ position = Vector2(1380, 490)
 position = Vector2(983, 360)
 
 [node name="body" type="Marker2D" parent="."]
-position = Vector2(971, -100)
+position = Vector2(971, -6)

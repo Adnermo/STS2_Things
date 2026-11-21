@@ -10,10 +10,10 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="peeler" type="Marker2D" parent="."]
-position = Vector2(1100, 795)
+position = Vector2(1100, 750)
 
 [node name="rock" type="Marker2D" parent="."]
 position = Vector2(1445, 774)
 
 [node name="slime" type="Marker2D" parent="."]
-position = Vector2(1745, 766)
+position = Vector2(1715, 766)

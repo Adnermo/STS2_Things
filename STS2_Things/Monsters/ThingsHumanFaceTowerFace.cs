@@ -59,6 +59,7 @@ public abstract class ThingsHumanFaceTowerFace : ThingsMonsterModel
     public override bool CanChangeScale => false;
     public override bool ShouldFadeAfterDeath => false;
     public override bool ShouldDisappearFromDoom => false;
+    public override float HpBarSizeReduction => 60f;
 
     protected override string AssetSlug => "things_human_face_tower_face";
 

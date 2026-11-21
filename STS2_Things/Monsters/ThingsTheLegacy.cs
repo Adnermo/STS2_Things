@@ -53,6 +53,7 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/vantom/vantom_buff";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/vantom/vantom_die";
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Magic;
+    public override float HpBarSizeReduction => 140f;
     public override Vector2 ExtraDeathVfxPadding => new(1.4f, 1.7f);
 
     private static readonly string[] HeartbeatFiles =

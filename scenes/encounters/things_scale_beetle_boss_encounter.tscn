@@ -10,4 +10,4 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="scale_beetle" type="Marker2D" parent="."]
-position = Vector2(1469, 742)
+position = Vector2(1440, 720)

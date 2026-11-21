@@ -10,16 +10,16 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="outer_left_tentacle" type="Marker2D" parent="."]
-position = Vector2(209, 722)
+position = Vector2(250, 691)
 
 [node name="left_tentacle" type="Marker2D" parent="."]
-position = Vector2(490, 668)
+position = Vector2(480, 624)
 
 [node name="boss" type="Marker2D" parent="."]
-position = Vector2(960, 572)
+position = Vector2(960, 481)
 
 [node name="right_tentacle" type="Marker2D" parent="."]
-position = Vector2(1430, 668)
+position = Vector2(1440, 624)
 
 [node name="outer_right_tentacle" type="Marker2D" parent="."]
-position = Vector2(1711, 722)
+position = Vector2(1670, 691)

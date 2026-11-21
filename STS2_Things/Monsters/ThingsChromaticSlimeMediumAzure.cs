@@ -1,3 +1,4 @@
+using Godot;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -20,6 +21,11 @@ public sealed class ThingsChromaticSlimeMediumAzure : ThingsChromaticSlimeMedium
 {
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 22, 20);
     public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 25, 23);
+
+    protected override string? PreferredSkinName => "azure";
+    protected override float? VariantBoundsTop => -188f;
+    protected override Vector2? VariantCenterPos => new(0f, -92f);
+    protected override Vector2? VariantIntentPos => new(-4f, -224f);
 
     protected override string? PreferredAttackAnimation => "attack_azure";
     protected override string? PreferredCastAnimation => "cast_azure";

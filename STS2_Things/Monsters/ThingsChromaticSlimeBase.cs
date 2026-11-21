@@ -1,10 +1,13 @@
+using Godot;
 using MegaCrit.Sts2.Core.Animation;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using STS2_Things.Core.Models;
 using STS2_Things.Powers;
+using STS2_Things.Visuals;
 
 namespace STS2_Things.Monsters;
 
@@ -30,10 +33,40 @@ public abstract class ThingsChromaticSlimeBase : ThingsSpineMonster
     /// <summary>Optional initial Block granted immediately when spawned (used by Amber strains).</summary>
     internal virtual int OpeningBlock => 0;
 
+    /// <summary>Optional Spine skin applied natively in <see cref="SetupSkins"/> when sharing a tier scene.</summary>
+    protected virtual string? PreferredSkinName => null;
+    protected virtual float? VariantBoundsTop => null;
+    protected virtual Vector2? VariantCenterPos => null;
+    protected virtual Vector2? VariantIntentPos => null;
+
     /// <summary>Optional strain-bespoke Spine animation overrides when present on the shared multi-skin skeleton.</summary>
     protected virtual string? PreferredAttackAnimation => null;
     protected virtual string? PreferredCastAnimation => null;
     protected virtual string? PreferredPowerUpAnimation => null;
+
+    public override void SetupSkins(MegaSprite spine, MegaSkeleton skeleton)
+    {
+        base.SetupSkins(spine, skeleton);
+
+        if (!string.IsNullOrEmpty(PreferredSkinName))
+        {
+            MegaSkin? skin = skeleton.GetData().FindSkin(PreferredSkinName);
+            if (skin != null)
+            {
+                skeleton.SetSkin(skin);
+                skeleton.SetSlotsToSetupPose();
+            }
+        }
+
+        if (VariantBoundsTop is { } boundsTop
+            && VariantCenterPos is { } centerPos
+            && VariantIntentPos is { } intentPos
+            && (spine.BoundObject as Node)?.GetParent() is NChromaticSlimeVisuals visuals)
+        {
+            visuals.SkinName = PreferredSkinName ?? "default";
+            visuals.ApplyVariantLayout(boundsTop, centerPos, intentPos);
+        }
+    }
 
     public override CreatureAnimator GenerateAnimator(MegaSprite controller)
     {
@@ -73,6 +106,8 @@ public abstract class ThingsChromaticSlimeBase : ThingsSpineMonster
 /// <summary>Shared base for the three Medium Chromatic Slime split variants (<c>Crimson</c>, <c>Amber</c>, <c>Azure</c>).</summary>
 public abstract class ThingsChromaticSlimeMediumBase : ThingsChromaticSlimeBase
 {
+    protected override string VisualsPath => SceneHelper.GetScenePath("creature_visuals/chromatic_slime_medium");
+
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/leaf_slime_m/leaf_slime_m_attack";
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/leaf_slime_m/leaf_slime_m_cast";
     public override string HurtSfx => "event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_slime";
@@ -89,6 +124,8 @@ public abstract class ThingsChromaticSlimeMediumBase : ThingsChromaticSlimeBase
 /// <summary>Shared base for the three terminal Small Chromatic Slimelets.</summary>
 public abstract class ThingsChromaticSlimeSmallBase : ThingsChromaticSlimeBase
 {
+    protected override string VisualsPath => SceneHelper.GetScenePath("creature_visuals/chromatic_slime_small");
+
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/leaf_slime_s/leaf_slime_s_attack";
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/twig_slime_s/twig_slime_s_cast";
     public override string HurtSfx => "event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_slime";

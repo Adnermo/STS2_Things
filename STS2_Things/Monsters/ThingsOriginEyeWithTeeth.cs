@@ -73,6 +73,8 @@ public sealed class ThingsOriginEyeWithTeeth : ThingsMonsterModel
 
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Magic;
 
+    public override float HpBarSizeReduction => 30f;
+
     public override bool ShouldDisappearFromDoom => false;
 
     public override async Task AfterAddedToRoom()

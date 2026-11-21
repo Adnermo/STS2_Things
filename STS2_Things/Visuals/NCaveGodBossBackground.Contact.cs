@@ -11,7 +11,7 @@ namespace STS2_Things.Visuals;
 
 public partial class NCaveGodBossBackground
 {
-    public const float PlayerStageOffsetY = 120f;
+    public const float PlayerStageOffsetY = 60f;
     private sealed record ContactRig(GodotObject LeftTarget, GodotObject RightTarget,
         GodotObject LeftWrist, GodotObject RightWrist, GodotObject Grab);
     private readonly record struct ContactPlan(CaveGodContactProfile Profile, Vector2 Offset, float Scale, Vector2 GrabOffset);

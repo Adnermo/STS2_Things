@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Godot;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rooms;
 using STS2_Things.Monsters;
@@ -15,6 +16,10 @@ public sealed class ThingsScaleBeetleBossEncounter : ModBossEncounter
     public override string CustomBgm => ConfiguredBgm("res://music/scale_beetle/scale_beetle_boss_theme.wav");
     public override bool HasScene => true;
     protected override bool HasCustomBackground => true;
+
+    public override float GetCameraScaling() => 0.92f;
+
+    public override Vector2 GetCameraOffset() => new Vector2(-20f, -10f);
 
     public override IEnumerable<string> ExtraAssetPaths => new[]
     {

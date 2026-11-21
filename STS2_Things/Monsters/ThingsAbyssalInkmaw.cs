@@ -126,6 +126,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     public override bool ShouldFadeAfterDeath => false;
     public override bool ShouldDisappearFromDoom => false;
     public override float DeathAnimLengthOverride => 2.25f;
+    public override float HpBarSizeReduction => 100f;
 
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([
         ModelDb.Power<ThingsAbyssalCoverPower>().ResolvedBigIconPath,

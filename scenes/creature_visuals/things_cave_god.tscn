@@ -17,15 +17,15 @@ unique_name_in_owner = true
 layout_mode = 3
 anchors_preset = 0
 offset_left = -405.0
-offset_top = -20.0
+offset_top = -114.0
 offset_right = 405.0
-offset_bottom = 700.0
+offset_bottom = 606.0
 mouse_filter = 2
 
 [node name="CenterPos" type="Marker2D" parent="."]
 unique_name_in_owner = true
-position = Vector2(0, 400)
+position = Vector2(0, 306)
 
 [node name="IntentPos" type="Marker2D" parent="."]
 unique_name_in_owner = true
-position = Vector2(0, 88)
+position = Vector2(0, 128)

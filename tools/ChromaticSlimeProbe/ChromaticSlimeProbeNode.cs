@@ -187,6 +187,34 @@ public partial class ChromaticSlimeProbeNode : Node
             Assert(ResourceLoader.Exists(vp), $"Visuals scene exists for {m.Id.Entry}: {vp}");
         }
 
+        string[] distinctVisuals = monsters
+            .Select(m => (string)typeof(MonsterModel).GetProperty("VisualsPath", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(m)!)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(p => p, StringComparer.Ordinal)
+            .ToArray();
+        Assert(
+            distinctVisuals.SequenceEqual([
+                "res://scenes/creature_visuals/chromatic_slime_large.tscn",
+                "res://scenes/creature_visuals/chromatic_slime_medium.tscn",
+                "res://scenes/creature_visuals/chromatic_slime_small.tscn",
+            ]),
+            $"Chromatic Slime family shares exactly 3 tier scenes (got {string.Join(", ", distinctVisuals)}).");
+
+        // Verify AssetLoadingSession preload guard routes mod scenes through sequential _vfxScenes queue without touching vanilla scenes.
+        var guardType = typeof(ThingsChromaticSlimeWeak).Assembly.GetType("STS2_Things.Hooks.ThreadedScenePreloadGuardPatch");
+        Assert(guardType != null, "ThreadedScenePreloadGuardPatch type exists.");
+        var shouldSerialize = guardType!.GetMethod("ShouldSerializeScene", BindingFlags.NonPublic | BindingFlags.Static)!;
+        Assert((bool)shouldSerialize.Invoke(null, ["res://scenes/creature_visuals/chromatic_slime_medium.tscn"])!,
+            "Preload guard serializes chromatic_slime_medium.tscn.");
+        Assert((bool)shouldSerialize.Invoke(null, ["res://scenes/backgrounds/things_chromatic_slime_weak/things_chromatic_slime_weak_background.tscn"])!,
+            "Preload guard serializes Chromatic Slime background scene.");
+        Assert((bool)shouldSerialize.Invoke(null, ["res://scenes/backgrounds/things_robbery_fake_merchant_encounter/things_robbery_fake_merchant_encounter_background.tscn"])!,
+            "Preload guard serializes Robbery Fake Merchant background scene.");
+        Assert(!(bool)shouldSerialize.Invoke(null, ["res://scenes/creature_visuals/ironclad.tscn"])!,
+            "Preload guard leaves vanilla creature scenes untouched.");
+        Assert(!(bool)shouldSerialize.Invoke(null, ["res://images/powers/things_chromatic_fission_power.png"])!,
+            "Preload guard leaves non-.tscn assets untouched.");
+
         var power = ModelDb.Power<ThingsChromaticFissionPower>();
         SaveManager.Instance.SettingsSave.Language = "eng";
         LocManager.Initialize();

@@ -82,6 +82,7 @@ public sealed class ThingsOriginFogmog : ThingsSpineMonster
     public override string DeathSfx =>
         "event:/sfx/enemy/enemy_attacks/origin_fogmog/origin_fogmog_die";
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Plant;
+    public override float HpBarSizeReduction => 90f;
     public override Vector2 ExtraDeathVfxPadding => new(1.45f, 1.75f);
 
     // 动态召唤的幻象不会出现在初始 MonstersWithSlots 中，按原版 Queen 的做法

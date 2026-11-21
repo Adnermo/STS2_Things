@@ -777,7 +777,7 @@ def main() -> int:
     if not isinstance(release_version, str) or not re.fullmatch(r"\d+\.\d+\.\d+", release_version):
         fail(errors, "unified manifest version must be a three-part semantic version")
         release_version = ""
-    expected_min_versions = {"v111.1": "v0.111.1", "v113.1": "v0.113.1"}
+    expected_min_versions = {"v111.1": "v0.111.0", "v113.1": "v0.113.1"}
     if project_value("Version") != release_version:
         fail(errors, f"implementation version must be {release_version}")
     for target, manifest in target_manifests.items():
@@ -791,7 +791,7 @@ def main() -> int:
             fail(errors, f"{target} native build must not declare third-party dependencies")
     if root_manifest.get("version") != project_value("Version"):
         fail(errors, "unified manifest and implementation versions differ")
-    if root_manifest.get("min_game_version") != "v0.111.1":
+    if root_manifest.get("min_game_version") != "v0.111.0":
         fail(errors, "unified manifest must use the lowest supported game version")
     if root_manifest.get("affects_gameplay") is not True:
         fail(errors, "unified manifest must set affects_gameplay=true")
@@ -3984,6 +3984,42 @@ def main() -> int:
         if icon.is_file() and outline.is_file():
             if hashlib.sha256(icon.read_bytes()).digest() == hashlib.sha256(outline.read_bytes()).digest():
                 fail(errors, f"{outline.relative_to(ROOT)} duplicates the icon and cannot render an outline")
+
+    # Godot 4.5.1 threaded ResourceLoader race/deadlock guard:
+    # 1) Multiple creature_visuals scenes sharing one SpineSkeletonDataResource .tres cause
+    #    WorkerThreadPool::wait_for_task_completion Invalid Task ID / native crashes / black-screen hangs
+    #    when AssetLoadingSession preloads an encounter concurrently. Use one shared .tscn + MonsterModel.SetupSkins.
+    spine_res_re = re.compile(
+        r'\[ext_resource\s+type="SpineSkeletonDataResource"\s+(?:uid="[^"]+"\s+)?path="([^"]+)"'
+    )
+    packed_res_re = re.compile(
+        r'\[ext_resource\s+type="PackedScene"\s+(?:uid="[^"]+"\s+)?path="([^"]+)"'
+    )
+    creature_spine_owners: dict[str, list[str]] = {}
+    for scene_path in sorted((ROOT / "scenes" / "creature_visuals").glob("*.tscn")):
+        scene_text = scene_path.read_text(encoding="utf-8", errors="replace")
+        for res_path in spine_res_re.findall(scene_text):
+            creature_spine_owners.setdefault(res_path, []).append(scene_path.name)
+    for res_path, owners in sorted(creature_spine_owners.items()):
+        if len(owners) > 1:
+            fail(
+                errors,
+                f"multiple creature_visuals scenes share SpineSkeletonDataResource {res_path} "
+                f"({', '.join(owners)}); consolidate to one scene + MonsterModel.SetupSkins to prevent Godot threaded loader deadlocks",
+            )
+
+    # 2) *_background.tscn must never embed its own layers/*.tscn via ext_resource or NBgLayerDebug;
+    #    BackgroundAssets preloads background.tscn and layers/*.tscn concurrently, causing a permanent threaded loader deadlock.
+    for bg_scene in sorted((ROOT / "scenes" / "backgrounds").rglob("*_background.tscn")):
+        bg_text = bg_scene.read_text(encoding="utf-8", errors="replace")
+        if "NBgLayerDebug" in bg_text:
+            fail(errors, f"{bg_scene.relative_to(ROOT)} must not reference editor-only NBgLayerDebug")
+        for dep in packed_res_re.findall(bg_text):
+            if "/layers/" in dep:
+                fail(
+                    errors,
+                    f"{bg_scene.relative_to(ROOT)} must not reference layer PackedScene {dep} via ext_resource (causes threaded loader deadlock)",
+                )
 
     stale_paths = [
         ROOT / "images/map/scale_bettle_boss_icon.png",

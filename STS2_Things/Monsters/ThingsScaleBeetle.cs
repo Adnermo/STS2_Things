@@ -42,6 +42,7 @@ public sealed class ThingsScaleBeetle : ThingsSpineMonster
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/shrinker_beetle/shrinker_beetle_cast";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/shrinker_beetle/shrinker_beetle_die";
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Insect;
+    public override float HpBarSizeReduction => 110f;
     public override Vector2 ExtraDeathVfxPadding => new(2.3f, 2.1f);
 
     public override bool CanChangeScale => true;

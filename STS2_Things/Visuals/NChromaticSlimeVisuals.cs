@@ -72,4 +72,19 @@ public partial class NChromaticSlimeVisuals : NCreatureVisuals
         skeleton.SetSkin(skin);
         skeleton.SetSlotsToSetupPose();
     }
+
+    /// <summary>
+    /// Applies per-strain hitbox bounds and marker offsets onto a shared Chromatic Slime scene
+    /// before <c>NCreature.UpdateBounds</c> runs, keeping every strain pixel-aligned without
+    /// duplicating <c>.tscn</c> files over the same <c>SpineSkeletonDataResource</c>.
+    /// </summary>
+    public void ApplyVariantLayout(float boundsTop, Vector2 centerPos, Vector2 intentPos)
+    {
+        if (GetNodeOrNull<Control>("%Bounds") is { } bounds)
+            bounds.OffsetTop = boundsTop;
+        if (GetNodeOrNull<Marker2D>("%CenterPos") is { } center)
+            center.Position = centerPos;
+        if (GetNodeOrNull<Marker2D>("%IntentPos") is { } intent)
+            intent.Position = intentPos;
+    }
 }

@@ -10,10 +10,10 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="fogmog" type="Marker2D" parent="."]
-position = Vector2(1320, 775)
+position = Vector2(1380, 725)
 
 [node name="illusion1" type="Marker2D" parent="."]
-position = Vector2(992, 733)
+position = Vector2(965, 695)
 
 [node name="illusion2" type="Marker2D" parent="."]
-position = Vector2(1691, 735)
+position = Vector2(1765, 680)

@@ -10,7 +10,7 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="sponge" type="Marker2D" parent="."]
-position = Vector2(1095, 789)
+position = Vector2(1095, 750)
 
 [node name="leech_1" type="Marker2D" parent="."]
 position = Vector2(1415, 737)

@@ -114,7 +114,7 @@ public static class UnifiedBootstrap
             $"AfterDeathOverloads={deathHooks.Length}, " +
             $"NStandardMerchantRoom={standardMerchantRoom is not null}, " +
             $"BeforeAnimPlayedInCompendium={hasCompendiumAnimHook}). " +
-            "Supported targets: v0.111.1 and v0.113.1.");
+            "Supported targets: v0.111.0, v0.111.1, and v0.113.1.");
     }
 
     private static Assembly LoadImplementation(string target)

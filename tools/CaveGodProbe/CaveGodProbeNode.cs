@@ -1169,7 +1169,7 @@ public partial class CaveGodProbeNode : Node
         var bodyMarker = encounter.GetNode<Marker2D>("body");
         var leftMarker = encounter.GetNode<Marker2D>("left_hand");
         var rightMarker = encounter.GetNode<Marker2D>("right_hand");
-        Assert(bodyMarker.Position == new Vector2(971, -100), $"body expected (971, -100) but got {bodyMarker.Position}");
+        Assert(bodyMarker.Position == new Vector2(971, -6), $"body expected (971, -6) but got {bodyMarker.Position}");
         Assert(leftMarker.Position == new Vector2(540, 490), $"left_hand expected (540, 490) but got {leftMarker.Position}");
         Assert(rightMarker.Position == new Vector2(1380, 490), $"right_hand expected (1380, 490) but got {rightMarker.Position}");
         encounter.QueueFree();
@@ -1212,9 +1212,9 @@ public partial class CaveGodProbeNode : Node
             if (scenePath.EndsWith("things_cave_god.tscn"))
             {
                 Assert(bounds.OffsetLeft == -405f && bounds.OffsetRight == 405f, $"Body Bounds X expected (-405, 405) but got ({bounds.OffsetLeft}, {bounds.OffsetRight})");
-                Assert(bounds.OffsetTop == -20f && bounds.OffsetBottom == 700f, $"Body Bounds Y expected (-20, 700) but got ({bounds.OffsetTop}, {bounds.OffsetBottom})");
-                Assert(centerPos.Position == new Vector2(0, 400), $"Body CenterPos expected (0, 400) but got {centerPos.Position}");
-                Assert(intentPos.Position == new Vector2(0, 88), $"Body IntentPos expected (0, 88) but got {intentPos.Position}");
+                Assert(bounds.OffsetTop == -114f && bounds.OffsetBottom == 606f, $"Body Bounds Y expected (-114, 606) but got ({bounds.OffsetTop}, {bounds.OffsetBottom})");
+                Assert(centerPos.Position == new Vector2(0, 306), $"Body CenterPos expected (0, 306) but got {centerPos.Position}");
+                Assert(intentPos.Position == new Vector2(0, 128), $"Body IntentPos expected (0, 128) but got {intentPos.Position}");
             }
             else
             {

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.Rooms;
@@ -19,6 +20,10 @@ public sealed class ThingsBowlbugProgenitorBossEncounter : ModBossEncounter
     public override bool HasScene => true;
 
     protected override bool HasCustomBackground => true;
+
+    public override float GetCameraScaling() => 0.85f;
+
+    public override Vector2 GetCameraOffset() => new Vector2(-40f, -10f);
 
     public override IEnumerable<string> ExtraAssetPaths => new[]
     {

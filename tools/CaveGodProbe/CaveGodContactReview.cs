@@ -48,7 +48,7 @@ public partial class CaveGodProbeNode
                 Vector2 before=allies.Position;controller.AlignStageAndPlayers();Vector2 after=allies.Position;
                 controller.AlignStageAndPlayers();
                 if(allies.Position!=after)failures.Add("Repeated alignment moved the formation again.");
-                if(count==1 && Math.Abs(after.Y-before.Y-120)>.001f)failures.Add("Wrong shared stage offset.");
+                if(count==1 && Math.Abs(after.Y-before.Y-NCaveGodBossBackground.PlayerStageOffsetY)>.001f)failures.Add("Wrong shared stage offset.");
                 foreach(var node in nodes)
                 {
                     node.Visuals.Body.Call("set_update_mode",ClassDB.ClassGetIntegerConstant("SpineConstant","UpdateMode_Manual"));

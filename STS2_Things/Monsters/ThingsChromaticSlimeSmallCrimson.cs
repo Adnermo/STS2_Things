@@ -1,3 +1,4 @@
+using Godot;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -17,6 +18,11 @@ public sealed class ThingsChromaticSlimeSmallCrimson : ThingsChromaticSlimeSmall
 {
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 11, 10);
     public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 13, 12);
+
+    protected override string? PreferredSkinName => "crimson";
+    protected override float? VariantBoundsTop => -142f;
+    protected override Vector2? VariantCenterPos => new(-2f, -68f);
+    protected override Vector2? VariantIntentPos => new(-3f, -172f);
 
     protected override string? PreferredAttackAnimation => "attack_crimson";
 

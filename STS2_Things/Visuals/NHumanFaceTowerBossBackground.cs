@@ -31,7 +31,7 @@ public partial class NHumanFaceTowerBossBackground : Node2D
     public const int ShatterTrackBase = 3;
     public const float ChamberOverscanScale = 1.025f;
     public const float ChamberCenterLocalOffsetY = -58f;
-    public const float FaceHudLocalOffsetY = 72f;
+    public const float FaceHudLocalOffsetY = 46f;
     public const float PlayerFloorLocalOffsetY = 266f;
     public const float MaxPlayerFloorBottomInset = 328f;
     public const float AllyVisualScale = 0.67f;

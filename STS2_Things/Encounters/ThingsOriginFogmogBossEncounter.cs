@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Godot;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rooms;
 using STS2_Things.Monsters;
@@ -24,6 +25,10 @@ public sealed class ThingsOriginFogmogBossEncounter : ModBossEncounter
     public override bool HasScene => true;
 
     protected override bool HasCustomBackground => true;
+
+    public override float GetCameraScaling() => 0.90f;
+
+    public override Vector2 GetCameraOffset() => new Vector2(-25f, 0f);
 
     public override IReadOnlyList<string> Slots => new[] { "fogmog", "illusion1", "illusion2" };
 

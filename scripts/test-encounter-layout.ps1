@@ -83,6 +83,13 @@ $GodotExe = [IO.Path]::GetFullPath($GodotExe)
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'tools\DepthsProbe') -File |
     Where-Object Extension -In '.cs', '.csproj', '.godot', '.tscn' |
     ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskProbe $_.Name) -Force }
+$probeSupportSrc = Join-Path $taskRoot 'tools\ProbeSupport'
+if (Test-Path -LiteralPath $probeSupportSrc -PathType Container) {
+    $probeSupportDst = Join-Path (Split-Path $taskProbe -Parent) 'ProbeSupport'
+    New-Item -ItemType Directory -Path $probeSupportDst -Force | Out-Null
+    Get-ChildItem -LiteralPath $probeSupportSrc -File |
+        ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $probeSupportDst $_.Name) -Force }
+}
 $env:THINGS_PROBE_ROOT = $taskRoot
 $env:THINGS_PROBE_OUTPUT = $taskOut
 $env:THINGS_LAYOUT_SOURCE_SCENES = if ($SourceScenes) { '1' } else { '0' }
