@@ -37,9 +37,16 @@ public static class AbyssalInkBlackout
 
     private static readonly ConditionalWeakTable<CardModel, InkedMark> Marks = new();
     private static readonly ConditionalWeakTable<CardModel, ICombatState> PendingDrawVeils = new();
+    private static readonly ConditionalWeakTable<CardModel, ICombatState> WashedThisTurn = new();
 
     private static readonly AccessTools.FieldRef<CardEnergyCost, List<LocalCostModifier>> LocalModifiersRef =
         AccessTools.FieldRefAccess<CardEnergyCost, List<LocalCostModifier>>("_localModifiers");
+
+    public static bool IsWashedThisTurn(CardModel? card) =>
+        CombatManager.Instance.IsInProgress &&
+        card is { IsMutable: true } &&
+        WashedThisTurn.TryGetValue(card, out ICombatState? washedCombat) &&
+        ReferenceEquals(card.CombatState, washedCombat);
 
     public static bool IsVeiled(CardModel? card)
     {
@@ -48,6 +55,9 @@ public static class AbyssalInkBlackout
 
         if (IsInked(card))
             return true;
+
+        if (IsWashedThisTurn(card))
+            return false;
 
         if (PendingDrawVeils.TryGetValue(card, out ICombatState? pendingCombat) &&
             ReferenceEquals(card.CombatState, pendingCombat))
@@ -103,6 +113,7 @@ public static class AbyssalInkBlackout
         if (!CombatManager.Instance.IsInProgress ||
             !card.IsMutable ||
             IsInked(card) ||
+            IsWashedThisTurn(card) ||
             destination.Type == PileType.Deck ||
             card.Owner?.Creature?.GetPower<ThingsInkBlackoutPower>() is not { IsActiveThisTurn: true, Amount: > 0 } power ||
             !ReferenceEquals(power.Owner, card.Owner.Creature) ||
@@ -112,6 +123,7 @@ public static class AbyssalInkBlackout
         }
 
         PendingDrawVeils.Remove(card);
+        WashedThisTurn.Remove(card);
         PendingDrawVeils.Add(card, combat);
     }
 
@@ -146,6 +158,7 @@ public static class AbyssalInkBlackout
             return false;
 
         PendingDrawVeils.Remove(card);
+        WashedThisTurn.Remove(card);
 
         if (Marks.TryGetValue(card, out InkedMark? existing) && ReferenceEquals(existing.Combat, combat))
         {
@@ -196,6 +209,7 @@ public static class AbyssalInkBlackout
 
         Marks.Remove(card);
         PendingDrawVeils.Remove(card);
+        WashedThisTurn.Remove(card);
     }
 
     /// <summary>
@@ -292,6 +306,10 @@ public static class AbyssalInkBlackout
             int idx = rng != null ? rng.NextInt(veiled.Count) : 0;
             CardModel picked = veiled[idx];
             Forget(picked, restoreTrackedCost: true);
+            if (picked.CombatState != null)
+            {
+                WashedThisTurn.Add(picked, picked.CombatState);
+            }
             picked.InvokeEnergyCostChanged();
             NInkBlackoutCardVeil.WashAllForModel(picked);
             washedCount++;
@@ -306,6 +324,12 @@ public static class AbyssalInkBlackout
         {
             PendingDrawVeils.Remove(clone);
             PendingDrawVeils.Add(clone, pendingCombat);
+        }
+
+        if (WashedThisTurn.TryGetValue(source, out ICombatState? washedCombat))
+        {
+            WashedThisTurn.Remove(clone);
+            WashedThisTurn.Add(clone, washedCombat);
         }
 
         if (!IsInked(source) || !Marks.TryGetValue(source, out InkedMark? srcMark))

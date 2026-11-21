@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Godot;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
@@ -10,10 +11,10 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 namespace STS2_Things.Events.Minigames;
 
 /// <summary>
-/// Overgrowth (Act 1A) 4x4 Overgrown Rune Loom overlay screen styled after vanilla CrystalSphere:
-/// full-bleed hand-painted Overgrowth moss-stone altar backdrop, animated amber-sap shader cavity,
-/// hand-painted carved limestone rune tablets connected by glowing liquid amber-sap channels,
-/// dramatic floating outlined bottom-left HUD counter, and hand-painted divine_button controls.
+/// Overgrowth (Act 1A) 4x4 Overgrown Rune Loom overlay screen modeled after vanilla CrystalSphere:
+/// full-bleed hand-painted moss-stone altar backdrop, animated amber-sap cavity, clean iconic carved
+/// limestone tablets (no SaaS text cards — pure large glyphs + minimal numbers + native STS2 HoverTips),
+/// glowing amber sap links, narrow right preview plaque, and bottom-right native ProceedButton.
 /// </summary>
 public partial class NRuneLoomScreen : Control, IOverlayScreen
 {
@@ -40,8 +41,8 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
                     continue;
                 Vector2 a = ctrlA.Position + ctrlA.Size * 0.5f;
                 Vector2 b = ctrlB.Position + ctrlB.Size * 0.5f;
-                DrawLine(a, b, new Color(0.95f, 0.70f, 0.22f, 0.58f), 22f, true);
-                DrawLine(a, b, new Color(1.00f, 0.88f, 0.48f, 0.98f), 8f, true);
+                DrawLine(a, b, new Color(0.95f, 0.70f, 0.22f, 0.52f), 20f, true);
+                DrawLine(a, b, new Color(1.00f, 0.88f, 0.48f, 0.92f), 7f, true);
             }
         }
     }
@@ -69,8 +70,8 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
                 Vector2 dir = (cb - ca).Normalized();
                 Vector2 edgeA = ca + dir * (ctrlA.Size.X * 0.5f - 2f);
                 Vector2 edgeB = cb - dir * (ctrlB.Size.X * 0.5f - 2f);
-                DrawLine(edgeA, edgeB, new Color(0.98f, 0.78f, 0.28f, 0.96f), 11f, true);
-                DrawLine(edgeA, edgeB, new Color(1.00f, 0.94f, 0.68f, 1.00f), 4.5f, true);
+                DrawLine(edgeA, edgeB, new Color(0.96f, 0.76f, 0.26f, 0.90f), 10f, true);
+                DrawLine(edgeA, edgeB, new Color(1.00f, 0.94f, 0.68f, 0.96f), 4f, true);
             }
 
             for (int i = 0; i < Minigame.Path.Count; i++)
@@ -79,8 +80,8 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
                 if (!TileControls.TryGetValue((tile.X, tile.Y), out Control? ctrl))
                     continue;
                 Vector2 badgeCenter = ctrl.Position + new Vector2(18f, 18f);
-                DrawCircle(badgeCenter, 15.5f, new Color("#111d13"));
-                DrawCircle(badgeCenter, 12.5f, new Color("#f2c858"));
+                DrawCircle(badgeCenter, 15f, new Color("#111d13"));
+                DrawCircle(badgeCenter, 12f, new Color("#e8be4e"));
                 if (BadgeFont != null)
                 {
                     DrawString(
@@ -102,8 +103,7 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
         public required TextureRect StoneArt { get; init; }
         public required NinePatchRect GlowOutline { get; init; }
         public required TextureRect Icon { get; init; }
-        public required Label TitleLabel { get; init; }
-        public required Label ValueLabel { get; init; }
+        public required Label BadgeLabel { get; init; }
 
         public bool IsHovered { get; set; }
         private Tween? _scaleTween;
@@ -124,15 +124,18 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
     private readonly List<RuneTileNode> _tileNodes = new(RuneLoomMinigame.GridWidth * RuneLoomMinigame.GridHeight);
     private PathChannelCanvas _channelCanvas = null!;
     private PathBadgeCanvas _badgeCanvas = null!;
+    private ThingsMinigameUiTheme.FloatingPopLayer _popLayer = null!;
 
     private RichTextLabel _bottomStatusRtl = null!;
+    private RichTextLabel _rulesBodyRtl = null!;
+    private VBoxContainer _previewSection = null!;
     private RichTextLabel _gainsBodyRtl = null!;
+    private VBoxContainer _costsSection = null!;
     private RichTextLabel _costsBodyRtl = null!;
-    private RichTextLabel _feedbackRtl = null!;
     private ThingsMinigameUiTheme.PaintedActionButton _undoButton = null!;
     private ThingsMinigameUiTheme.PaintedActionButton _resetButton = null!;
-    private ThingsMinigameUiTheme.PaintedActionButton _confirmButton = null!;
     private ThingsMinigameUiTheme.PaintedActionButton _cancelButton = null!;
+    private ThingsMinigameUiTheme.NativeProceedButton _confirmButton = null!;
 
     private Texture2D? _stoneTex;
     private Font? _titleFont;
@@ -212,7 +215,7 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
         AddChild(outerFill);
         outerFill.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // 2. Centered 1920x1080 Crystal-Sphere artwork stage with pixel-locked carved altar cavity
+        // 2. Centered 1920x1080 artwork stage with pixel-locked carved altar cavity
         var stage = new Control
         {
             Name = "LoomStage",
@@ -239,7 +242,7 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
         stage.AddChild(bg);
         bg.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // 3. Embedded 630x630 carved stone altar cavity (exact alignment: 500..1130, 215..845)
+        // 3. Embedded 630x630 carved stone altar cavity (500..1130, 215..845)
         var playfield = new Control
         {
             Name = "LoomPlayfield",
@@ -250,7 +253,6 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
         };
         stage.AddChild(playfield);
 
-        // Animated painterly Overgrowth moss & breathing golden-amber sap shader over the painted emerald cavity
         Shader? sapShader = ThingsMinigameUiTheme.TryLoadShader(SapShaderPath);
         if (sapShader != null)
         {
@@ -258,7 +260,7 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
             {
                 Name = "SapBedFx",
                 Color = Colors.White,
-                Modulate = new Color(1f, 1f, 1f, 0.36f),
+                Modulate = new Color(1f, 1f, 1f, 0.34f),
                 Material = new ShaderMaterial { Shader = sapShader },
                 MouseFilter = MouseFilterEnum.Ignore,
             };
@@ -266,7 +268,7 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
             sapFx.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         }
 
-        // 4x4 Grid layer: 4 * 140 + 3 * 14 = 602x602 centered cleanly with 14px inset inside 630x630 pit
+        // 4x4 Grid layer: 4 * 140 + 3 * 14 = 602x602 centered with 14px inset inside 630x630 pit
         var boardLayer = new Control
         {
             Name = "LoomBoardLayer",
@@ -318,7 +320,7 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
                     Texture = _stoneTex,
                     ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
                     StretchMode = TextureRect.StretchModeEnum.Scale,
-                    Modulate = new Color(0f, 0f, 0f, 0.48f),
+                    Modulate = new Color(0f, 0f, 0f, 0.45f),
                     MouseFilter = MouseFilterEnum.Ignore,
                 };
 
@@ -330,48 +332,33 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
                     MouseFilter = MouseFilterEnum.Ignore,
                 };
 
-                var glowOutline = ThingsMinigameUiTheme.CreateChamferOutline(new Color(1.0f, 0.80f, 0.24f, 0.95f), visible: false);
+                var glowOutline = ThingsMinigameUiTheme.CreateChamferOutline(new Color(0.95f, 0.76f, 0.24f, 0.72f), visible: false);
 
-                var box = new VBoxContainer
-                {
-                    Alignment = BoxContainer.AlignmentMode.Center,
-                    MouseFilter = MouseFilterEnum.Ignore,
-                };
-                box.AddThemeConstantOverride("separation", 3);
+                Texture2D? tileTex = ResolveTileTexture(tile);
+                string badgeText = GetTileNumericBadge(tile);
+                bool hasBadge = !string.IsNullOrEmpty(badgeText);
 
+                // Large centered iconic glyph — NO SaaS card title/subtitle stacks!
                 var icon = new TextureRect
                 {
-                    Texture = ResolveTileTexture(tile),
-                    CustomMinimumSize = new Vector2(44f, 44f),
-                    SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
+                    Texture = tileTex,
                     ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
                     StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                    Modulate = tile.Kind == RuneTileKind.SapDrain ? new Color(1.0f, 0.72f, 0.72f, 1f) : Colors.White,
                     MouseFilter = MouseFilterEnum.Ignore,
+                    Visible = tileTex != null,
                 };
-                icon.Visible = icon.Texture != null;
-                box.AddChild(icon);
 
-                var titleLbl = ThingsMinigameUiTheme.MakeLabel(
-                    GetTileTitle(tile),
-                    16,
-                    new Color("#f8fbf5"),
-                    _bodyFont,
-                    HorizontalAlignment.Center,
-                    wrap: true,
-                    outlineSize: 5,
-                    outlineColor: new Color("#051008"));
-                box.AddChild(titleLbl);
-
-                var valLbl = ThingsMinigameUiTheme.MakeLabel(
-                    GetTileEffectShort(tile),
-                    15,
-                    tile.IsCost ? new Color("#ffa29c") : (tile.Kind == RuneTileKind.Moss ? new Color("#a4c2aa") : new Color("#ffe48c")),
-                    _bodyFont,
-                    HorizontalAlignment.Center,
+                var badgeLbl = ThingsMinigameUiTheme.MakeLabel(
+                    badgeText,
+                    23,
+                    tile.IsCost ? new Color("#ffa29b") : new Color("#ffe88c"),
+                    _numberFont,
+                    HorizontalAlignment.Right,
                     wrap: false,
-                    outlineSize: 5,
+                    outlineSize: 7,
                     outlineColor: new Color("#051008"));
-                box.AddChild(valLbl);
+                badgeLbl.Visible = hasBadge;
 
                 var node = new RuneTileNode
                 {
@@ -379,8 +366,7 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
                     StoneArt = stoneArt,
                     GlowOutline = glowOutline,
                     Icon = icon,
-                    TitleLabel = titleLbl,
-                    ValueLabel = valLbl,
+                    BadgeLabel = badgeLbl,
                     CustomMinimumSize = new Vector2(140f, 140f),
                     PivotOffset = new Vector2(70f, 70f),
                     MouseFilter = MouseFilterEnum.Stop,
@@ -405,18 +391,29 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
                 glowOutline.OffsetRight = 5f;
                 glowOutline.OffsetBottom = 5f;
 
-                node.AddChild(box);
-                box.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-                box.OffsetLeft = 8f;
-                box.OffsetRight = -8f;
-                box.OffsetTop = 10f;
-                box.OffsetBottom = -8f;
+                node.AddChild(icon);
+                icon.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+                icon.OffsetLeft = 36f;
+                icon.OffsetRight = -36f;
+                icon.OffsetTop = hasBadge ? 28f : 35f;
+                icon.OffsetBottom = hasBadge ? -42f : -35f;
+
+                node.AddChild(badgeLbl);
+                badgeLbl.SetAnchorsAndOffsetsPreset(LayoutPreset.BottomWide);
+                badgeLbl.OffsetLeft = 10f;
+                badgeLbl.OffsetRight = -12f;
+                badgeLbl.OffsetTop = -36f;
+                badgeLbl.OffsetBottom = -8f;
 
                 node.GuiInput += ev =>
                 {
                     if (ev is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
                     {
-                        _minigame.ClickTile(tx, ty, out _);
+                        if (!_minigame.ClickTile(tx, ty, out RuneClickRejection rejection) && rejection != RuneClickRejection.None)
+                        {
+                            Vector2 popPos = new Vector2(14f, 14f) + node.Position + node.Size * 0.5f;
+                            _popLayer.Pop(popPos, ThingsMinigameUiTheme.Tr(_minigame.LastFeedbackKey), new Color("#ff9d96"), 20);
+                        }
                         AcceptEvent();
                     }
                 };
@@ -426,12 +423,14 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
                     if (_minigame.CanAddTile(tx, ty, out _) || _minigame.GetPathIndex(tile) >= 0)
                         node.AnimateScale(1.04f);
                     RefreshTileVisual(node);
+                    ShowTileHoverTip(node);
                 };
                 node.MouseExited += () =>
                 {
                     node.IsHovered = false;
                     node.AnimateScale(1.0f);
                     RefreshTileVisual(node);
+                    ThingsMinigameUiTheme.HideHoverTip(node);
                 };
 
                 grid.AddChild(node);
@@ -441,7 +440,11 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
             }
         }
 
-        // 4. Floating Crystal-Sphere HUD Layer
+        _popLayer = ThingsMinigameUiTheme.FloatingPopLayer.Create(_bodyFont);
+        _popLayer.ZIndex = 20;
+        playfield.AddChild(_popLayer);
+
+        // 4. Minimal vanilla CrystalSphere-style HUD Layer (no top-left title, no bottom helper bar)
         var hud = new Control
         {
             Name = "HudRoot",
@@ -450,43 +453,11 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
         AddChild(hud);
         hud.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // Top-Left Floating Bold Gold Title
-        var titleRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#f4d678]{ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.title")}[/color]",
-            36,
-            new Color("#f4d678"),
-            new Color("#06130a"),
-            _titleFont,
-            outlineSize: 10,
-            shadowX: 4,
-            shadowY: 3,
-            align: HorizontalAlignment.Left,
-            wrap: false);
-        hud.AddChild(titleRtl);
-        titleRtl.Position = new Vector2(52f, 22f);
-        titleRtl.CustomMinimumSize = new Vector2(500f, 52f);
-
-        // Subtle floating caption directly below the stone altar
-        var altarHintRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#a7d1b0]{ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.boardHint")}[/color]",
-            17,
-            new Color("#a7d1b0"),
-            new Color("#041008"),
-            _bodyFont,
-            outlineSize: 6,
-            shadowX: 2,
-            shadowY: 2,
-            align: HorizontalAlignment.Center,
-            wrap: true);
-        stage.AddChild(altarHintRtl);
-        altarHintRtl.Position = new Vector2(465f, 992f);
-        altarHintRtl.Size = new Vector2(700f, 64f);
-
-        // Bottom-Left Dramatic Crystal-Sphere DivinationsLeft-style Floating Counter
+        // Bottom-Left: Single clean steps + card name line (HP & Gold already sit in top bar!)
         _bottomStatusRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
             string.Empty,
-            26,
-            new Color("#eef6ef"),
+            28,
+            ThingsMinigameUiTheme.VanillaCream,
             new Color("#051209"),
             _titleFont,
             outlineSize: 10,
@@ -499,12 +470,12 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
         _bottomStatusRtl.AnchorRight = 0f;
         _bottomStatusRtl.AnchorTop = 1f;
         _bottomStatusRtl.AnchorBottom = 1f;
-        _bottomStatusRtl.OffsetLeft = 48f;
+        _bottomStatusRtl.OffsetLeft = 56f;
         _bottomStatusRtl.OffsetRight = 460f;
-        _bottomStatusRtl.OffsetTop = -150f;
-        _bottomStatusRtl.OffsetBottom = -18f;
+        _bottomStatusRtl.OffsetTop = -114f;
+        _bottomStatusRtl.OffsetBottom = -34f;
 
-        // Right Column (Single dark translucent octagonal plaque + hand-painted divine_button controls)
+        // Right Column: Narrow vanilla CrystalSphere 372px width (x = 1496..1868)
         var rightAnchor = new Control
         {
             Name = "RightUi",
@@ -515,173 +486,143 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
         rightAnchor.AnchorRight = 1f;
         rightAnchor.AnchorTop = 0f;
         rightAnchor.AnchorBottom = 1f;
-        rightAnchor.OffsetLeft = -556f;
+        rightAnchor.OffsetLeft = -424f;
         rightAnchor.OffsetRight = -52f;
-        rightAnchor.OffsetTop = 44f;
-        rightAnchor.OffsetBottom = -44f;
+        rightAnchor.OffsetTop = 64f;
+        rightAnchor.OffsetBottom = -196f;
 
         var rightCenter = new VBoxContainer
         {
             Alignment = BoxContainer.AlignmentMode.Center,
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        rightCenter.AddThemeConstantOverride("separation", 16);
+        rightCenter.AddThemeConstantOverride("separation", 14);
         rightAnchor.AddChild(rightCenter);
         rightCenter.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // Single Octagonal Crystal-Sphere Plaque (tiny_nine_patch.png, deep nocturnal Overgrowth emerald)
+        // Single clean translucent Overgrowth plaque (NO horizontal dividers, NO console log!)
         PanelContainer plaque = ThingsMinigameUiTheme.CreateCrystalPlaquePanel(
-            new Color(0.02f, 0.11f, 0.06f, 0.88f),
-            padH: 26,
-            padV: 20);
+            new Color(0.02f, 0.11f, 0.06f, 0.86f),
+            padH: 24,
+            padV: 22);
         rightCenter.AddChild(plaque);
 
         var plaqueBox = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        plaqueBox.AddThemeConstantOverride("separation", 10);
+        plaqueBox.AddThemeConstantOverride("separation", 14);
         plaque.AddChild(plaqueBox);
 
-        // Concise Rules Header
-        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#d8eadc]{ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.rules", ("MaxSteps", RuneLoomMinigame.MaxPathLength))}[/color]",
-            16,
-            new Color("#d8eadc"),
-            new Color("#030d06"),
+        _rulesBodyRtl = ThingsMinigameUiTheme.MakeVanillaPlaqueBody(
+            ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.rules", ("MaxSteps", RuneLoomMinigame.MaxPathLength)),
             _bodyFont,
-            outlineSize: 4,
-            shadowX: 2,
-            shadowY: 2));
+            fontSize: 18);
+        plaqueBox.AddChild(_rulesBodyRtl);
 
-        plaqueBox.AddChild(MakeDivider(new Color("#366c49", 0.55f)));
+        _previewSection = new VBoxContainer
+        {
+            MouseFilter = MouseFilterEnum.Ignore,
+            Visible = false,
+        };
+        _previewSection.AddThemeConstantOverride("separation", 8);
+        plaqueBox.AddChild(_previewSection);
 
-        // Gains Preview Section
-        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeLabel(
+        _previewSection.AddChild(ThingsMinigameUiTheme.MakeVanillaPlaqueHeader(
             ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.gainsHeader"),
-            20,
-            new Color("#98ebaa"),
             _titleFont,
-            HorizontalAlignment.Left,
-            wrap: false,
-            outlineSize: 5));
+            fontSize: 20,
+            color: new Color("#98ebaa"),
+            align: HorizontalAlignment.Left));
 
-        _gainsBodyRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            string.Empty,
-            17,
-            new Color("#edf7ef"),
-            new Color("#030d06"),
-            _bodyFont,
-            outlineSize: 4,
-            shadowX: 2,
-            shadowY: 2);
-        _gainsBodyRtl.CustomMinimumSize = new Vector2(0f, 68f);
-        plaqueBox.AddChild(_gainsBodyRtl);
+        _gainsBodyRtl = ThingsMinigameUiTheme.MakeVanillaPlaqueBody(string.Empty, _bodyFont, fontSize: 18);
+        _previewSection.AddChild(_gainsBodyRtl);
 
-        plaqueBox.AddChild(MakeDivider(new Color("#6b3c3c", 0.52f)));
+        _costsSection = new VBoxContainer
+        {
+            MouseFilter = MouseFilterEnum.Ignore,
+            Visible = false,
+        };
+        _costsSection.AddThemeConstantOverride("separation", 6);
+        _previewSection.AddChild(_costsSection);
 
-        // Costs Preview Section
-        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeLabel(
+        _costsSection.AddChild(ThingsMinigameUiTheme.MakeVanillaPlaqueHeader(
             ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.costsHeader"),
-            20,
-            new Color("#f89d96"),
             _titleFont,
-            HorizontalAlignment.Left,
-            wrap: false,
-            outlineSize: 5));
+            fontSize: 20,
+            color: new Color("#f89d96"),
+            align: HorizontalAlignment.Left));
 
-        _costsBodyRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            string.Empty,
-            17,
-            new Color("#f5dcd9"),
-            new Color("#0e0404"),
-            _bodyFont,
-            outlineSize: 4,
-            shadowX: 2,
-            shadowY: 2);
-        _costsBodyRtl.CustomMinimumSize = new Vector2(0f, 44f);
-        plaqueBox.AddChild(_costsBodyRtl);
+        _costsBodyRtl = ThingsMinigameUiTheme.MakeVanillaPlaqueBody(string.Empty, _bodyFont, fontSize: 18);
+        _costsSection.AddChild(_costsBodyRtl);
 
-        plaqueBox.AddChild(MakeDivider(new Color("#366c49", 0.55f)));
-
-        // Live Feedback Whisper
-        _feedbackRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            string.Empty,
-            16,
-            new Color("#f4e1ad"),
-            new Color("#030d06"),
-            _bodyFont,
-            outlineSize: 4,
-            shadowX: 2,
-            shadowY: 2);
-        _feedbackRtl.CustomMinimumSize = new Vector2(0f, 42f);
-        plaqueBox.AddChild(_feedbackRtl);
-
-        // Undo / Reset Row (hand-painted divine_button tablets)
+        // Compact Undo / Reset row
         var editRow = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        editRow.AddThemeConstantOverride("separation", 14);
+        editRow.AddThemeConstantOverride("separation", 12);
         rightCenter.AddChild(editRow);
 
         _undoButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
             ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.btnUndo"),
-            new Vector2(245f, 58f),
-            baseTint: new Color("#648c70"),
-            activeTint: new Color("#7cb38c"),
-            outlineColor: new Color(0.55f, 0.94f, 0.66f, 0.90f),
+            new Vector2(180f, 56f),
+            baseTint: new Color("#61876b"),
+            activeTint: new Color("#77a884"),
+            outlineColor: new Color(0.65f, 0.88f, 0.65f, 0.72f),
             font: _bodyFont,
-            fontSize: 18,
-            textColor: new Color("#eef7ef"));
+            fontSize: 19,
+            textColor: ThingsMinigameUiTheme.VanillaCream);
         _undoButton.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _undoButton.Pressed += () => _minigame.UndoLast();
         editRow.AddChild(_undoButton);
 
         _resetButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
             ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.btnReset"),
-            new Vector2(245f, 58f),
-            baseTint: new Color("#648c70"),
-            activeTint: new Color("#7cb38c"),
-            outlineColor: new Color(0.55f, 0.94f, 0.66f, 0.90f),
+            new Vector2(180f, 56f),
+            baseTint: new Color("#61876b"),
+            activeTint: new Color("#77a884"),
+            outlineColor: new Color(0.65f, 0.88f, 0.65f, 0.72f),
             font: _bodyFont,
-            fontSize: 18,
-            textColor: new Color("#eef7ef"));
+            fontSize: 19,
+            textColor: ThingsMinigameUiTheme.VanillaCream);
         _resetButton.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _resetButton.Pressed += () => _minigame.ResetPath();
         editRow.AddChild(_resetButton);
 
-        // Primary Confirm / Cancel Row
-        var actionRow = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        actionRow.AddThemeConstantOverride("separation", 14);
-        rightCenter.AddChild(actionRow);
-
-        _confirmButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
-            ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.btnConfirm"),
-            new Vector2(320f, 76f),
-            baseTint: new Color("#5ea372"),
-            activeTint: new Color("#70c486"),
-            outlineColor: new Color(1.0f, 0.80f, 0.24f, 1.0f),
-            font: _titleFont,
-            fontSize: 23,
-            textColor: new Color("#fff8d9"));
-        _confirmButton.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        _confirmButton.Pressed += () => _minigame.ConfirmPath();
-        actionRow.AddChild(_confirmButton);
-
         _cancelButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
             ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.btnCancel"),
-            new Vector2(170f, 76f),
-            baseTint: new Color("#8a7068"),
-            activeTint: new Color("#a8897f"),
-            outlineColor: new Color(0.95f, 0.72f, 0.62f, 0.85f),
+            new Vector2(372f, 56f),
+            baseTint: new Color("#7a6862"),
+            activeTint: new Color("#968079"),
+            outlineColor: new Color(0.90f, 0.70f, 0.62f, 0.70f),
             font: _bodyFont,
             fontSize: 19,
-            textColor: new Color("#f7eae3"));
+            textColor: new Color("#f2e6df"));
         _cancelButton.Pressed += () => _minigame.Cancel();
-        actionRow.AddChild(_cancelButton);
+        rightCenter.AddChild(_cancelButton);
+
+        // Authentic bottom-right vanilla STS2 ProceedButton for Confirm!
+        _confirmButton = ThingsMinigameUiTheme.NativeProceedButton.Create(
+            ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.btnConfirm"),
+            _titleFont,
+            fontSize: 28);
+        _confirmButton.AnchorBottomRight(rightInset: 54f, bottomInset: 48f);
+        _confirmButton.Pressed += () => _minigame.ConfirmPath();
+        hud.AddChild(_confirmButton);
     }
 
-    private static ColorRect MakeDivider(Color color) => new()
+    private void ShowTileHoverTip(RuneTileNode node)
     {
-        Color = color,
-        CustomMinimumSize = new Vector2(0f, 2f),
-        MouseFilter = MouseFilterEnum.Ignore,
-    };
+        RuneLoomTile tile = node.Tile;
+        if (tile.Kind == RuneTileKind.Enchantment)
+        {
+            EnchantmentModel? ench = RuneLoomMinigame.GetCanonicalEnchantment(tile.EnchantmentKind);
+            if (ench != null)
+            {
+                ThingsMinigameUiTheme.ShowEnchantmentHoverTip(node, ench, tile.Value, HoverTipAlignment.Right);
+                return;
+            }
+        }
+
+        string titleKey = GetTileTitleKey(tile);
+        string desc = GetTileEffectShort(tile);
+        ThingsMinigameUiTheme.ShowLocalizedHoverTip(node, titleKey, desc, node.Icon.Texture, HoverTipAlignment.Right);
+    }
 
     private void RefreshAll()
     {
@@ -692,58 +633,60 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
         string cardLine = ThingsMinigameUiTheme.Tr(
             "THINGS_MOSS_RUNE_LOOM.ui.cardLabel",
             ("Card", $"[color=#f8df8c]{_minigame.SelectedCard.Title}[/color]"));
-        string statsLine = ThingsMinigameUiTheme.Tr(
-            "THINGS_MOSS_RUNE_LOOM.ui.playerStats",
-            ("Hp", _minigame.Owner.Creature.CurrentHp),
-            ("MaxHp", _minigame.Owner.Creature.MaxHp),
-            ("Gold", _minigame.Owner.Gold));
-        _bottomStatusRtl.Text = $"{stepsLine}\n[font_size=20]{cardLine}[/font_size]\n[font_size=17][color=#b4dfc0]{statsLine}[/color][/font_size]";
-
-        ThingsRuneLoomOutcome preview = _minigame.BuildOutcome();
-
-        var gains = new List<string>();
-        if (preview.UpgradeCard)
-            gains.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryUpgrade", ("Card", _minigame.SelectedCard.Title)));
-        if (preview.EnchantmentKind != RuneLoomEnchantmentKind.None)
-        {
-            EnchantmentModel? ench = RuneLoomMinigame.GetCanonicalEnchantment(preview.EnchantmentKind);
-            string enchName = ench != null ? ench.Title.GetFormattedText() : preview.EnchantmentKind.ToString();
-            string label = ench != null && ench.ShowAmount
-                ? ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryEnchantAmount", ("Name", enchName), ("Amount", preview.EnchantmentAmount))
-                : ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryEnchant", ("Name", enchName));
-            gains.Add(label);
-        }
-        if (preview.HealAmount > 0)
-            gains.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryHeal", ("Amount", preview.HealAmount)));
-        if (preview.GoldGain > 0)
-            gains.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryGold", ("Amount", preview.GoldGain)));
-        if (preview.MaxHpGain > 0)
-            gains.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryMaxHp", ("Amount", preview.MaxHpGain)));
-
-        _gainsBodyRtl.Text = gains.Count > 0
-            ? $"[color=#eef9f0]{string.Join("\n", gains)}[/color]"
-            : $"[color=#8cad94]{ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryNoGains")}[/color]";
-
-        var costs = new List<string>();
-        if (preview.DamageAmount > 0)
-            costs.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryDamage", ("Amount", preview.DamageAmount)));
-        if (preview.GoldLoss > 0)
-            costs.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryGoldLoss", ("Amount", preview.GoldLoss)));
-        if (preview.MaxHpLoss > 0)
-            costs.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryMaxHpLoss", ("Amount", preview.MaxHpLoss)));
-        if (preview.CurseCount > 0)
-            costs.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryCurse", ("Curse", ModelDb.Card<Clumsy>().Title)));
-
-        string costBody = costs.Count > 0
-            ? $"[color=#ffccc8]{string.Join("\n", costs)}[/color]"
-            : $"[color=#92a896]{ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryNoCosts")}[/color]";
-        if (_minigame.IsLethalWarning)
-            costBody += $"\n[color=#ff726b]{ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.lethalWarning")}[/color]";
-        _costsBodyRtl.Text = costBody;
-
-        _feedbackRtl.Text = $"[color=#f4e2b0]{ThingsMinigameUiTheme.Tr(_minigame.LastFeedbackKey)}[/color]";
+        _bottomStatusRtl.Text = $"{stepsLine}\n[font_size=20]{cardLine}[/font_size]";
 
         bool hasPath = _minigame.Path.Count > 0;
+        _rulesBodyRtl.Visible = !hasPath;
+        _previewSection.Visible = hasPath;
+
+        if (hasPath)
+        {
+            ThingsRuneLoomOutcome preview = _minigame.BuildOutcome();
+
+            var gains = new List<string>();
+            if (preview.UpgradeCard)
+                gains.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryUpgrade", ("Card", _minigame.SelectedCard.Title)));
+            if (preview.EnchantmentKind != RuneLoomEnchantmentKind.None)
+            {
+                EnchantmentModel? ench = RuneLoomMinigame.GetCanonicalEnchantment(preview.EnchantmentKind);
+                string enchName = ench != null ? ench.Title.GetFormattedText() : preview.EnchantmentKind.ToString();
+                string label = ench != null && ench.ShowAmount
+                    ? ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryEnchantAmount", ("Name", enchName), ("Amount", preview.EnchantmentAmount))
+                    : ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryEnchant", ("Name", enchName));
+                gains.Add(label);
+            }
+            if (preview.HealAmount > 0)
+                gains.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryHeal", ("Amount", preview.HealAmount)));
+            if (preview.GoldGain > 0)
+                gains.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryGold", ("Amount", preview.GoldGain)));
+            if (preview.MaxHpGain > 0)
+                gains.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryMaxHp", ("Amount", preview.MaxHpGain)));
+
+            _gainsBodyRtl.Text = gains.Count > 0
+                ? string.Join("\n", gains)
+                : $"[color=#a0b8a4]{ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryNoGains")}[/color]";
+
+            var costs = new List<string>();
+            if (preview.DamageAmount > 0)
+                costs.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryDamage", ("Amount", preview.DamageAmount)));
+            if (preview.GoldLoss > 0)
+                costs.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryGoldLoss", ("Amount", preview.GoldLoss)));
+            if (preview.MaxHpLoss > 0)
+                costs.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryMaxHpLoss", ("Amount", preview.MaxHpLoss)));
+            if (preview.CurseCount > 0)
+                costs.Add(ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.summaryCurse", ("Curse", ModelDb.Card<Clumsy>().Title)));
+
+            bool showCosts = costs.Count > 0 || _minigame.IsLethalWarning;
+            _costsSection.Visible = showCosts;
+            if (showCosts)
+            {
+                string costBody = $"[color=#ffccc8]{string.Join("\n", costs)}[/color]";
+                if (_minigame.IsLethalWarning)
+                    costBody += $"\n[color=#ff726b]{ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.lethalWarning")}[/color]";
+                _costsBodyRtl.Text = costBody;
+            }
+        }
+
         bool canConfirm = _minigame.CanConfirm();
         _undoButton.Disabled = !hasPath;
         _resetButton.Disabled = !hasPath;
@@ -779,25 +722,25 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
 
         if (inPath)
         {
-            node.StoneArt.SelfModulate = baseTint.Lightened(node.IsHovered ? 0.28f : 0.20f);
+            node.StoneArt.SelfModulate = baseTint.Lightened(node.IsHovered ? 0.24f : 0.16f);
             node.GlowOutline.Visible = true;
-            node.GlowOutline.Modulate = new Color(1.0f, 0.80f, 0.22f, 0.98f);
+            node.GlowOutline.Modulate = new Color(0.96f, 0.76f, 0.22f, 0.74f);
             node.Modulate = Colors.White;
             node.MouseDefaultCursorShape = CursorShape.PointingHand;
         }
         else if (canClick && _minigame.Path.Count > 0)
         {
-            node.StoneArt.SelfModulate = baseTint.Lightened(node.IsHovered ? 0.22f : 0.10f);
+            node.StoneArt.SelfModulate = baseTint.Lightened(node.IsHovered ? 0.20f : 0.08f);
             node.GlowOutline.Visible = true;
-            node.GlowOutline.Modulate = new Color(0.45f, 0.98f, 0.58f, node.IsHovered ? 0.98f : 0.72f);
+            node.GlowOutline.Modulate = new Color(0.56f, 0.88f, 0.56f, node.IsHovered ? 0.68f : 0.36f);
             node.Modulate = Colors.White;
             node.MouseDefaultCursorShape = CursorShape.PointingHand;
         }
         else if (canClick)
         {
-            node.StoneArt.SelfModulate = node.IsHovered ? baseTint.Lightened(0.18f) : baseTint;
+            node.StoneArt.SelfModulate = node.IsHovered ? baseTint.Lightened(0.16f) : baseTint;
             node.GlowOutline.Visible = node.IsHovered;
-            node.GlowOutline.Modulate = new Color(0.95f, 0.88f, 0.52f, 0.78f);
+            node.GlowOutline.Modulate = new Color(0.95f, 0.86f, 0.52f, 0.52f);
             node.Modulate = Colors.White;
             node.MouseDefaultCursorShape = CursorShape.PointingHand;
         }
@@ -805,7 +748,7 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
         {
             node.StoneArt.SelfModulate = baseTint.Darkened(0.24f);
             node.GlowOutline.Visible = false;
-            node.Modulate = new Color(0.80f, 0.84f, 0.81f, 0.94f);
+            node.Modulate = new Color(0.78f, 0.82f, 0.79f, 0.92f);
             node.MouseDefaultCursorShape = CursorShape.Arrow;
         }
     }
@@ -819,7 +762,8 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
             ?? ThingsMinigameUiTheme.TryLoadTexture("res://images/ui/emote/heart.png"),
         RuneTileKind.AmberGold => ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_gold.png")
             ?? ThingsMinigameUiTheme.TryLoadTexture("res://images/ui/reward_screen/reward_icon_money.png"),
-        RuneTileKind.Heartwood => ThingsMinigameUiTheme.TryLoadTexture("res://images/ui/emote/heart.png"),
+        RuneTileKind.Heartwood => ThingsMinigameUiTheme.TryLoadTexture("res://images/atlases/ui_atlas.sprites/top_bar/top_bar_heart.tres")
+            ?? ThingsMinigameUiTheme.TryLoadTexture("res://images/ui/emote/heart.png"),
         RuneTileKind.ThornCut => ThingsMinigameUiTheme.TryLoadTexture("res://images/powers/thorns_power.png"),
         RuneTileKind.SapDrain => ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_gold.png"),
         RuneTileKind.BlightVine => ThingsMinigameUiTheme.TryLoadTexture("res://images/powers/poison_power.png"),
@@ -833,25 +777,40 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
         return ench != null ? ThingsMinigameUiTheme.TryLoadTexture(ench.IconPath) : null;
     }
 
-    private static string GetTileTitle(RuneLoomTile tile) => tile.Kind switch
+    private static string GetTileNumericBadge(RuneLoomTile tile) => tile.Kind switch
     {
-        RuneTileKind.Upgrade => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.tileUpgrade"),
-        RuneTileKind.Enchantment => RuneLoomMinigame.GetCanonicalEnchantment(tile.EnchantmentKind)?.Title.GetFormattedText()
-            ?? tile.EnchantmentKind.ToString(),
-        RuneTileKind.SapHeal => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.tileSapHeal"),
-        RuneTileKind.AmberGold => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.tileAmberGold"),
-        RuneTileKind.Heartwood => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.tileHeartwood"),
-        RuneTileKind.ThornCut => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.tileThornCut"),
-        RuneTileKind.SapDrain => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.tileSapDrain"),
-        RuneTileKind.BlightVine => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.tileBlightVine"),
-        RuneTileKind.ClingingTwig => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.tileClingingTwig"),
-        _ => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.tileMoss"),
+        RuneTileKind.SapHeal => $"+{tile.Value}",
+        RuneTileKind.AmberGold => $"+{tile.Value}",
+        RuneTileKind.Heartwood => $"+{tile.Value}",
+        RuneTileKind.ThornCut => $"-{tile.Value}",
+        RuneTileKind.SapDrain => $"-{tile.Value}",
+        RuneTileKind.BlightVine => $"-{tile.Value}",
+        RuneTileKind.Enchantment => FormatEnchantmentNumericBadge(tile.EnchantmentKind, tile.Value),
+        _ => string.Empty,
+    };
+
+    private static string FormatEnchantmentNumericBadge(RuneLoomEnchantmentKind kind, int value)
+    {
+        EnchantmentModel? ench = RuneLoomMinigame.GetCanonicalEnchantment(kind);
+        return ench != null && ench.ShowAmount ? $"+{value}" : string.Empty;
+    }
+
+    private static string GetTileTitleKey(RuneLoomTile tile) => tile.Kind switch
+    {
+        RuneTileKind.Upgrade => "THINGS_MOSS_RUNE_LOOM.ui.tileUpgrade",
+        RuneTileKind.SapHeal => "THINGS_MOSS_RUNE_LOOM.ui.tileSapHeal",
+        RuneTileKind.AmberGold => "THINGS_MOSS_RUNE_LOOM.ui.tileAmberGold",
+        RuneTileKind.Heartwood => "THINGS_MOSS_RUNE_LOOM.ui.tileHeartwood",
+        RuneTileKind.ThornCut => "THINGS_MOSS_RUNE_LOOM.ui.tileThornCut",
+        RuneTileKind.SapDrain => "THINGS_MOSS_RUNE_LOOM.ui.tileSapDrain",
+        RuneTileKind.BlightVine => "THINGS_MOSS_RUNE_LOOM.ui.tileBlightVine",
+        RuneTileKind.ClingingTwig => "THINGS_MOSS_RUNE_LOOM.ui.tileClingingTwig",
+        _ => "THINGS_MOSS_RUNE_LOOM.ui.tileMoss",
     };
 
     private static string GetTileEffectShort(RuneLoomTile tile) => tile.Kind switch
     {
         RuneTileKind.Upgrade => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valUpgrade"),
-        RuneTileKind.Enchantment => FormatEnchantmentShort(tile.EnchantmentKind, tile.Value),
         RuneTileKind.SapHeal => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valHeal", ("Amount", tile.Value)),
         RuneTileKind.AmberGold => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valGold", ("Amount", tile.Value)),
         RuneTileKind.Heartwood => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valMaxHp", ("Amount", tile.Value)),
@@ -860,18 +819,5 @@ public partial class NRuneLoomScreen : Control, IOverlayScreen
         RuneTileKind.BlightVine => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valMaxHpLoss", ("Amount", tile.Value)),
         RuneTileKind.ClingingTwig => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valCurse", ("Curse", ModelDb.Card<Clumsy>().Title)),
         _ => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valMoss"),
-    };
-
-    private static string FormatEnchantmentShort(RuneLoomEnchantmentKind kind, int amount) => kind switch
-    {
-        RuneLoomEnchantmentKind.Sharp => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valSharp", ("Amount", amount)),
-        RuneLoomEnchantmentKind.Vigorous => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valVigorous", ("Amount", amount)),
-        RuneLoomEnchantmentKind.Nimble => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valNimble", ("Amount", amount)),
-        RuneLoomEnchantmentKind.Adroit => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valAdroit", ("Amount", amount)),
-        RuneLoomEnchantmentKind.Steady => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valSteady"),
-        RuneLoomEnchantmentKind.Swift => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valSwift", ("Amount", amount)),
-        RuneLoomEnchantmentKind.Clone => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valClone"),
-        RuneLoomEnchantmentKind.Sown => ThingsMinigameUiTheme.Tr("THINGS_MOSS_RUNE_LOOM.ui.valSown", ("Amount", amount)),
-        _ => string.Empty,
     };
 }

@@ -6,6 +6,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Animation;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Audio;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -228,7 +229,9 @@ public sealed class ThingsOriginFogmog : ThingsSpineMonster
             if (string.IsNullOrEmpty(slotName))
                 break;
 
-            var eye = await CreatureCmd.Add<ThingsOriginEyeWithTeeth>(combatState, slotName);
+            var eyeModel = (ThingsOriginEyeWithTeeth)ModelDb.Monster<ThingsOriginEyeWithTeeth>().ToMutable();
+            eyeModel.StartsWithBite = string.Equals(slotName, "illusion2", StringComparison.Ordinal);
+            var eye = await CreatureCmd.Add(eyeModel, combatState, CombatSide.Enemy, slotName);
             await PowerCmd.Apply<ThingsOriginGainEnergyPower>(new ThrowingPlayerChoiceContext(), eye, 1m, Creature, null);
             if (IsDread())
             {

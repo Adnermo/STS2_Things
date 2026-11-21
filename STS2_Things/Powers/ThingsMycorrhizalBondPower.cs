@@ -5,6 +5,7 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
 using STS2_Things.Core.Models;
@@ -21,6 +22,13 @@ public sealed class ThingsMycorrhizalBondPower : ThingsPowerModel
     public override PowerType Type => PowerType.Buff;
     public override PowerStackType StackType => PowerStackType.None;
     public bool IsRobust => GetInternalData<Data>().Robust;
+    protected override IEnumerable<DynamicVar> CanonicalVars =>
+    [
+        new IntVar("SwapStrength", 1),
+        new IntVar("NourishHeal", 6),
+        new IntVar("DeathStrength", 4),
+        new IntVar("DeathBlock", 15),
+    ];
     protected override string SmartDescriptionLocKey => IsMutable
         ? IsRobust ? "THINGS_MYCORRHIZAL_BOND_POWER.robustDescription" : "THINGS_MYCORRHIZAL_BOND_POWER.witheredDescription"
         : base.SmartDescriptionLocKey;
@@ -30,8 +38,16 @@ public sealed class ThingsMycorrhizalBondPower : ThingsPowerModel
     public override Task AfterApplied(Creature? applier, CardModel? cardSource)
     {
         GetInternalData<Data>().Robust = Owner.Monster is ThingsMycorrhizalVanguard;
+        if (Owner.Monster is MycorrhizalTwin twin)
+        {
+            DynamicVars["SwapStrength"].BaseValue = twin.SwapStrengthGain;
+            DynamicVars["NourishHeal"].BaseValue = twin.SwapNourishHeal;
+            DynamicVars["DeathStrength"].BaseValue = twin.DeathStrengthGain;
+            DynamicVars["DeathBlock"].BaseValue = twin.DeathBlockGain;
+        }
         return Task.CompletedTask;
     }
+
     protected override decimal OnModifyDamageMultiplicative(
         Creature? target, decimal amount, ValueProp props, Creature? dealer, CardModel? cardSource, CardPlay? cardPlay) =>
         dealer == Owner && props.IsPoweredAttack() ? IsRobust ? 1.25m : .75m : 1m;
@@ -45,6 +61,7 @@ public sealed class ThingsMycorrhizalBondPower : ThingsPowerModel
         if (data.LastExchangeRound == CombatState.RoundNumber) return;
         data.LastExchangeRound = CombatState.RoundNumber;
         int first = Owner.CurrentHp, second = partner.Creature.CurrentHp;
+        bool uneven = first != second;
         Flash(); partner.Creature.GetPower<ThingsMycorrhizalBondPower>()!.Flash();
         NMycorrhizalLink.Pulse(Owner, partner.Creature);
         await CreatureCmd.TriggerAnim(Owner, "Exchange", 0);
@@ -63,8 +80,24 @@ public sealed class ThingsMycorrhizalBondPower : ThingsPowerModel
             var other = partner.Creature.GetPower<ThingsMycorrhizalBondPower>();
             if (other != null) { other.GetInternalData<Data>().Robust = !robust; other.InvokeDisplayAmountChanged(); }
             InvokeDisplayAmountChanged();
+
+            // Shared root growth: every successful exchange empowers both twins.
+            int swapStr = twin.SwapStrengthGain;
+            await PowerCmd.Apply<StrengthPower>(choiceContext, Owner, swapStr, Owner, null);
+            if (partner.Creature.IsAlive)
+                await PowerCmd.Apply<StrengthPower>(choiceContext, partner.Creature, swapStr, Owner, null);
+
+            // Nutrient feedback: unequal HP pools trigger mutual healing through the root.
+            if (uneven)
+            {
+                int heal = twin.SwapNourishHeal;
+                if (Owner.IsAlive)
+                    await CreatureCmd.Heal(Owner, heal);
+                if (partner.Creature.IsAlive)
+                    await CreatureCmd.Heal(partner.Creature, heal);
+            }
         }
-        await twin.FinishPose("exchange",1.55f,.9f);
+        await twin.FinishPose("exchange", 1.55f, .9f);
     }
 
     protected override async Task OnCreatureDeathAsync(
@@ -74,7 +107,8 @@ public sealed class ThingsMycorrhizalBondPower : ThingsPowerModel
             Owner.Monster is not MycorrhizalTwin twin || creature.Monster is not MycorrhizalTwin dead ||
             dead.IsVanguard == twin.IsVanguard || twin.IsFurious) return;
         await PowerCmd.Apply<ThingsMycorrhizalFuryPower>(choiceContext, Owner, 1, Owner, null);
-        await PowerCmd.Apply<StrengthPower>(choiceContext, Owner, 4, Owner, null);
+        await PowerCmd.Apply<StrengthPower>(choiceContext, Owner, twin.DeathStrengthGain, Owner, null);
+        await CreatureCmd.GainBlock(Owner, twin.DeathBlockGain, ValueProp.Move, null);
         await PowerCmd.Remove(this);
         await CreatureCmd.TriggerAnim(Owner, "Enrage", .7f);
         // Keep the already announced action (and native stun). The next normal

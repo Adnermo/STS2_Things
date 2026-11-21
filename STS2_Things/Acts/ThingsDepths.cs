@@ -90,12 +90,11 @@ public sealed class ThingsDepths : ActModel
         yield return ModelDb.Encounter<ThingsSnailTrioWeak>();
         yield return ModelDb.Encounter<ThingsScalePeelerWeak>();
 
-        // 11 Regular encounters: 6 pure + 5 <=2-species complementary pairings
+        // 10 Regular encounters: 5 pure + 5 <=2-species complementary pairings
         yield return ModelDb.Encounter<ThingsLanternFishEncounter>();
         yield return ModelDb.Encounter<ThingsSanguineLeechEncounter>();
         yield return ModelDb.Encounter<ThingsLeechMotherEncounter>();
         yield return ModelDb.Encounter<ThingsSilkMothTrio>();
-        yield return ModelDb.Encounter<ThingsHumanFaceColumnEncounter>();
         yield return ModelDb.Encounter<ThingsChromaticSlimeWeak>();
         yield return ModelDb.Encounter<ThingsSpongeLeechEncounter>();
         yield return ModelDb.Encounter<ThingsLanternSpongeEncounter>();
@@ -103,10 +102,11 @@ public sealed class ThingsDepths : ActModel
         yield return ModelDb.Encounter<ThingsScalePeelerEncounter>();
         yield return ModelDb.Encounter<ThingsCaveMawLanternEncounter>();
 
-        // 3 custom Depths Elites
+        // 4 custom Depths Elites
         yield return ModelDb.Encounter<ThingsMycorrhizalTwinsElite>();
         yield return ModelDb.Encounter<ThingsReverseSalamanderElite>();
         yield return ModelDb.Encounter<ThingsRadioJellyfishElite>();
+        yield return ModelDb.Encounter<ThingsHumanFaceColumnEncounter>();
 
         // Cave God shares Hive/Depths settings; Human-Faced Tower and Abyssal Inkmaw are exclusive to Depths.
         // Fall back to Kaiser Crab only when all Depths bosses are disabled/unavailable.

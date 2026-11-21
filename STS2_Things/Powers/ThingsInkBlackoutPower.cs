@@ -82,7 +82,7 @@ public sealed class ThingsInkBlackoutPower : ThingsPowerModel
 
     public override Task AfterCardEnteredCombat(CardModel card)
     {
-        if (!_activeThisTurn || Amount <= 0 || card.Owner?.Creature != Owner)
+        if (!_activeThisTurn || Amount <= 0 || card.Owner?.Creature != Owner || AbyssalInkBlackout.IsWashedThisTurn(card))
             return Task.CompletedTask;
 
         AbyssalInkBlackout.InkCard(card, randomizeCost: true, rerollIfAlreadyInked: false);
@@ -91,7 +91,7 @@ public sealed class ThingsInkBlackoutPower : ThingsPowerModel
 
     public override Task AfterCardDrawn(PlayerChoiceContext choiceContext, CardModel card, bool fromHandDraw)
     {
-        if (!_activeThisTurn || Amount <= 0 || card.Owner?.Creature != Owner)
+        if (!_activeThisTurn || Amount <= 0 || card.Owner?.Creature != Owner || AbyssalInkBlackout.IsWashedThisTurn(card))
             return Task.CompletedTask;
 
         if (!AbyssalInkBlackout.IsInked(card))

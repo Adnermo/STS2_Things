@@ -20,7 +20,7 @@ using STS2_Things.Relics;
 public static class STS2_ThingsInit
 {
     public const string HarmonyId = "Adnermo.STS2_Things";
-    public const string ModVersion = "2.0.0";
+    public const string ModVersion = "2.0.1";
     private static bool _initialized;
 
     public static void Initialize()

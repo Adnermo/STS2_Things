@@ -61,6 +61,10 @@ public partial class NInkBlackoutCardVeil : Control
     // pile screens and grid selection screens (where NCard.FindOnTable returns null!).
     private static readonly HashSet<NInkBlackoutCardVeil> ActiveVeils = [];
 
+    // Re-entrancy guard preventing NCard.UpdateVisuals Harmony postfixes from recursing back into
+    // Refresh/DetachAndFree/StartWaveWash while a veil itself is unveiling or detaching from a card.
+    private static readonly HashSet<NCard> RefreshingCards = [];
+
     private NCard _card = null!;
     private Control? _body;
     private CardModel? _boundModel;
@@ -72,6 +76,7 @@ public partial class NInkBlackoutCardVeil : Control
     private Tween? _drenchTween;
     private bool _active;
     private bool _washing;
+    private bool _detaching;
     private readonly Dictionary<CanvasItem, Color> _maskedBodyChildren = [];
 
     public static void RefreshOnTable(CardModel model) => RefreshAllForModel(model);
@@ -137,7 +142,7 @@ public partial class NInkBlackoutCardVeil : Control
 
     public static void Refresh(NCard card)
     {
-        if (!GodotObject.IsInstanceValid(card) || !card.IsNodeReady())
+        if (!GodotObject.IsInstanceValid(card) || !card.IsNodeReady() || RefreshingCards.Contains(card))
             return;
 
         NInkBlackoutCardVeil? veil = FindVeil(card);
@@ -149,7 +154,7 @@ public partial class NInkBlackoutCardVeil : Control
             {
                 if (veil._boundModel != card.Model || !veil._washing)
                 {
-                    veil.DetachAndFree();
+                    veil.DetachAndFree(refreshCardVisuals: true);
                 }
             }
             return;
@@ -177,12 +182,12 @@ public partial class NInkBlackoutCardVeil : Control
         veil.SyncLayoutAndMask();
     }
 
-    public static void DetachFromCard(NCard card)
+    public static void DetachFromCard(NCard card, bool refreshCardVisuals = true)
     {
         if (!GodotObject.IsInstanceValid(card))
             return;
         if (FindVeil(card) is { } veil)
-            veil.DetachAndFree();
+            veil.DetachAndFree(refreshCardVisuals);
     }
 
     private static Control ResolveHostBody(NCard card)
@@ -195,12 +200,19 @@ public partial class NInkBlackoutCardVeil : Control
     private static NInkBlackoutCardVeil? FindVeil(NCard card)
     {
         if (card.Body != null && GodotObject.IsInstanceValid(card.Body) &&
-            card.Body.GetNodeOrNull<NInkBlackoutCardVeil>(ChildName) is { } bodyVeil)
+            card.Body.GetNodeOrNull<NInkBlackoutCardVeil>(ChildName) is { } bodyVeil &&
+            !bodyVeil._detaching && !bodyVeil.IsQueuedForDeletion())
         {
             return bodyVeil;
         }
 
-        return card.GetNodeOrNull<NInkBlackoutCardVeil>(ChildName);
+        if (card.GetNodeOrNull<NInkBlackoutCardVeil>(ChildName) is { } rootVeil &&
+            !rootVeil._detaching && !rootVeil.IsQueuedForDeletion())
+        {
+            return rootVeil;
+        }
+
+        return null;
     }
 
     public override void _EnterTree()
@@ -409,6 +421,10 @@ public partial class NInkBlackoutCardVeil : Control
 
         if (_card.CardHighlight is { } highlight && GodotObject.IsInstanceValid(highlight))
         {
+            if (!_maskedBodyChildren.ContainsKey(highlight))
+            {
+                _maskedBodyChildren[highlight] = highlight.Modulate;
+            }
             highlight.AnimHideInstantly();
             Color c = highlight.Modulate;
             if (c.A > 0f)
@@ -435,7 +451,10 @@ public partial class NInkBlackoutCardVeil : Control
 
     private void StartWaveWash()
     {
-        if (!GodotObject.IsInstanceValid(this) || _inkMaterial == null || _inkFrame == null)
+        if (_detaching || !GodotObject.IsInstanceValid(this) || IsQueuedForDeletion())
+            return;
+
+        if (_inkMaterial == null || _inkFrame == null)
         {
             DetachAndFree();
             return;
@@ -450,10 +469,7 @@ public partial class NInkBlackoutCardVeil : Control
 
         // Immediately unveil the real card underneath so the seafoam wave washes away the ink to reveal it!
         RestoreMaskedBodyChildren();
-        if (GodotObject.IsInstanceValid(_card) && _card.Model != null && _card.IsNodeReady())
-        {
-            _card.UpdateVisuals(_card.DisplayingPile, CardPreviewMode.Normal);
-        }
+        RefreshCardVisualsGuarded(_card);
 
         if (_costOrb != null)
             _costOrb.Visible = false;
@@ -470,7 +486,7 @@ public partial class NInkBlackoutCardVeil : Control
                 0.62f)
             .SetTrans(Tween.TransitionType.Cubic)
             .SetEase(Tween.EaseType.InOut);
-        _washTween.TweenCallback(Callable.From(DetachAndFree));
+        _washTween.TweenCallback(Callable.From(() => DetachAndFree(refreshCardVisuals: true)));
     }
 
     private void CancelWashAndReactivate()
@@ -510,7 +526,7 @@ public partial class NInkBlackoutCardVeil : Control
 
         if (_card.Model != _boundModel && !AbyssalInkBlackout.IsVeiled(_card.Model))
         {
-            DetachAndFree();
+            DetachAndFree(refreshCardVisuals: false);
         }
         else if (AbyssalInkBlackout.IsVeiled(_card.Model))
         {
@@ -535,23 +551,46 @@ public partial class NInkBlackoutCardVeil : Control
         }
     }
 
-    private void DetachAndFree()
+    private static void RefreshCardVisualsGuarded(NCard? card)
     {
+        if (card == null || !GodotObject.IsInstanceValid(card) || !card.IsNodeReady() ||
+            !card.IsInsideTree() || card.Model == null)
+        {
+            return;
+        }
+
+        if (!RefreshingCards.Add(card))
+            return;
+
+        try
+        {
+            card.UpdateVisuals(card.DisplayingPile, CardPreviewMode.Normal);
+        }
+        finally
+        {
+            RefreshingCards.Remove(card);
+        }
+    }
+
+    private void DetachAndFree(bool refreshCardVisuals = true)
+    {
+        if (_detaching)
+            return;
+        _detaching = true;
+
+        NCard? card = _card;
         ActiveVeils.Remove(this);
         CombatManager.Instance.CombatEnded -= OnCombatEnded;
-        if (GodotObject.IsInstanceValid(_card))
-            _card.ModelChanged -= OnCardModelChanged;
+        if (card != null && GodotObject.IsInstanceValid(card))
+            card.ModelChanged -= OnCardModelChanged;
 
         KillTweens();
         _active = false;
         _washing = false;
         RestoreMaskedBodyChildren();
 
-        if (GodotObject.IsInstanceValid(_card) && _card.IsNodeReady() && _card.Model != null)
-        {
-            _card.UpdateVisuals(_card.DisplayingPile, CardPreviewMode.Normal);
-        }
-
+        // Detach from the scene tree BEFORE any NCard.UpdateVisuals refresh so Harmony postfixes
+        // can never rediscover this veil and recurse (prevents STATUS_STACK_OVERFLOW / 0xc00000fd).
         Node? parent = GetParent();
         if (parent != null && GodotObject.IsInstanceValid(parent) && NGame.IsMainThread() &&
             (parent.IsNodeReady() || !parent.IsInsideTree()))
@@ -560,6 +599,11 @@ public partial class NInkBlackoutCardVeil : Control
         }
 
         QueueFree();
+
+        if (refreshCardVisuals)
+        {
+            RefreshCardVisualsGuarded(card);
+        }
     }
 }
 
@@ -619,7 +663,7 @@ internal static class AbyssalInkBlackoutSetPortraitTexturePatch
 [HarmonyPatch(typeof(NCard), nameof(NCard.OnFreedToPool))]
 internal static class AbyssalInkBlackoutPoolCleanupPatch
 {
-    private static void Postfix(NCard __instance) => NInkBlackoutCardVeil.DetachFromCard(__instance);
+    private static void Postfix(NCard __instance) => NInkBlackoutCardVeil.DetachFromCard(__instance, refreshCardVisuals: false);
 }
 
 [HarmonyPatch(typeof(NHandCardHolder), nameof(NHandCardHolder.UpdateCard))]

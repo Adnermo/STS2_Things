@@ -20,6 +20,7 @@ internal sealed class HumanFaceColumnGroup
     public int Reserve { get; private set; } = ThingsHumanFaceColumn.InitialLayers - 3;
     public ThingsHumanFaceColumn[] Living => _members.Where(member => member.Creature.IsAlive)
         .OrderBy(member => member.Level).ToArray();
+    public ThingsHumanFaceColumn? BottomLiving => _members.FirstOrDefault(member => member.Level == 0 && member.Creature.IsAlive);
 
     public static IReadOnlyList<(MonsterModel, string?)> CreateInitial()
     {

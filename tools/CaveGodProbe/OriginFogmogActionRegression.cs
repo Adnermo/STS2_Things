@@ -8,10 +8,13 @@ using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Commands.Builders;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Characters;
+using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Rooms;
@@ -21,6 +24,7 @@ using MegaCrit.Sts2.Core.Settings;
 using MegaCrit.Sts2.Core.Unlocks;
 using STS2_Things.Encounters;
 using STS2_Things.Monsters;
+using STS2_Things.Powers;
 
 public partial class CaveGodProbeNode
 {
@@ -60,12 +64,12 @@ public partial class CaveGodProbeNode
         });
     }
 
-    private static (CombatState state, ThingsOriginFogmog boss) FogmogScenario(int count)
+    private static (CombatState state, ThingsOriginFogmog boss) FogmogScenario(int count, int ascension = 0)
     {
         var players = Enumerable.Range(1,count).Select(i=>Player.CreateForNewRun<Ironclad>(UnlockState.all,(ulong)i)).ToArray();
         var run = RunState.CreateForTest(players, seed:"fogmog-actions");
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
-        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(0));
+        typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(ascension));
         var room = new CombatRoom(ModelDb.Encounter<ThingsOriginFogmogBossEncounter>().ToMutable(),run);
         run.PushRoom(room);
         foreach(var player in players)
@@ -76,6 +80,152 @@ public partial class CaveGodProbeNode
         var boss=Add<ThingsOriginFogmog>(room.CombatState,"fogmog");
         ActivateSyntheticCombat(room.CombatState);
         return (room.CombatState,boss);
+    }
+
+    private static async Task VerifyOriginEyeBehavior()
+    {
+        var canonicalEye = ModelDb.Monster<ThingsOriginEyeWithTeeth>();
+        Assert(canonicalEye.AssetPaths.Any(), "Origin Eye canonical AssetPaths empty");
+        var bestiaryEye = (ThingsOriginEyeWithTeeth)canonicalEye.ToMutable();
+        bestiaryEye.SetUpForCombat();
+        var bestiaryMoves = bestiaryEye.GenerateBestiaryMoveList(null);
+        var bestiaryIds = bestiaryMoves.Select(m => m.stateId).ToHashSet();
+        Assert(bestiaryIds.Contains(ThingsOriginEyeWithTeeth.DistractMoveId)
+            && bestiaryIds.Contains(ThingsOriginEyeWithTeeth.BiteMoveId)
+            && bestiaryIds.Contains(ThingsOriginEyeWithTeeth.HealBossMoveId)
+            && !bestiaryIds.Contains("STUN_AFTER_REVIVE"),
+            $"Origin Eye bestiary moves unexpected: {string.Join(", ", bestiaryIds)}");
+
+        foreach (int ascension in new[] { 0, 10 })
+        foreach (int count in new[] { 1, 4 })
+        {
+            var (state, boss) = FogmogScenario(count, ascension);
+            try
+            {
+                int expectedHp = ascension >= 8 ? 26 : 22;
+                int expectedDistractDmg = ascension >= 9 ? 6 : 5;
+                int expectedDazed = ascension >= 9 ? 3 : 2;
+                int expectedBiteSingle = ascension >= 9 ? 5 : 4;
+                int expectedHealPerPlayer = ascension >= 8 ? 12 : 10;
+
+                // Summon both Eyes through Fogmog's native interrupted-opening double summon.
+                await boss.PerformInterruptedOpeningIllusionMove(state.PlayerCreatures.ToArray());
+                var eyes = state.Enemies
+                    .Where(e => e.Monster is ThingsOriginEyeWithTeeth)
+                    .OrderBy(e => e.SlotName, StringComparer.Ordinal)
+                    .ToArray();
+                Assert(eyes.Length == 2, $"A{ascension}/{count}p expected 2 Eyes, got {eyes.Length}");
+
+                var eye1 = (ThingsOriginEyeWithTeeth)eyes[0].Monster!;
+                var eye2 = (ThingsOriginEyeWithTeeth)eyes[1].Monster!;
+                Assert(eyes[0].SlotName == "illusion1" && eyes[1].SlotName == "illusion2",
+                    $"Unexpected Eye slots: {eyes[0].SlotName}, {eyes[1].SlotName}");
+                if (count == 1)
+                {
+                    Assert(eyes[0].MaxHp == expectedHp && eyes[1].MaxHp == expectedHp,
+                        $"A{ascension} solo Eye HP expected {expectedHp}, got {eyes[0].MaxHp}/{eyes[1].MaxHp}");
+                }
+                else
+                {
+                    Assert(eyes[0].MaxHp > expectedHp && eyes[1].MaxHp > expectedHp,
+                        $"A{ascension}/{count}p Eye HP failed multiplayer scaling: {eyes[0].MaxHp}");
+                }
+
+                // Staggered openings: illusion1 -> DISTRACT_MOVE, illusion2 -> BITE_MOVE.
+                eye1.RollMove(state.PlayerCreatures);
+                eye2.RollMove(state.PlayerCreatures);
+                Assert(eye1.NextMove.StateId == ThingsOriginEyeWithTeeth.DistractMoveId,
+                    $"illusion1 expected {ThingsOriginEyeWithTeeth.DistractMoveId}, got {eye1.NextMove.StateId}");
+                Assert(eye2.NextMove.StateId == ThingsOriginEyeWithTeeth.BiteMoveId,
+                    $"illusion2 expected {ThingsOriginEyeWithTeeth.BiteMoveId}, got {eye2.NextMove.StateId}");
+
+                var illusion1 = eyes[0].GetPower<IllusionPower>();
+                var illusion2 = eyes[1].GetPower<IllusionPower>();
+                Assert(illusion1?.FollowUpStateId == ThingsOriginEyeWithTeeth.DistractMoveId,
+                    $"illusion1 FollowUpStateId expected {ThingsOriginEyeWithTeeth.DistractMoveId}, got {illusion1?.FollowUpStateId}");
+                Assert(illusion2?.FollowUpStateId == ThingsOriginEyeWithTeeth.BiteMoveId,
+                    $"illusion2 FollowUpStateId expected {ThingsOriginEyeWithTeeth.BiteMoveId}, got {illusion2?.FollowUpStateId}");
+                Assert(eyes[0].GetPowerAmount<ThingsOriginGainEnergyPower>() == 1
+                    && eyes[1].GetPowerAmount<ThingsOriginGainEnergyPower>() == 1,
+                    "Summoned Eyes missing ThingsOriginGainEnergyPower(1)");
+
+                var targets = state.PlayerCreatures.ToArray();
+
+                // 1) DISTRACT_MOVE: deals damage AND adds Dazed to Discard pile.
+                var hpBeforeDistract = targets.Select(c => c.CurrentHp).ToArray();
+                var dazedBefore = state.Players.Select(p => p.PlayerCombatState!.DiscardPile.Cards.Count(c => c is Dazed)).ToArray();
+                await eye1.PerformMove();
+                for (int i = 0; i < targets.Length; i++)
+                {
+                    Assert(hpBeforeDistract[i] - targets[i].CurrentHp == expectedDistractDmg,
+                        $"A{ascension}/{count}p Distract damage mismatch on P{i}: {hpBeforeDistract[i] - targets[i].CurrentHp} != {expectedDistractDmg}");
+                    int addedDazed = state.Players[i].PlayerCombatState!.DiscardPile.Cards.Count(c => c is Dazed) - dazedBefore[i];
+                    Assert(addedDazed == expectedDazed,
+                        $"A{ascension}/{count}p Distract Dazed count mismatch on P{i}: {addedDazed} != {expectedDazed}");
+                }
+
+                // 2) BITE_MOVE: deals 2 hits of BiteDamage.
+                var hpBeforeBite = targets.Select(c => c.CurrentHp).ToArray();
+                await eye2.PerformMove();
+                for (int i = 0; i < targets.Length; i++)
+                {
+                    Assert(hpBeforeBite[i] - targets[i].CurrentHp == expectedBiteSingle * 2,
+                        $"A{ascension}/{count}p Bite damage mismatch on P{i}: {hpBeforeBite[i] - targets[i].CurrentHp} != {expectedBiteSingle * 2}");
+                }
+
+                // 3) HEAL_BOSS_MOVE: heals Boss by HealAmountPerPlayer * players AND grants +1 Strength to all living allies.
+                eye2.RollMove(state.PlayerCreatures);
+                Assert(eye2.NextMove.StateId == ThingsOriginEyeWithTeeth.HealBossMoveId,
+                    $"illusion2 expected {ThingsOriginEyeWithTeeth.HealBossMoveId}, got {eye2.NextMove.StateId}");
+                boss.Creature.SetCurrentHpInternal(Math.Max(1, boss.Creature.MaxHp - 100));
+                int bossHpBefore = boss.Creature.CurrentHp;
+                await eye2.PerformMove();
+                int bossHealed = boss.Creature.CurrentHp - bossHpBefore;
+                Assert(bossHealed == expectedHealPerPlayer * count,
+                    $"A{ascension}/{count}p HealBoss heal mismatch: {bossHealed} != {expectedHealPerPlayer * count}");
+                Assert(boss.Creature.GetPowerAmount<StrengthPower>() == 1
+                    && eyes[0].GetPowerAmount<StrengthPower>() == 1
+                    && eyes[1].GetPowerAmount<StrengthPower>() == 1,
+                    $"A{ascension}/{count}p HealBoss failed to grant +1 Strength to all living allies");
+
+                // 4) BITE_MOVE scales with Strength (+1 Str -> +2 total damage).
+                eye1.RollMove(state.PlayerCreatures);
+                Assert(eye1.NextMove.StateId == ThingsOriginEyeWithTeeth.BiteMoveId,
+                    $"illusion1 expected {ThingsOriginEyeWithTeeth.BiteMoveId}, got {eye1.NextMove.StateId}");
+                var hpBeforeBuffedBite = targets.Select(c => c.CurrentHp).ToArray();
+                await eye1.PerformMove();
+                for (int i = 0; i < targets.Length; i++)
+                {
+                    Assert(hpBeforeBuffedBite[i] - targets[i].CurrentHp == (expectedBiteSingle + 1) * 2,
+                        $"A{ascension}/{count}p buffed Bite damage mismatch on P{i}: {hpBeforeBuffedBite[i] - targets[i].CurrentHp} != {(expectedBiteSingle + 1) * 2}");
+                }
+
+                // 5) Killing eye1 triggers REVIVE_MOVE -> immediate DISTRACT_MOVE (no STUN_AFTER_REVIVE coma)
+                //    AND grants +1 Energy to all players while preserving StrengthPower across revive.
+                var energyBefore = state.Players.Select(p => p.PlayerCombatState!.Energy).ToArray();
+                await CreatureCmd.Kill(eyes[0]);
+                for (int i = 0; i < state.Players.Count; i++)
+                {
+                    Assert(state.Players[i].PlayerCombatState!.Energy == energyBefore[i] + 1,
+                        $"A{ascension}/{count}p killing Eye did not grant +1 Energy to P{i}");
+                }
+                Assert(eye1.NextMove.StateId == "REVIVE_MOVE",
+                    $"Killed Eye expected REVIVE_MOVE, got {eye1.NextMove.StateId}");
+                Assert(eye1.NextMove.FollowUpStateId == ThingsOriginEyeWithTeeth.DistractMoveId,
+                    $"Killed Eye REVIVE_MOVE follow-up expected {ThingsOriginEyeWithTeeth.DistractMoveId}, got {eye1.NextMove.FollowUpStateId}");
+                await eye1.PerformMove();
+                Assert(eyes[0].CurrentHp == eyes[0].MaxHp && eyes[0].GetPowerAmount<StrengthPower>() == 1,
+                    "Revived Eye did not restore full HP while preserving StrengthPower");
+                eye1.RollMove(state.PlayerCreatures);
+                Assert(eye1.NextMove.StateId == ThingsOriginEyeWithTeeth.DistractMoveId,
+                    $"Revived Eye did not resume {ThingsOriginEyeWithTeeth.DistractMoveId}, got {eye1.NextMove.StateId}");
+            }
+            finally
+            {
+                DeactivateSyntheticCombat();
+            }
+        }
+        GD.Print("OriginEye behavior regression: PASS (A0/A10 x 1p/4p)");
     }
 
     private async Task VerifyFogmogActions()
@@ -161,6 +311,9 @@ public partial class CaveGodProbeNode
                 await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
                 DeactivateSyntheticCombat();
             }
+            ActionRoom=null;
+            SaveManager.Instance.PrefsSave.FastMode=FastModeType.Instant;
+            await VerifyOriginEyeBehavior();
         }
         finally
         {

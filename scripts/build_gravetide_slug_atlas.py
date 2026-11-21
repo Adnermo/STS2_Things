@@ -67,13 +67,52 @@ REGIONS = {
 
 
 def subject_mask(image: Image.Image) -> np.ndarray:
-    """Separate painted content from ImageGen's light checker preview."""
+    """Separate painted content from transparent alpha, green chroma, or checker preview."""
+
+    if "A" in image.getbands():
+        alpha = np.asarray(image.getchannel("A"), dtype=np.uint8)
+        if int(alpha.min()) < 245:
+            return (alpha > 16).astype(np.uint8)
 
     rgb = np.asarray(image.convert("RGB"), dtype=np.int16)
+    r, g, b = rgb[:, :, 0], rgb[:, :, 1], rgb[:, :, 2]
+    border = np.concatenate(
+        [rgb[0, :, :], rgb[-1, :, :], rgb[:, 0, :], rgb[:, -1, :]], axis=0
+    )
+    if float(np.median(border[:, 1] - np.maximum(border[:, 0], border[:, 2]))) > 60.0:
+        is_green = (g > 150) & ((g - np.maximum(r, b)) > 55)
+        return (~is_green).astype(np.uint8)
+
     mean = rgb.mean(axis=2)
     chroma = rgb.max(axis=2) - rgb.min(axis=2)
     mask = ((mean < 228) | (chroma > 20)).astype(np.uint8)
     return mask
+
+
+def bleed_foreground_rgb(image: Image.Image, fg_mask: np.ndarray) -> Image.Image:
+    """Extend nearest opaque foreground RGB into transparent/chroma padding.
+
+    When a repainted subject is clipped by the shipped vanilla alpha mask, a
+    small 1-4px silhouette difference can otherwise expose raw chroma or black
+    padding pixels inside the vanilla boundary. Nearest-neighbor RGB dilation
+    fills any outside pixel with the closest true painted rim color.
+    """
+
+    rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
+    fg = (fg_mask > 0).astype(np.uint8)
+    if int(fg.sum()) == 0 or int(fg.min()) == 1:
+        return Image.fromarray(rgb, mode="RGB")
+    # Erode 1px so residual anti-aliased fringe colors are not propagated outward.
+    core = cv2.erode(fg, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
+    if int(core.sum()) == 0:
+        core = fg
+    _, labels = cv2.distanceTransformWithLabels(
+        (core == 0).astype(np.uint8), cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL
+    )
+    ys, xs = np.nonzero(core)
+    idx = np.clip(labels - 1, 0, len(ys) - 1)
+    filled = rgb[ys[idx], xs[idx]]
+    return Image.fromarray(filled, mode="RGB")
 
 
 def components(mask: np.ndarray, min_area: int) -> list[tuple[np.ndarray, tuple]]:
@@ -117,13 +156,15 @@ def repaint_region(
     region: Region,
     factor: int,
 ) -> None:
-    generated = Image.open(generated_path).convert("RGB")
-    candidates = components(subject_mask(generated), min_area=500)
+    generated_raw = Image.open(generated_path).convert("RGBA")
+    fg_mask = subject_mask(generated_raw)
+    candidates = components(fg_mask, min_area=500)
     if not candidates:
         raise RuntimeError(f"No painted subject found in {generated_path}")
-    _, stats = max(candidates, key=lambda item: item[1][4])
+    comp_mask, stats = max(candidates, key=lambda item: item[1][4])
     x, y, width, height, *_ = stats
-    crop = zoomed_crop(generated, (x, y, x + width, y + height), zoom=1.025)
+    generated = bleed_foreground_rgb(generated_raw, comp_mask)
+    crop = zoomed_crop(generated, (x, y, x + width, y + height), zoom=1.01)
     output_size = (region.width * factor, region.height * factor)
     repaint = ImageOps.fit(
         crop,
@@ -137,6 +178,43 @@ def repaint_region(
     canvas.paste(repaint, (region.x * factor, region.y * factor), alpha)
 
 
+def match_components_by_normalized_centroids(
+    generated_components: list[tuple[np.ndarray, tuple]],
+    original_components: list[tuple[np.ndarray, tuple]],
+) -> list[tuple[tuple[np.ndarray, tuple], tuple[np.ndarray, tuple]]]:
+    """Pair small-part components robustly by normalized (cx, cy) layout."""
+
+    def norm_points(items: list[tuple[np.ndarray, tuple]]) -> np.ndarray:
+        pts = np.array([[item[1][5], item[1][6]] for item in items], dtype=np.float64)
+        lo = pts.min(axis=0)
+        span = np.maximum(pts.max(axis=0) - lo, 1.0)
+        return (pts - lo) / span
+
+    gen_pts = norm_points(generated_components)
+    orig_pts = norm_points(original_components)
+    used_gen: set[int] = set()
+    pairs: list[tuple[tuple[np.ndarray, tuple], tuple[np.ndarray, tuple]]] = []
+    # Greedy optimal matching works cleanly here because the 9 parts are well-separated;
+    # solve exact minimal sum over all pairs via iterative Hungarian / scipy if present.
+    try:
+        from scipy.optimize import linear_sum_assignment
+
+        cost = np.linalg.norm(gen_pts[:, None, :] - orig_pts[None, :, :], axis=2)
+        row_ind, col_ind = linear_sum_assignment(cost)
+        for r_idx, c_idx in zip(row_ind, col_ind, strict=True):
+            pairs.append((generated_components[int(r_idx)], original_components[int(c_idx)]))
+        return pairs
+    except ImportError:
+        for orig_idx, orig_pt in enumerate(orig_pts):
+            best_gen = min(
+                (i for i in range(len(gen_pts)) if i not in used_gen),
+                key=lambda i: float(np.linalg.norm(gen_pts[i] - orig_pt)),
+            )
+            used_gen.add(best_gen)
+            pairs.append((generated_components[best_gen], original_components[orig_idx]))
+        return pairs
+
+
 def repaint_small_parts(
     canvas: Image.Image,
     vanilla: Image.Image,
@@ -144,13 +222,11 @@ def repaint_small_parts(
     region: Region,
     factor: int,
 ) -> None:
-    generated = Image.open(generated_path).convert("RGB")
-    generated_components = components(subject_mask(generated), min_area=500)
-    generated_components.sort(key=lambda item: (item[1][6], item[1][5]))
+    generated_raw = Image.open(generated_path).convert("RGBA")
+    generated_components = components(subject_mask(generated_raw), min_area=500)
 
     original_alpha = np.asarray(vanilla.crop(region.box).getchannel("A"))
     original_components = components((original_alpha > 0).astype(np.uint8), 2)
-    original_components.sort(key=lambda item: (item[1][6], item[1][5]))
 
     if len(generated_components) != len(original_components):
         raise RuntimeError(
@@ -158,17 +234,25 @@ def repaint_small_parts(
             f"ImageGen={len(generated_components)} vanilla={len(original_components)}"
         )
 
-    for (_, source_stats), (target_component, target_stats) in zip(
-        generated_components,
-        original_components,
-        strict=True,
+    for (source_mask, source_stats), (target_component, target_stats) in (
+        match_components_by_normalized_centroids(
+            generated_components, original_components
+        )
     ):
         sx, sy, sw, sh, *_ = source_stats
         tx, ty, tw, th, *_ = target_stats
+        pad = 6
+        rx0 = max(0, sx - pad)
+        ry0 = max(0, sy - pad)
+        rx1 = min(generated_raw.width, sx + sw + pad)
+        ry1 = min(generated_raw.height, sy + sh + pad)
+        sub_img = generated_raw.crop((rx0, ry0, rx1, ry1))
+        sub_mask = source_mask[ry0:ry1, rx0:rx1]
+        bled = bleed_foreground_rgb(sub_img, sub_mask)
         source = zoomed_crop(
-            generated,
-            (sx, sy, sx + sw, sy + sh),
-            zoom=1.06,
+            bled,
+            (sx - rx0, sy - ry0, sx - rx0 + sw, sy - ry0 + sh),
+            zoom=1.02,
         )
         output_size = (tw * factor, th * factor)
         repaint = ImageOps.fit(

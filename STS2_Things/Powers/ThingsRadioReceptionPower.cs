@@ -32,7 +32,7 @@ public readonly record struct RadioProgram(RadioChannel First, RadioChannel Seco
 /// <summary>Per-player first-two records, merged by beat. All peers run native card hooks.</summary>
 public sealed class ThingsRadioReceptionPower : ThingsPowerModel
 {
-    public const int BonusPerStack = 1;
+    public const int BonusPerStack = 2;
     private sealed class Data
     {
         public readonly Dictionary<ulong, List<CardType>> Records = [];

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
+using Godot.Bridge;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -12,11 +13,13 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
+using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Cards;
 using STS2_Things.Encounters;
 using STS2_Things.Monsters;
 using STS2_Things.Powers;
+using STS2_Things.Visuals;
 
 public partial class DepthsProbeNode
 {
@@ -374,15 +377,15 @@ public partial class DepthsProbeNode
             Assert(right.NextMove.Id == ThingsAbyssalInkTentacle.WhipLashId,
                 $"Turn 6 Right tentacle must seamlessly resume WHIP_LASH after Stun, got {right.NextMove.Id}.");
 
-            // Execute Phase 2 Surge -> revives Left in floor-breach + spawns 2 distinct small tentacles!
+            // Execute Phase 2 Surge with 1 missing major + 0 living smalls -> strict cap of 2 total spawns
+            // revives Left in floor-breach mode (1) + spawns 1 small tentacle (1), NEVER 3 or 4 at once!
             await RunInkmawFullRoundAsync(b);
             Assert(boss.Phase == 2 && boss.Creature.GetPower<ThingsAbyssalSurgePower>() != null,
                 "Boss must transition cleanly to Phase 2 with ThingsAbyssalSurgePower.");
             Assert(boss.LivingLeftTentacle != null && boss.LivingLeftTentacle.IsFloorBreachMode,
                 "Phase 2 Surge must revive missing Left tentacle in floor-breach mode.");
-            Assert(boss.LivingSmallTentacleCount == 2 &&
-                   boss.LivingSmallTentacles.Select(t => t.GetType()).Distinct().Count() == 2,
-                "Phase 2 Surge must fill both small slots with 2 distinct variants.");
+            Assert(boss.LivingSmallTentacleCount == 1,
+                $"Phase 2 Surge with 1 missing major must cap total spawns at 2 (1 major + 1 small), got {boss.LivingSmallTentacleCount} smalls.");
 
             // Kill Boss in Phase 2 -> ALL surviving major & small tentacles die cleanly!
             await CreatureCmd.Kill(boss.Creature, force: true);
@@ -432,6 +435,250 @@ public partial class DepthsProbeNode
             DeactivateSyntheticCombat();
         }
 
+        // Extra dedicated check 2: NEVER summon > 2 tentacles in one turn (even on completely empty board!)
+        // AND NEVER execute consecutive summon turns (T2 SUMMON_TENTACLE -> T3 hit 50% HP -> PHASE2_SURGE_NO_SUMMON)!
+        {
+            // (a) Empty-board Phase 2 Surge cap: wipe both starting major tentacles -> trigger Phase 2 -> must spawn EXACTLY 2 (2 majors + 0 smalls, NEVER 4!)
+            var b = await InkmawBattle(1, 0, "inkmaw-summon-cap-empty");
+            var boss = b.Monster<ThingsAbyssalInkmaw>();
+            await CreatureCmd.Kill(boss.LivingLeftTentacle!.Creature, force: true);
+            await CreatureCmd.Kill(boss.LivingRightTentacle!.Creature, force: true);
+            Assert(boss.LivingTentacleCount == 0 && boss.LivingSmallTentacleCount == 0,
+                "Expected 0 tentacles before empty-board Phase 2 Surge.");
+
+            await CreatureCmd.Damage(Choice, boss.Creature, 9999m, ValueProp.Unblockable | ValueProp.Unpowered, b.Players[0].Creature);
+            Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.Phase2SurgeId,
+                $"Empty-board Phase 2 trigger must queue PHASE2_SURGE, got {boss.NextMove.Id}.");
+            await RunInkmawFullRoundAsync(b);
+            Assert(boss.LivingTentacleCount == 2 && boss.LivingSmallTentacleCount == 0,
+                $"Empty-board PHASE2_SURGE must cap total spawns at 2 (2 majors + 0 smalls), got majors={boss.LivingTentacleCount}, smalls={boss.LivingSmallTentacleCount}.");
+
+            // Kill both majors again right after Phase 2 Surge -> T+1 is ABYSSAL_UNDERTOW, T+2 must respect summon cooldown (ABYSSAL_PRESSURE, NOT SUMMON_TENTACLE)!
+            await RunInkmawFullRoundAsync(b); // T+1 ABYSSAL_UNDERTOW (cd: 2 -> 1)
+            await CreatureCmd.Kill(boss.LivingLeftTentacle!.Creature, force: true);
+            await CreatureCmd.Kill(boss.LivingRightTentacle!.Creature, force: true);
+            Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.AbyssalPressureId,
+                $"Post-Surge step 1 with active summon cooldown must NOT re-summon even with empty board, got {boss.NextMove.Id}.");
+
+            // Complete rest of cycle until next cycle's SUMMON_TENTACLE (cd == 0, empty board) -> still capped at EXACTLY 2 tentacles!
+            await RunInkmawFullRoundAsync(b); // T+2 ABYSSAL_PRESSURE
+            await RunInkmawFullRoundAsync(b); // T+3 TIDAL_CRASH
+            await RunInkmawFullRoundAsync(b); // T+4 ABYSSAL_PRESSURE
+            await RunInkmawFullRoundAsync(b); // T+5 INK_CHARGE
+            await RunInkmawFullRoundAsync(b); // T+6 INK_SPRAY
+            await RunInkmawFullRoundAsync(b); // T+7 POST_SPRAY_STUN
+            await RunInkmawFullRoundAsync(b); // T+8 ABYSSAL_UNDERTOW
+            Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.SummonTentacleId,
+                $"Next cycle step 1 with cooldown expired must queue SUMMON_TENTACLE, got {boss.NextMove.Id}.");
+            await RunInkmawFullRoundAsync(b); // T+9 SUMMON_TENTACLE on empty board
+            Assert(boss.LivingTentacleCount == 2 && boss.LivingSmallTentacleCount == 0,
+                $"Phase 2 SUMMON_TENTACLE on empty board must cap at 2 total (2 majors + 0 smalls), got majors={boss.LivingTentacleCount}, smalls={boss.LivingSmallTentacleCount}.");
+            DeactivateSyntheticCombat();
+        }
+
+        {
+            // (b) Zero consecutive summon turns: T2 SUMMON_TENTACLE -> T3 drop Boss to 50% HP -> must route to PHASE2_SURGE_NO_SUMMON!
+            var b = await InkmawBattle(1, 0, "inkmaw-no-consecutive-summon");
+            var boss = b.Monster<ThingsAbyssalInkmaw>();
+            await RunInkmawFullRoundAsync(b); // T1 ABYSSAL_UNDERTOW
+            Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.SummonTentacleId, "T2 must be SUMMON_TENTACLE.");
+            await RunInkmawFullRoundAsync(b); // T2 SUMMON_TENTACLE (spawns 1 small, sets cooldown=2)
+            int totalBeforeSurge = boss.LivingTentacleCount + boss.LivingSmallTentacleCount;
+            Assert(totalBeforeSurge == 3, $"Expected 3 tentacles after T2 summon, got {totalBeforeSurge}.");
+
+            // Drop Boss to 50% HP on T3 immediately after T2's summon!
+            await CreatureCmd.Damage(Choice, boss.Creature, 9999m, ValueProp.Unblockable | ValueProp.Unpowered, b.Players[0].Creature);
+            Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.Phase2SurgeNoSummonId,
+                $"Hitting 50% HP right after T2 SUMMON_TENTACLE must use PHASE2_SURGE_NO_SUMMON (no back-to-back summon!), got {boss.NextMove.Id}.");
+            Assert(boss.NextMove.Intents.All(i => i is not SummonIntent),
+                "PHASE2_SURGE_NO_SUMMON must NOT display a SummonIntent.");
+            await RunInkmawFullRoundAsync(b);
+            Assert(boss.Phase == 2 && boss.LivingTentacleCount + boss.LivingSmallTentacleCount == totalBeforeSurge,
+                "PHASE2_SURGE_NO_SUMMON must enter Phase 2 without summoning extra tentacles back-to-back.");
+            DeactivateSyntheticCombat();
+        }
+
+        await VerifyAbyssalInkBlackoutVeilLifecycleAsync();
+
         GD.Print("PASS Abyssal Inkmaw 1p/4p A0/A20 rules (T1-T5 repeatable Charge->Spray->AllStun climax, 5 unique vanilla-pattern temp Boss buffs, lossless tentacle state-machine postponement, whole-deck blackout + reshuffle + 0-3 cost randomization + surgical wash + zero hover-tip leaks for InkBlackout & LanternBlindness, Phase 2 Stun-preserve & Charge-interrupt).");
+    }
+
+    /// <summary>
+    /// Live NCard + NInkBlackoutCardVeil regression covering the exact 3-player co-op crash sequence:
+    ///   1. 3-player Abyssal Inkmaw combat where 1 player dies, surviving players enter blackened turn with live NCard nodes.
+    ///   2. Killing a small tentacle washes 1 hand card cleanly while ThingsInkBlackoutPower remains active (no re-veil).
+    ///   3. Playing Whirlwind kills Crushing Tentacle -> washes all cards + removes ThingsInkBlackoutPower ->
+    ///      NCard.UpdateVisuals / DetachAndFree / tween completion must NEVER trigger infinite recursion (StackOverflowException).
+    ///   4. Turn-end cleanup, model swap, and pool return on veiled NCard nodes detach cleanly without recursion.
+    /// </summary>
+    private async Task VerifyAbyssalInkBlackoutVeilLifecycleAsync()
+    {
+        try { ScriptManagerBridge.LookupScriptsInAssembly(typeof(NCard).Assembly); } catch (ArgumentException) { }
+        try { ScriptManagerBridge.LookupScriptsInAssembly(typeof(NInkBlackoutCardVeil).Assembly); } catch (ArgumentException) { }
+
+        var host = new Node2D { Name = "InkBlackoutVeilRegressionHost" };
+        AddChild(host);
+        PackedScene cardScene = GD.Load<PackedScene>("res://scenes/cards/card.tscn");
+        Assert(cardScene != null, "[InkVeilRepro] Loaded native card.tscn.");
+
+        try
+        {
+            Battle b = await InkmawBattle(players: 3, ascension: 0, seed: "inkmaw-veil-repro-3p");
+            var boss = b.Monster<ThingsAbyssalInkmaw>();
+            var left = b.Monster<ThingsAbyssalCrushingTentacle>();
+            var deadPlayer = b.Players[0];
+            var ironclad = b.Players[1];
+            var regent = b.Players[2];
+
+            // Mirror the exact 3-player state: Player 0 is dead before surviving players receive Ink Blackout.
+            // Use SetCurrentHpInternal(0) so synthetic headless v111.1 combat avoids uninitialized turn-ready state.
+            deadPlayer.Creature.SetCurrentHpInternal(0);
+            Assert(!deadPlayer.Creature.IsAlive, "[InkVeilRepro] Player 0 died.");
+
+            // Spawn 1 small tentacle so we also verify small-tentacle single-card wash while power is active.
+            await boss.SpawnSmallTentaclesAsync(1, Choice);
+            Assert(boss.LivingSmallTentacleCount == 1, "[InkVeilRepro] Spawned 1 small tentacle.");
+            var small = boss.LivingSmallTentacles[0];
+
+            // Populate surviving players' hands with Whirlwind (X-cost) + Strike + Bash and mount real NCard nodes.
+            CardModel whirlwind = b.State.CreateCard<Whirlwind>(ironclad);
+            CardModel strike = b.State.CreateCard<StrikeIronclad>(ironclad);
+            CardModel bash = b.State.CreateCard<Bash>(regent);
+            await CardPileCmd.AddGeneratedCardToCombat(whirlwind, PileType.Hand, null);
+            await CardPileCmd.AddGeneratedCardToCombat(strike, PileType.Hand, null);
+            await CardPileCmd.AddGeneratedCardToCombat(bash, PileType.Hand, null);
+
+            NCard MountCard(CardModel model)
+            {
+                NCard node = cardScene!.Instantiate<NCard>();
+                node.Model = model;
+                host.AddChild(node);
+                node.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+                return node;
+            }
+
+            NCard whirlNode = MountCard(whirlwind);
+            NCard strikeNode = MountCard(strike);
+            NCard bashNode = MountCard(bash);
+
+            // Apply Ink Blackout to surviving players and start their blackened turn.
+            await PowerCmd.Apply<ThingsInkBlackoutPower>(Choice, ironclad.Creature, 1m, boss.Creature, null);
+            await PowerCmd.Apply<ThingsInkBlackoutPower>(Choice, regent.Creature, 1m, boss.Creature, null);
+            await StartInkmawPlayerTurnAsync(b, rollMoves: false);
+
+            whirlNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            strikeNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            bashNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+
+            Assert(AbyssalInkBlackout.IsVeiled(whirlwind) && AbyssalInkBlackout.IsVeiled(strike) && AbyssalInkBlackout.IsVeiled(bash),
+                "[InkVeilRepro] All surviving players' hand cards are veiled.");
+            Assert(whirlNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") != null &&
+                   strikeNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") != null &&
+                   bashNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") != null,
+                "[InkVeilRepro] All 3 live NCard nodes mounted NInkBlackoutCardVeil.");
+
+            // Step 1: Sever Left Major Tentacle (same as Whirlwind killing Crushing Tentacle) ->
+            // washes ALL remaining cards + removes ThingsInkBlackoutPower!
+            left.Creature.SetCurrentHpInternal(1);
+            await CreatureCmd.Kill(left.Creature, force: true);
+
+            Assert(ironclad.Creature.GetPower<ThingsInkBlackoutPower>() == null &&
+                   regent.Creature.GetPower<ThingsInkBlackoutPower>() == null,
+                "[InkVeilRepro] Major tentacle sever removed ThingsInkBlackoutPower from all players.");
+            Assert(!AbyssalInkBlackout.IsVeiled(whirlwind) && !AbyssalInkBlackout.IsVeiled(strike) && !AbyssalInkBlackout.IsVeiled(bash),
+                "[InkVeilRepro] Major tentacle sever unveiled all cards.");
+
+            // Trigger every NCard visual refresh hook that fires right after Whirlwind / card play completion!
+            whirlNode.UpdateVisuals(PileType.Play, CardPreviewMode.Normal);
+            strikeNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            bashNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            whirlwind.InvokeEnergyCostChanged();
+            strike.InvokeEnergyCostChanged();
+            bash.InvokeEnergyCostChanged();
+
+            // Force immediate detach paths (same as wave-wash tween callback, turn end, model swap, and pool return).
+            NInkBlackoutCardVeil.DetachFromCard(whirlNode);
+            NInkBlackoutCardVeil.DetachFromCard(strikeNode);
+            NInkBlackoutCardVeil.DetachFromCard(bashNode);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+            Assert(whirlNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") == null &&
+                   strikeNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") == null &&
+                   bashNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") == null,
+                "[InkVeilRepro] All NInkBlackoutCardVeil children detached cleanly after sever.");
+
+            // Verify body children modulate alpha restored cleanly (no permanently invisible card!).
+            foreach (NCard node in new[] { whirlNode, strikeNode, bashNode })
+            {
+                if (node.GetNodeOrNull<CanvasItem>("%Frame") is { } frame)
+                {
+                    Assert(frame.Modulate.A > 0.9f,
+                        $"[InkVeilRepro] Card {node.Model?.Id.Entry} %Frame alpha must restore >0.9 after detach, got {frame.Modulate.A}.");
+                }
+            }
+
+            // Step 2: Re-apply Ink Blackout and kill small tentacle -> washes 1 hand card per surviving player while ThingsInkBlackoutPower is STILL active.
+            await PowerCmd.Apply<ThingsInkBlackoutPower>(Choice, ironclad.Creature, 1m, boss.Creature, null);
+            await PowerCmd.Apply<ThingsInkBlackoutPower>(Choice, regent.Creature, 1m, boss.Creature, null);
+            await StartInkmawPlayerTurnAsync(b, rollMoves: false);
+            whirlNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            strikeNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            bashNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+
+            await CreatureCmd.Kill(small.Creature, force: true);
+            bool anyIroncladWashed = !AbyssalInkBlackout.IsVeiled(whirlwind) || !AbyssalInkBlackout.IsVeiled(strike);
+            Assert(anyIroncladWashed && !AbyssalInkBlackout.IsVeiled(bash),
+                "[InkVeilRepro] Small tentacle death must make washed hand card genuinely unveiled even while ThingsInkBlackoutPower remains active.");
+
+            // Refresh visuals on the washed card immediately (must NOT cancel wave wash or stack-overflow!).
+            bashNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            Assert(!AbyssalInkBlackout.IsVeiled(bash), "[InkVeilRepro] Washed card stays unveiled after UpdateVisuals.");
+            NInkBlackoutCardVeil.DetachFromCard(bashNode);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            Assert(bashNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") == null,
+                "[InkVeilRepro] Small-tentacle washed card detached cleanly.");
+
+            // Step 3: Re-veil a card and verify real EndPlayerTurn (AfterSideTurnEnd + EndOfTurnCleanup),
+            // OnCardModelChanged, and OnFreedToPool all detach cleanly without recursion.
+            AbyssalInkBlackout.InkCard(strike, randomizeCost: true);
+            strikeNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            Assert(strikeNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") != null,
+                "[InkVeilRepro] Re-inked strike mounted veil.");
+            await EndInkmawPlayerTurnAsync(b);
+            strikeNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            Assert(strikeNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") == null,
+                "[InkVeilRepro] EndOfTurnCleanup detached veil cleanly without recursion.");
+
+            AbyssalInkBlackout.InkCard(bash, randomizeCost: true);
+            bashNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            bashNode.Model = b.State.CreateCard<DefendIronclad>(regent);
+            bashNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            Assert(bashNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") == null,
+                "[InkVeilRepro] Model swap detached veil cleanly without recursion.");
+
+            AbyssalInkBlackout.InkCard(whirlwind, randomizeCost: true);
+            whirlNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            Assert(whirlNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") != null,
+                "[InkVeilRepro] Re-inked whirlwind mounted veil before pool return.");
+            whirlNode.OnFreedToPool();
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            Assert(whirlNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") == null,
+                "[InkVeilRepro] OnFreedToPool detached veil cleanly without recursion.");
+
+            DeactivateSyntheticCombat();
+            GD.Print("PASS Abyssal Inkmaw NInkBlackoutCardVeil live NCard detach/wash/3p regression.");
+        }
+        finally
+        {
+            if (GodotObject.IsInstanceValid(host))
+            {
+                if (host.GetParent() != null)
+                    host.GetParent().RemoveChild(host);
+                host.QueueFree();
+            }
+            DeactivateSyntheticCombat();
+        }
     }
 }

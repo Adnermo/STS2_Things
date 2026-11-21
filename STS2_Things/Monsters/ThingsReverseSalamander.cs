@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
@@ -19,16 +20,17 @@ namespace STS2_Things.Monsters;
 
 public sealed class ThingsReverseSalamander : ThingsSpineMonster
 {
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,198,178);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,168,152);
     public override int MaxInitialHp => MinInitialHp;
     public override float HpBarSizeReduction => 10f;
     public int GrowthAmount => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,2,1);
-    public int UnplayedRecallBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,8,6);
-    private int TideDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,17,15);
-    private int TailDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,21,18);
-    private int RollDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,7,6);
-    private int GatherDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,15,13);
-    private int GatherBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,16,12);
+    public int UnplayedRecallBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,7,5);
+    private int TideDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,21,18);
+    private int TailDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,26,23);
+    private int RollDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,9,8);
+    private int GatherDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,19,16);
+    private int GatherBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,13,10);
+    private const int GatherStrength = 1;
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Magic;
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_attack_light";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_die";
@@ -52,7 +54,7 @@ public sealed class ThingsReverseSalamander : ThingsSpineMonster
         var opening=new MoveState("UPSTREAM_MOVE",_=>Strike(TideDamage,"Tide","tide",[.56f],1.55f),new SingleAttackIntent(TideDamage));
         var tail=new MoveState("TAIL_WAVE_MOVE",_=>Strike(TailDamage,"Attack","attack",[.50f],1.40f),new SingleAttackIntent(TailDamage));
         var roll=new MoveState("BACKWASH_MOVE",_=>Strike(RollDamage,"Roll","roll",[.46f,.74f,1.02f],1.65f),new MultiAttackIntent(RollDamage,3));
-        var gather=new MoveState("GATHER_MOVE",Gather,new SingleAttackIntent(GatherDamage),new DefendIntent());
+        var gather=new MoveState("GATHER_MOVE",Gather,new SingleAttackIntent(GatherDamage),new DefendIntent(),new BuffIntent());
         opening.FollowUpState=tail;tail.FollowUpState=roll;roll.FollowUpState=gather;gather.FollowUpState=tail;
         return new MonsterMoveStateMachine([opening,tail,roll,gather],opening);
     }
@@ -77,7 +79,9 @@ public sealed class ThingsReverseSalamander : ThingsSpineMonster
     private async Task Gather(IReadOnlyList<Creature> targets)
     {
         await Strike(GatherDamage,"Gather","gather",[.56f],1.20f);
+        if(!Creature.IsAlive)return;
         await CreatureCmd.GainBlock(Creature,GatherBlock,ValueProp.Move,null);
+        await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(),Creature,GatherStrength,Creature,null);
         await WaitForPose("gather",1.55f,0);
     }
 

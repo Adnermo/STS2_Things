@@ -1,18 +1,18 @@
 using System;
-using System.Collections.Generic;
 using Godot;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 
 namespace STS2_Things.Events.Minigames;
 
 /// <summary>
-/// Overgrowth (Act 1A) Briar Plinko overlay screen styled after vanilla CrystalSphere:
-/// full-bleed hand-painted hollow Overgrowth trunk backdrop, animated amber-sap bed shader,
-/// 7 selectable wooden drop notches, 45 briar pegs &amp; 2 glow-shroom bonus bumpers (+10G),
-/// glowing golden amber seed trail, 7 asymmetric carved root-cup bins, floating outlined HUD,
-/// and hand-painted divine_button controls.
+/// Overgrowth (Act 1A) Briar Plinko overlay screen modeled after vanilla CrystalSphere:
+/// full-bleed hand-painted hollow trunk backdrop, animated amber-sap shader, 7 wooden drop notches,
+/// 45 briar pegs &amp; 2 glow-shroom bumpers (with hover tips + floating +5G pops instead of static labels),
+/// 7 iconic carved root bowls (clean icons + minimal numeric values + native HoverTips),
+/// single bold bottom-left counter, narrow right drop control + clean plaque, and native ProceedButton.
 /// </summary>
 public partial class NForestPlinkoScreen : Control, IOverlayScreen
 {
@@ -38,7 +38,7 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
         public Texture2D? CardIcon { get; set; }
         public Texture2D? MaxHpIcon { get; set; }
         public Texture2D? UpgradeIcon { get; set; }
-        public Font? LabelFont { get; set; }
+        public Font? NumberFont { get; set; }
 
         public override void _Draw()
         {
@@ -65,7 +65,7 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
                 DrawColoredPolygon(tri, notchFill);
                 if (selected && Minigame.CanDrop())
                 {
-                    DrawCircle(new Vector2(sx, ForestPlinkoMinigame.DropOriginY), 21f, new Color(1.0f, 0.80f, 0.25f, 0.30f));
+                    DrawCircle(new Vector2(sx, ForestPlinkoMinigame.DropOriginY), 21f, new Color(1.0f, 0.80f, 0.25f, 0.28f));
                     if (SeedTex != null)
                     {
                         DrawTextureRect(
@@ -78,40 +78,33 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
                     {
                         DrawCircle(new Vector2(sx, ForestPlinkoMinigame.DropOriginY), 13f, new Color("#ffd458"));
                     }
-                    // Subtle dotted downward preview cue above row 0
                     for (float dy = 56f; dy < 96f; dy += 11f)
-                        DrawCircle(new Vector2(sx, dy), 2.3f, new Color(1.0f, 0.88f, 0.48f, 0.55f));
+                        DrawCircle(new Vector2(sx, dy), 2.3f, new Color(1.0f, 0.88f, 0.48f, 0.50f));
                 }
             }
 
-            // 2. 45 Briar Pegs + 2 Glow-Shroom Bonus Bumpers
+            // 2. 45 Briar Pegs + 2 Glow-Shroom Bonus Bumpers (clean icon-only, no stamped text!)
             foreach (PlinkoPeg peg in Minigame.Pegs)
             {
                 Vector2 pos = new(peg.X, peg.Y);
                 if (peg.IsBumper)
                 {
                     float glowR = peg.Radius + 11f + peg.Flash * 10f;
-                    DrawCircle(pos, glowR, new Color(0.24f, 0.90f, 0.78f, 0.24f + peg.Flash * 0.45f));
+                    DrawCircle(pos, glowR, new Color(0.24f, 0.90f, 0.78f, 0.22f + peg.Flash * 0.42f));
                     if (ShroomTex != null)
                     {
-                        float dim = 44f + peg.Flash * 6f;
+                        float dim = 46f + peg.Flash * 6f;
                         DrawTextureRect(ShroomTex, new Rect2(pos.X - dim * 0.5f, pos.Y - dim * 0.5f, dim, dim), false, Colors.White);
                     }
                     else
                     {
                         DrawCircle(pos, peg.Radius, new Color("#7ef29a"));
                     }
-                    if (LabelFont != null)
-                    {
-                        string tag = $"+{ForestPlinkoMinigame.BumperBonusGold}G";
-                        DrawStringOutline(LabelFont, pos + new Vector2(-24f, 30f), tag, HorizontalAlignment.Center, 48f, 14, 5, new Color("#030e06"));
-                        DrawString(LabelFont, pos + new Vector2(-24f, 30f), tag, HorizontalAlignment.Center, 48f, 14, new Color("#ffe482"));
-                    }
                 }
                 else
                 {
                     if (peg.Flash > 0.01f)
-                        DrawCircle(pos, peg.Radius + 6f + peg.Flash * 6f, new Color(1.0f, 0.84f, 0.34f, peg.Flash * 0.55f));
+                        DrawCircle(pos, peg.Radius + 6f + peg.Flash * 6f, new Color(1.0f, 0.84f, 0.34f, peg.Flash * 0.50f));
                     if (PegTex != null)
                     {
                         float dim = 26f + peg.Flash * 4f;
@@ -125,10 +118,10 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
                 }
             }
 
-            // 3. Bottom 7 Hand-Painted Carved Mossy Ironwood Root Bowls
+            // 3. Bottom 7 Hand-Painted Carved Mossy Ironwood Root Bowls (clean icons + minimal numbers only!)
             float binY = ForestPlinkoMinigame.BinTopY;
             float binH = h - binY - 4f;
-            DrawRect(new Rect2(6f, binY + 20f, w - 12f, binH - 16f), new Color(0.02f, 0.05f, 0.03f, 0.30f));
+            DrawRect(new Rect2(6f, binY + 20f, w - 12f, binH - 16f), new Color(0.02f, 0.05f, 0.03f, 0.28f));
             for (int i = 0; i < Minigame.Bins.Count; i++)
             {
                 PlinkoBin bin = Minigame.Bins[i];
@@ -138,12 +131,12 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
 
                 Color glowTint = bin.Kind switch
                 {
-                    PlinkoBinKind.RareRelic => new Color(1.0f, 0.84f, 0.22f, 0.42f + bin.Flash * 0.45f),
-                    PlinkoBinKind.CommonRelic or PlinkoBinKind.UpgradeCard or PlinkoBinKind.GoldBig => new Color(1.0f, 0.84f, 0.34f, 0.26f + bin.Flash * 0.45f),
-                    PlinkoBinKind.Potion or PlinkoBinKind.CardReward => new Color(0.36f, 0.86f, 0.90f, 0.22f + bin.Flash * 0.45f),
-                    _ => new Color(0.45f, 0.90f, 0.52f, 0.20f + bin.Flash * 0.45f),
+                    PlinkoBinKind.RareRelic => new Color(1.0f, 0.84f, 0.22f, 0.34f + bin.Flash * 0.42f),
+                    PlinkoBinKind.CommonRelic or PlinkoBinKind.UpgradeCard or PlinkoBinKind.GoldBig => new Color(1.0f, 0.84f, 0.34f, 0.20f + bin.Flash * 0.42f),
+                    PlinkoBinKind.Potion or PlinkoBinKind.CardReward => new Color(0.36f, 0.86f, 0.90f, 0.16f + bin.Flash * 0.42f),
+                    _ => new Color(0.45f, 0.90f, 0.52f, 0.15f + bin.Flash * 0.42f),
                 };
-                DrawCircle(new Vector2(cx, binY + 42f), 36f + bin.Flash * 8f, glowTint);
+                DrawCircle(new Vector2(cx, binY + 42f), 34f + bin.Flash * 8f, glowTint);
 
                 if (BowlTex != null)
                 {
@@ -162,7 +155,8 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
                     DrawRect(new Rect2(bx + 3f, binY, bw - 6f, binH), new Color("#2c3820", 0.82f));
                 }
 
-                // Official vanilla STS2 reward icon nestled cleanly in the open carved root bowl
+                bool hasNumLip = bin.Kind is PlinkoBinKind.Gold or PlinkoBinKind.GoldBig or PlinkoBinKind.Heal or PlinkoBinKind.MaxHp;
+
                 Texture2D? icon = bin.Kind switch
                 {
                     PlinkoBinKind.RareRelic => RelicRareIcon ?? RelicCommonIcon,
@@ -177,38 +171,33 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
                 };
                 if (icon != null)
                 {
-                    float maxDim = (bin.Kind == PlinkoBinKind.RareRelic ? 50f : 46f) + bin.Flash * 4f;
+                    float maxDim = (bin.Kind == PlinkoBinKind.RareRelic ? 54f : (hasNumLip ? 46f : 52f)) + bin.Flash * 4f;
                     Vector2 texSz = icon.GetSize();
                     float aspect = texSz.Y > 0f ? texSz.X / texSz.Y : 1f;
                     float drawW = aspect >= 1f ? maxDim : maxDim * aspect;
                     float drawH = aspect >= 1f ? maxDim / aspect : maxDim;
-                    Vector2 iconCenter = new(cx, binY + 27f);
+                    Vector2 iconCenter = new(cx, hasNumLip ? binY + 28f : binY + 34f);
                     if (bin.Kind == PlinkoBinKind.MaxHp)
-                    {
-                        // Subtle dark cushion behind the borderless top-bar heart so crimson pops crisply
                         DrawCircle(iconCenter + new Vector2(0f, 1f), maxDim * 0.46f, new Color(0.03f, 0.08f, 0.05f, 0.62f));
-                    }
                     DrawTextureRect(icon, new Rect2(iconCenter.X - drawW * 0.5f, iconCenter.Y - drawH * 0.5f, drawW, drawH), false, Colors.White);
                 }
 
-                // Crisp outlined label across the front lip of the root bowl
-                if (LabelFont != null)
+                // Minimal crisp numeral ONLY on numeric bowls (+20G / +5 / +3) — ZERO cramped Chinese word labels!
+                if (hasNumLip && NumberFont != null)
                 {
-                    string lbl = bin.Kind switch
+                    string numText = bin.Kind switch
                     {
-                        PlinkoBinKind.RareRelic => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binRareRelic"),
-                        PlinkoBinKind.CommonRelic => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binRelic"),
-                        PlinkoBinKind.Potion => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binPotion"),
                         PlinkoBinKind.Gold or PlinkoBinKind.GoldBig => $"+{bin.Amount}G",
-                        PlinkoBinKind.Heal => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binHeal", ("Amount", bin.Amount)),
-                        PlinkoBinKind.CardReward => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binCard"),
-                        PlinkoBinKind.MaxHp => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binMaxHp", ("Amount", bin.Amount)),
-                        PlinkoBinKind.UpgradeCard => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binUpgrade"),
-                        _ => string.Empty,
+                        _ => $"+{bin.Amount}",
                     };
-                    Color lblCol = bin.Kind == PlinkoBinKind.RareRelic ? new Color("#ffe568") : new Color("#fff2cc");
-                    DrawStringOutline(LabelFont, new Vector2(bx + 1f, binY + 78f), lbl, HorizontalAlignment.Center, bw - 2f, 15, 6, new Color("#030c06"));
-                    DrawString(LabelFont, new Vector2(bx + 1f, binY + 78f), lbl, HorizontalAlignment.Center, bw - 2f, 15, lblCol);
+                    Color numCol = bin.Kind switch
+                    {
+                        PlinkoBinKind.Heal => new Color("#9cf2ad"),
+                        PlinkoBinKind.MaxHp => new Color("#ff9eb0"),
+                        _ => new Color("#ffe57d"),
+                    };
+                    DrawStringOutline(NumberFont, new Vector2(bx + 1f, binY + 79f), numText, HorizontalAlignment.Center, bw - 2f, 18, 6, new Color("#030c06"));
+                    DrawString(NumberFont, new Vector2(bx + 1f, binY + 79f), numText, HorizontalAlignment.Center, bw - 2f, 18, numCol);
                 }
             }
 
@@ -232,37 +221,47 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
                     float frac = (float)i / count;
                     Vector2 p0 = new(ball.Trail[i - 1].X, ball.Trail[i - 1].Y);
                     Vector2 p1 = new(ball.Trail[i].X, ball.Trail[i].Y);
-                    DrawLine(p0, p1, new Color(1.0f, 0.80f, 0.25f, frac * (ball.Active ? 0.72f : 0.35f)), 4f + frac * 7f, true);
+                    DrawLine(p0, p1, new Color(1.0f, 0.80f, 0.25f, frac * (ball.Active ? 0.70f : 0.32f)), 4f + frac * 7f, true);
                 }
             }
 
             if (ball.Active)
             {
                 Vector2 bpos = new(ball.X, ball.Y);
-                DrawCircle(bpos, ForestPlinkoMinigame.BallRadius + 10f, new Color(1.0f, 0.80f, 0.24f, 0.38f));
+                DrawCircle(bpos, ForestPlinkoMinigame.BallRadius + 10f, new Color(1.0f, 0.80f, 0.24f, 0.36f));
                 if (SeedTex != null)
-                {
                     DrawTextureRect(SeedTex, new Rect2(bpos.X - 16f, bpos.Y - 16f, 32f, 32f), false, Colors.White);
-                }
                 else
-                {
                     DrawCircle(bpos, ForestPlinkoMinigame.BallRadius, new Color("#ffd458"));
-                }
             }
         }
     }
 
     private ForestPlinkoMinigame _minigame = null!;
     private PlinkoBoardCanvas _boardCanvas = null!;
+    private ThingsMinigameUiTheme.FloatingPopLayer _popLayer = null!;
 
     private RichTextLabel _bottomStatusRtl = null!;
-    private RichTextLabel _haulSummaryRtl = null!;
-    private RichTextLabel _feedbackRtl = null!;
+    private ThingsMinigameUiTheme.CompactLootStrip _lootStrip = null!;
     private ThingsMinigameUiTheme.PaintedActionButton _dropButton = null!;
-    private ThingsMinigameUiTheme.PaintedActionButton _finishButton = null!;
+    private ThingsMinigameUiTheme.NativeProceedButton _finishButton = null!;
+
+    private Texture2D? _relicCommonIcon;
+    private Texture2D? _relicRareIcon;
+    private Texture2D? _potionIcon;
+    private Texture2D? _goldIcon;
+    private Texture2D? _healIcon;
+    private Texture2D? _cardIcon;
+    private Texture2D? _maxHpIcon;
+    private Texture2D? _upgradeIcon;
+    private Texture2D? _shroomTex;
 
     private Font? _titleFont;
     private Font? _bodyFont;
+    private Font? _numberFont;
+    private bool _hasOpened;
+    private string _lastFeedbackKey = string.Empty;
+    private int _lastFeedbackValue;
 
     public NetScreenType ScreenType => NetScreenType.None;
     public bool UseSharedBackstop => true;
@@ -330,7 +329,12 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
     public void AfterOverlayOpened()
     {
         if (_minigame != null)
+        {
+            _lastFeedbackKey = _minigame.LastFeedbackKey;
+            _lastFeedbackValue = _minigame.LastFeedbackValue;
             _minigame.StateChanged += RefreshStatus;
+        }
+        _hasOpened = true;
         RefreshStatus();
     }
 
@@ -365,6 +369,20 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
     {
         _titleFont = ThingsMinigameUiTheme.GetTitleFont();
         _bodyFont = ThingsMinigameUiTheme.GetBodyFont();
+        _numberFont = ThingsMinigameUiTheme.GetNumberFont();
+
+        _shroomTex = ThingsMinigameUiTheme.TryLoadTexture(ShroomTexPath);
+        _relicCommonIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_relic.png");
+        _relicRareIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/events/minigames/things_loot_relic_rare_box.png")
+            ?? _relicCommonIcon;
+        _potionIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_rare_potion.png");
+        _goldIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_big_gold.png");
+        _healIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/powers/regen_power.png");
+        _cardIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_uncommon_card_reward.png")
+            ?? ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_common_card_reward.png");
+        _maxHpIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/atlases/ui_atlas.sprites/top_bar/top_bar_heart.tres")
+            ?? ThingsMinigameUiTheme.TryLoadTexture("res://images/ui/emote/heart.png");
+        _upgradeIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/powers/hammer_time_power.png");
 
         // 1. Deep nocturnal Overgrowth outer fill
         var outerFill = new ColorRect
@@ -375,7 +393,7 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
         AddChild(outerFill);
         outerFill.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // 2. Centered 1920x1080 Crystal-Sphere artwork stage
+        // 2. Centered 1920x1080 artwork stage
         var stage = new Control
         {
             Name = "PlinkoStage",
@@ -402,7 +420,7 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
         stage.AddChild(bg);
         bg.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // 3. Embedded 630x630 hollow Overgrowth trunk Plinko cavity (uniformly fitted inside 563..1130, 255..821 recess)
+        // 3. Embedded 630x630 hollow Overgrowth trunk Plinko cavity (uniformly fitted inside 563..1129, 255..821)
         float plinkoScale = 566f / 630f;
         var playfield = new Control
         {
@@ -452,42 +470,30 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
             Minigame = _minigame,
             SeedTex = ThingsMinigameUiTheme.TryLoadTexture(SeedTexPath),
             PegTex = ThingsMinigameUiTheme.TryLoadTexture(PegTexPath),
-            ShroomTex = ThingsMinigameUiTheme.TryLoadTexture(ShroomTexPath),
+            ShroomTex = _shroomTex,
             BowlTex = ThingsMinigameUiTheme.TryLoadTexture(BowlTexPath),
-            RelicCommonIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_relic.png"),
-            RelicRareIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/events/minigames/things_loot_relic_rare_box.png")
-                ?? ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_relic.png"),
-            PotionIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_rare_potion.png"),
-            GoldIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_big_gold.png"),
-            HealIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/powers/regen_power.png"),
-            CardIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_uncommon_card_reward.png")
-                ?? ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_common_card_reward.png"),
-            MaxHpIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/atlases/ui_atlas.sprites/top_bar/top_bar_heart.tres")
-                ?? ThingsMinigameUiTheme.TryLoadTexture("res://images/ui/emote/heart.png"),
-            UpgradeIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/powers/hammer_time_power.png"),
-            LabelFont = _bodyFont,
+            RelicCommonIcon = _relicCommonIcon,
+            RelicRareIcon = _relicRareIcon,
+            PotionIcon = _potionIcon,
+            GoldIcon = _goldIcon,
+            HealIcon = _healIcon,
+            CardIcon = _cardIcon,
+            MaxHpIcon = _maxHpIcon,
+            UpgradeIcon = _upgradeIcon,
+            NumberFont = _numberFont,
             MouseFilter = MouseFilterEnum.Ignore,
         };
         playfield.AddChild(_boardCanvas);
         _boardCanvas.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // Subtle caption below board
-        var hintRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#a7d1b0]{ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.controlsHint")}[/color]",
-            17,
-            new Color("#a7d1b0"),
-            new Color("#041008"),
-            _bodyFont,
-            outlineSize: 6,
-            shadowX: 2,
-            shadowY: 2,
-            align: HorizontalAlignment.Center,
-            wrap: true);
-        stage.AddChild(hintRtl);
-        hintRtl.Position = new Vector2(465f, 1006f);
-        hintRtl.Size = new Vector2(700f, 54f);
+        // Pass-through hover hitboxes on the 7 root bowls & 2 glowing mushrooms for native STS2 HoverTips!
+        AttachBoardHoverHitboxes(playfield);
 
-        // 4. Floating Crystal-Sphere HUD Layer
+        _popLayer = ThingsMinigameUiTheme.FloatingPopLayer.Create(_titleFont);
+        _popLayer.ZIndex = 20;
+        playfield.AddChild(_popLayer);
+
+        // 4. Minimal vanilla CrystalSphere-style HUD Layer (no top-left title, no bottom helper bar)
         var hud = new Control
         {
             Name = "HudRoot",
@@ -496,43 +502,29 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
         AddChild(hud);
         hud.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        var titleRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#f4d678]{ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.title")}[/color]",
-            36,
-            new Color("#f4d678"),
-            new Color("#06130a"),
-            _titleFont,
-            outlineSize: 10,
-            shadowX: 4,
-            shadowY: 3,
-            align: HorizontalAlignment.Left,
-            wrap: false);
-        hud.AddChild(titleRtl);
-        titleRtl.Position = new Vector2(52f, 22f);
-        titleRtl.CustomMinimumSize = new Vector2(500f, 52f);
-
+        // Bottom-Left: Single bold vanilla DivinationsLeft counter (HP already in top bar!)
         _bottomStatusRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
             string.Empty,
-            27,
-            new Color("#eef6ef"),
+            30,
+            ThingsMinigameUiTheme.VanillaCream,
             new Color("#051209"),
             _titleFont,
             outlineSize: 10,
             shadowX: 4,
             shadowY: 3,
             align: HorizontalAlignment.Left,
-            wrap: true);
+            wrap: false);
         hud.AddChild(_bottomStatusRtl);
         _bottomStatusRtl.AnchorLeft = 0f;
         _bottomStatusRtl.AnchorRight = 0f;
         _bottomStatusRtl.AnchorTop = 1f;
         _bottomStatusRtl.AnchorBottom = 1f;
-        _bottomStatusRtl.OffsetLeft = 48f;
+        _bottomStatusRtl.OffsetLeft = 56f;
         _bottomStatusRtl.OffsetRight = 460f;
-        _bottomStatusRtl.OffsetTop = -132f;
-        _bottomStatusRtl.OffsetBottom = -20f;
+        _bottomStatusRtl.OffsetTop = -92f;
+        _bottomStatusRtl.OffsetBottom = -36f;
 
-        // Right Column
+        // Right Column: Narrow vanilla CrystalSphere 372px width (x = 1496..1868)
         var rightAnchor = new Control
         {
             Name = "RightUi",
@@ -543,10 +535,10 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
         rightAnchor.AnchorRight = 1f;
         rightAnchor.AnchorTop = 0f;
         rightAnchor.AnchorBottom = 1f;
-        rightAnchor.OffsetLeft = -556f;
+        rightAnchor.OffsetLeft = -424f;
         rightAnchor.OffsetRight = -52f;
-        rightAnchor.OffsetTop = 52f;
-        rightAnchor.OffsetBottom = -52f;
+        rightAnchor.OffsetTop = 64f;
+        rightAnchor.OffsetBottom = -196f;
 
         var rightCenter = new VBoxContainer
         {
@@ -560,86 +552,114 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
         // Primary Drop Seed Button
         _dropButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
             ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.btnDrop"),
-            new Vector2(504f, 82f),
-            baseTint: new Color("#5ea372"),
-            activeTint: new Color("#74c98b"),
-            outlineColor: new Color(1.0f, 0.80f, 0.24f, 1.0f),
+            new Vector2(372f, 86f),
+            baseTint: new Color("#59996b"),
+            activeTint: new Color("#6eb883"),
+            outlineColor: ThingsMinigameUiTheme.VanillaWarmOutline,
             font: _titleFont,
-            fontSize: 24,
-            textColor: new Color("#fff8d9"));
+            fontSize: 23,
+            textColor: new Color("#fff6d4"));
         _dropButton.Pressed += () => _minigame.TryDropSeed();
         rightCenter.AddChild(_dropButton);
 
-        // Single Dark Overgrowth Octagonal Plaque
+        // Single clean narrow Overgrowth plaque (ZERO dividers, ZERO bullet wall, ZERO log!)
         PanelContainer plaque = ThingsMinigameUiTheme.CreateCrystalPlaquePanel(
-            new Color(0.02f, 0.11f, 0.06f, 0.88f),
-            padH: 26,
+            new Color(0.02f, 0.11f, 0.06f, 0.86f),
+            padH: 24,
             padV: 22);
         rightCenter.AddChild(plaque);
 
         var plaqueBox = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        plaqueBox.AddThemeConstantOverride("separation", 12);
+        plaqueBox.AddThemeConstantOverride("separation", 14);
         plaque.AddChild(plaqueBox);
 
-        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeLabel(
-            ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.haulTitle"),
-            22,
-            new Color("#98ebaa"),
-            _titleFont,
-            HorizontalAlignment.Left,
-            wrap: false,
-            outlineSize: 5));
-
-        _haulSummaryRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            string.Empty,
-            17,
-            new Color("#eef8f0"),
-            new Color("#030d06"),
+        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeVanillaPlaqueBody(
+            ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.rules", ("BumperGold", ForestPlinkoMinigame.BumperBonusGold)),
             _bodyFont,
-            outlineSize: 4,
-            shadowX: 2,
-            shadowY: 2);
-        _haulSummaryRtl.CustomMinimumSize = new Vector2(0f, 88f);
-        plaqueBox.AddChild(_haulSummaryRtl);
+            fontSize: 18));
 
-        plaqueBox.AddChild(MakeDivider(new Color("#366c49", 0.55f)));
+        _lootStrip = ThingsMinigameUiTheme.CompactLootStrip.Create(_numberFont);
+        plaqueBox.AddChild(_lootStrip);
 
-        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#d8eadc]{ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.rules", ("BumperGold", ForestPlinkoMinigame.BumperBonusGold))}[/color]",
-            16,
-            new Color("#d8eadc"),
-            new Color("#030d06"),
-            _bodyFont,
-            outlineSize: 4,
-            shadowX: 2,
-            shadowY: 2));
-
-        plaqueBox.AddChild(MakeDivider(new Color("#366c49", 0.55f)));
-
-        _feedbackRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            string.Empty,
-            17,
-            new Color("#f4e2b0"),
-            new Color("#030d06"),
-            _bodyFont,
-            outlineSize: 5,
-            shadowX: 2,
-            shadowY: 2);
-        _feedbackRtl.CustomMinimumSize = new Vector2(0f, 52f);
-        plaqueBox.AddChild(_feedbackRtl);
-
-        // Claim & Continue Button
-        _finishButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
-            string.Empty,
-            new Vector2(504f, 76f),
-            baseTint: new Color("#5b7c65"),
-            activeTint: new Color("#6bbd85"),
-            outlineColor: new Color(1.0f, 0.80f, 0.24f, 1.0f),
-            font: _titleFont,
-            fontSize: 22,
-            textColor: new Color("#fff8d9"));
+        // Authentic bottom-right vanilla STS2 ProceedButton
+        _finishButton = ThingsMinigameUiTheme.NativeProceedButton.Create(string.Empty, _titleFont, fontSize: 28);
+        _finishButton.AnchorBottomRight(rightInset: 54f, bottomInset: 48f);
         _finishButton.Pressed += () => _minigame.ConfirmExit();
-        rightCenter.AddChild(_finishButton);
+        hud.AddChild(_finishButton);
+    }
+
+    private void AttachBoardHoverHitboxes(Control playfield)
+    {
+        float binY = ForestPlinkoMinigame.BinTopY;
+        float binH = 630f - binY;
+        for (int i = 0; i < _minigame.Bins.Count; i++)
+        {
+            int idx = i;
+            var hit = new Control
+            {
+                Position = new Vector2(i * ForestPlinkoMinigame.BinWidth, binY),
+                Size = new Vector2(ForestPlinkoMinigame.BinWidth, binH),
+                MouseFilter = MouseFilterEnum.Pass,
+                MouseDefaultCursorShape = CursorShape.PointingHand,
+            };
+            hit.MouseEntered += () => ShowBinHoverTip(hit, _minigame.Bins[idx]);
+            hit.MouseExited += () => ThingsMinigameUiTheme.HideHoverTip(hit);
+            playfield.AddChild(hit);
+        }
+
+        foreach (PlinkoPeg peg in _minigame.Pegs)
+        {
+            if (!peg.IsBumper)
+                continue;
+            var hit = new Control
+            {
+                Position = new Vector2(peg.X - 24f, peg.Y - 24f),
+                Size = new Vector2(48f, 48f),
+                MouseFilter = MouseFilterEnum.Pass,
+                MouseDefaultCursorShape = CursorShape.PointingHand,
+            };
+            hit.MouseEntered += () => ThingsMinigameUiTheme.ShowLocalizedHoverTip(
+                hit,
+                "THINGS_FOREST_PLINKO.ui.haulTitle",
+                ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.statusHitBumper", ("Value", ForestPlinkoMinigame.BumperBonusGold)),
+                _shroomTex,
+                HoverTipAlignment.Right);
+            hit.MouseExited += () => ThingsMinigameUiTheme.HideHoverTip(hit);
+            playfield.AddChild(hit);
+        }
+    }
+
+    private void ShowBinHoverTip(Control owner, PlinkoBin bin)
+    {
+        (string titleKey, string desc, Texture2D? icon) = bin.Kind switch
+        {
+            PlinkoBinKind.RareRelic => ("THINGS_FOREST_PLINKO.ui.binRareRelic",
+                ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.statusWonRareRelic", ("Value", ForestPlinkoMinigame.BinGoldBigAmount)),
+                _relicRareIcon),
+            PlinkoBinKind.CommonRelic => ("THINGS_FOREST_PLINKO.ui.binRelic",
+                ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.statusWonRelic", ("Value", ForestPlinkoMinigame.BinGoldBigAmount)),
+                _relicCommonIcon),
+            PlinkoBinKind.Potion => ("THINGS_FOREST_PLINKO.ui.binPotion",
+                ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.statusWonPotion"),
+                _potionIcon),
+            PlinkoBinKind.Gold or PlinkoBinKind.GoldBig => ("THINGS_FOREST_PLINKO.ui.haulTitle",
+                ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.statusWonGold", ("Value", bin.Amount)),
+                _goldIcon),
+            PlinkoBinKind.Heal => ("THINGS_FOREST_PLINKO.ui.haulTitle",
+                ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.statusWonHeal", ("Value", bin.Amount)),
+                _healIcon),
+            PlinkoBinKind.CardReward => ("THINGS_FOREST_PLINKO.ui.binCard",
+                ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.statusWonCard"),
+                _cardIcon),
+            PlinkoBinKind.MaxHp => ("THINGS_FOREST_PLINKO.ui.haulTitle",
+                ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.statusWonMaxHp", ("Value", bin.Amount)),
+                _maxHpIcon),
+            PlinkoBinKind.UpgradeCard => ("THINGS_FOREST_PLINKO.ui.binUpgrade",
+                ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.statusWonUpgrade", ("Value", ForestPlinkoMinigame.BinGoldBigAmount)),
+                _upgradeIcon),
+            _ => ("THINGS_FOREST_PLINKO.ui.haulTitle", string.Empty, _goldIcon),
+        };
+        ThingsMinigameUiTheme.ShowLocalizedHoverTip(owner, titleKey, desc, icon, HoverTipAlignment.Right);
     }
 
     private static int FindNearestSlot(float localX)
@@ -658,50 +678,29 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
         return best;
     }
 
-    private static ColorRect MakeDivider(Color color) => new()
-    {
-        Color = color,
-        CustomMinimumSize = new Vector2(0f, 2f),
-        MouseFilter = MouseFilterEnum.Ignore,
-    };
-
     private void RefreshStatus()
     {
-        string dropsLine = ThingsMinigameUiTheme.Tr(
+        _bottomStatusRtl.Text = ThingsMinigameUiTheme.Tr(
             "THINGS_FOREST_PLINKO.ui.dropsLabel",
             ("Remaining", $"[color=#ffd100]{_minigame.DropsRemaining}[/color]"),
             ("Max", _minigame.MaxDrops));
-        string hpLine = ThingsMinigameUiTheme.Tr(
-            "THINGS_FOREST_PLINKO.ui.hpLabel",
-            ("Current", $"[color=#96e6a8]{_minigame.Owner.Creature.CurrentHp}[/color]"),
-            ("Max", _minigame.Owner.Creature.MaxHp));
-        _bottomStatusRtl.Text = $"{dropsLine}\n[font_size=20]{hpLine}[/font_size]";
 
-        var lines = new List<string>();
-        if (_minigame.CollectedRareRelics > 0)
-            lines.Add(ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.summaryRareRelic", ("Count", _minigame.CollectedRareRelics)));
-        if (_minigame.CollectedCommonRelics > 0)
-            lines.Add(ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.summaryRelic", ("Count", _minigame.CollectedCommonRelics)));
-        if (_minigame.CollectedUpgrades > 0)
-            lines.Add(ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.summaryUpgrade", ("Count", _minigame.CollectedUpgrades)));
-        if (_minigame.CollectedGold > 0)
-            lines.Add(ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.summaryGold", ("Amount", _minigame.CollectedGold)));
-        if (_minigame.CollectedHeal > 0)
-            lines.Add(ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.summaryHeal", ("Amount", _minigame.CollectedHeal)));
-        if (_minigame.CollectedMaxHp > 0)
-            lines.Add(ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.summaryMaxHp", ("Amount", _minigame.CollectedMaxHp)));
-        if (_minigame.CollectedPotions > 0)
-            lines.Add(ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.summaryPotion", ("Count", _minigame.CollectedPotions)));
-        if (_minigame.CollectedCards > 0)
-            lines.Add(ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.summaryCard", ("Count", _minigame.CollectedCards)));
+        _lootStrip.SetEntries(
+            (_relicRareIcon, _minigame.CollectedRareRelics > 0 ? $"×{_minigame.CollectedRareRelics}" : string.Empty, new Color("#ffe568")),
+            (_relicCommonIcon, _minigame.CollectedCommonRelics > 0 ? $"×{_minigame.CollectedCommonRelics}" : string.Empty, new Color("#ffe89c")),
+            (_upgradeIcon, _minigame.CollectedUpgrades > 0 ? $"×{_minigame.CollectedUpgrades}" : string.Empty, new Color("#ffc070")),
+            (_goldIcon, _minigame.CollectedGold > 0 ? $"+{_minigame.CollectedGold}G" : string.Empty, new Color("#ffe37d")),
+            (_healIcon, _minigame.CollectedHeal > 0 ? $"+{_minigame.CollectedHeal}" : string.Empty, new Color("#9cf2ad")),
+            (_maxHpIcon, _minigame.CollectedMaxHp > 0 ? $"+{_minigame.CollectedMaxHp}" : string.Empty, new Color("#ff9eb0")),
+            (_potionIcon, _minigame.CollectedPotions > 0 ? $"×{_minigame.CollectedPotions}" : string.Empty, new Color("#9cf0cc")),
+            (_cardIcon, _minigame.CollectedCards > 0 ? $"×{_minigame.CollectedCards}" : string.Empty, new Color("#a4d2ff")));
 
-        _haulSummaryRtl.Text = lines.Count > 0
-            ? $"[color=#eef9f0]{string.Join("\n", lines)}[/color]"
-            : $"[color=#8cad94]{ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.summaryNone")}[/color]";
-
-        string fb = ThingsMinigameUiTheme.Tr(_minigame.LastFeedbackKey, ("Value", _minigame.LastFeedbackValue));
-        string fbColor = _minigame.IsComplete ? "#9de8a9" : "#f5e1a8";
-        _feedbackRtl.Text = $"[color={fbColor}]{fb}[/color]";
+        if (_hasOpened && (_minigame.LastFeedbackKey != _lastFeedbackKey || _minigame.LastFeedbackValue != _lastFeedbackValue))
+        {
+            _lastFeedbackKey = _minigame.LastFeedbackKey;
+            _lastFeedbackValue = _minigame.LastFeedbackValue;
+            PopPlinkoFeedback(_lastFeedbackKey, _lastFeedbackValue);
+        }
 
         bool canDrop = _minigame.CanDrop();
         _dropButton.Disabled = !canDrop;
@@ -724,5 +723,35 @@ public partial class NForestPlinkoScreen : Control, IOverlayScreen
         }
 
         _boardCanvas.QueueRedraw();
+    }
+
+    private void PopPlinkoFeedback(string key, int val)
+    {
+        if (string.IsNullOrEmpty(key) || key.EndsWith("Ready") || key.EndsWith("Dropping"))
+            return;
+
+        if (key.EndsWith("HitBumper"))
+        {
+            Vector2 pos = new(Math.Clamp(_minigame.ActiveBall.X, 90f, 540f), Math.Clamp(_minigame.ActiveBall.Y - 22f, 90f, 480f));
+            _popLayer.Pop(pos, $"+{val}G", new Color("#ffe37d"), 24);
+            return;
+        }
+
+        // Bowl win pop right above the landing bowl!
+        float bx = Math.Clamp(_minigame.ActiveBall.X, 110f, 520f);
+        string text = key switch
+        {
+            "THINGS_FOREST_PLINKO.ui.statusWonGold" => $"+{val}G",
+            "THINGS_FOREST_PLINKO.ui.statusWonHeal" => $"+{val} HP",
+            "THINGS_FOREST_PLINKO.ui.statusWonMaxHp" => $"+{val} MaxHP",
+            "THINGS_FOREST_PLINKO.ui.statusWonRareRelic" => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binRareRelic"),
+            "THINGS_FOREST_PLINKO.ui.statusWonRelic" => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binRelic"),
+            "THINGS_FOREST_PLINKO.ui.statusWonPotion" => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binPotion"),
+            "THINGS_FOREST_PLINKO.ui.statusWonCard" => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binCard"),
+            "THINGS_FOREST_PLINKO.ui.statusWonUpgrade" => ThingsMinigameUiTheme.Tr("THINGS_FOREST_PLINKO.ui.binUpgrade"),
+            _ => string.Empty,
+        };
+        if (!string.IsNullOrEmpty(text))
+            _popLayer.Pop(new Vector2(bx, ForestPlinkoMinigame.BinTopY - 12f), text, new Color("#ffe682"), 24);
     }
 }

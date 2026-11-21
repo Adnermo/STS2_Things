@@ -9,11 +9,10 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 namespace STS2_Things.Events.Minigames;
 
 /// <summary>
-/// Underdocks (Act 1B) Sewer Clam Claw Machine overlay screen styled after vanilla CrystalSphere:
-/// full-bleed hand-painted canal hoist backdrop, subtle animated water-caustic shimmer,
-/// 20 hand-painted Mega Crit treasure sprites piled naturally at the bottom under 2D gravity,
-/// animated Underdocks Sewer Clam whose upper and lower fluted shells clamp prizes physically inside
-/// the shell cavity, floating outlined HUD counters, and hand-painted divine_button controls.
+/// Underdocks (Act 1B) Sewer Clam Claw Machine overlay screen modeled after vanilla CrystalSphere:
+/// full-bleed hand-painted canal hoist backdrop, 20 hand-painted Mega Crit treasure sprites piled naturally
+/// under 2D gravity (zero floating text tags cluttering the pit!), animated Underdocks Sewer Clam,
+/// single bold bottom-left counter, narrow right drop control + clean rules plaque, and native ProceedButton.
 /// </summary>
 public partial class NClamClawScreen : Control, IOverlayScreen
 {
@@ -40,7 +39,6 @@ public partial class NClamClawScreen : Control, IOverlayScreen
         public Texture2D? RelicCommonIcon { get; set; }
         public Texture2D? RelicRareIcon { get; set; }
         public Texture2D? ScrapIcon { get; set; }
-        public Font? LabelFont { get; set; }
 
         public override void _Draw()
         {
@@ -60,14 +58,14 @@ public partial class NClamClawScreen : Control, IOverlayScreen
             for (float rx = 38f; rx <= w - 38f; rx += 64f)
                 DrawCircle(new Vector2(rx, 19.5f), 3.2f, new Color("#b59858"));
 
-            // 3. Aiming plumb-line & aligned target highlight ring while sweeping
+            // 3. Aiming plumb-line while sweeping
             ClamPrize? aligned = Minigame.Phase == ClamCranePhase.Aiming ? Minigame.PeekAlignedPrize() : null;
             if (Minigame.Phase == ClamCranePhase.Aiming && !Minigame.IsComplete)
             {
                 float beamEndY = aligned != null ? aligned.Y - 28f : ClamClawMinigame.FloorCraneY;
                 Color beamColor = aligned != null
-                    ? new Color(0.98f, 0.85f, 0.38f, 0.52f)
-                    : new Color(0.55f, 0.85f, 0.92f, 0.22f);
+                    ? new Color(0.98f, 0.85f, 0.38f, 0.46f)
+                    : new Color(0.55f, 0.85f, 0.92f, 0.20f);
                 for (float dy = Minigame.CraneY + 46f; dy < beamEndY; dy += 15f)
                 {
                     float segEnd = MathF.Min(dy + 8f, beamEndY);
@@ -75,7 +73,7 @@ public partial class NClamClawScreen : Control, IOverlayScreen
                 }
             }
 
-            // 4. Draw all prizes piled naturally at the bottom (back-to-front by Y, with aligned/relic shining clearly)
+            // 4. Draw all prizes piled naturally at the bottom (ZERO permanent text labels stamped over the mound!)
             List<ClamPrize> visiblePrizes = Minigame.Prizes
                 .Where(p => p.State == ClamPrizeState.InTank || p.State == ClamPrizeState.FallingSlip)
                 .OrderBy(p => p.Y)
@@ -85,23 +83,12 @@ public partial class NClamClawScreen : Control, IOverlayScreen
             foreach (ClamPrize p in visiblePrizes)
             {
                 if (p == aligned)
-                    continue; // Draw targeted item crisp on top of its neighbors!
-                DrawPrizeItem(p, new Vector2(p.X, p.Y), p.TiltAngle, scale: 1.0f, highlighted: false, showTag: false);
+                    continue;
+                DrawPrizeItem(p, new Vector2(p.X, p.Y), p.TiltAngle, scale: 1.0f, highlighted: false);
             }
             if (aligned != null)
             {
-                DrawPrizeItem(aligned, new Vector2(aligned.X, aligned.Y), aligned.TiltAngle, scale: 1.08f, highlighted: true, showTag: false);
-            }
-
-            // Pass 2: Draw floating tags on top of the entire mound so shorter foreground items never occlude relic parcel labels
-            foreach (ClamPrize p in visiblePrizes)
-            {
-                bool isRelicBox = p.Kind == ClamPrizeKind.CommonRelic || p.Kind == ClamPrizeKind.RareRelic;
-                if (p == aligned || isRelicBox)
-                {
-                    bool isAligned = p == aligned;
-                    DrawPrizeTag(p, new Vector2(p.X, p.Y), isAligned ? 1.08f : 1.0f, highlighted: isAligned);
-                }
+                DrawPrizeItem(aligned, new Vector2(aligned.X, aligned.Y), aligned.TiltAngle, scale: 1.08f, highlighted: true);
             }
 
             // 5. Hoist carriage & linked iron chain descending to the Sewer Clam hinge
@@ -124,7 +111,7 @@ public partial class NClamClawScreen : Control, IOverlayScreen
                 DrawRect(new Rect2(cx - halfW + 1f, y + 1f, MathF.Max(1.5f, halfW), MathF.Max(1.5f, segH - 4f)), new Color("#c8b08e"));
             }
 
-            // 6. THE BOSS-GRADE SEWER CLAM CLAW (4-part sculpted shell valves + swirled abyssal cavity + forged shackle!)
+            // 6. Sculpted 4-part Sewer Clam Claw
             DrawSewerClamClaw(new Vector2(cx, cy));
         }
 
@@ -137,7 +124,6 @@ public partial class NClamClawScreen : Control, IOverlayScreen
             float sway = Minigame.ClamSwayAngle;
             Vector2 hinge = center + new Vector2(0f, -24f);
 
-            // (a) Deep swirled midnight-indigo interior dome BEHIND any caught prize
             DrawSetTransform(hinge, sway, Vector2.One);
             if (MouthBackTex != null)
             {
@@ -151,16 +137,13 @@ public partial class NClamClawScreen : Control, IOverlayScreen
             }
             DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
 
-            // (b) Caught prize physically nestled INSIDE the Sewer Clam's dark swirled shell hollow!
             if (Minigame.HeldPrize != null)
             {
                 Vector2 prizeWorldPos = hinge + new Vector2(0f, 54f).Rotated(sway);
-                DrawPrizeItem(Minigame.HeldPrize, prizeWorldPos, sway, scale: 0.90f, highlighted: false, showTag: false, drawShadow: false);
+                DrawPrizeItem(Minigame.HeldPrize, prizeWorldPos, sway, scale: 0.90f, highlighted: false, drawShadow: false);
             }
 
-            // (c) Thick volumetric left & right sculpted Sewer Clam valves pivoting organically from the dorsal hinge
-            float jawAngle = 0.04f + open * 0.44f; // ~2.3° clamped tight .. ~27.5° wide open per valve!
-
+            float jawAngle = 0.04f + open * 0.44f;
             if (UpperShellTex != null)
             {
                 DrawSetTransform(hinge, sway + jawAngle, Vector2.One);
@@ -173,7 +156,6 @@ public partial class NClamClawScreen : Control, IOverlayScreen
                 DrawTextureRect(LowerShellTex, new Rect2(-18f, -6f, 116f, 118f), false, Colors.White);
             }
 
-            // (d) Hand-painted verdigris-iron & bronze hoist shackle collar gripping the dorsal seam!
             DrawSetTransform(hinge, sway, Vector2.One);
             if (HingeTex != null)
             {
@@ -185,7 +167,6 @@ public partial class NClamClawScreen : Control, IOverlayScreen
                 DrawCircle(new Vector2(0f, 0f), 7.5f, new Color("#a68452"));
             }
 
-            // Reset transform
             DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
         }
 
@@ -213,29 +194,29 @@ public partial class NClamClawScreen : Control, IOverlayScreen
             _ => 62f,
         };
 
-        private void DrawPrizeItem(ClamPrize p, Vector2 pos, float tilt, float scale, bool highlighted, bool showTag = true, bool drawShadow = true)
+        private void DrawPrizeItem(ClamPrize p, Vector2 pos, float tilt, float scale, bool highlighted, bool drawShadow = true)
         {
             float dim = GetPrizeBaseDim(p.Kind) * scale;
 
-            // Soft contact shadow so stacked prizes feel grounded in a real physical heap
             if (drawShadow)
             {
                 DrawSetTransform(pos + new Vector2(2f, dim * 0.34f), 0f, new Vector2(1.0f, 0.38f));
-                DrawCircle(Vector2.Zero, dim * 0.44f, new Color(0.01f, 0.04f, 0.07f, 0.56f));
+                DrawCircle(Vector2.Zero, dim * 0.44f, new Color(0.01f, 0.04f, 0.07f, 0.54f));
                 DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
             }
 
-            // Subtle warm golden aura on the Rare Cardboard Box or currently aimed prize
+            // Subtle warm aura ONLY on the Rare Cardboard Box or currently aimed prize
             bool isRareBox = p.Kind == ClamPrizeKind.RareRelic;
-            if (highlighted || isRareBox || p.Kind == ClamPrizeKind.CommonRelic)
+            if (highlighted || isRareBox)
             {
-                float haloR = dim * 0.56f;
+                float haloR = dim * 0.54f;
                 Color glowCol = isRareBox
-                    ? new Color(1.0f, 0.84f, 0.22f, highlighted ? 0.48f : 0.34f)
-                    : (highlighted ? new Color(1.0f, 0.85f, 0.32f, 0.36f) : new Color(0.95f, 0.82f, 0.48f, 0.16f));
+                    ? new Color(1.0f, 0.84f, 0.24f, highlighted ? 0.38f : 0.26f)
+                    : new Color(1.0f, 0.86f, 0.36f, 0.28f);
                 DrawCircle(pos, haloR, glowCol);
-                if (highlighted || isRareBox)
-                    DrawArc(pos, haloR + 2f, 0f, MathF.Tau, 30, isRareBox ? new Color("#ffe368") : new Color("#ffe885"), highlighted ? 2.8f : 2.0f, true);
+                DrawArc(pos, haloR + 1.5f, 0f, MathF.Tau, 28,
+                    isRareBox ? new Color(1f, 0.88f, 0.42f, 0.72f) : new Color(1f, 0.90f, 0.52f, 0.65f),
+                    highlighted ? 2.4f : 1.8f, true);
             }
 
             Texture2D? icon = ResolvePrizeTexture(p);
@@ -245,52 +226,17 @@ public partial class NClamClawScreen : Control, IOverlayScreen
                 DrawTextureRect(icon, new Rect2(-dim * 0.5f, -dim * 0.5f, dim, dim), false, Colors.White);
                 DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
             }
-
-            if (showTag)
-            {
-                DrawPrizeTag(p, pos, scale, highlighted);
-            }
-        }
-
-        private void DrawPrizeTag(ClamPrize p, Vector2 pos, float scale, bool highlighted)
-        {
-            if (LabelFont == null)
-                return;
-
-            string tag = p.Kind switch
-            {
-                ClamPrizeKind.GoldSmall or ClamPrizeKind.GoldBig => $"+{p.GoldValue}G",
-                ClamPrizeKind.BarnacleScrap => $"+{p.GoldValue}G",
-                ClamPrizeKind.Potion => ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.tagPotion"),
-                ClamPrizeKind.Card => ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.tagCard"),
-                ClamPrizeKind.CommonRelic => ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.tagRelic"),
-                ClamPrizeKind.RareRelic => ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.tagRareRelic"),
-                _ => string.Empty,
-            };
-            if (string.IsNullOrEmpty(tag))
-                return;
-
-            float dim = GetPrizeBaseDim(p.Kind) * scale;
-            Color tagColor = p.Kind == ClamPrizeKind.RareRelic
-                ? new Color("#ffe56b")
-                : (p.Kind == ClamPrizeKind.CommonRelic ? new Color("#fff0c8") : (highlighted ? new Color("#fff5c8") : new Color("#d5e8ec")));
-            float labelY = pos.Y - dim * 0.52f - 4f;
-            DrawStringOutline(LabelFont, new Vector2(pos.X - 52f, labelY), tag, HorizontalAlignment.Center, 104f, 16, 7, new Color("#030c10"));
-            DrawString(LabelFont, new Vector2(pos.X - 52f, labelY), tag, HorizontalAlignment.Center, 104f, 16, tagColor);
         }
     }
 
     private ClamClawMinigame _minigame = null!;
     private ClamTankCanvas _tankCanvas = null!;
+    private ThingsMinigameUiTheme.FloatingPopLayer _popLayer = null!;
 
     private RichTextLabel _bottomStatusRtl = null!;
-    private RichTextLabel _feedbackRtl = null!;
-    private Label _haulGoldLabel = null!;
-    private Label _haulPotionLabel = null!;
-    private Label _haulCardLabel = null!;
-    private Label _haulRelicLabel = null!;
+    private ThingsMinigameUiTheme.CompactLootStrip _lootStrip = null!;
     private ThingsMinigameUiTheme.PaintedActionButton _dropButton = null!;
-    private ThingsMinigameUiTheme.PaintedActionButton _finishButton = null!;
+    private ThingsMinigameUiTheme.NativeProceedButton _finishButton = null!;
 
     private Texture2D? _goldSmallIcon;
     private Texture2D? _goldPouchIcon;
@@ -304,6 +250,10 @@ public partial class NClamClawScreen : Control, IOverlayScreen
 
     private Font? _titleFont;
     private Font? _bodyFont;
+    private Font? _numberFont;
+    private bool _hasOpened;
+    private string _lastFeedbackKey = string.Empty;
+    private int _lastFeedbackValue;
 
     public NetScreenType ScreenType => NetScreenType.None;
     public bool UseSharedBackstop => true;
@@ -359,7 +309,12 @@ public partial class NClamClawScreen : Control, IOverlayScreen
     public void AfterOverlayOpened()
     {
         if (_minigame != null)
+        {
+            _lastFeedbackKey = _minigame.LastFeedbackKey;
+            _lastFeedbackValue = _minigame.LastFeedbackValue;
             _minigame.StateChanged += RefreshStatus;
+        }
+        _hasOpened = true;
         RefreshStatus();
     }
 
@@ -394,6 +349,7 @@ public partial class NClamClawScreen : Control, IOverlayScreen
     {
         _titleFont = ThingsMinigameUiTheme.GetTitleFont();
         _bodyFont = ThingsMinigameUiTheme.GetBodyFont();
+        _numberFont = ThingsMinigameUiTheme.GetNumberFont();
 
         _goldSmallIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_gold.png")
             ?? ThingsMinigameUiTheme.TryLoadTexture("res://images/events/crystal_sphere/crystal_sphere_big_gold.png");
@@ -420,7 +376,7 @@ public partial class NClamClawScreen : Control, IOverlayScreen
         AddChild(outerFill);
         outerFill.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // 2. Centered 1920x1080 Crystal-Sphere artwork stage
+        // 2. Centered 1920x1080 artwork stage
         var stage = new Control
         {
             Name = "ClamStage",
@@ -447,7 +403,7 @@ public partial class NClamClawScreen : Control, IOverlayScreen
         stage.AddChild(bg);
         bg.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // 3. Embedded 630x630 flooded Underdocks crane pit (uniformly fitted inside 552..1098, 257..817 verdigris opening)
+        // 3. Embedded 630x630 flooded Underdocks crane pit (uniformly fitted inside 552..1098, 264..810)
         float clamScale = 546f / 630f;
         var playfield = new Control
         {
@@ -502,29 +458,16 @@ public partial class NClamClawScreen : Control, IOverlayScreen
             RelicCommonIcon = _relicCommonIcon,
             RelicRareIcon = _relicRareIcon,
             ScrapIcon = _scrapIcon,
-            LabelFont = _bodyFont,
             MouseFilter = MouseFilterEnum.Ignore,
         };
         playfield.AddChild(_tankCanvas);
         _tankCanvas.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // Subtle caption below the pit frame
-        var hintRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#a7ced8]{ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.controlsHint")}[/color]",
-            17,
-            new Color("#a7ced8"),
-            new Color("#041016"),
-            _bodyFont,
-            outlineSize: 6,
-            shadowX: 2,
-            shadowY: 2,
-            align: HorizontalAlignment.Center,
-            wrap: true);
-        stage.AddChild(hintRtl);
-        hintRtl.Position = new Vector2(465f, 1006f);
-        hintRtl.Size = new Vector2(700f, 54f);
+        _popLayer = ThingsMinigameUiTheme.FloatingPopLayer.Create(_titleFont);
+        _popLayer.ZIndex = 20;
+        playfield.AddChild(_popLayer);
 
-        // 4. Floating Crystal-Sphere HUD layer
+        // 4. Minimal vanilla CrystalSphere-style HUD layer (no top-left title, no bottom helper bar)
         var hud = new Control
         {
             Name = "HudRoot",
@@ -533,43 +476,29 @@ public partial class NClamClawScreen : Control, IOverlayScreen
         AddChild(hud);
         hud.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        var titleRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#f4d678]{ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.title")}[/color]",
-            36,
-            new Color("#f4d678"),
-            new Color("#06131a"),
-            _titleFont,
-            outlineSize: 10,
-            shadowX: 4,
-            shadowY: 3,
-            align: HorizontalAlignment.Left,
-            wrap: false);
-        hud.AddChild(titleRtl);
-        titleRtl.Position = new Vector2(52f, 22f);
-        titleRtl.CustomMinimumSize = new Vector2(480f, 52f);
-
+        // Bottom-Left: Single bold vanilla DivinationsLeft counter (Gold already in top bar!)
         _bottomStatusRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
             string.Empty,
-            27,
-            new Color("#eef4f6"),
+            30,
+            ThingsMinigameUiTheme.VanillaCream,
             new Color("#051117"),
             _titleFont,
             outlineSize: 10,
             shadowX: 4,
             shadowY: 3,
             align: HorizontalAlignment.Left,
-            wrap: true);
+            wrap: false);
         hud.AddChild(_bottomStatusRtl);
         _bottomStatusRtl.AnchorLeft = 0f;
         _bottomStatusRtl.AnchorRight = 0f;
         _bottomStatusRtl.AnchorTop = 1f;
         _bottomStatusRtl.AnchorBottom = 1f;
-        _bottomStatusRtl.OffsetLeft = 48f;
+        _bottomStatusRtl.OffsetLeft = 56f;
         _bottomStatusRtl.OffsetRight = 460f;
-        _bottomStatusRtl.OffsetTop = -132f;
-        _bottomStatusRtl.OffsetBottom = -20f;
+        _bottomStatusRtl.OffsetTop = -92f;
+        _bottomStatusRtl.OffsetBottom = -36f;
 
-        // Right Column
+        // Right Column: Narrow vanilla CrystalSphere 372px width (x = 1496..1868)
         var rightAnchor = new Control
         {
             Name = "RightUi",
@@ -580,10 +509,10 @@ public partial class NClamClawScreen : Control, IOverlayScreen
         rightAnchor.AnchorRight = 1f;
         rightAnchor.AnchorTop = 0f;
         rightAnchor.AnchorBottom = 1f;
-        rightAnchor.OffsetLeft = -556f;
+        rightAnchor.OffsetLeft = -424f;
         rightAnchor.OffsetRight = -52f;
-        rightAnchor.OffsetTop = 52f;
-        rightAnchor.OffsetBottom = -52f;
+        rightAnchor.OffsetTop = 64f;
+        rightAnchor.OffsetBottom = -196f;
 
         var rightCenter = new VBoxContainer
         {
@@ -594,155 +523,68 @@ public partial class NClamClawScreen : Control, IOverlayScreen
         rightAnchor.AddChild(rightCenter);
         rightCenter.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // Primary Drop Claw Button
+        // Chunky hand-painted Drop Clam tool button
         _dropButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
             ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.btnDrop"),
-            new Vector2(504f, 82f),
-            baseTint: new Color("#78a5b5"),
-            activeTint: new Color("#98d2e6"),
-            outlineColor: new Color(1.0f, 0.80f, 0.24f, 1.0f),
+            new Vector2(372f, 86f),
+            baseTint: new Color("#729aa8"),
+            activeTint: new Color("#91c5d6"),
+            outlineColor: ThingsMinigameUiTheme.VanillaWarmOutline,
             font: _titleFont,
-            fontSize: 24,
-            textColor: new Color("#fff6d4"));
+            fontSize: 23,
+            textColor: new Color("#fff4cf"));
         _dropButton.Pressed += () => _minigame.TryDropClaw();
         rightCenter.AddChild(_dropButton);
 
-        // Single Octagonal Crystal Plaque
+        // Clean narrow Crystal-Sphere plaque (ZERO dividers, ZERO 0-value table, ZERO log)
         PanelContainer plaque = ThingsMinigameUiTheme.CreateCrystalPlaquePanel(
-            new Color(0.02f, 0.10f, 0.14f, 0.86f),
-            padH: 26,
+            new Color(0.02f, 0.10f, 0.14f, 0.84f),
+            padH: 24,
             padV: 22);
         rightCenter.AddChild(plaque);
 
         var plaqueBox = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        plaqueBox.AddThemeConstantOverride("separation", 12);
+        plaqueBox.AddThemeConstantOverride("separation", 14);
         plaque.AddChild(plaqueBox);
 
-        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeLabel(
-            ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.haulTitle"),
-            22,
-            new Color("#f2d06b"),
-            _titleFont,
-            HorizontalAlignment.Left,
-            wrap: false,
-            outlineSize: 5));
-
-        var haulGrid = new GridContainer { Columns = 2, MouseFilter = MouseFilterEnum.Ignore };
-        haulGrid.AddThemeConstantOverride("h_separation", 16);
-        haulGrid.AddThemeConstantOverride("v_separation", 10);
-        plaqueBox.AddChild(haulGrid);
-
-        _haulGoldLabel = AddHaulRow(haulGrid, _goldPouchIcon);
-        _haulPotionLabel = AddHaulRow(haulGrid, _potionEmeraldIcon);
-        _haulCardLabel = AddHaulRow(haulGrid, _cardIcon);
-        _haulRelicLabel = AddHaulRow(haulGrid, _minigame.SpawnedRareRelic ? _relicRareIcon : _relicCommonIcon);
-
-        plaqueBox.AddChild(MakeDivider(new Color("#2f6372", 0.55f)));
-
-        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#d8eaef]{ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.rules")}[/color]",
-            16,
-            new Color("#d8eaef"),
-            new Color("#030c10"),
+        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeVanillaPlaqueBody(
+            ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.rules"),
             _bodyFont,
-            outlineSize: 4,
-            shadowX: 2,
-            shadowY: 2));
+            fontSize: 18));
 
-        plaqueBox.AddChild(MakeDivider(new Color("#2f6372", 0.55f)));
+        _lootStrip = ThingsMinigameUiTheme.CompactLootStrip.Create(_numberFont);
+        plaqueBox.AddChild(_lootStrip);
 
-        _feedbackRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            string.Empty,
-            17,
-            new Color("#f4e2b0"),
-            new Color("#030c10"),
-            _bodyFont,
-            outlineSize: 5,
-            shadowX: 2,
-            shadowY: 2);
-        _feedbackRtl.CustomMinimumSize = new Vector2(0f, 52f);
-        plaqueBox.AddChild(_feedbackRtl);
-
-        // Claim / Finish Button
-        _finishButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
-            string.Empty,
-            new Vector2(504f, 76f),
-            baseTint: new Color("#658894"),
-            activeTint: new Color("#6dbd94"),
-            outlineColor: new Color(1.0f, 0.80f, 0.24f, 1.0f),
-            font: _titleFont,
-            fontSize: 22,
-            textColor: new Color("#fff6d6"));
+        // Authentic bottom-right vanilla STS2 ProceedButton
+        _finishButton = ThingsMinigameUiTheme.NativeProceedButton.Create(string.Empty, _titleFont, fontSize: 28);
+        _finishButton.AnchorBottomRight(rightInset: 54f, bottomInset: 48f);
         _finishButton.Pressed += () => _minigame.ConfirmExit();
-        rightCenter.AddChild(_finishButton);
-    }
-
-    private static ColorRect MakeDivider(Color color) => new()
-    {
-        Color = color,
-        CustomMinimumSize = new Vector2(0f, 2f),
-        MouseFilter = MouseFilterEnum.Ignore,
-    };
-
-    private Label AddHaulRow(GridContainer container, Texture2D? icon)
-    {
-        var row = new HBoxContainer
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        row.AddThemeConstantOverride("separation", 9);
-
-        if (icon != null)
-        {
-            var tex = new TextureRect
-            {
-                Texture = icon,
-                CustomMinimumSize = new Vector2(28f, 28f),
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                StretchMode = TextureRect.StretchModeEnum.Scale,
-                MouseFilter = MouseFilterEnum.Ignore,
-            };
-            row.AddChild(tex);
-        }
-
-        var label = ThingsMinigameUiTheme.MakeLabel(
-            string.Empty,
-            18,
-            new Color("#eff6f8"),
-            _bodyFont,
-            HorizontalAlignment.Left,
-            wrap: false,
-            outlineSize: 5);
-        label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        row.AddChild(label);
-        container.AddChild(row);
-        return label;
+        hud.AddChild(_finishButton);
     }
 
     private void RefreshStatus()
     {
-        string grabsLine = ThingsMinigameUiTheme.Tr(
+        _bottomStatusRtl.Text = ThingsMinigameUiTheme.Tr(
             "THINGS_CLAM_CLAW.ui.grabsLabel",
             ("Remaining", $"[color=#ffd100]{_minigame.GrabsRemaining}[/color]"),
             ("Max", _minigame.MaxGrabs));
-        string goldLine = ThingsMinigameUiTheme.Tr(
-            "THINGS_CLAM_CLAW.ui.goldLabel",
-            ("Gold", $"[color=#f8dc7d]{_minigame.Owner.Gold}[/color]"));
-        _bottomStatusRtl.Text = $"{grabsLine}\n[font_size=20]{goldLine}[/font_size]";
 
-        _haulGoldLabel.Text = ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.haulGold", ("Amount", _minigame.CollectedGold));
-        _haulPotionLabel.Text = ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.haulPotion", ("Count", _minigame.CollectedPotions));
-        _haulCardLabel.Text = ThingsMinigameUiTheme.Tr("THINGS_CLAM_CLAW.ui.haulCard", ("Count", _minigame.CollectedCards));
-        _haulRelicLabel.Text = ThingsMinigameUiTheme.Tr(
-            "THINGS_CLAM_CLAW.ui.haulRelic",
-            ("Count", _minigame.CollectedCommonRelics + _minigame.CollectedRareRelics));
+        int totalRelics = _minigame.CollectedCommonRelics + _minigame.CollectedRareRelics;
+        _lootStrip.SetEntries(
+            (_goldPouchIcon, _minigame.CollectedGold > 0 ? $"+{_minigame.CollectedGold}G" : string.Empty, new Color("#ffe37d")),
+            (_potionEmeraldIcon, _minigame.CollectedPotions > 0 ? $"×{_minigame.CollectedPotions}" : string.Empty, new Color("#9cf0cc")),
+            (_cardIcon, _minigame.CollectedCards > 0 ? $"×{_minigame.CollectedCards}" : string.Empty, new Color("#a4d2ff")),
+            (_minigame.CollectedRareRelics > 0 ? _relicRareIcon : _relicCommonIcon,
+                totalRelics > 0 ? $"×{totalRelics}" : string.Empty,
+                new Color("#ffe89c")));
 
-        string fb = ThingsMinigameUiTheme.Tr(_minigame.LastFeedbackKey, ("Value", _minigame.LastFeedbackValue));
-        string fbColor = _minigame.LastFeedbackKey.Contains("Slipped") || _minigame.LastFeedbackKey.Contains("Miss")
-            ? "#ff9c94"
-            : (_minigame.IsComplete ? "#9de8a9" : "#f5e1a8");
-        _feedbackRtl.Text = $"[color={fbColor}]{fb}[/color]";
+        // In-world floating pop at the clam on catch/slip/miss (replaces right-panel console log)
+        if (_hasOpened && (_minigame.LastFeedbackKey != _lastFeedbackKey || _minigame.LastFeedbackValue != _lastFeedbackValue))
+        {
+            _lastFeedbackKey = _minigame.LastFeedbackKey;
+            _lastFeedbackValue = _minigame.LastFeedbackValue;
+            PopClamFeedback(_lastFeedbackKey, _lastFeedbackValue);
+        }
 
         bool canDrop = _minigame.CanDrop();
         _dropButton.Disabled = !canDrop;
@@ -765,5 +607,18 @@ public partial class NClamClawScreen : Control, IOverlayScreen
         }
 
         _tankCanvas.QueueRedraw();
+    }
+
+    private void PopClamFeedback(string key, int val)
+    {
+        if (string.IsNullOrEmpty(key) || key.EndsWith("Ready") || key.EndsWith("Dropping") || key.EndsWith("Finished"))
+            return;
+
+        Vector2 pos = new(Math.Clamp(_minigame.CraneX, 110f, 520f), Math.Clamp(_minigame.CraneY - 30f, 110f, 440f));
+        Color col = key.Contains("Slipped") || key.Contains("Miss")
+            ? new Color("#ff9c94")
+            : (key.Contains("Rare") ? new Color("#ffe568") : new Color("#f6e4a8"));
+        string text = ThingsMinigameUiTheme.Tr(key, ("Value", val));
+        _popLayer.Pop(pos, text, col, 22);
     }
 }

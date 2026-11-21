@@ -45,21 +45,21 @@ public partial class DepthsProbeNode
                     string text = reflux.HoverTips.OfType<HoverTip>().First().Description;
                     Assert(text.Contains($"[blue]{salamander.GrowthAmount}[/blue]"),
                         "Native Reflux tooltip displays the actual A0/A20 Strength gift.");
-                    Assert(salamander.UnplayedRecallBlock == (ascension == 0 ? 6 : 8) &&
+                    Assert(salamander.UnplayedRecallBlock == (ascension == 0 ? 5 : 7) &&
                            reflux.DynamicVars["UnplayedBlock"].IntValue == salamander.UnplayedRecallBlock,
-                        "Reverse Current power exposes 6 (A0) / 8 (A8+) UnplayedBlock.");
+                        "Reverse Current power exposes 5 (A0) / 7 (A8+) UnplayedBlock.");
                 }
                 if (creature.Monster is ThingsRadioJellyfish jelly && creature.GetPower<ThingsRadioReceptionPower>() is { } reception)
                 {
                     string text = reception.HoverTips.OfType<HoverTip>().First().Description;
-                    Assert(text.Contains("[blue]1[/blue]"), "Native Reception tooltip displays one point per opening stack.");
-                    Assert(ThingsRadioJellyfish.BaseEchoDamage == 8 && ThingsRadioJellyfish.BaseSkillBlock == 6,
-                        "Radio Jellyfish base constants updated to 8 damage / 6 skill block.");
-                    Assert(jelly.EchoDamage == (ascension == 0 ? 8 : 9) &&
-                           jelly.ShieldPerSkill == (ascension == 0 ? 7 : 9) &&
-                           reception.DynamicVars["EchoDamage"].IntValue == (ascension == 0 ? 9 : 10) &&
-                           reception.DynamicVars["ShieldPerSkill"].IntValue == (ascension == 0 ? 7 : 9),
-                        "Radio Jellyfish opening stack yields 9/10 hit damage and 7/9 Block per Skill.");
+                    Assert(text.Contains("[blue]2[/blue]"), "Native Reception tooltip displays two points per opening stack.");
+                    Assert(ThingsRadioJellyfish.BaseEchoDamage == 9 && ThingsRadioJellyfish.BaseSkillBlock == 5,
+                        "Radio Jellyfish base constants updated to 9 damage / 5 skill block.");
+                    Assert(jelly.EchoDamage == (ascension == 0 ? 9 : 10) &&
+                           jelly.ShieldPerSkill == (ascension == 0 ? 7 : 8) &&
+                           reception.DynamicVars["EchoDamage"].IntValue == (ascension == 0 ? 11 : 12) &&
+                           reception.DynamicVars["ShieldPerSkill"].IntValue == (ascension == 0 ? 7 : 8),
+                        "Radio Jellyfish opening stack yields 11/12 hit damage and 7/8 Block per Skill.");
                 }
                 if (creature.Monster is ThingsCaveMaw maw && creature.GetPower<ThingsCaveMawAppetitePower>() is { } appetite)
                 {

@@ -3,15 +3,17 @@ using System.Collections.Generic;
 using Godot;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 
 namespace STS2_Things.Events.Minigames;
 
 /// <summary>
-/// Underdocks (Act 1B) 6x6 Bilge Grate minesweeper overlay screen styled after vanilla CrystalSphere:
+/// Underdocks (Act 1B) 6x6 Bilge Grate minesweeper overlay screen modeled directly after vanilla CrystalSphere:
 /// full-bleed hand-painted canal grate backdrop, animated dark water caustic shader inside the iron pit,
 /// hand-painted riveted hatch tiles that part to unveil loot &amp; mines directly over the water,
-/// dramatic floating outlined bottom-left HUD counter, and hand-painted beveled divine_button controls.
+/// single bold bottom-left counter, narrow right-side tool buttons + clean instructions plaque,
+/// and authentic bottom-right STS2 ProceedButton.
 /// </summary>
 public partial class NBilgeSweepScreen : Control, IOverlayScreen
 {
@@ -53,14 +55,11 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
     private readonly List<BilgeCellNode> _cellNodes = new(BilgeSweepMinigame.GridWidth * BilgeSweepMinigame.GridHeight);
 
     private RichTextLabel _bottomStatusRtl = null!;
-    private RichTextLabel _feedbackRtl = null!;
-    private Label _haulGoldLabel = null!;
-    private Label _haulPotionLabel = null!;
-    private Label _haulCardLabel = null!;
-    private Label _haulRelicLabel = null!;
+    private ThingsMinigameUiTheme.CompactLootStrip _lootStrip = null!;
+    private ThingsMinigameUiTheme.FloatingPopLayer _popLayer = null!;
     private ThingsMinigameUiTheme.PaintedActionButton _probeModeButton = null!;
     private ThingsMinigameUiTheme.PaintedActionButton _flagModeButton = null!;
-    private ThingsMinigameUiTheme.PaintedActionButton _primaryActionButton = null!;
+    private ThingsMinigameUiTheme.NativeProceedButton _primaryActionButton = null!;
 
     private Texture2D? _coverTex;
     private Texture2D? _glintTex;
@@ -152,7 +151,7 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
             ?? ThingsMinigameUiTheme.TryLoadTexture("res://images/ui/reward_screen/reward_icon_shared_relic.png");
         _mineIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/powers/poison_power.png");
 
-        // 1. Deep nocturnal canal outer fill (handles ultrawide/tall aspect ratios cleanly)
+        // 1. Deep nocturnal canal outer fill
         var outerFill = new ColorRect
         {
             Color = new Color("#040d11"),
@@ -161,7 +160,7 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
         AddChild(outerFill);
         outerFill.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // 2. Centered 1920x1080 Crystal-Sphere-style artwork stage with pixel-locked pit playfield
+        // 2. Centered 1920x1080 artwork stage with pixel-locked pit playfield
         var stage = new Control
         {
             Name = "BilgeStage",
@@ -188,7 +187,7 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
         stage.AddChild(bg);
         bg.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // 3. Embedded 630x630 iron bilge grate pit (exact pixel alignment with painted iron rim: 500..1130, 215..845)
+        // 3. Embedded 630x630 iron bilge grate pit (500..1130, 215..845)
         var playfield = new Control
         {
             Name = "BilgePlayfield",
@@ -199,7 +198,6 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
         };
         stage.AddChild(playfield);
 
-        // Animated painterly water caustic sheen blended smoothly over the hand-painted dark vortex
         Shader? waterShader = ThingsMinigameUiTheme.TryLoadShader(WaterShaderPath);
         if (waterShader != null)
         {
@@ -207,7 +205,7 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
             {
                 Name = "WaterCaustics",
                 Color = Colors.White,
-                Modulate = new Color(1f, 1f, 1f, 0.42f),
+                Modulate = new Color(1f, 1f, 1f, 0.40f),
                 Material = new ShaderMaterial { Shader = waterShader },
                 MouseFilter = MouseFilterEnum.Ignore,
             };
@@ -238,7 +236,7 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
 
                 var waterWash = new ColorRect
                 {
-                    Color = new Color(0.02f, 0.08f, 0.11f, 0.35f),
+                    Color = new Color(0.02f, 0.08f, 0.11f, 0.32f),
                     MouseFilter = MouseFilterEnum.Ignore,
                     Visible = false,
                 };
@@ -251,7 +249,7 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
                     MouseFilter = MouseFilterEnum.Ignore,
                 };
 
-                var glowOutline = ThingsMinigameUiTheme.CreateChamferOutline(new Color(1f, 0.80f, 0.28f, 0.92f), visible: false);
+                var glowOutline = ThingsMinigameUiTheme.CreateChamferOutline(new Color(0.95f, 0.76f, 0.28f, 0.65f), visible: false);
 
                 var flagIcon = new TextureRect
                 {
@@ -277,14 +275,14 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
                     _numberFont,
                     HorizontalAlignment.Center,
                     wrap: false,
-                    outlineSize: 8,
+                    outlineSize: 7,
                     outlineColor: new Color("#030c10"));
 
                 var subLabel = ThingsMinigameUiTheme.MakeLabel(
                     string.Empty,
                     16,
                     new Color("#f8e08e"),
-                    _bodyFont,
+                    _numberFont,
                     HorizontalAlignment.Center,
                     wrap: false,
                     outlineSize: 6,
@@ -329,32 +327,34 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
 
                 node.AddChild(lootIcon);
                 lootIcon.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-                lootIcon.OffsetLeft = 20f;
-                lootIcon.OffsetTop = 10f;
-                lootIcon.OffsetRight = -20f;
-                lootIcon.OffsetBottom = -28f;
+                lootIcon.OffsetLeft = 16f;
+                lootIcon.OffsetTop = 12f;
+                lootIcon.OffsetRight = -16f;
+                lootIcon.OffsetBottom = -22f;
 
                 node.AddChild(numberLabel);
                 numberLabel.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
                 node.AddChild(subLabel);
                 subLabel.SetAnchorsAndOffsetsPreset(LayoutPreset.BottomWide);
-                subLabel.OffsetTop = -25f;
-                subLabel.OffsetBottom = -3f;
+                subLabel.OffsetTop = -24f;
+                subLabel.OffsetBottom = -2f;
 
-                node.GuiInput += ev => OnCellGuiInput(ev, cx, cy);
+                node.GuiInput += ev => OnCellGuiInput(ev, node, cx, cy);
                 node.MouseEntered += () =>
                 {
                     node.IsHovered = true;
                     if (!node.Cell.IsRevealed && !_minigame.IsComplete)
-                        node.AnimateScale(1.045f);
+                        node.AnimateScale(1.04f);
                     RefreshCellVisual(node);
+                    ShowCellHoverTip(node);
                 };
                 node.MouseExited += () =>
                 {
                     node.IsHovered = false;
                     node.AnimateScale(1.0f);
                     RefreshCellVisual(node);
+                    ThingsMinigameUiTheme.HideHoverTip(node);
                 };
 
                 grid.AddChild(node);
@@ -362,7 +362,12 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
             }
         }
 
-        // 4. Floating Crystal-Sphere HUD layer (edges & right column)
+        // In-world floating pop layer directly over the pit (replaces console log panel)
+        _popLayer = ThingsMinigameUiTheme.FloatingPopLayer.Create(_titleFont);
+        _popLayer.ZIndex = 20;
+        playfield.AddChild(_popLayer);
+
+        // 4. Minimal vanilla CrystalSphere-style HUD layer (no top-left title, no bottom helper bar)
         var hud = new Control
         {
             Name = "HudRoot",
@@ -371,43 +376,11 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
         AddChild(hud);
         hud.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // Top-Left Floating Gold Event Title (matching vanilla CrystalSphere clean negative-space framing)
-        var titleRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#f4d678]{ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.title")}[/color]",
-            36,
-            new Color("#f4d678"),
-            new Color("#06131a"),
-            _titleFont,
-            outlineSize: 10,
-            shadowX: 4,
-            shadowY: 3,
-            align: HorizontalAlignment.Left,
-            wrap: false);
-        hud.AddChild(titleRtl);
-        titleRtl.Position = new Vector2(52f, 22f);
-        titleRtl.CustomMinimumSize = new Vector2(460f, 52f);
-
-        // Subtle floating caption directly beneath the iron grate pit (sits cleanly over the dark timber beam!)
-        var grateHintRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#a7ced8]{ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.controlsHint")}[/color]",
-            17,
-            new Color("#a7ced8"),
-            new Color("#041016"),
-            _bodyFont,
-            outlineSize: 6,
-            shadowX: 2,
-            shadowY: 2,
-            align: HorizontalAlignment.Center,
-            wrap: true);
-        stage.AddChild(grateHintRtl);
-        grateHintRtl.Position = new Vector2(465f, 1006f);
-        grateHintRtl.Size = new Vector2(700f, 54f);
-
-        // Bottom-Left Dramatic Crystal-Sphere DivinationsLeft-style Floating Counter
+        // Bottom-Left: Single bold vanilla DivinationsLeft counter (only adds red warning if lethal HP)
         _bottomStatusRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
             string.Empty,
-            27,
-            new Color("#eef4f6"),
+            30,
+            ThingsMinigameUiTheme.VanillaCream,
             new Color("#051117"),
             _titleFont,
             outlineSize: 10,
@@ -420,12 +393,12 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
         _bottomStatusRtl.AnchorRight = 0f;
         _bottomStatusRtl.AnchorTop = 1f;
         _bottomStatusRtl.AnchorBottom = 1f;
-        _bottomStatusRtl.OffsetLeft = 48f;
-        _bottomStatusRtl.OffsetRight = 450f;
-        _bottomStatusRtl.OffsetTop = -140f;
-        _bottomStatusRtl.OffsetBottom = -20f;
+        _bottomStatusRtl.OffsetLeft = 56f;
+        _bottomStatusRtl.OffsetRight = 460f;
+        _bottomStatusRtl.OffsetTop = -112f;
+        _bottomStatusRtl.OffsetBottom = -36f;
 
-        // Right Column (CrystalSphere RightUi: hand-painted tool buttons -> octagonal plaque -> hand-painted finish button)
+        // Right Column: Authentic vanilla CrystalSphere narrow 372px width (x = 1496..1868)
         var rightAnchor = new Control
         {
             Name = "RightUi",
@@ -436,174 +409,130 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
         rightAnchor.AnchorRight = 1f;
         rightAnchor.AnchorTop = 0f;
         rightAnchor.AnchorBottom = 1f;
-        rightAnchor.OffsetLeft = -556f;
+        rightAnchor.OffsetLeft = -424f;
         rightAnchor.OffsetRight = -52f;
-        rightAnchor.OffsetTop = 52f;
-        rightAnchor.OffsetBottom = -52f;
+        rightAnchor.OffsetTop = 64f;
+        rightAnchor.OffsetBottom = -196f;
 
         var rightCenter = new VBoxContainer
         {
             Alignment = BoxContainer.AlignmentMode.Center,
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        rightCenter.AddThemeConstantOverride("separation", 18);
+        rightCenter.AddThemeConstantOverride("separation", 16);
         rightAnchor.AddChild(rightCenter);
         rightCenter.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // Tool Switcher Row (2 chunky hand-painted divine_button.png tablets echoing Big/Small Divination buttons!)
-        var modeRow = new HBoxContainer
-        {
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        modeRow.AddThemeConstantOverride("separation", 14);
-        rightCenter.AddChild(modeRow);
-
+        // Two vertically stacked native-proportioned divine_button tools (like Big/Small Divination!)
         _probeModeButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
             ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.modeProbe"),
-            new Vector2(245f, 76f),
-            baseTint: new Color("#78a5b5"),
-            activeTint: new Color("#9ad4e6"),
-            outlineColor: new Color(1.0f, 0.78f, 0.22f, 1.0f),
+            new Vector2(372f, 76f),
+            baseTint: new Color("#729aa8"),
+            activeTint: new Color("#91c5d6"),
+            outlineColor: ThingsMinigameUiTheme.VanillaWarmOutline,
             font: _titleFont,
-            fontSize: 17,
+            fontSize: 22,
             icon: _probeTex,
-            textColor: new Color("#f8e49c"));
-        _probeModeButton.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            textColor: new Color("#f6e095"));
         _probeModeButton.Pressed += () => SetFlagMode(false);
-        modeRow.AddChild(_probeModeButton);
+        rightCenter.AddChild(_probeModeButton);
 
         _flagModeButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
             ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.modeFlag"),
-            new Vector2(245f, 76f),
-            baseTint: new Color("#7c8792"),
-            activeTint: new Color("#d1767c"),
-            outlineColor: new Color(1.0f, 0.48f, 0.42f, 1.0f),
+            new Vector2(372f, 76f),
+            baseTint: new Color("#77828c"),
+            activeTint: new Color("#c27076"),
+            outlineColor: new Color(0.95f, 0.46f, 0.42f, 0.80f),
             font: _titleFont,
-            fontSize: 17,
+            fontSize: 22,
             icon: _flagTex,
-            textColor: new Color("#fff0e8"));
-        _flagModeButton.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            textColor: new Color("#fbeae3"));
         _flagModeButton.Pressed += () => SetFlagMode(true);
-        modeRow.AddChild(_flagModeButton);
+        rightCenter.AddChild(_flagModeButton);
 
-        // Single Octagonal Crystal-Sphere Plaque (tiny_nine_patch.png, dark nocturnal teal)
+        // Single clean translucent narrow Crystal-Sphere plaque (ZERO dividers, ZERO 0-value table, ZERO log)
         PanelContainer plaque = ThingsMinigameUiTheme.CreateCrystalPlaquePanel(
-            new Color(0.02f, 0.10f, 0.14f, 0.86f),
-            padH: 26,
+            new Color(0.02f, 0.10f, 0.14f, 0.84f),
+            padH: 24,
             padV: 22);
         rightCenter.AddChild(plaque);
 
         var plaqueBox = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        plaqueBox.AddThemeConstantOverride("separation", 12);
+        plaqueBox.AddThemeConstantOverride("separation", 14);
         plaque.AddChild(plaqueBox);
 
-        // Salvaged Contraband Section
-        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeLabel(
-            ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.haulTitle"),
-            22,
-            new Color("#f2d06b"),
-            _titleFont,
-            HorizontalAlignment.Left,
-            wrap: false,
-            outlineSize: 5));
-
-        var haulGrid = new GridContainer { Columns = 2, MouseFilter = MouseFilterEnum.Ignore };
-        haulGrid.AddThemeConstantOverride("h_separation", 16);
-        haulGrid.AddThemeConstantOverride("v_separation", 10);
-        plaqueBox.AddChild(haulGrid);
-
-        _haulGoldLabel = AddHaulRow(haulGrid, _goldIcon);
-        _haulPotionLabel = AddHaulRow(haulGrid, _potionIcon);
-        _haulCardLabel = AddHaulRow(haulGrid, _cardIcon);
-        _haulRelicLabel = AddHaulRow(haulGrid, _relicIcon);
-
-        plaqueBox.AddChild(MakeDivider(new Color("#2f6372", 0.55f)));
-
-        // Rules & Glint Deduction Guide
-        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#d8eaef]{ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.rules", ("MineDamage", BilgeSweepMinigame.MineBurstDamage))}[/color]\n\n" +
+        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeVanillaPlaqueBody(
+            $"{ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.rules", ("MineDamage", BilgeSweepMinigame.MineBurstDamage))}\n\n" +
             $"[color=#f2da8a]{ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.legendGlint")}[/color]",
-            16,
-            new Color("#d8eaef"),
-            new Color("#030c10"),
             _bodyFont,
-            outlineSize: 4,
-            shadowX: 2,
-            shadowY: 2));
+            fontSize: 18));
 
-        plaqueBox.AddChild(MakeDivider(new Color("#2f6372", 0.55f)));
+        _lootStrip = ThingsMinigameUiTheme.CompactLootStrip.Create(_numberFont);
+        plaqueBox.AddChild(_lootStrip);
 
-        // Live Action Log Whisper
-        _feedbackRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            string.Empty,
-            17,
-            new Color("#f4e2b0"),
-            new Color("#030c10"),
-            _bodyFont,
-            outlineSize: 5,
-            shadowX: 2,
-            shadowY: 2);
-        _feedbackRtl.CustomMinimumSize = new Vector2(0f, 52f);
-        plaqueBox.AddChild(_feedbackRtl);
-
-        // Primary Hand-Painted Cash-Out / Claim Button (divine_button.png + golden additive glow)
-        _primaryActionButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
-            string.Empty,
-            new Vector2(504f, 80f),
-            baseTint: new Color("#6e9ca8"),
-            activeTint: new Color("#6cb595"),
-            outlineColor: new Color(1.0f, 0.78f, 0.24f, 1.0f),
-            font: _titleFont,
-            fontSize: 23,
-            textColor: new Color("#fff6d6"));
+        // Authentic bottom-right vanilla STS2 ProceedButton (replaces stretched 504px footer bar!)
+        _primaryActionButton = ThingsMinigameUiTheme.NativeProceedButton.Create(string.Empty, _titleFont, fontSize: 28);
+        _primaryActionButton.AnchorBottomRight(rightInset: 54f, bottomInset: 48f);
         _primaryActionButton.Pressed += OnPrimaryActionPressed;
-        rightCenter.AddChild(_primaryActionButton);
+        hud.AddChild(_primaryActionButton);
     }
 
-    private static ColorRect MakeDivider(Color color) => new()
+    private void ShowCellHoverTip(BilgeCellNode node)
     {
-        Color = color,
-        CustomMinimumSize = new Vector2(0f, 2f),
-        MouseFilter = MouseFilterEnum.Ignore,
-    };
+        BilgeCell cell = node.Cell;
+        if (!cell.IsRevealed)
+            return;
 
-    private Label AddHaulRow(GridContainer container, Texture2D? icon)
-    {
-        var row = new HBoxContainer
+        if (cell.IsMine)
         {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        row.AddThemeConstantOverride("separation", 9);
-
-        if (icon != null)
-        {
-            var tex = new TextureRect
-            {
-                Texture = icon,
-                CustomMinimumSize = new Vector2(30f, 30f),
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-                MouseFilter = MouseFilterEnum.Ignore,
-            };
-            row.AddChild(tex);
+            ThingsMinigameUiTheme.ShowLocalizedHoverTip(
+                node,
+                "THINGS_BILGE_MINES.ui.cellSac",
+                ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.statusBurst", ("MineDamage", BilgeSweepMinigame.MineBurstDamage)),
+                _mineIcon,
+                HoverTipAlignment.Right);
+            return;
         }
 
-        var label = ThingsMinigameUiTheme.MakeLabel(
-            string.Empty,
-            18,
-            new Color("#eff6f8"),
-            _bodyFont,
-            HorizontalAlignment.Left,
-            wrap: false,
-            outlineSize: 5);
-        label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        row.AddChild(label);
-        container.AddChild(row);
-        return label;
+        switch (cell.LootKind)
+        {
+            case BilgeLootKind.GoldSmall:
+            case BilgeLootKind.GoldMedium:
+                ThingsMinigameUiTheme.ShowLocalizedHoverTip(
+                    node,
+                    "THINGS_BILGE_MINES.ui.haulTitle",
+                    ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.statusFoundGold", ("Value", cell.GoldValue)),
+                    _goldIcon,
+                    HoverTipAlignment.Right);
+                break;
+            case BilgeLootKind.Potion:
+                ThingsMinigameUiTheme.ShowLocalizedHoverTip(
+                    node,
+                    "THINGS_BILGE_MINES.ui.cellPotion",
+                    ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.statusFoundPotion"),
+                    _potionIcon,
+                    HoverTipAlignment.Right);
+                break;
+            case BilgeLootKind.Card:
+                ThingsMinigameUiTheme.ShowLocalizedHoverTip(
+                    node,
+                    "THINGS_BILGE_MINES.ui.cellCard",
+                    ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.statusFoundCard"),
+                    _cardIcon,
+                    HoverTipAlignment.Right);
+                break;
+            case BilgeLootKind.CommonRelic:
+                ThingsMinigameUiTheme.ShowLocalizedHoverTip(
+                    node,
+                    "THINGS_BILGE_MINES.ui.cellRelic",
+                    ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.statusFoundRelic"),
+                    _relicIcon,
+                    HoverTipAlignment.Right);
+                break;
+        }
     }
 
-    private void OnCellGuiInput(InputEvent ev, int x, int y)
+    private void OnCellGuiInput(InputEvent ev, BilgeCellNode node, int x, int y)
     {
         if (ev is not InputEventMouseButton mb || !mb.Pressed)
             return;
@@ -620,10 +549,43 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
         if (mb.ButtonIndex == MouseButton.Left)
         {
             if (_flagMode)
+            {
                 _minigame.ToggleFlag(x, y);
+            }
             else
+            {
+                bool wasRevealed = node.Cell.IsRevealed;
                 _minigame.ProbeCell(x, y);
+                if (!wasRevealed && node.Cell.IsRevealed)
+                    PopCellFeedback(node);
+            }
             AcceptEvent();
+        }
+    }
+
+    private void PopCellFeedback(BilgeCellNode node)
+    {
+        Vector2 popPos = new Vector2(12f, 12f) + node.Position + node.Size * 0.5f;
+        BilgeCell cell = node.Cell;
+        if (cell.IsMine)
+        {
+            _popLayer.Pop(popPos, $"-{BilgeSweepMinigame.MineBurstDamage} HP", new Color("#ff8882"), 26);
+        }
+        else if (cell.LootKind == BilgeLootKind.GoldSmall || cell.LootKind == BilgeLootKind.GoldMedium)
+        {
+            _popLayer.Pop(popPos, $"+{cell.GoldValue}G", new Color("#ffe37d"), 25);
+        }
+        else if (cell.LootKind == BilgeLootKind.Potion)
+        {
+            _popLayer.Pop(popPos, ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.cellPotion"), new Color("#8cf0c8"), 24);
+        }
+        else if (cell.LootKind == BilgeLootKind.Card)
+        {
+            _popLayer.Pop(popPos, ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.cellCard"), new Color("#9cd4ff"), 24);
+        }
+        else if (cell.LootKind == BilgeLootKind.CommonRelic)
+        {
+            _popLayer.Pop(popPos, ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.cellRelic"), new Color("#ffe37d"), 26);
         }
     }
 
@@ -660,61 +622,41 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
     private void RefreshStatus()
     {
         int curHp = _minigame.Owner.Creature.CurrentHp;
-        int maxHp = _minigame.Owner.Creature.MaxHp;
         bool lethal = !_minigame.IsComplete && curHp <= BilgeSweepMinigame.MineBurstDamage;
 
         string probesLine = ThingsMinigameUiTheme.Tr(
             "THINGS_BILGE_MINES.ui.probesLabel",
             ("Remaining", $"[color=#ffd100]{_minigame.ProbesRemaining}[/color]"),
             ("Max", _minigame.MaxProbes));
-        string hpColor = lethal ? "#ff7a75" : "#96e6a8";
-        string hpLine = ThingsMinigameUiTheme.Tr(
-            "THINGS_BILGE_MINES.ui.hpLabel",
-            ("Current", $"[color={hpColor}]{curHp}[/color]"),
-            ("Max", maxHp));
-        string bottomBbcode = $"{probesLine}\n[font_size=21]{hpLine}[/font_size]";
         if (lethal)
         {
             string warn = ThingsMinigameUiTheme.Tr(
                 "THINGS_BILGE_MINES.ui.lethalWarning",
                 ("MineDamage", BilgeSweepMinigame.MineBurstDamage));
-            bottomBbcode += $"\n[font_size=16][color=#ff847d]{warn}[/color][/font_size]";
+            _bottomStatusRtl.Text = $"{probesLine}\n[font_size=17][color=#ff847d]{warn}[/color][/font_size]";
         }
-        _bottomStatusRtl.Text = bottomBbcode;
+        else
+        {
+            _bottomStatusRtl.Text = probesLine;
+        }
 
-        _haulGoldLabel.Text = ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.haulGold", ("Amount", _minigame.CollectedGold));
-        _haulPotionLabel.Text = ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.haulPotion", ("Count", _minigame.CollectedPotions));
-        _haulCardLabel.Text = ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.haulCard", ("Count", _minigame.CollectedCards));
-        _haulRelicLabel.Text = ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.haulRelic", ("Count", _minigame.CollectedCommonRelics));
-
-        string feedbackText = ThingsMinigameUiTheme.Tr(
-            _minigame.LastFeedbackKey,
-            ("Value", _minigame.LastFeedbackValue),
-            ("MineDamage", BilgeSweepMinigame.MineBurstDamage));
-        string fbColor = _minigame.HitMine
-            ? "#ff9892"
-            : (_minigame.IsComplete ? "#9de8a9" : "#f5e1a8");
-        _feedbackRtl.Text = $"[color={fbColor}]{feedbackText}[/color]";
+        _lootStrip.SetEntries(
+            (_goldIcon, _minigame.CollectedGold > 0 ? $"+{_minigame.CollectedGold}G" : string.Empty, new Color("#ffe37d")),
+            (_potionIcon, _minigame.CollectedPotions > 0 ? $"×{_minigame.CollectedPotions}" : string.Empty, new Color("#9cf0cc")),
+            (_cardIcon, _minigame.CollectedCards > 0 ? $"×{_minigame.CollectedCards}" : string.Empty, new Color("#a4d2ff")),
+            (_relicIcon, _minigame.CollectedCommonRelics > 0 ? $"×{_minigame.CollectedCommonRelics}" : string.Empty, new Color("#ffe89c")));
 
         bool hasLoot = _minigame.BuildOutcome().HasAnyLoot;
         if (_minigame.IsComplete)
         {
             _primaryActionButton.Text = ThingsMinigameUiTheme.Tr(
                 hasLoot ? "THINGS_BILGE_MINES.ui.btnClaim" : "THINGS_BILGE_MINES.ui.btnContinue");
-            _primaryActionButton.SetColors(
-                baseTint: _minigame.HitMine ? new Color("#c2646c") : new Color("#6bbd92"),
-                activeTint: _minigame.HitMine ? new Color("#db747c") : new Color("#80d4a8"),
-                outlineColor: _minigame.HitMine ? new Color(1.0f, 0.48f, 0.45f, 1.0f) : new Color(1.0f, 0.84f, 0.30f, 1.0f));
             _primaryActionButton.Active = true;
         }
         else
         {
             _primaryActionButton.Text = ThingsMinigameUiTheme.Tr(
                 hasLoot ? "THINGS_BILGE_MINES.ui.btnCashOut" : "THINGS_BILGE_MINES.ui.btnLeaveEmpty");
-            _primaryActionButton.SetColors(
-                baseTint: hasLoot ? new Color("#68a88d") : new Color("#6b8c98"),
-                activeTint: hasLoot ? new Color("#7cc7a6") : new Color("#80a6b5"),
-                outlineColor: new Color(1.0f, 0.78f, 0.24f, 1.0f));
             _primaryActionButton.Active = hasLoot;
         }
     }
@@ -746,7 +688,7 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
                 node.CoverArt.SelfModulate = node.IsHovered ? new Color("#d89096") : new Color("#ba787e");
                 node.FlagIcon.Visible = _flagTex != null;
                 node.GlowOutline.Visible = true;
-                node.GlowOutline.Modulate = new Color(1.0f, 0.45f, 0.42f, node.IsHovered ? 0.95f : 0.60f);
+                node.GlowOutline.Modulate = new Color(0.95f, 0.44f, 0.40f, node.IsHovered ? 0.72f : 0.45f);
             }
             else if (cell.HasGlint)
             {
@@ -755,23 +697,23 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
                 if (node.IsHovered && !_minigame.IsComplete)
                 {
                     node.GlowOutline.Visible = true;
-                    node.GlowOutline.Modulate = new Color(1.0f, 0.84f, 0.30f, 0.92f);
+                    node.GlowOutline.Modulate = new Color(0.96f, 0.78f, 0.28f, 0.68f);
                 }
             }
             else
             {
                 node.CoverArt.Texture = _coverTex;
-                node.CoverArt.SelfModulate = node.IsHovered && !_minigame.IsComplete ? new Color("#d0eef5") : Colors.White;
+                node.CoverArt.SelfModulate = node.IsHovered && !_minigame.IsComplete ? new Color("#cde8ef") : Colors.White;
                 if (node.IsHovered && !_minigame.IsComplete)
                 {
                     node.GlowOutline.Visible = true;
-                    node.GlowOutline.Modulate = new Color(0.85f, 0.92f, 0.96f, 0.72f);
+                    node.GlowOutline.Modulate = new Color(0.82f, 0.90f, 0.94f, 0.50f);
                 }
             }
             return;
         }
 
-        // Revealed cell: iron hatch lid vanishes cleanly to unveil the dark swirling canal water below!
+        // Revealed cell: hatch lid vanishes to unveil dark swirling canal water below
         node.CoverArt.Visible = false;
         node.WaterWash.Visible = true;
         node.MouseDefaultCursorShape = CursorShape.Arrow;
@@ -779,12 +721,16 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
         if (cell.IsMine)
         {
             node.WaterWash.Color = cell.WasTriggeredMine
-                ? new Color(0.42f, 0.10f, 0.16f, 0.78f)
-                : new Color(0.24f, 0.08f, 0.13f, 0.58f);
+                ? new Color(0.42f, 0.10f, 0.16f, 0.76f)
+                : new Color(0.24f, 0.08f, 0.13f, 0.54f);
             node.GlowOutline.Visible = true;
             node.GlowOutline.Modulate = cell.WasTriggeredMine
-                ? new Color(1.0f, 0.38f, 0.38f, 1.0f)
-                : new Color(0.88f, 0.36f, 0.44f, 0.65f);
+                ? new Color(0.96f, 0.36f, 0.36f, 0.85f)
+                : new Color(0.84f, 0.36f, 0.44f, 0.48f);
+            node.LootIcon.OffsetLeft = 16f;
+            node.LootIcon.OffsetTop = 8f;
+            node.LootIcon.OffsetRight = -16f;
+            node.LootIcon.OffsetBottom = -24f;
             node.LootIcon.Texture = _mineIcon;
             node.LootIcon.Visible = _mineIcon != null;
             node.SubLabel.Text = ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.cellSac");
@@ -794,9 +740,9 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
 
         if (cell.LootKind != BilgeLootKind.None)
         {
-            node.WaterWash.Color = new Color(0.08f, 0.25f, 0.20f, 0.62f);
+            node.WaterWash.Color = new Color(0.08f, 0.23f, 0.19f, 0.58f);
             node.GlowOutline.Visible = true;
-            node.GlowOutline.Modulate = new Color(0.88f, 0.84f, 0.42f, 0.78f);
+            node.GlowOutline.Modulate = new Color(0.88f, 0.78f, 0.38f, 0.55f);
             node.LootIcon.Texture = cell.LootKind switch
             {
                 BilgeLootKind.GoldSmall or BilgeLootKind.GoldMedium => _goldIcon,
@@ -806,15 +752,26 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
                 _ => null,
             };
             node.LootIcon.Visible = node.LootIcon.Texture != null;
-            node.SubLabel.Text = cell.LootKind switch
+
+            bool isGold = cell.LootKind is BilgeLootKind.GoldSmall or BilgeLootKind.GoldMedium;
+            if (isGold)
             {
-                BilgeLootKind.GoldSmall or BilgeLootKind.GoldMedium => $"+{cell.GoldValue}G",
-                BilgeLootKind.Potion => ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.cellPotion"),
-                BilgeLootKind.Card => ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.cellCard"),
-                BilgeLootKind.CommonRelic => ThingsMinigameUiTheme.Tr("THINGS_BILGE_MINES.ui.cellRelic"),
-                _ => string.Empty,
-            };
-            node.SubLabel.AddThemeColorOverride("font_color", new Color("#fae28e"));
+                node.LootIcon.OffsetLeft = 18f;
+                node.LootIcon.OffsetTop = 8f;
+                node.LootIcon.OffsetRight = -18f;
+                node.LootIcon.OffsetBottom = -24f;
+                node.SubLabel.Text = $"+{cell.GoldValue}G";
+                node.SubLabel.AddThemeColorOverride("font_color", new Color("#fae28e"));
+            }
+            else
+            {
+                // Unmistakable vanilla Crystal Sphere icons stand cleanly on their own — no redundant text tags!
+                node.LootIcon.OffsetLeft = 14f;
+                node.LootIcon.OffsetTop = 14f;
+                node.LootIcon.OffsetRight = -14f;
+                node.LootIcon.OffsetBottom = -14f;
+                node.SubLabel.Text = string.Empty;
+            }
 
             if (cell.AdjacentMines > 0)
             {
@@ -832,7 +789,7 @@ public partial class NBilgeSweepScreen : Control, IOverlayScreen
         }
 
         // Revealed safe open canal water
-        node.WaterWash.Color = new Color(0.02f, 0.08f, 0.11f, 0.28f);
+        node.WaterWash.Color = new Color(0.02f, 0.08f, 0.11f, 0.26f);
         node.NumberLabel.HorizontalAlignment = HorizontalAlignment.Center;
         node.NumberLabel.VerticalAlignment = VerticalAlignment.Center;
         node.NumberLabel.OffsetLeft = 0f;

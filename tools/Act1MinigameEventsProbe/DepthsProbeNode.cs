@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Entities.CardRewardAlternatives;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Relics;
+using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.Localization;
@@ -20,6 +21,7 @@ using MegaCrit.Sts2.Core.Models.Acts;
 using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Models.Enchantments;
+using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Messages.Game.Sync;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
@@ -103,6 +105,7 @@ public partial class DepthsProbeNode : Node
             await VerifyScalesOfVanityAsync();
             await VerifyWallCrackLedgerAsync();
             await VerifySpikedDoorAsync();
+            await VerifyCloneEnchantmentRestSiteAsync();
             VerifyEncounterGates();
             VerifyMultiplayerPacketSerialization();
 
@@ -1804,6 +1807,47 @@ public partial class DepthsProbeNode : Node
         Assert(ModelDb.Event<ThingsPotionTasting>().IsAllowed(runShop), "ThingsPotionTasting allows Gold >= 40");
         Assert(ModelDb.Event<ThingsGrudgeVendingMachine>().IsAllowed(runShop), "ThingsGrudgeVendingMachine allows Gold >= 35 + HP > 8");
         Assert(ModelDb.Event<ThingsReturnsCounter>().IsAllowed(runShop), "ThingsReturnsCounter allows Gold >= 40 + HP/MaxHP safe");
+    }
+
+    private async Task VerifyCloneEnchantmentRestSiteAsync()
+    {
+        // Case 1: Fresh player without Clone enchantment or Pael's Growth gets 0 CloneRestSiteOption.
+        RunState run = SetupTestRun("clone-rest-site");
+        Player p = run.Players[0];
+        p.Gold = 120;
+        List<RestSiteOption> initialOpts = RestSiteOption.Generate(p);
+        Assert(initialOpts.OfType<CloneRestSiteOption>().Count() == 0,
+            "Player without Clone-enchanted card or Pael's Growth should not get CloneRestSiteOption");
+
+        // Case 2: Player pays 55 Gold at ThingsGildedPress (WAX_MOLD) to enchant a card with Clone without Pael's Growth.
+        ThingsGildedPress press = BeginEventForPlayer<ThingsGildedPress>(p, run);
+        EventOption? waxMold = press.CurrentOptions.FirstOrDefault(o => o.TextKey.EndsWith(".WAX_MOLD"));
+        Assert(waxMold != null && !waxMold.IsLocked, "ThingsGildedPress WAX_MOLD option available at 120 Gold");
+
+        using (ProbeRuntimeApi.UseSelector(new ProbeCardSelector(0)))
+            await waxMold!.Chosen();
+
+        Assert(p.Gold == 120 - ThingsGildedPress.MoldGoldCost, $"ThingsGildedPress WAX_MOLD deducts {ThingsGildedPress.MoldGoldCost} Gold");
+        Assert(p.Deck.Cards.Count(c => c.Enchantment is Clone) == 1, "Exactly 1 card receives Clone enchantment");
+        Assert(!p.Relics.OfType<PaelsGrowth>().Any(), "Test player does not own Pael's Growth");
+
+        List<RestSiteOption> afterEnchantOpts = RestSiteOption.Generate(p);
+        List<CloneRestSiteOption> cloneOpts = afterEnchantOpts.OfType<CloneRestSiteOption>().ToList();
+        Assert(cloneOpts.Count == 1, $"Clone-enchanted card injects exactly 1 CloneRestSiteOption (got {cloneOpts.Count})");
+
+        int deckBefore = p.Deck.Cards.Count;
+        bool clonedOk = await cloneOpts[0].OnSelect();
+        Assert(clonedOk, "CloneRestSiteOption.OnSelect succeeds without Pael's Growth");
+        Assert(p.Deck.Cards.Count == deckBefore + 1,
+            $"CloneRestSiteOption duplicates the Clone-enchanted card into deck ({deckBefore} -> {p.Deck.Cards.Count})");
+        Assert(p.Deck.Cards.Count(c => c.Enchantment is Clone) == 2,
+            "Deck now holds 2 Clone-enchanted copies after campfire Clone");
+
+        // Case 3: Owning Pael's Growth + Clone-enchanted cards NEVER duplicates CloneRestSiteOption.
+        p.AddRelicInternal(ModelDb.Relic<PaelsGrowth>().ToMutable());
+        List<RestSiteOption> withRelicOpts = RestSiteOption.Generate(p);
+        Assert(withRelicOpts.OfType<CloneRestSiteOption>().Count() == 1,
+            $"Pael's Growth + Clone-enchanted deck yields exactly 1 CloneRestSiteOption (got {withRelicOpts.OfType<CloneRestSiteOption>().Count()})");
     }
 
     private async Task RenderLiveUiAndOverlaysAsync()

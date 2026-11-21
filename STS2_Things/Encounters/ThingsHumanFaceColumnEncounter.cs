@@ -7,7 +7,7 @@ namespace STS2_Things.Encounters;
 
 public sealed class ThingsHumanFaceColumnEncounter : EncounterModel
 {
-    public override RoomType RoomType => RoomType.Monster;
+    public override RoomType RoomType => RoomType.Elite;
     public override bool IsWeak => false;
     public override IEnumerable<EncounterTag> Tags => [];
     public override bool HasScene => true;

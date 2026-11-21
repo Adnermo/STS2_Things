@@ -19,8 +19,8 @@ namespace STS2_Things.Monsters;
 
 public sealed class ThingsRadioJellyfish : ThingsSpineMonster
 {
-    public const int BaseEchoDamage = 8;
-    public const int BaseSkillBlock = 6;
+    public const int BaseEchoDamage = 9;
+    public const int BaseSkillBlock = 5;
     public const string TuneMoveId = "TUNE_MOVE";
     private Dictionary<(int Phase, int Program), MoveState>? _replays;
     private ConditionalBranchState[]? _selectors;
@@ -33,15 +33,15 @@ public sealed class ThingsRadioJellyfish : ThingsSpineMonster
         _selectors = null;
         ActiveProgram = null;
     }
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 188, 168);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 160, 144);
     public override int MaxInitialHp => MinInitialHp;
     public override float HpBarSizeReduction => 35f;
-    // Reception adds 1 per stack to both the native intent and actual hit.
-    // One opening stack gives 9/10 damage and 7/9 Block per Skill.
-    public int EchoDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 9, BaseEchoDamage);
-    public int ShieldPerSkill => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, BaseSkillBlock)
+    // Reception adds 2 per stack to both the native intent and actual hit.
+    // One opening stack gives 11/12 damage and 7/8 Block per Skill.
+    public int EchoDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, BaseEchoDamage);
+    public int ShieldPerSkill => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 6, BaseSkillBlock)
         + (Creature.GetPower<ThingsRadioReceptionPower>()?.ReplayBonus ?? 0);
-    private int TuningBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 16, 12);
+    private int TuningBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 14, 10);
     public bool IsTuningTurn => NextMove.StateId == TuneMoveId ||
         (NextMove.StateId == MonsterModel.stunnedMoveId &&
          (NextMove.FollowUpState?.Id ?? NextMove.FollowUpStateId) == TuneMoveId);

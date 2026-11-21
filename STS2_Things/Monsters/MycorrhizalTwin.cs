@@ -22,16 +22,21 @@ public abstract class MycorrhizalTwin : ThingsSpineMonster
     public abstract bool IsVanguard { get; }
     public bool IsFurious => Creature.GetPower<ThingsMycorrhizalFuryPower>() != null;
     public bool IsRobust => IsFurious || Creature.GetPower<ThingsMycorrhizalBondPower>()?.IsRobust == true;
-    public int StrengthGift => IsRobust ? 3 : 1;
-    public int ArmorGift => IsRobust ? 3 : 2;
+    public int StrengthGift => IsRobust ? 3 : 2;
+    public int ArmorGift => IsRobust ? 4 : 2;
+    public int FrailGift => IsRobust ? 2 : 1;
+    public int SwapStrengthGain => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 2, 1);
+    public int SwapNourishHeal => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, 6);
+    public int DeathStrengthGain => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
+    public int DeathBlockGain => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 18, 15);
     public int ScaleProtection(int value) => (int)Math.Round(value * (IsRobust ? 1.25m : .75m), MidpointRounding.AwayFromZero);
     public MycorrhizalTwin? Partner => Creature.CombatState?.Enemies.Select(c => c.Monster)
         .OfType<MycorrhizalTwin>().FirstOrDefault(m => m != this && m.IsVanguard != IsVanguard && m.Creature.IsAlive);
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 104, 94);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 100, 92);
     public override int MaxInitialHp => MinInitialHp;
     public override float HpBarSizeReduction => 75f;
     protected int Damage(int normal, int hard) => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, hard, normal);
-    protected int Guard => ScaleProtection(AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 13, 11));
+    protected int Guard => ScaleProtection(AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 14, 12));
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/fogmog/fogmog_attack";
     public override string DeathSfx => ModelDb.Monster<Fogmog>().DeathSfx;
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Plant;
@@ -86,30 +91,30 @@ public abstract class MycorrhizalTwin : ThingsSpineMonster
     protected IEnumerable<Creature> LivingTwins => CombatState.Enemies
         .Where(c => c.IsAlive && (c == Creature || c.Monster == Partner)).ToArray();
 
-    protected async Task Strengthen()
+    protected async Task Strengthen(bool solo = false)
     {
         SfxCmd.Play("event:/sfx/enemy/enemy_attacks/fogmog/fogmog_summon");
-        await BeginPose("Cast","cast",.60f);
-        foreach (var ally in LivingTwins)
+        foreach (var ally in solo ? new[] { Creature } : LivingTwins)
             await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), ally, StrengthGift, Creature, null);
-        await FinishPose("cast",1.5f,0);
     }
 
     protected async Task Armor(bool solo = false)
     {
-        await BeginPose("Guard","guard",.56f);
+        int plating = solo ? 3 : ArmorGift;
         foreach (var ally in solo ? new[] { Creature } : LivingTwins)
         {
-            await PowerCmd.Apply<PlatingPower>(new ThrowingPlayerChoiceContext(), ally, ArmorGift, Creature, null);
-            if (solo) await CreatureCmd.GainBlock(ally, Guard + ScaleProtection(6), ValueProp.Move, null);
+            await PowerCmd.Apply<PlatingPower>(new ThrowingPlayerChoiceContext(), ally, plating, Creature, null);
+            if (solo) await CreatureCmd.GainBlock(ally, Guard, ValueProp.Move, null);
         }
-        await FinishPose("guard",1.5f,0);
     }
 
-    protected async Task Shelter()
+    protected async Task Shelter(IReadOnlyList<Creature> targets)
     {
         await BeginPose("Guard","guard",.56f);
         foreach (var ally in LivingTwins) await CreatureCmd.GainBlock(ally, Guard, ValueProp.Move, null);
+        Creature[] livingPlayers = targets.Where(t => t.IsAlive).ToArray();
+        if (livingPlayers.Length > 0)
+            await PowerCmd.Apply<FrailPower>(new ThrowingPlayerChoiceContext(), livingPlayers, FrailGift, Creature, null);
         await FinishPose("guard",1.5f,0);
     }
 }

@@ -32,6 +32,7 @@ public sealed class ThingsHumanFaceColumn : ThingsSpineMonster
     public bool IsTopVisible => _group?.Living.LastOrDefault() == this;
     public bool IsDizzy => NextMove?.Id == stunnedMoveId;
     public bool IsReplacement { get; private set; }
+    internal Creature? BottomLivingCreature => _group?.BottomLiving?.Creature;
 
     protected override void AfterCloned()
     {

@@ -26,7 +26,7 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
     public override PowerType Type => PowerType.Buff;
     public override PowerStackType StackType => PowerStackType.None;
     protected override IEnumerable<DynamicVar> CanonicalVars =>
-        [new IntVar("StrengthAmount", 1), new IntVar("UnplayedBlock", 6)];
+        [new IntVar("StrengthAmount", 1), new IntVar("UnplayedBlock", 5)];
 
     protected override void AfterCloned()
     {
@@ -37,7 +37,7 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
     public override Task AfterApplied(Creature? applier, CardModel? cardSource)
     {
         DynamicVars["StrengthAmount"].BaseValue = Owner.Monster is ThingsReverseSalamander monster ? monster.GrowthAmount : 1;
-        DynamicVars["UnplayedBlock"].BaseValue = Owner.Monster is ThingsReverseSalamander m ? m.UnplayedRecallBlock : 6;
+        DynamicVars["UnplayedBlock"].BaseValue = Owner.Monster is ThingsReverseSalamander m ? m.UnplayedRecallBlock : 5;
         return Task.CompletedTask;
     }
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>

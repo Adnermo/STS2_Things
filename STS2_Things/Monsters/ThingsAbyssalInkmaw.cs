@@ -65,7 +65,14 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     public const string InkSprayId = "INK_SPRAY";
     public const string PostSprayStunId = "POST_SPRAY_STUN";
     public const string Phase2SurgeId = "PHASE2_SURGE";
+    public const string Phase2SurgeNoSummonId = "PHASE2_SURGE_NO_SUMMON";
     public const string MoveRouterId = "MOVE_ROUTER";
+
+    /// <summary>单次召唤回合（含二阶段转场）最多召唤的触手总数，杜绝一次铺满 4 条。</summary>
+    public const int MaxTentaclesPerSummon = 2;
+
+    /// <summary>任意召唤回合执行后，至少间隔 2 个非召唤回合才允许再次召唤，杜绝连招召唤。</summary>
+    public const int SummonCooldownAfterSpawn = 2;
 
     private enum InkSequenceStage
     {
@@ -78,6 +85,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     private bool _phase2Pending;
     private bool _deathHandled;
     private int _cycleStep;
+    private int _summonCooldownTurns;
     private InkSequenceStage _inkSequenceStage;
 
     public int Phase2HpThreshold => (Creature.MaxHp + 1) / 2;
@@ -177,7 +185,23 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         _phase2Pending = false;
         _deathHandled = false;
         _cycleStep = 0;
+        _summonCooldownTurns = 0;
         _inkSequenceStage = InkSequenceStage.None;
+    }
+
+    protected override bool ShouldShowMoveInBestiary(string moveStateId) =>
+        moveStateId != Phase2SurgeNoSummonId;
+
+    private bool HasVacantTentacleSlot => LivingTentacleCount < 2 || LivingSmallTentacleCount < 2;
+
+    private bool CanSummonNow => _summonCooldownTurns <= 0 && HasVacantTentacleSlot;
+
+    private string ResolvePhase2SurgeMoveId() => CanSummonNow ? Phase2SurgeId : Phase2SurgeNoSummonId;
+
+    private void TickSummonCooldown()
+    {
+        if (_summonCooldownTurns > 0)
+            _summonCooldownTurns--;
     }
 
     public override async Task BeforeCombatStart()
@@ -349,7 +373,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         {
             bool wasChargingOrSpraying = NextMove?.Id == InkChargeId || NextMove?.Id == InkSprayId;
             _inkSequenceStage = InkSequenceStage.None;
-            SetMoveImmediate(Move(Phase2SurgeId), forceTransition: true);
+            SetMoveImmediate(Move(ResolvePhase2SurgeMoveId()), forceTransition: true);
             NAbyssalInkmawBossBackground.Current?.SetBossStance(NAbyssalInkmawBossBackground.BossStance.Normal);
 
             if (wasChargingOrSpraying)
@@ -414,16 +438,23 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
             new SummonIntent(),
             new DefendIntent());
 
-        // 7-turn repeatable Boss cadence:
-        //   T1 ABYSSAL_UNDERTOW -> T2 SUMMON_TENTACLE (or ABYSSAL_PRESSURE if full board) ->
+        var phase2SurgeNoSummon = new MoveState(
+            Phase2SurgeNoSummonId,
+            Phase2SurgeNoSummonMove,
+            new BuffIntent(),
+            new DefendIntent());
+
+        // 7-turn repeatable Boss cadence (with strict summon cooldown & max-2 cap):
+        //   T1 ABYSSAL_UNDERTOW -> T2 SUMMON_TENTACLE (only if cooldown == 0 & slot free, else ABYSSAL_PRESSURE) ->
         //   T3 TIDAL_CRASH -> T4 ABYSSAL_PRESSURE ->
         //   [T5 INK_CHARGE -> T6 INK_SPRAY -> T7 POST_SPRAY_STUN] -> T8 repeats!
         var router = new ConditionalBranchState(MoveRouterId);
         router.AddState(postSprayStun, () => _inkSequenceStage == InkSequenceStage.StunNext);
-        router.AddState(phase2Surge, () => Phase == 1 && (_phase2Pending || Creature.CurrentHp <= Phase2HpThreshold));
+        router.AddState(phase2Surge, () => Phase == 1 && (_phase2Pending || Creature.CurrentHp <= Phase2HpThreshold) && CanSummonNow);
+        router.AddState(phase2SurgeNoSummon, () => Phase == 1 && (_phase2Pending || Creature.CurrentHp <= Phase2HpThreshold));
         router.AddState(inkSpray, () => _inkSequenceStage == InkSequenceStage.SprayNext);
         router.AddState(abyssalUndertow, () => _cycleStep == 0);
-        router.AddState(summonTentacle, () => _cycleStep == 1 && (LivingTentacleCount < 2 || LivingSmallTentacleCount < 2));
+        router.AddState(summonTentacle, () => _cycleStep == 1 && CanSummonNow);
         router.AddState(abyssalPressure, () => _cycleStep == 1);
         router.AddState(tidalCrash, () => _cycleStep == 2);
         router.AddState(abyssalPressure, () => _cycleStep == 3);
@@ -437,9 +468,10 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         inkSpray.FollowUpState = router;
         postSprayStun.FollowUpState = router;
         phase2Surge.FollowUpState = router;
+        phase2SurgeNoSummon.FollowUpState = router;
 
         return new MonsterMoveStateMachine(
-            [abyssalUndertow, summonTentacle, tidalCrash, abyssalPressure, inkCharge, inkSpray, postSprayStun, phase2Surge, router],
+            [abyssalUndertow, summonTentacle, tidalCrash, abyssalPressure, inkCharge, inkSpray, postSprayStun, phase2Surge, phase2SurgeNoSummon, router],
             abyssalUndertow);
     }
 
@@ -448,6 +480,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     private async Task AbyssalUndertowMove(IReadOnlyList<Creature> targets)
     {
         _cycleStep++;
+        TickSummonCooldown();
         NAbyssalInkmawBossBackground.Current?.PlayTidalCrash();
 
         await WaitForCombatBeatAsync(0.58f);
@@ -469,6 +502,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     private async Task TidalCrashMove(IReadOnlyList<Creature> targets)
     {
         _cycleStep++;
+        TickSummonCooldown();
         NAbyssalInkmawBossBackground.Current?.PlayTidalCrash();
 
         // Exact `tidal_hit` Spine event timing (`t = 0.78s`) when twin flanking tsunami plumes erupt!
@@ -493,6 +527,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     private async Task AbyssalPressureMove(IReadOnlyList<Creature> targets)
     {
         _cycleStep++;
+        TickSummonCooldown();
         NAbyssalInkmawBossBackground.Current?.PlayBossPressurePulse();
         await WaitForCombatBeatAsync(0.62f);
 
@@ -505,14 +540,18 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     private async Task SummonTentacleMove(IReadOnlyList<Creature> targets)
     {
         _cycleStep++;
+        _summonCooldownTurns = SummonCooldownAfterSpawn;
         NAbyssalInkmawBossBackground.Current?.PlaySummonTentacle();
         await WaitForCombatBeatAsync(0.70f);
 
         await CreatureCmd.GainBlock(Creature, SummonBlock, ValueProp.Move, null);
         bool floorBreach = Phase >= 2;
         var choice = new ThrowingPlayerChoiceContext();
-        await EnsureTentaclesSummonedAsync(floorBreach, choice);
-        await SpawnSmallTentaclesAsync(Phase >= 2 ? 2 : 1, choice);
+        await SummonTentaclesWithBudgetAsync(
+            maxTotal: MaxTentaclesPerSummon,
+            maxSmall: Phase >= 2 ? MaxTentaclesPerSummon : 1,
+            floorBreach: floorBreach,
+            choiceContext: choice);
         await WaitForCombatBeatAsync(0.45f);
     }
 
@@ -521,6 +560,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         // Deliberately performs NO attack or self-stat gain — all surviving tentacles supply
         // their unique temporary buffs on this turn while Boss gathers abyssal pressure.
         _inkSequenceStage = InkSequenceStage.SprayNext;
+        TickSummonCooldown();
         NAbyssalInkmawBossBackground.Current?.PlayBossChargePulse();
         await WaitForCombatBeatAsync(0.85f);
     }
@@ -529,6 +569,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     {
         _inkSequenceStage = InkSequenceStage.StunNext;
         _cycleStep = 0;
+        TickSummonCooldown();
 
         NAbyssalInkmawBossBackground.Current?.PlayInkSpray();
         NAbyssalInkSprayOverlay.PlaySweepDrench();
@@ -556,12 +597,19 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     private async Task PostSprayStunMove(IReadOnlyList<Creature> targets)
     {
         _inkSequenceStage = InkSequenceStage.None;
+        TickSummonCooldown();
         SpawnNativeStunnedVfx(Creature);
         await WaitForCombatBeatAsync(0.55f);
         NAbyssalInkmawBossBackground.Current?.SetBossStance(NAbyssalInkmawBossBackground.BossStance.Normal);
     }
 
-    private async Task Phase2SurgeMove(IReadOnlyList<Creature> targets)
+    private Task Phase2SurgeMove(IReadOnlyList<Creature> targets) =>
+        ExecutePhase2SurgeCoreAsync(allowSummon: true);
+
+    private Task Phase2SurgeNoSummonMove(IReadOnlyList<Creature> targets) =>
+        ExecutePhase2SurgeCoreAsync(allowSummon: false);
+
+    private async Task ExecutePhase2SurgeCoreAsync(bool allowSummon)
     {
         Phase = 2;
         _phase2Pending = false;
@@ -585,11 +633,70 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         await PowerCmd.Apply<StrengthPower>(choice, Creature, Phase2Strength, Creature, null);
         await CreatureCmd.GainBlock(Creature, Phase2Block, ValueProp.Move, null);
 
-        // In Phase 2 【暗潮狂涌】, any missing major tentacle smashes directly through the stone bridge slabs
-        // and outer bridge breach craters erupt with up to 2 distinct small tendril variants!
-        await EnsureTentaclesSummonedAsync(floorBreach: true, choice);
-        await SpawnSmallTentaclesAsync(2, choice);
+        if (allowSummon)
+        {
+            // Strictly cap Phase 2 Surge at MaxTentaclesPerSummon (2) total (missing majors first,
+            // then distinct small breach tentacles with remaining budget) and start summon cooldown
+            // so the boss never chains consecutive or back-to-back summon turns.
+            _summonCooldownTurns = SummonCooldownAfterSpawn;
+            await SummonTentaclesWithBudgetAsync(
+                maxTotal: MaxTentaclesPerSummon,
+                maxSmall: MaxTentaclesPerSummon,
+                floorBreach: true,
+                choiceContext: choice);
+        }
+        else
+        {
+            TickSummonCooldown();
+        }
         await WaitForCombatBeatAsync(0.65f);
+    }
+
+    internal async Task<int> SummonTentaclesWithBudgetAsync(
+        int maxTotal,
+        int maxSmall,
+        bool floorBreach,
+        PlayerChoiceContext choiceContext)
+    {
+        if (CombatState == null || !Creature.IsAlive || maxTotal <= 0)
+            return 0;
+
+        int spawned = 0;
+        if (spawned < maxTotal && LivingLeftTentacle == null)
+        {
+            var leftMonster = (ThingsAbyssalCrushingTentacle)ModelDb.Monster<ThingsAbyssalCrushingTentacle>().ToMutable();
+            leftMonster.ConfigureSpawn(floorBreach, playEmergeOnAdd: true);
+            string? slot = ResolveSlot(ThingsAbyssalInkmawBossEncounter.LeftTentacleSlot);
+            Creature added = await CreatureCmd.Add(leftMonster, CombatState, Creature.Side, slot);
+            await PowerCmd.Apply<MinionPower>(choiceContext, added, 1m, Creature, null);
+            spawned++;
+        }
+
+        if (spawned < maxTotal && LivingRightTentacle == null)
+        {
+            var rightMonster = (ThingsAbyssalInkTentacle)ModelDb.Monster<ThingsAbyssalInkTentacle>().ToMutable();
+            rightMonster.ConfigureSpawn(floorBreach, playEmergeOnAdd: true);
+            string? slot = ResolveSlot(ThingsAbyssalInkmawBossEncounter.RightTentacleSlot);
+            Creature added = await CreatureCmd.Add(rightMonster, CombatState, Creature.Side, slot);
+            await PowerCmd.Apply<MinionPower>(choiceContext, added, 1m, Creature, null);
+            spawned++;
+        }
+
+        int smallBudget = Math.Min(maxTotal - spawned, maxSmall);
+        if (smallBudget > 0)
+        {
+            int smallBefore = LivingSmallTentacleCount;
+            await SpawnSmallTentaclesAsync(smallBudget, choiceContext);
+            spawned += Math.Max(0, LivingSmallTentacleCount - smallBefore);
+        }
+
+        if (spawned > 0)
+        {
+            CombatState.SortEnemiesBySlotName();
+            await SyncCoverPowerAsync(choiceContext);
+            NAbyssalInkmawBossBackground.Current?.AlignStageAndPlayers();
+        }
+        return spawned;
     }
 
     internal static void SpawnNativeStunnedVfx(Creature creature)
@@ -716,11 +823,10 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     {
         NAbyssalInkmawBossBackground.Current?.PlayTentacleRetreatDie(isLeft);
 
-        // Severing ANY major bridge tentacle immediately washes ALL blackened cards across the entire
-        // deck clean, surgically restores original energy costs, and removes ThingsInkBlackoutPower!
+        // Severing ANY major bridge tentacle removes ThingsInkBlackoutPower FIRST (so IsVeiled flips false
+        // immediately), then washes ALL blackened cards clean across every combat pile and restores original costs!
         if (CombatState != null)
         {
-            AbyssalInkBlackout.WashAllCards(CombatState);
             foreach (Player player in CombatState.Players)
             {
                 if (player.Creature.GetPower<ThingsInkBlackoutPower>() is { } inkPower)
@@ -728,6 +834,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
                     await PowerCmd.Remove(inkPower);
                 }
             }
+            AbyssalInkBlackout.WashAllCards(CombatState);
         }
 
         if (!Creature.IsAlive || CombatManager.Instance.IsOverOrEnding)
@@ -794,6 +901,13 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
 
         if (CombatState != null)
         {
+            foreach (Player player in CombatState.Players)
+            {
+                if (player.Creature.GetPower<ThingsInkBlackoutPower>() is { } inkPower)
+                {
+                    await PowerCmd.Remove(inkPower);
+                }
+            }
             AbyssalInkBlackout.WashAllCards(CombatState);
             List<Creature> survivingTentacles = CombatState.Enemies
                 .Where(e => e.IsAlive && e != Creature &&

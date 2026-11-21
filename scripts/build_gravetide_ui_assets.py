@@ -88,6 +88,10 @@ def fit_alpha_source(
     bbox = alpha.getbbox()
     if bbox is None:
         raise RuntimeError(f"ImageGen source has no visible pixels: {source}")
+    # Preserve pre-aligned exact-size icon/outline pairs verbatim so their
+    # morphological outline halo stays registered 1:1 with the inner icon.
+    if crop_box is None and image.size == output_size:
+        return image
     subject = image.crop(bbox)
     fitted = ImageOps.contain(
         subject,
@@ -121,14 +125,10 @@ def validate_output(path: Path, expected_size: tuple[int, int]) -> None:
 
 
 def build_power() -> None:
-    # This crop intentionally retains only the stomach vortex and one pale bone.
-    # The discarded antennae and gold body marking were the source of the old
-    # icon's noisy, multi-symbol read at 64 pixels.
     power = fit_alpha_source(
         POWER_SOURCE,
         (256, 256),
         margin=10,
-        crop_box=(350, 620, 1940, 2220),
     )
     power_path = ROOT / "images/powers/things_gravetide_digestion_power.png"
     packed_path = ROOT / "images/powers/things_gravetide_digestion_power_packed.png"

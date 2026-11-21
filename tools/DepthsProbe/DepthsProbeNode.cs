@@ -159,6 +159,11 @@ public partial class DepthsProbeNode : Node
                 await VerifyAbyssalInkmawRules();await ReleaseProbeResources();
                 GD.Print($"Depths Abyssal Inkmaw probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
             }
+            if(OS.GetCmdlineUserArgs().Contains("--inkmaw-veil-only"))
+            {
+                await VerifyAbyssalInkBlackoutVeilLifecycleAsync();await ReleaseProbeResources();
+                GD.Print($"Depths Abyssal Inkmaw veil lifecycle probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
+            }
             if(OS.GetCmdlineUserArgs().Contains("--fool-arrows-only"))
             {
                 await VerifyFoolArrowRegressions();await ReleaseProbeResources();
@@ -268,10 +273,10 @@ public partial class DepthsProbeNode : Node
         Assert(act.AllWeakEncounters.Select(e=>e.GetType()).ToHashSet().SetEquals([
             typeof(ThingsLanternFishWeak),typeof(ThingsSanguineLeechWeak),typeof(ThingsCaveMawWeak),
             typeof(ThingsFleetingEchoWeak),typeof(ThingsSnailTrioWeak),typeof(ThingsScalePeelerWeak)]),
-            "Six pure weak encounter entries; the column and chromatic slime belong only to the strong pool.");
+            "Six pure weak encounter entries; chromatic slime belongs to regular and column belongs to elite.");
         Assert(act.AllRegularEncounters.Select(e=>e.GetType()).ToHashSet().SetEquals(StrongRosterContracts.Keys),"Independent regular encounter entries match the authored rosters.");
-        var depthsEliteTypes=new HashSet<Type>{typeof(ThingsMycorrhizalTwinsElite),typeof(ThingsReverseSalamanderElite),typeof(ThingsRadioJellyfishElite)};
-        Assert(act.AllEliteEncounters.Select(e=>e.GetType()).ToHashSet().SetEquals(depthsEliteTypes),"Depths elite pool contains exclusively the three custom Depths elites.");
+        var depthsEliteTypes=new HashSet<Type>{typeof(ThingsMycorrhizalTwinsElite),typeof(ThingsReverseSalamanderElite),typeof(ThingsRadioJellyfishElite),typeof(ThingsHumanFaceColumnEncounter)};
+        Assert(act.AllEliteEncounters.Select(e=>e.GetType()).ToHashSet().SetEquals(depthsEliteTypes),"Depths elite pool contains exclusively the four custom Depths elites.");
         Assert(!ModelDb.Act<Hive>().AllEncounters.Any(e=>depthsEliteTypes.Contains(e.GetType())) &&
                !act.AllEliteEncounters.Any(e=>ModelDb.Act<Hive>().AllEncounters.Select(x=>x.GetType()).Contains(e.GetType())),
             "Depths and Hive elite pools are strictly disjoint.");
@@ -337,7 +342,6 @@ public partial class DepthsProbeNode : Node
             [typeof(ThingsSanguineLeechEncounter)]=[Leech],
             [typeof(ThingsLeechMotherEncounter)]=[Leech],
             [typeof(ThingsSilkMothTrio)]=[Moth],
-            [typeof(ThingsHumanFaceColumnEncounter)]=[],
             [typeof(ThingsChromaticSlimeWeak)]=[Slime],
             [typeof(ThingsSpongeLeechEncounter)]=[Leech,Sponge],
             [typeof(ThingsLanternSpongeEncounter)]=[Fish,Sponge],
@@ -347,8 +351,8 @@ public partial class DepthsProbeNode : Node
         };
         var vanillaTags=Enum.GetValues<EncounterTag>().ToHashSet();
         var corridor=act.AllWeakEncounters.Concat(act.AllRegularEncounters).ToArray();
-        Assert(corridor.Length==17 && corridor.Select(e=>e.GetType()).ToHashSet().SetEquals(expected.Keys),
-            "All 17 Depths corridor encounters are accounted for in tag contract.");
+        Assert(corridor.Length==16 && corridor.Select(e=>e.GetType()).ToHashSet().SetEquals(expected.Keys),
+            "All 16 Depths corridor encounters are accounted for in tag contract.");
         foreach(var enc in corridor)
         {
             var actual=enc.Tags.ToArray();
@@ -385,16 +389,18 @@ public partial class DepthsProbeNode : Node
             Assert(!firstThree[0].SharesTagsWith(firstThree[1]) && !firstThree[1].SharesTagsWith(firstThree[2]),
                 "Opening weak pair and weak-to-regular transition never repeat a Depths family tag.");
             int expectedUnique=Math.Min(save.SerializableRooms.NormalEncounterIds.Count-2,act.AllRegularEncounters.Count());
-            Assert(save.SerializableRooms.NormalEncounterIds.Skip(2).Take(expectedUnique).Distinct().Count()==expectedUnique,"Regular entries do not repeat before the eleven-entry bag is exhausted.");
+            Assert(save.SerializableRooms.NormalEncounterIds.Skip(2).Take(expectedUnique).Distinct().Count()==expectedUnique,"Regular entries do not repeat before the ten-entry bag is exhausted.");
             var eliteIds=save.SerializableRooms.EliteEncounterIds;
             Assert(eliteIds.Count==15 && save.SerializableRooms.AncientId!=null,"Elite and ancient room sets complete.");
             Assert(eliteIds.All(id=>act.AllEliteEncounters.Any(e=>e.Id==id) &&
                 ModelDb.GetById<EncounterModel>(id).GetType().Assembly==typeof(ThingsDepths).Assembly),
                 "All fifteen generated elite rooms belong exclusively to custom Depths elites (zero vanilla Hive elites).");
-            for(int bagStart=0;bagStart<15;bagStart+=3)
+            int elitePoolCount=act.AllEliteEncounters.Count();
+            for(int bagStart=0;bagStart<15;bagStart+=elitePoolCount)
             {
-                Assert(eliteIds.Skip(bagStart).Take(3).Distinct().Count()==3,
-                    "Each three-elite grab-bag cycle yields all three custom Depths elites without duplicates.");
+                int sliceLen=Math.Min(elitePoolCount,15-bagStart);
+                Assert(eliteIds.Skip(bagStart).Take(sliceLen).Distinct().Count()==sliceLen,
+                    "Each four-elite grab-bag cycle yields distinct custom Depths elites without duplicates.");
             }
             for(int i=1;i<eliteIds.Count;i++)
             {
@@ -422,10 +428,10 @@ public partial class DepthsProbeNode : Node
         Assert(regularSeen.Contains(ModelDb.Encounter<ThingsLanternSpongeEncounter>().Id),"Native room generation rolls the lantern sponge regular encounter.");
         Assert(regularSeen.Contains(ModelDb.Encounter<ThingsScalePeelerEncounter>().Id),"Native room generation rolls the scale peeler regular encounter.");
         Assert(regularSeen.Contains(ModelDb.Encounter<ThingsChromaticSlimeWeak>().Id),"Native room generation rolls the chromatic slime regular encounter.");
-        Assert(regularSeen.SetEquals(ModelDb.Act<ThingsDepths>().AllRegularEncounters.Select(e=>e.Id)),"All eleven regular encounters roll organically.");
+        Assert(regularSeen.SetEquals(ModelDb.Act<ThingsDepths>().AllRegularEncounters.Select(e=>e.Id)),"All ten regular encounters roll organically.");
         Assert(weakSeen.SetEquals(ModelDb.Act<ThingsDepths>().AllWeakEncounters.Select(e=>e.Id)),"All six weak encounters remain reachable.");
-        Assert(eliteSeen.SetEquals(ModelDb.Act<ThingsDepths>().AllEliteEncounters.Select(e=>e.Id)),"All three custom Depths elites roll organically.");
-        GD.Print("PASS 64 native 1-4 player room sets, eleven-entry bags, generated maps and binary save/load round trips.");
+        Assert(eliteSeen.SetEquals(ModelDb.Act<ThingsDepths>().AllEliteEncounters.Select(e=>e.Id)),"All four custom Depths elites roll organically.");
+        GD.Print("PASS 64 native 1-4 player room sets, ten-entry regular & four-elite bags, generated maps and binary save/load round trips.");
     }
 
     private async Task VerifyNativeActProgression()

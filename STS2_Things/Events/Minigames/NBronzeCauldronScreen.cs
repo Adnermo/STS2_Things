@@ -8,12 +8,11 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 namespace STS2_Things.Events.Minigames;
 
 /// <summary>
-/// Depths multiplayer-exclusive Bronze Tripod Scramble overlay screen styled after vanilla
+/// Depths multiplayer-exclusive Bronze Tripod Scramble overlay screen modeled after vanilla
 /// CrystalSphere + Treasure Room multiplayer hands:
-/// colossal overhead hand-painted bronze cauldron filled with 24-30 gleaming Mega Crit treasures,
-/// full-screen vanilla Treasure Room character arms (ArmPaperTexture -> ArmRockTexture) anchored
-/// outside the screen edges with authentic NHandImage shoulder-tilt physics, glowing palm-capture
-/// circle, dramatic 3-2-1 countdown, and live multiplayer standings plaque.
+/// colossal overhead hand-painted bronze cauldron filled with spinning Mega Crit treasures (no floating
+/// word-tag spam!), full-screen vanilla Treasure Room character arms anchored off-screen, dramatic 3-2-1
+/// countdown, narrow right standings plaque (no dividers/logs), and bottom-right native ProceedButton.
 /// </summary>
 public partial class NBronzeCauldronScreen : Control, IOverlayScreen
 {
@@ -27,10 +26,6 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         new Color("#ff8a7a"), // Slot 3: Coral
     ];
 
-    /// <summary>
-    /// Draws the 24-30 gleaming hand-painted treasures and grab shockwave ripples inside the colossal
-    /// 720x720 bronze cauldron mouth cavity (stage position 400..1120, 180..900).
-    /// </summary>
     private sealed partial class CauldronArenaCanvas : Control
     {
         public BronzeCauldronMinigame? Minigame { get; set; }
@@ -43,14 +38,14 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         public Texture2D? CardIcon { get; set; }
         public Texture2D? UpgradeIcon { get; set; }
         public Texture2D? MaxHpIcon { get; set; }
-        public Font? BodyFont { get; set; }
+        public Font? NumberFont { get; set; }
 
         public override void _Draw()
         {
             if (Minigame == null)
                 return;
 
-            // 0. Subtle rotating clockwise golden swirl cues inside the bronze basin so players read the spin direction at a glance
+            // 0. Subtle rotating clockwise golden swirl cues inside the bronze basin
             Vector2 center = new(BronzeCauldronMinigame.Center, BronzeCauldronMinigame.Center);
             float spin = Minigame.OrbitAngle;
             float[] swirlRadii = [118f, 206f, 286f];
@@ -61,11 +56,10 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                 {
                     float startA = spin + rIdx * 0.72f + k * (MathF.Tau / 3f);
                     float spanA = 0.78f;
-                    DrawArc(center, r, startA, startA + spanA, 16, new Color(1.0f, 0.82f, 0.34f, 0.14f), 2.5f, true);
-                    // Clockwise arrowhead at leading end (startA + spanA)
+                    DrawArc(center, r, startA, startA + spanA, 16, new Color(1.0f, 0.82f, 0.34f, 0.13f), 2.5f, true);
                     float tipA = startA + spanA;
                     Vector2 tip = center + new Vector2(MathF.Cos(tipA), MathF.Sin(tipA)) * r;
-                    Vector2 tangent = new(-MathF.Sin(tipA), MathF.Cos(tipA)); // clockwise unit tangent (+angle)
+                    Vector2 tangent = new(-MathF.Sin(tipA), MathF.Cos(tipA));
                     Vector2 radial = new(MathF.Cos(tipA), MathF.Sin(tipA));
                     Vector2[] arrow =
                     [
@@ -73,11 +67,10 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                         tip - tangent * 5f + radial * 5f,
                         tip - tangent * 5f - radial * 5f,
                     ];
-                    DrawColoredPolygon(arrow, new Color(1.0f, 0.86f, 0.42f, 0.24f));
+                    DrawColoredPolygon(arrow, new Color(1.0f, 0.86f, 0.42f, 0.22f));
                 }
             }
 
-            // Identify items currently covered by the local player's open palm for instant tactile feedback
             CauldronHandState? localHand = Minigame.LocalHand;
             HashSet<int> coveredByLocal = [];
             if (localHand != null && Minigame.Phase == CauldronPhase.Scramble && localHand.GrabsRemaining > 0)
@@ -86,7 +79,7 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                     coveredByLocal.Add(cov.Index);
             }
 
-            // 1. Draw the carpeting layer of 3-10G gold coins first, then featured treasures & Cardboard Relic Boxes cleanly on top!
+            // 1. Gold coins first, then featured treasures & Cardboard Relic Boxes cleanly on top
             foreach (CauldronTreasureItem item in Minigame.Items)
             {
                 if (item.Kind != CauldronTreasureKind.Gold)
@@ -104,7 +97,7 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                 DrawTreasureItem(item, coveredByLocal.Contains(item.Index));
             }
 
-            // 2. Draw grab burst ripples (gold hit ring or crimson false-start/miss ring)
+            // 2. Grab burst ripples
             foreach (CauldronHandState hand in Minigame.Hands)
             {
                 if (hand.LastBurstTimer <= 0.01f)
@@ -112,9 +105,9 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                 float t = 1f - Math.Clamp(hand.LastBurstTimer / 0.55f, 0f, 1f);
                 float r = BronzeCauldronMinigame.PalmCaptureRadius * (0.72f + t * 0.65f);
                 Color ringCol = hand.LastBurstHit
-                    ? new Color(1.0f, 0.85f, 0.30f, (1f - t) * 0.90f)
-                    : new Color(1.0f, 0.38f, 0.35f, (1f - t) * 0.85f);
-                DrawArc(new Vector2(hand.LastBurstX, hand.LastBurstY), r, 0f, MathF.Tau, 36, ringCol, 5.5f * (1f - t * 0.5f), true);
+                    ? new Color(1.0f, 0.85f, 0.30f, (1f - t) * 0.85f)
+                    : new Color(1.0f, 0.38f, 0.35f, (1f - t) * 0.80f);
+                DrawArc(new Vector2(hand.LastBurstX, hand.LastBurstY), r, 0f, MathF.Tau, 36, ringCol, 5.0f * (1f - t * 0.5f), true);
             }
         }
 
@@ -148,27 +141,23 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
             };
             float dim = baseDim * scale;
 
-            // Grounded drop shadow inside the dark hammered bronze basin
             if (!item.IsClaimed)
             {
                 DrawSetTransform(pos + new Vector2(1.5f, dim * 0.30f), 0f, new Vector2(1.0f, 0.42f));
-                DrawCircle(Vector2.Zero, dim * 0.40f, new Color(0.03f, 0.02f, 0.01f, 0.48f));
+                DrawCircle(Vector2.Zero, dim * 0.40f, new Color(0.03f, 0.02f, 0.01f, 0.46f));
                 DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
             }
 
-            // Radiant aura ONLY on Rare Cardboard Boxes or items currently covered by your open palm!
+            // Subtle warm halo ONLY on Rare Cardboard Box or items under your open palm
             if (hoveredByLocal || item.Kind == CauldronTreasureKind.RareRelic)
             {
                 Color halo = item.Kind == CauldronTreasureKind.RareRelic
-                    ? new Color(1.0f, 0.84f, 0.20f, (hoveredByLocal ? 0.56f : 0.36f) * alpha)
-                    : new Color(1.0f, 0.88f, 0.38f, 0.32f * alpha);
+                    ? new Color(1.0f, 0.84f, 0.22f, (hoveredByLocal ? 0.46f : 0.28f) * alpha)
+                    : new Color(1.0f, 0.88f, 0.38f, 0.28f * alpha);
                 float hr = dim * 0.52f;
                 DrawCircle(pos, hr, halo);
-                if (hoveredByLocal || item.Kind == CauldronTreasureKind.RareRelic)
-                {
-                    Color rim = item.Kind == CauldronTreasureKind.RareRelic ? new Color("#ffe45e") : new Color("#fff3ba");
-                    DrawArc(pos, hr + 2f, 0f, MathF.Tau, 24, new Color(rim.R, rim.G, rim.B, alpha), hoveredByLocal ? 2.6f : 2.0f, true);
-                }
+                Color rim = item.Kind == CauldronTreasureKind.RareRelic ? new Color("#ffe45e") : new Color("#fff3ba");
+                DrawArc(pos, hr + 1.5f, 0f, MathF.Tau, 24, new Color(rim.R, rim.G, rim.B, 0.72f * alpha), hoveredByLocal ? 2.4f : 1.8f, true);
             }
 
             Texture2D? icon = ResolveItemTexture(item);
@@ -180,46 +169,24 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                 float drawH = aspect >= 1f ? dim / aspect : dim;
                 DrawSetTransform(pos, item.TiltAngle, Vector2.One);
                 if (item.Kind == CauldronTreasureKind.MaxHp)
-                {
                     DrawCircle(Vector2.Zero, dim * 0.44f, new Color(0.05f, 0.03f, 0.04f, 0.56f * alpha));
-                }
                 DrawTextureRect(icon, new Rect2(-drawW * 0.5f, -drawH * 0.5f, drawW, drawH), false, new Color(1f, 1f, 1f, alpha));
                 DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
             }
 
-            // Crisp minimalist tag ONLY on Cardboard Relic Boxes, +MaxHP hearts, or hovered items (NEVER spam 48 coin labels!)
-            bool showTag = hoveredByLocal
-                || item.Kind == CauldronTreasureKind.RareRelic
-                || item.Kind == CauldronTreasureKind.CommonRelic
-                || item.Kind == CauldronTreasureKind.MaxHp;
-            if (showTag && BodyFont != null && !item.IsClaimed)
+            // Keep ONLY tiny numeric "+3" badge on MaxHP Heart so icons stay crisp and uncluttered!
+            if (item.Kind == CauldronTreasureKind.MaxHp && NumberFont != null && !item.IsClaimed)
             {
-                (string tag, Color col) = item.Kind switch
-                {
-                    CauldronTreasureKind.RareRelic => (ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.tagRareRelic"), new Color("#ffe668")),
-                    CauldronTreasureKind.UncommonRelic => (ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.tagUncommonRelic"), new Color("#84ecff")),
-                    CauldronTreasureKind.CommonRelic => (ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.tagCommonRelic"), new Color("#f0dc9c")),
-                    CauldronTreasureKind.UpgradeCard => (ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.tagUpgrade"), new Color("#ffc070")),
-                    CauldronTreasureKind.MaxHp => ($"+{item.Value}HP", new Color("#ff98a8")),
-                    CauldronTreasureKind.Potion => (ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.tagPotion"), new Color("#8cf0c8")),
-                    CauldronTreasureKind.Card => (ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.tagCard"), new Color("#a4ceff")),
-                    _ => ($"+{item.Value}G", new Color("#ffe482")),
-                };
-                float ly = pos.Y + dim * 0.44f + 9f;
-                DrawStringOutline(BodyFont, new Vector2(pos.X - 44f, ly), tag, HorizontalAlignment.Center, 88f, 13, 5, new Color("#030a0f"));
-                DrawString(BodyFont, new Vector2(pos.X - 44f, ly), tag, HorizontalAlignment.Center, 88f, 13, col);
+                float ly = pos.Y + dim * 0.44f + 8f;
+                string tag = $"+{item.Value}";
+                DrawStringOutline(NumberFont, new Vector2(pos.X - 24f, ly), tag, HorizontalAlignment.Center, 48f, 15, 5, new Color("#030a0f"));
+                DrawString(NumberFont, new Vector2(pos.X - 24f, ly), tag, HorizontalAlignment.Center, 48f, 15, new Color("#ff9eb0"));
             }
         }
     }
 
-    /// <summary>
-    /// Full-screen 1920x1080 overlay canvas rendering every player's authentic vanilla Treasure Room
-    /// arm (366x1024px matching hand_image.tscn's 383x1072 geometry!) extending seamlessly from
-    /// OUTSIDE the screen edges with vanilla NHandImage shoulder-pivot tilt, plus the 3-2-1 countdown.
-    /// </summary>
     private sealed partial class CauldronHandsCanvas : Control
     {
-        // Matches vanilla scenes/ui/hand_image.tscn (383x1072, GrabMarker at (175/383=0.457, 222/1072=0.207))
         private const float VanillaArmWidth = 366f;
         private const float VanillaArmHeight = 1024f;
         private const float PalmAnchorX = 0.457f;
@@ -237,7 +204,6 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
 
             CauldronHandState? localHand = Minigame.LocalHand;
 
-            // 1. Remote teammates first (slightly translucent like vanilla NHandImage), local player crisp on top!
             foreach (CauldronHandState hand in Minigame.Hands)
             {
                 if (hand.Player.NetId != Minigame.LocalPlayerNetId)
@@ -246,7 +212,6 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
             if (localHand != null)
                 DrawOffscreenPlayerArm(localHand, isLocal: true);
 
-            // 2. Dramatic 3 - 2 - 1 Countdown Overlay right across the center of the giant cauldron!
             if (Minigame.Phase == CauldronPhase.Countdown && TitleFont != null)
             {
                 Vector2 center = new(
@@ -266,7 +231,6 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
 
         private void DrawOffscreenPlayerArm(CauldronHandState hand, bool isLocal)
         {
-            // Convert board-local coordinates into full 1920x1080 stage coordinates!
             Vector2 screenPos = new(
                 BronzeCauldronMinigame.StageOriginX + hand.X,
                 BronzeCauldronMinigame.StageOriginY + hand.Y);
@@ -277,29 +241,25 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
             Color seatCol = SeatColors[hand.SlotIndex % SeatColors.Length];
             int slot = hand.SlotIndex % 4;
 
-            // 1. Palm capture coverage ring ("手心覆盖区域") — muted during 3-2-1 countdown, crisp gold once left-click grab opens
             bool isLive = Minigame?.Phase == CauldronPhase.Scramble;
-            Color ringCol = new(seatCol.R, seatCol.G, seatCol.B, isLocal ? (isLive ? 0.88f : 0.42f) : 0.46f);
-            Color fillCol = new(seatCol.R, seatCol.G, seatCol.B, isLocal ? (isLive ? 0.14f : 0.05f) : 0.07f);
+            Color ringCol = new(seatCol.R, seatCol.G, seatCol.B, isLocal ? (isLive ? 0.80f : 0.38f) : 0.42f);
+            Color fillCol = new(seatCol.R, seatCol.G, seatCol.B, isLocal ? (isLive ? 0.12f : 0.04f) : 0.06f);
 
             DrawCircle(screenPos, BronzeCauldronMinigame.PalmCaptureRadius, fillCol);
-            DrawArc(screenPos, BronzeCauldronMinigame.PalmCaptureRadius, 0f, MathF.Tau, 40, ringCol, isLocal ? 3.5f : 2.2f, true);
+            DrawArc(screenPos, BronzeCauldronMinigame.PalmCaptureRadius, 0f, MathF.Tau, 40, ringCol, isLocal ? 3.0f : 2.0f, true);
 
-            // 2. Authentic vanilla Treasure Room character arm anchored OUTSIDE the screen border!
-            //    Includes vanilla NHandImage._Process shoulder-pivot tilt so arms feel alive & grounded off-screen.
             HandTextures.TryGetValue(hand.Player.NetId, out var texPair);
             Texture2D? tex = hand.IsClenched ? (texPair.Rock ?? texPair.Paper) : (texPair.Paper ?? texPair.Rock);
             if (tex != null)
             {
                 float baseRot = slot switch
                 {
-                    0 => 0f,             // Bottom screen edge -> reaching up
-                    1 => MathF.PI,       // Top screen edge    -> reaching down
-                    2 => MathF.PI * 0.5f,// Left screen edge   -> reaching right
-                    _ => -MathF.PI * 0.5f,// Right screen edge -> reaching left
+                    0 => 0f,
+                    1 => MathF.PI,
+                    2 => MathF.PI * 0.5f,
+                    _ => -MathF.PI * 0.5f,
                 };
 
-                // Vanilla NHandImage._Process tilt formula around cauldron center!
                 float shoulderTilt = slot switch
                 {
                     0 => Math.Clamp((screenPos.X - cauldronCenter.X) / 1800f, -0.30f, 0.30f),
@@ -311,7 +271,6 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                 float slamScale = hand.IsClenched ? 0.94f : 1.0f;
                 float armW = VanillaArmWidth * slamScale;
                 float armH = VanillaArmHeight * slamScale;
-                // Slightly translucent when hovering open so treasures beneath remain crisp; bright opaque when clenching!
                 Color mod = isLocal
                     ? new Color(1f, 1f, 1f, hand.IsClenched ? 0.96f : 0.84f)
                     : new Color(0.86f, 0.88f, 0.92f, hand.IsClenched ? 0.82f : 0.62f);
@@ -325,7 +284,6 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                 DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
             }
 
-            // 3. Crisp player seat badge kept cleanly inside the 1920x1080 viewport even when hand rests near screen edge
             if (BodyFont != null)
             {
                 string badge = $"P{hand.SlotIndex + 1} · {hand.Player.Character.Title.GetFormattedText()} ({hand.GrabsRemaining})";
@@ -342,15 +300,20 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
     private BronzeCauldronMinigame _minigame = null!;
     private CauldronArenaCanvas _arenaCanvas = null!;
     private CauldronHandsCanvas _handsCanvas = null!;
+    private ThingsMinigameUiTheme.FloatingPopLayer _popLayer = null!;
 
     private RichTextLabel _bottomStatusRtl = null!;
     private RichTextLabel _standingsRtl = null!;
-    private RichTextLabel _feedbackRtl = null!;
-    private ThingsMinigameUiTheme.PaintedActionButton _finishButton = null!;
+    private ThingsMinigameUiTheme.NativeProceedButton _finishButton = null!;
 
     private Font? _titleFont;
     private Font? _bodyFont;
+    private Font? _numberFont;
     private float _handSyncTimer;
+    private bool _hasOpened;
+    private string _lastFeedbackKey = string.Empty;
+    private string _lastFeedbackActor = string.Empty;
+    private int _lastFeedbackValue;
 
     public NetScreenType ScreenType => NetScreenType.None;
     public bool UseSharedBackstop => true;
@@ -382,7 +345,6 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         float dt = (float)delta;
         _minigame.Advance(dt);
 
-        // Broadcast local hand hover position to teammates at ~20Hz
         _handSyncTimer += dt;
         if (_handSyncTimer >= 0.05f && !_minigame.IsComplete)
         {
@@ -400,7 +362,6 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
     {
         if (!Visible || _minigame == null)
             return;
-        // Grabbing is driven exclusively by left-click; Space/Enter only dismisses once finished.
         if (ev is InputEventKey key && key.Pressed && !key.Echo &&
             (key.Keycode == Key.Space || key.Keycode == Key.Enter) &&
             _minigame.IsComplete)
@@ -413,7 +374,13 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
     public void AfterOverlayOpened()
     {
         if (_minigame != null)
+        {
+            _lastFeedbackKey = _minigame.LastFeedbackKey;
+            _lastFeedbackActor = _minigame.LastFeedbackActor;
+            _lastFeedbackValue = _minigame.LastFeedbackValue;
             _minigame.StateChanged += RefreshStatus;
+        }
+        _hasOpened = true;
         RefreshStatus();
     }
 
@@ -448,6 +415,7 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
     {
         _titleFont = ThingsMinigameUiTheme.GetTitleFont();
         _bodyFont = ThingsMinigameUiTheme.GetBodyFont();
+        _numberFont = ThingsMinigameUiTheme.GetNumberFont();
 
         var outerFill = new ColorRect
         {
@@ -484,7 +452,6 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         stage.AddChild(bg);
         bg.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // Full-stage hover/click surface so players smoothly guide off-screen arms across the entire cauldron & rim!
         var stageInput = new Control
         {
             Name = "CauldronStageInput",
@@ -506,14 +473,13 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                 _minigame.UpdateLocalHandPosition(
                     mb.Position.X - BronzeCauldronMinigame.StageOriginX,
                     mb.Position.Y - BronzeCauldronMinigame.StageOriginY);
-                // Ignore left-clicks completely before the opening 3-2-1 countdown finishes!
                 if (_minigame.Phase == CauldronPhase.Scramble)
                     TriggerLocalGrab();
                 AcceptEvent();
             }
         };
 
-        // Colossal 720x720 Bronze Tripod mouth cavity aligned at (400, 180) -> center (760, 540)
+        // Colossal 720x720 Bronze Tripod mouth cavity aligned at (400, 180)
         var playfield = new Control
         {
             Name = "CauldronPlayfield",
@@ -541,13 +507,12 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
             UpgradeIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/powers/hammer_time_power.png"),
             MaxHpIcon = ThingsMinigameUiTheme.TryLoadTexture("res://images/atlases/ui_atlas.sprites/top_bar/top_bar_heart.tres")
                 ?? ThingsMinigameUiTheme.TryLoadTexture("res://images/ui/emote/heart.png"),
-            BodyFont = _bodyFont,
+            NumberFont = _numberFont,
             MouseFilter = MouseFilterEnum.Ignore,
         };
         playfield.AddChild(_arenaCanvas);
         _arenaCanvas.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // Full-screen 1920x1080 vanilla off-screen hands layer (reaches smoothly over rim & floor from screen edges!)
         _handsCanvas = new CauldronHandsCanvas
         {
             Name = "HandsLayer",
@@ -557,7 +522,6 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
             MouseFilter = MouseFilterEnum.Ignore,
         };
 
-        // Load each player's authentic vanilla treasure-room Paper & Rock hands with safe Ironclad fallback
         Texture2D? fallbackPaper = ThingsMinigameUiTheme.TryLoadTexture("res://images/ui/hands/multiplayer_hand_ironclad_paper.png");
         Texture2D? fallbackRock = ThingsMinigameUiTheme.TryLoadTexture("res://images/ui/hands/multiplayer_hand_ironclad_rock.png");
         foreach (CauldronHandState hand in _minigame.Hands)
@@ -571,7 +535,11 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         stage.AddChild(_handsCanvas);
         _handsCanvas.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        // Floating Crystal-Sphere HUD Layer (above hands so standings & Claim button always stay clickable/readable!)
+        _popLayer = ThingsMinigameUiTheme.FloatingPopLayer.Create(_titleFont);
+        _popLayer.ZIndex = 20;
+        playfield.AddChild(_popLayer);
+
+        // Minimal vanilla CrystalSphere-style HUD Layer (no top-left title, no bottom helper bar)
         var hud = new Control
         {
             Name = "HudRoot",
@@ -580,25 +548,11 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         AddChild(hud);
         hud.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        var titleRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#f4d678]{ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.title")}[/color]",
-            36,
-            new Color("#f4d678"),
-            new Color("#060b14"),
-            _titleFont,
-            outlineSize: 10,
-            shadowX: 4,
-            shadowY: 3,
-            align: HorizontalAlignment.Left,
-            wrap: false);
-        hud.AddChild(titleRtl);
-        titleRtl.Position = new Vector2(44f, 20f);
-        titleRtl.CustomMinimumSize = new Vector2(520f, 52f);
-
+        // Bottom-Left: Clean vanilla counter + phase timer
         _bottomStatusRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
             string.Empty,
-            26,
-            new Color("#eef4f8"),
+            28,
+            ThingsMinigameUiTheme.VanillaCream,
             new Color("#050a12"),
             _titleFont,
             outlineSize: 10,
@@ -611,33 +565,12 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         _bottomStatusRtl.AnchorRight = 0f;
         _bottomStatusRtl.AnchorTop = 1f;
         _bottomStatusRtl.AnchorBottom = 1f;
-        _bottomStatusRtl.OffsetLeft = 40f;
+        _bottomStatusRtl.OffsetLeft = 56f;
         _bottomStatusRtl.OffsetRight = 400f;
-        _bottomStatusRtl.OffsetTop = -126f;
-        _bottomStatusRtl.OffsetBottom = -18f;
+        _bottomStatusRtl.OffsetTop = -114f;
+        _bottomStatusRtl.OffsetBottom = -34f;
 
-        var hintRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#b0c8dc]{ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.controlsHint")}[/color]",
-            16,
-            new Color("#b0c8dc"),
-            new Color("#040a12"),
-            _bodyFont,
-            outlineSize: 6,
-            shadowX: 2,
-            shadowY: 2,
-            align: HorizontalAlignment.Center,
-            wrap: true);
-        hud.AddChild(hintRtl);
-        hintRtl.AnchorLeft = 0.5f;
-        hintRtl.AnchorRight = 0.5f;
-        hintRtl.AnchorTop = 1f;
-        hintRtl.AnchorBottom = 1f;
-        hintRtl.OffsetLeft = -560f;
-        hintRtl.OffsetRight = 160f;
-        hintRtl.OffsetTop = -44f;
-        hintRtl.OffsetBottom = -8f;
-
-        // Right Column cleanly right of the colossal bronze cauldron's right handle (x = 1364..1872)
+        // Right Column: Narrow vanilla CrystalSphere 372px width (x = 1496..1868, safely >= 1340!)
         var rightAnchor = new Control
         {
             Name = "RightUi",
@@ -648,10 +581,10 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         rightAnchor.AnchorRight = 1f;
         rightAnchor.AnchorTop = 0f;
         rightAnchor.AnchorBottom = 1f;
-        rightAnchor.OffsetLeft = -556f;
-        rightAnchor.OffsetRight = -48f;
-        rightAnchor.OffsetTop = 52f;
-        rightAnchor.OffsetBottom = -52f;
+        rightAnchor.OffsetLeft = -424f;
+        rightAnchor.OffsetRight = -52f;
+        rightAnchor.OffsetTop = 64f;
+        rightAnchor.OffsetBottom = -196f;
 
         var rightCenter = new VBoxContainer
         {
@@ -662,74 +595,39 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         rightAnchor.AddChild(rightCenter);
         rightCenter.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
+        // Single clean narrow cauldron plaque (ZERO dividers, ZERO console log!)
         PanelContainer plaque = ThingsMinigameUiTheme.CreateCrystalPlaquePanel(
-            new Color(0.03f, 0.08f, 0.14f, 0.88f),
-            padH: 26,
+            new Color(0.03f, 0.08f, 0.14f, 0.86f),
+            padH: 24,
             padV: 22);
         rightCenter.AddChild(plaque);
 
         var plaqueBox = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        plaqueBox.AddThemeConstantOverride("separation", 12);
+        plaqueBox.AddThemeConstantOverride("separation", 14);
         plaque.AddChild(plaqueBox);
 
-        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeLabel(
+        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeVanillaPlaqueHeader(
             ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.standingsTitle"),
-            22,
-            new Color("#f4d678"),
             _titleFont,
-            HorizontalAlignment.Left,
-            wrap: false,
-            outlineSize: 5));
+            fontSize: 22,
+            align: HorizontalAlignment.Left));
 
-        _standingsRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            string.Empty,
-            17,
-            new Color("#edf4fa"),
-            new Color("#040910"),
-            _bodyFont,
-            outlineSize: 4,
-            shadowX: 2,
-            shadowY: 2);
-        _standingsRtl.CustomMinimumSize = new Vector2(0f, 92f);
+        _standingsRtl = ThingsMinigameUiTheme.MakeVanillaPlaqueBody(string.Empty, _bodyFont, fontSize: 17);
         plaqueBox.AddChild(_standingsRtl);
 
-        plaqueBox.AddChild(MakeDivider(new Color("#365975", 0.55f)));
-
-        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeOutlinedRichText(
-            $"[color=#d4e4f0]{ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.rules", ("Grabs", BronzeCauldronMinigame.GrabsPerPlayer))}[/color]",
-            16,
-            new Color("#d4e4f0"),
-            new Color("#040910"),
+        plaqueBox.AddChild(ThingsMinigameUiTheme.MakeVanillaPlaqueBody(
+            $"[color=#c8d6e4]{ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.rules", ("Grabs", BronzeCauldronMinigame.GrabsPerPlayer))}[/color]",
             _bodyFont,
-            outlineSize: 4,
-            shadowX: 2,
-            shadowY: 2));
+            fontSize: 17));
 
-        plaqueBox.AddChild(MakeDivider(new Color("#365975", 0.55f)));
-
-        _feedbackRtl = ThingsMinigameUiTheme.MakeOutlinedRichText(
-            string.Empty,
-            17,
-            new Color("#f5e2ad"),
-            new Color("#040910"),
-            _bodyFont,
-            outlineSize: 5,
-            shadowX: 2,
-            shadowY: 2);
-        _feedbackRtl.CustomMinimumSize = new Vector2(0f, 52f);
-        plaqueBox.AddChild(_feedbackRtl);
-
-        _finishButton = ThingsMinigameUiTheme.PaintedActionButton.Create(
+        // Authentic bottom-right vanilla STS2 ProceedButton
+        _finishButton = ThingsMinigameUiTheme.NativeProceedButton.Create(
             ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.btnClaim"),
-            new Vector2(508f, 76f),
-            baseTint: new Color("#556e80"),
-            activeTint: new Color("#6bbd94"),
-            outlineColor: new Color(1.0f, 0.80f, 0.24f, 1.0f),
-            font: _titleFont,
-            fontSize: 22,
-            textColor: new Color("#fff8d9"));
+            _titleFont,
+            fontSize: 28);
+        _finishButton.AnchorBottomRight(rightInset: 54f, bottomInset: 48f);
         _finishButton.Pressed += () => _minigame.ConfirmUiExit();
-        rightCenter.AddChild(_finishButton);
+        hud.AddChild(_finishButton);
     }
 
     private void TriggerLocalGrab()
@@ -737,13 +635,6 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         if (_minigame.TryLocalGrab(out float gx, out float gy, out bool sendToHost) && sendToHost)
             ThingsEventMinigameSync.SendCauldronGrabRequest(gx, gy);
     }
-
-    private static ColorRect MakeDivider(Color color) => new()
-    {
-        Color = color,
-        CustomMinimumSize = new Vector2(0f, 2f),
-        MouseFilter = MouseFilterEnum.Ignore,
-    };
 
     private void RefreshStatus()
     {
@@ -785,18 +676,44 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         }
         _standingsRtl.Text = string.Join("\n", standingLines);
 
-        string fb = ThingsMinigameUiTheme.Tr(
-            _minigame.LastFeedbackKey,
-            ("Actor", _minigame.LastFeedbackActor),
-            ("Value", _minigame.LastFeedbackValue));
-        string fbColor = _minigame.LastFeedbackKey.Contains("FalseStart") || _minigame.LastFeedbackKey.Contains("Miss")
-            ? "#ff9b94"
-            : (_minigame.IsComplete ? "#9de8a9" : "#f5e2ad");
-        _feedbackRtl.Text = $"[color={fbColor}]{fb}[/color]";
+        if (_hasOpened &&
+            (_minigame.LastFeedbackKey != _lastFeedbackKey ||
+             _minigame.LastFeedbackActor != _lastFeedbackActor ||
+             _minigame.LastFeedbackValue != _lastFeedbackValue))
+        {
+            _lastFeedbackKey = _minigame.LastFeedbackKey;
+            _lastFeedbackActor = _minigame.LastFeedbackActor;
+            _lastFeedbackValue = _minigame.LastFeedbackValue;
+            PopCauldronFeedback(_lastFeedbackKey, _lastFeedbackActor, _lastFeedbackValue);
+        }
 
         _finishButton.Disabled = !_minigame.IsComplete;
         _finishButton.Active = _minigame.IsComplete;
         _arenaCanvas.QueueRedraw();
         _handsCanvas.QueueRedraw();
+    }
+
+    private void PopCauldronFeedback(string key, string actor, int val)
+    {
+        if (string.IsNullOrEmpty(key) || key.EndsWith("Countdown") || key.EndsWith("Go") || key.EndsWith("Complete"))
+            return;
+
+        // Pop right over the active grabbing hand (or basin center as fallback)
+        Vector2 pos = new(BronzeCauldronMinigame.Center, BronzeCauldronMinigame.Center);
+        foreach (CauldronHandState hand in _minigame.Hands)
+        {
+            if (hand.LastBurstTimer > 0.35f)
+            {
+                pos = new Vector2(
+                    Math.Clamp(hand.LastBurstX, 120f, 600f),
+                    Math.Clamp(hand.LastBurstY - 26f, 100f, 600f));
+                break;
+            }
+        }
+        Color col = key.Contains("Miss") || key.Contains("FalseStart")
+            ? new Color("#ff9b94")
+            : (key.Contains("Rare") ? new Color("#ffe668") : new Color("#f6e4a8"));
+        string text = ThingsMinigameUiTheme.Tr(key, ("Actor", actor), ("Value", val));
+        _popLayer.Pop(pos, text, col, 21);
     }
 }

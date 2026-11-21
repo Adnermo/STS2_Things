@@ -35,7 +35,6 @@ public partial class DepthsProbeNode
         [typeof(ThingsSanguineLeechEncounter)] = [typeof(ThingsSanguineLeech), typeof(ThingsSanguineLeech), typeof(ThingsSanguineLeech)],
         [typeof(ThingsLeechMotherEncounter)] = [typeof(ThingsLeechMother)],
         [typeof(ThingsSilkMothTrio)] = [typeof(ThingsSilkMoth), typeof(ThingsGreatSilkMoth), typeof(ThingsSilkMoth)],
-        [typeof(ThingsHumanFaceColumnEncounter)] = [typeof(ThingsHumanFaceColumn), typeof(ThingsHumanFaceColumn), typeof(ThingsHumanFaceColumn)],
         [typeof(ThingsChromaticSlimeWeak)] = [typeof(ThingsChromaticSlimeLarge)],
         [typeof(ThingsSpongeLeechEncounter)] = [typeof(ThingsWaterSponge), typeof(ThingsSanguineLeech), typeof(ThingsSanguineLeech)],
         [typeof(ThingsLanternSpongeEncounter)] = [typeof(ThingsLanternFish), typeof(ThingsWaterSponge), typeof(ThingsLanternFish)],
@@ -225,6 +224,7 @@ public partial class DepthsProbeNode
     private async Task VerifyStandaloneColumns()
     {
         var canonical = ModelDb.Encounter<ThingsHumanFaceColumnEncounter>();
+        Assert(canonical.RoomType == RoomType.Elite, "Human-Faced Column belongs to the Depths elite pool.");
         var records = new List<object>();
         foreach (string seed in new[] { "column-solo-0", "column-solo-1", "column-solo-2" })
         foreach (int players in new[] { 1, 2, 3, 4 })
@@ -339,8 +339,8 @@ public partial class DepthsProbeNode
         {
             var b = await StrongBattle(ModelDb.Encounter<ThingsReverseSalamanderElite>(), players, ascension);
             var salamander = b.Monster<ThingsReverseSalamander>();
-            int expectedBlockPerPlayer = ascension == 0 ? 6 : 8;
-            Assert(salamander.UnplayedRecallBlock == expectedBlockPerPlayer, "Salamander UnplayedRecallBlock is 6 (A0) / 8 (A8+).");
+            int expectedBlockPerPlayer = ascension == 0 ? 5 : 7;
+            Assert(salamander.UnplayedRecallBlock == expectedBlockPerPlayer, "Salamander UnplayedRecallBlock is 5 (A0) / 7 (A8+).");
             var playerCreatures = b.Players.Select(p => p.Creature).ToArray();
             foreach (var p in b.Players) { p.Creature.SetMaxHpInternal(1000); p.Creature.SetCurrentHpInternal(1000); }
 
@@ -447,6 +447,17 @@ public partial class DepthsProbeNode
                 "Playing UpstreamRecall grants Strength per player.");
             await SideEnding(b, CombatSide.Player, playerCreatures);
             Assert(salamander.Creature.Block == 0, "Playing UpstreamRecall incurs zero unplayed-Reflux Block.");
+            foreach (var p in b.Players) await EndPlayer(b, p);
+            await SideEnded(b, CombatSide.Player, playerCreatures);
+            b.State.CurrentSide = CombatSide.Enemy;
+            await Hook.BeforeSideTurnStart(b.State, CombatSide.Enemy, b.Enemies);
+            await salamander.Creature.AfterTurnStart(CombatSide.Enemy);
+            await Hook.AfterBlockCleared(b.State, salamander.Creature);
+            Assert(salamander.NextMove.Id == "GATHER_MOVE", "Salamander Turn 4 executes GATHER_MOVE.");
+            int strBeforeGather = salamander.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            await salamander.PerformMove();
+            Assert(salamander.Creature.GetPower<StrengthPower>()?.Amount == strBeforeGather + 1,
+                "Salamander GATHER_MOVE grants +1 Strength for soft-enrage tempo.");
             DeactivateSyntheticCombat();
         }
 
@@ -457,12 +468,12 @@ public partial class DepthsProbeNode
             var player = b.Players[0];
             player.Creature.SetMaxHpInternal(1000);
             player.Creature.SetCurrentHpInternal(1000);
-            int expectedHit = ascension == 0 ? 9 : 10;
-            int expectedSkillBlock = ascension == 0 ? 7 : 9;
+            int expectedHit = ascension == 0 ? 11 : 12;
+            int expectedSkillBlock = ascension == 0 ? 7 : 8;
             Assert(jelly.NextMove.Intents.OfType<SingleAttackIntent>().Single().GetTotalDamage([player.Creature], jelly.Creature) == expectedHit,
-                "Radio Jellyfish opening intent reflects 9 (A0) / 10 (A9+) damage.");
+                "Radio Jellyfish opening intent reflects 11 (A0) / 12 (A9+) damage.");
             Assert(jelly.ShieldPerSkill == expectedSkillBlock,
-                "Radio Jellyfish opening ShieldPerSkill reflects 7 (A0) / 9 (A8+) Block.");
+                "Radio Jellyfish opening ShieldPerSkill reflects 7 (A0) / 8 (A8+) Block.");
 
             b.State.CurrentSide = CombatSide.Player;
             await Hook.BeforeSideTurnStart(b.State, CombatSide.Player, [player.Creature]);
@@ -488,7 +499,7 @@ public partial class DepthsProbeNode
                 $"Radio Jellyfish Playback deals {expectedHit}x2 damage for one recorded Attack plus finale.");
             DeactivateSyntheticCombat();
         }
-        GD.Print("PASS Reverse Salamander unplayed-Reflux Block carry (6/8) & Radio Jellyfish 9/10 damage and 7/9 Skill Block.");
+        GD.Print("PASS Reverse Salamander unplayed-Reflux Block carry (5/7) & Radio Jellyfish 11/12 damage and 7/8 Skill Block.");
     }
 
     private static async Task VerifyBowlbugProgenitorMechanics()
