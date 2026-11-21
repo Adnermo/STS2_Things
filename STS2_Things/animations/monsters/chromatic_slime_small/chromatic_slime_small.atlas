@@ -1,0 +1,201 @@
+chromatic_slime_small.png
+size: 1024,1536
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+crimson_body
+  rotate: false
+  xy: 2, 2
+  size: 371, 258
+  orig: 371, 258
+  offset: 0, 0
+  index: -1
+crimson_inner_blob
+  rotate: false
+  xy: 377, 2
+  size: 349, 253
+  orig: 349, 253
+  offset: 0, 0
+  index: -1
+amber_body
+  rotate: false
+  xy: 2, 264
+  size: 372, 249
+  orig: 372, 249
+  offset: 0, 0
+  index: -1
+azure_body
+  rotate: false
+  xy: 378, 264
+  size: 369, 248
+  orig: 369, 248
+  offset: 0, 0
+  index: -1
+amber_inner_blob
+  rotate: false
+  xy: 2, 517
+  size: 352, 243
+  orig: 352, 243
+  offset: 0, 0
+  index: -1
+azure_inner_blob
+  rotate: false
+  xy: 358, 517
+  size: 345, 242
+  orig: 345, 242
+  offset: 0, 0
+  index: -1
+crimson_crest_c
+  rotate: false
+  xy: 707, 517
+  size: 88, 147
+  orig: 88, 147
+  offset: 0, 0
+  index: -1
+crimson_aura
+  rotate: false
+  xy: 799, 517
+  size: 199, 142
+  orig: 199, 142
+  offset: 0, 0
+  index: -1
+amber_aura
+  rotate: false
+  xy: 2, 764
+  size: 200, 138
+  orig: 200, 138
+  offset: 0, 0
+  index: -1
+azure_aura
+  rotate: false
+  xy: 206, 764
+  size: 198, 137
+  orig: 198, 137
+  offset: 0, 0
+  index: -1
+amber_crest_c
+  rotate: false
+  xy: 408, 764
+  size: 145, 109
+  orig: 145, 109
+  offset: 0, 0
+  index: -1
+crimson_crest_r
+  rotate: false
+  xy: 557, 764
+  size: 87, 104
+  orig: 87, 104
+  offset: 0, 0
+  index: -1
+azure_crest_c
+  rotate: false
+  xy: 648, 764
+  size: 104, 103
+  orig: 104, 103
+  offset: 0, 0
+  index: -1
+crimson_crest_l
+  rotate: false
+  xy: 756, 764
+  size: 71, 102
+  orig: 71, 102
+  offset: 0, 0
+  index: -1
+crimson_eyelid
+  rotate: false
+  xy: 2, 906
+  size: 216, 94
+  orig: 216, 94
+  offset: 0, 0
+  index: -1
+amber_eyelid
+  rotate: false
+  xy: 222, 906
+  size: 212, 94
+  orig: 212, 94
+  offset: 0, 0
+  index: -1
+azure_eyelid
+  rotate: false
+  xy: 438, 906
+  size: 218, 94
+  orig: 218, 94
+  offset: 0, 0
+  index: -1
+azure_crest_l
+  rotate: false
+  xy: 660, 906
+  size: 85, 92
+  orig: 85, 92
+  offset: 0, 0
+  index: -1
+amber_crest_r
+  rotate: false
+  xy: 749, 906
+  size: 92, 70
+  orig: 92, 70
+  offset: 0, 0
+  index: -1
+amber_crest_l
+  rotate: false
+  xy: 845, 906
+  size: 82, 59
+  orig: 82, 59
+  offset: 0, 0
+  index: -1
+amber_iris
+  rotate: false
+  xy: 931, 906
+  size: 60, 58
+  orig: 60, 58
+  offset: 0, 0
+  index: -1
+shadow
+  rotate: false
+  xy: 2, 1004
+  size: 330, 53
+  orig: 330, 53
+  offset: 0, 0
+  index: -1
+azure_iris
+  rotate: false
+  xy: 336, 1004
+  size: 61, 53
+  orig: 61, 53
+  offset: 0, 0
+  index: -1
+azure_crest_r
+  rotate: false
+  xy: 401, 1004
+  size: 89, 53
+  orig: 89, 53
+  offset: 0, 0
+  index: -1
+crimson_iris
+  rotate: false
+  xy: 494, 1004
+  size: 61, 52
+  orig: 61, 52
+  offset: 0, 0
+  index: -1
+amber_spit_glob
+  rotate: false
+  xy: 559, 1004
+  size: 88, 40
+  orig: 88, 40
+  offset: 0, 0
+  index: -1
+azure_spit_glob
+  rotate: false
+  xy: 651, 1004
+  size: 85, 37
+  orig: 85, 37
+  offset: 0, 0
+  index: -1
+crimson_spit_glob
+  rotate: false
+  xy: 740, 1004
+  size: 97, 33
+  orig: 97, 33
+  offset: 0, 0
+  index: -1

@@ -1,0 +1,278 @@
+abyssal_ink_tentacle.png
+size: 2048,2048
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+tentacle
+  rotate: false
+  xy: 2, 2
+  size: 350, 840
+  orig: 350, 840
+  offset: 0, 0
+  index: -1
+ink_blister_glow
+  rotate: false
+  xy: 356, 2
+  size: 350, 840
+  orig: 350, 840
+  offset: 0, 0
+  index: -1
+spray_plume
+  rotate: false
+  xy: 710, 2
+  size: 230, 258
+  orig: 230, 258
+  offset: 0, 0
+  index: -1
+ink_slash
+  rotate: false
+  xy: 944, 2
+  size: 270, 238
+  orig: 270, 238
+  offset: 0, 0
+  index: -1
+rear_wave
+  rotate: false
+  xy: 1218, 2
+  size: 270, 218
+  orig: 270, 218
+  offset: 0, 0
+  index: -1
+impact_cracks
+  rotate: false
+  xy: 1492, 2
+  size: 360, 210
+  orig: 360, 210
+  offset: 0, 0
+  index: -1
+ripple_b_ring
+  rotate: false
+  xy: 2, 846
+  size: 420, 207
+  orig: 420, 207
+  offset: 0, 0
+  index: -1
+ripple_b_back
+  rotate: false
+  xy: 426, 846
+  size: 420, 207
+  orig: 420, 207
+  offset: 0, 0
+  index: -1
+ripple_b_front
+  rotate: false
+  xy: 850, 846
+  size: 420, 207
+  orig: 420, 207
+  offset: 0, 0
+  index: -1
+dust_l
+  rotate: false
+  xy: 1274, 846
+  size: 225, 197
+  orig: 225, 197
+  offset: 0, 0
+  index: -1
+crest_l
+  rotate: false
+  xy: 1503, 846
+  size: 220, 196
+  orig: 220, 196
+  offset: 0, 0
+  index: -1
+ripple_ring
+  rotate: false
+  xy: 2, 1057
+  size: 420, 195
+  orig: 420, 195
+  offset: 0, 0
+  index: -1
+ripple_back
+  rotate: false
+  xy: 426, 1057
+  size: 420, 195
+  orig: 420, 195
+  offset: 0, 0
+  index: -1
+ripple_front
+  rotate: false
+  xy: 850, 1057
+  size: 420, 195
+  orig: 420, 195
+  offset: 0, 0
+  index: -1
+dust_r
+  rotate: false
+  xy: 1274, 1057
+  size: 225, 195
+  orig: 225, 195
+  offset: 0, 0
+  index: -1
+crest_r
+  rotate: false
+  xy: 1503, 1057
+  size: 220, 191
+  orig: 220, 191
+  offset: 0, 0
+  index: -1
+shockwave_ring
+  rotate: false
+  xy: 2, 1256
+  size: 430, 177
+  orig: 430, 177
+  offset: 0, 0
+  index: -1
+dust_cloud
+  rotate: false
+  xy: 436, 1256
+  size: 195, 176
+  orig: 195, 176
+  offset: 0, 0
+  index: -1
+meniscus_back
+  rotate: false
+  xy: 635, 1256
+  size: 380, 168
+  orig: 380, 168
+  offset: 0, 0
+  index: -1
+meniscus_front
+  rotate: false
+  xy: 1019, 1256
+  size: 380, 168
+  orig: 380, 168
+  offset: 0, 0
+  index: -1
+slab_r
+  rotate: false
+  xy: 1403, 1256
+  size: 148, 148
+  orig: 148, 148
+  offset: 0, 0
+  index: -1
+crater
+  rotate: false
+  xy: 1555, 1256
+  size: 340, 137
+  orig: 340, 137
+  offset: 0, 0
+  index: -1
+slab_l
+  rotate: false
+  xy: 2, 1437
+  size: 148, 134
+  orig: 148, 134
+  offset: 0, 0
+  index: -1
+slab_back
+  rotate: false
+  xy: 154, 1437
+  size: 138, 98
+  orig: 138, 98
+  offset: 0, 0
+  index: -1
+drop_1
+  rotate: false
+  xy: 296, 1437
+  size: 62, 86
+  orig: 62, 86
+  offset: 0, 0
+  index: -1
+drop_4
+  rotate: false
+  xy: 362, 1437
+  size: 62, 84
+  orig: 62, 84
+  offset: 0, 0
+  index: -1
+drop_2
+  rotate: false
+  xy: 428, 1437
+  size: 62, 83
+  orig: 62, 83
+  offset: 0, 0
+  index: -1
+water_glint
+  rotate: false
+  xy: 494, 1437
+  size: 360, 69
+  orig: 360, 69
+  offset: 0, 0
+  index: -1
+drop_3
+  rotate: false
+  xy: 858, 1437
+  size: 62, 64
+  orig: 62, 64
+  offset: 0, 0
+  index: -1
+slab_front
+  rotate: false
+  xy: 924, 1437
+  size: 168, 52
+  orig: 168, 52
+  offset: 0, 0
+  index: -1
+chip_1
+  rotate: false
+  xy: 1096, 1437
+  size: 34, 40
+  orig: 34, 40
+  offset: 0, 0
+  index: -1
+shard_1
+  rotate: false
+  xy: 1134, 1437
+  size: 33, 38
+  orig: 33, 38
+  offset: 0, 0
+  index: -1
+shard_4
+  rotate: false
+  xy: 1171, 1437
+  size: 30, 35
+  orig: 30, 35
+  offset: 0, 0
+  index: -1
+shard_5
+  rotate: false
+  xy: 1205, 1437
+  size: 30, 32
+  orig: 30, 32
+  offset: 0, 0
+  index: -1
+chip_2
+  rotate: false
+  xy: 1239, 1437
+  size: 42, 32
+  orig: 42, 32
+  offset: 0, 0
+  index: -1
+shard_2
+  rotate: false
+  xy: 1285, 1437
+  size: 34, 31
+  orig: 34, 31
+  offset: 0, 0
+  index: -1
+chip_3
+  rotate: false
+  xy: 1323, 1437
+  size: 36, 31
+  orig: 36, 31
+  offset: 0, 0
+  index: -1
+chip_4
+  rotate: false
+  xy: 1363, 1437
+  size: 32, 31
+  orig: 32, 31
+  offset: 0, 0
+  index: -1
+shard_3
+  rotate: false
+  xy: 1399, 1437
+  size: 30, 30
+  orig: 30, 30
+  offset: 0, 0
+  index: -1

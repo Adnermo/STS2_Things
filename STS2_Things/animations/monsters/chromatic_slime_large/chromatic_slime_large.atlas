@@ -1,0 +1,173 @@
+chromatic_slime_large.png
+size: 2048,1024
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+inner_gel
+  rotate: false
+  xy: 2, 2
+  size: 838, 563
+  orig: 838, 563
+  offset: 0, 0
+  index: -1
+body_dome
+  rotate: false
+  xy: 844, 2
+  size: 982, 529
+  orig: 982, 529
+  offset: 0, 0
+  index: -1
+prism_glow
+  rotate: false
+  xy: 2, 569
+  size: 491, 264
+  orig: 491, 264
+  offset: 0, 0
+  index: -1
+amber_goo_cap
+  rotate: false
+  xy: 497, 569
+  size: 294, 172
+  orig: 294, 172
+  offset: 0, 0
+  index: -1
+azure_froth_spores
+  rotate: false
+  xy: 795, 569
+  size: 160, 144
+  orig: 160, 144
+  offset: 0, 0
+  index: -1
+azure_froth_main
+  rotate: false
+  xy: 959, 569
+  size: 173, 138
+  orig: 173, 138
+  offset: 0, 0
+  index: -1
+lid_rt
+  rotate: false
+  xy: 1136, 569
+  size: 163, 129
+  orig: 163, 129
+  offset: 0, 0
+  index: -1
+lid_up
+  rotate: false
+  xy: 1303, 569
+  size: 147, 128
+  orig: 147, 128
+  offset: 0, 0
+  index: -1
+crimson_shard_r
+  rotate: false
+  xy: 1454, 569
+  size: 93, 124
+  orig: 93, 124
+  offset: 0, 0
+  index: -1
+crimson_shard_tall
+  rotate: false
+  xy: 1551, 569
+  size: 86, 118
+  orig: 86, 118
+  offset: 0, 0
+  index: -1
+amber_rock_main
+  rotate: false
+  xy: 1641, 569
+  size: 142, 117
+  orig: 142, 117
+  offset: 0, 0
+  index: -1
+lid_main
+  rotate: false
+  xy: 2, 837
+  size: 269, 111
+  orig: 269, 111
+  offset: 0, 0
+  index: -1
+proj_crimson
+  rotate: false
+  xy: 275, 837
+  size: 156, 89
+  orig: 156, 89
+  offset: 0, 0
+  index: -1
+proj_amber
+  rotate: false
+  xy: 435, 837
+  size: 156, 89
+  orig: 156, 89
+  offset: 0, 0
+  index: -1
+proj_azure
+  rotate: false
+  xy: 595, 837
+  size: 156, 89
+  orig: 156, 89
+  offset: 0, 0
+  index: -1
+shadow
+  rotate: false
+  xy: 755, 837
+  size: 1040, 86
+  orig: 1040, 86
+  offset: 0, 0
+  index: -1
+crimson_shard_l
+  rotate: false
+  xy: 1799, 837
+  size: 70, 73
+  orig: 70, 73
+  offset: 0, 0
+  index: -1
+amber_rock_r
+  rotate: false
+  xy: 1873, 837
+  size: 90, 68
+  orig: 90, 68
+  offset: 0, 0
+  index: -1
+iris_main
+  rotate: false
+  xy: 1967, 837
+  size: 67, 66
+  orig: 67, 66
+  offset: 0, 0
+  index: -1
+amber_rock_l
+  rotate: false
+  xy: 2, 952
+  size: 78, 58
+  orig: 78, 58
+  offset: 0, 0
+  index: -1
+iris_rt
+  rotate: false
+  xy: 84, 952
+  size: 38, 43
+  orig: 38, 43
+  offset: 0, 0
+  index: -1
+iris_up
+  rotate: false
+  xy: 126, 952
+  size: 32, 37
+  orig: 32, 37
+  offset: 0, 0
+  index: -1
+drop_near
+  rotate: false
+  xy: 162, 952
+  size: 66, 30
+  orig: 66, 30
+  offset: 0, 0
+  index: -1
+drop_far
+  rotate: false
+  xy: 232, 952
+  size: 52, 27
+  orig: 52, 27
+  offset: 0, 0
+  index: -1

@@ -1,0 +1,24 @@
+{
+  "result": "PASS",
+  "skeleton": "chromatic_slime_medium",
+  "bones": 29,
+  "slots": 25,
+  "animations": 14,
+  "skins": [
+    "crimson",
+    "amber",
+    "azure"
+  ],
+  "maxBoneScaleDev": 0,
+  "maxBodyRotDeg": 0,
+  "invertedTriangles": 0,
+  "loopErr": 0.00002,
+  "reviveErr": 0,
+  "maxDisplacementPx": 127.9,
+  "crimsonHit1ShearDx": -62,
+  "crimsonHit2BaseDx": -84.6,
+  "amberSkidDx": -104,
+  "azureGeyserDy": 36.8,
+  "azureFootLeadDx": -119.6,
+  "azureFootTrailDx": -45.8
+}

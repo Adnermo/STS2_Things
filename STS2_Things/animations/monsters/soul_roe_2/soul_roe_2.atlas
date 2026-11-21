@@ -1,0 +1,89 @@
+soul_roe_2.png
+size: 1024,512
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+shadow
+  rotate: false
+  xy: 3, 404
+  size: 138, 29
+  orig: 138, 29
+  offset: 0, 0
+  index: -1
+rear_glow
+  rotate: false
+  xy: 3, 238
+  size: 156, 160
+  orig: 156, 160
+  offset: 0, 0
+  index: -1
+body_trail
+  rotate: false
+  xy: 613, 238
+  size: 264, 134
+  orig: 264, 134
+  offset: 0, 0
+  index: -1
+cytoplasm
+  rotate: false
+  xy: 322, 238
+  size: 143, 146
+  orig: 143, 146
+  offset: 0, 0
+  index: -1
+nucleus
+  rotate: false
+  xy: 883, 238
+  size: 77, 80
+  orig: 77, 80
+  offset: 0, 0
+  index: -1
+core_beckon_glow
+  rotate: false
+  xy: 673, 3
+  size: 187, 187
+  orig: 187, 187
+  offset: 0, 0
+  index: -1
+core_intangible_glow
+  rotate: false
+  xy: 466, 3
+  size: 201, 201
+  orig: 201, 201
+  offset: 0, 0
+  index: -1
+veins_highlight
+  rotate: false
+  xy: 471, 238
+  size: 136, 139
+  orig: 136, 139
+  offset: 0, 0
+  index: -1
+membrane_ring
+  rotate: false
+  xy: 165, 238
+  size: 151, 153
+  orig: 151, 153
+  offset: 0, 0
+  index: -1
+beckon_halo_ring
+  rotate: false
+  xy: 238, 3
+  size: 222, 222
+  orig: 222, 222
+  offset: 0, 0
+  index: -1
+intangible_shimmer
+  rotate: false
+  xy: 3, 3
+  size: 229, 229
+  orig: 229, 229
+  offset: 0, 0
+  index: -1
+impact_flare
+  rotate: false
+  xy: 866, 3
+  size: 132, 168
+  orig: 132, 168
+  offset: 0, 0
+  index: -1

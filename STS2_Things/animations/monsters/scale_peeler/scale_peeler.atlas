@@ -1,0 +1,110 @@
+scale_peeler.png
+size: 2048,1024
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+body
+  rotate: false
+  xy: 2, 2
+  size: 625, 721
+  orig: 625, 721
+  offset: 0, 0
+  index: -1
+burrow_front
+  rotate: false
+  xy: 631, 2
+  size: 717, 235
+  orig: 717, 235
+  offset: 0, 0
+  index: -1
+burrow_back
+  rotate: false
+  xy: 1352, 2
+  size: 551, 202
+  orig: 551, 202
+  offset: 0, 0
+  index: -1
+jaw_lower
+  rotate: false
+  xy: 2, 727
+  size: 207, 178
+  orig: 207, 178
+  offset: 0, 0
+  index: -1
+plate_1
+  rotate: false
+  xy: 213, 727
+  size: 99, 151
+  orig: 99, 151
+  offset: 0, 0
+  index: -1
+jaw_upper
+  rotate: false
+  xy: 316, 727
+  size: 155, 149
+  orig: 155, 149
+  offset: 0, 0
+  index: -1
+mouth_interior
+  rotate: false
+  xy: 475, 727
+  size: 134, 147
+  orig: 134, 147
+  offset: 0, 0
+  index: -1
+mouth_glow
+  rotate: false
+  xy: 613, 727
+  size: 134, 147
+  orig: 134, 147
+  offset: 0, 0
+  index: -1
+plate_0
+  rotate: false
+  xy: 751, 727
+  size: 95, 126
+  orig: 95, 126
+  offset: 0, 0
+  index: -1
+plate_2
+  rotate: false
+  xy: 850, 727
+  size: 104, 116
+  orig: 104, 116
+  offset: 0, 0
+  index: -1
+plate_3
+  rotate: false
+  xy: 958, 727
+  size: 99, 83
+  orig: 99, 83
+  offset: 0, 0
+  index: -1
+feeler_near
+  rotate: false
+  xy: 1061, 727
+  size: 58, 75
+  orig: 58, 75
+  offset: 0, 0
+  index: -1
+feeler_far
+  rotate: false
+  xy: 1123, 727
+  size: 71, 60
+  orig: 71, 60
+  offset: 0, 0
+  index: -1
+eye_near_lid
+  rotate: false
+  xy: 1198, 727
+  size: 63, 29
+  orig: 63, 29
+  offset: 0, 0
+  index: -1
+eye_far_lid
+  rotate: false
+  xy: 1265, 727
+  size: 47, 27
+  orig: 47, 27
+  offset: 0, 0
+  index: -1

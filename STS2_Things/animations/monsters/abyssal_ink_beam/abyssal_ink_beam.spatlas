@@ -1,0 +1,6 @@
+{
+  "source_path": "res://STS2_Things/animations/monsters/abyssal_ink_beam/abyssal_ink_beam.atlas",
+  "atlas_data": "abyssal_ink_beam.png\nsize: 2048,1536\nformat: RGBA8888\nfilter: Linear,Linear\nrepeat: none\nbeam_column\n  rotate: false\n  xy: 2, 2\n  size: 240, 1180\n  orig: 240, 1180\n  offset: 0, 0\n  index: -1\nstreak_1\n  rotate: false\n  xy: 246, 2\n  size: 68, 304\n  orig: 68, 304\n  offset: 0, 0\n  index: -1\nimpact_crown\n  rotate: false\n  xy: 318, 2\n  size: 340, 244\n  orig: 340, 244\n  offset: 0, 0\n  index: -1\nstreak_2\n  rotate: false\n  xy: 662, 2\n  size: 68, 179\n  orig: 68, 179\n  offset: 0, 0\n  index: -1\nshock_ring\n  rotate: false\n  xy: 734, 2\n  size: 260, 170\n  orig: 260, 170\n  offset: 0, 0\n  index: -1\nstreak_3\n  rotate: false\n  xy: 998, 2\n  size: 82, 134\n  orig: 82, 134\n  offset: 0, 0\n  index: -1\nnozzle_ring\n  rotate: false\n  xy: 1084, 2\n  size: 210, 133\n  orig: 210, 133\n  offset: 0, 0\n  index: -1\n",
+  "normal_texture_prefix": "n",
+  "specular_texture_prefix": "s"
+}

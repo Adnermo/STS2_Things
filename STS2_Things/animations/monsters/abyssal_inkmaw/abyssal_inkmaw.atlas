@@ -1,0 +1,173 @@
+abyssal_inkmaw.png
+size: 4096,2048
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+head_mantle
+  rotate: false
+  xy: 2, 2
+  size: 1280, 1060
+  orig: 1280, 1060
+  offset: 0, 0
+  index: -1
+bg_tentacle_tall
+  rotate: false
+  xy: 1286, 2
+  size: 383, 786
+  orig: 383, 786
+  offset: 0, 0
+  index: -1
+bg_tentacle_outer
+  rotate: false
+  xy: 1673, 2
+  size: 461, 698
+  orig: 461, 698
+  offset: 0, 0
+  index: -1
+ink_glow
+  rotate: false
+  xy: 2138, 2
+  size: 660, 660
+  orig: 660, 660
+  offset: 0, 0
+  index: -1
+spray_plume
+  rotate: false
+  xy: 2802, 2
+  size: 230, 258
+  orig: 230, 258
+  offset: 0, 0
+  index: -1
+ripple_b_ring
+  rotate: false
+  xy: 3036, 2
+  size: 420, 207
+  orig: 420, 207
+  offset: 0, 0
+  index: -1
+ripple_b_back
+  rotate: false
+  xy: 3460, 2
+  size: 420, 207
+  orig: 420, 207
+  offset: 0, 0
+  index: -1
+ripple_b_front
+  rotate: false
+  xy: 2, 1066
+  size: 420, 207
+  orig: 420, 207
+  offset: 0, 0
+  index: -1
+crest_l
+  rotate: false
+  xy: 426, 1066
+  size: 220, 196
+  orig: 220, 196
+  offset: 0, 0
+  index: -1
+ripple_ring
+  rotate: false
+  xy: 650, 1066
+  size: 420, 195
+  orig: 420, 195
+  offset: 0, 0
+  index: -1
+ripple_back
+  rotate: false
+  xy: 1074, 1066
+  size: 420, 195
+  orig: 420, 195
+  offset: 0, 0
+  index: -1
+ripple_front
+  rotate: false
+  xy: 1498, 1066
+  size: 420, 195
+  orig: 420, 195
+  offset: 0, 0
+  index: -1
+crest_r
+  rotate: false
+  xy: 1922, 1066
+  size: 220, 191
+  orig: 220, 191
+  offset: 0, 0
+  index: -1
+meniscus_back
+  rotate: false
+  xy: 2146, 1066
+  size: 380, 168
+  orig: 380, 168
+  offset: 0, 0
+  index: -1
+meniscus_front
+  rotate: false
+  xy: 2530, 1066
+  size: 380, 168
+  orig: 380, 168
+  offset: 0, 0
+  index: -1
+drop_1
+  rotate: false
+  xy: 2914, 1066
+  size: 62, 86
+  orig: 62, 86
+  offset: 0, 0
+  index: -1
+eyelid_r
+  rotate: false
+  xy: 2980, 1066
+  size: 91, 85
+  orig: 91, 85
+  offset: 0, 0
+  index: -1
+drop_4
+  rotate: false
+  xy: 3075, 1066
+  size: 62, 84
+  orig: 62, 84
+  offset: 0, 0
+  index: -1
+eyelid_l
+  rotate: false
+  xy: 3141, 1066
+  size: 90, 83
+  orig: 90, 83
+  offset: 0, 0
+  index: -1
+drop_2
+  rotate: false
+  xy: 3235, 1066
+  size: 62, 83
+  orig: 62, 83
+  offset: 0, 0
+  index: -1
+water_glint
+  rotate: false
+  xy: 3301, 1066
+  size: 360, 69
+  orig: 360, 69
+  offset: 0, 0
+  index: -1
+drop_3
+  rotate: false
+  xy: 3665, 1066
+  size: 62, 64
+  orig: 62, 64
+  offset: 0, 0
+  index: -1
+pupil_l
+  rotate: false
+  xy: 3731, 1066
+  size: 44, 25
+  orig: 44, 25
+  offset: 0, 0
+  index: -1
+pupil_r
+  rotate: false
+  xy: 3779, 1066
+  size: 44, 25
+  orig: 44, 25
+  offset: 0, 0
+  index: -1

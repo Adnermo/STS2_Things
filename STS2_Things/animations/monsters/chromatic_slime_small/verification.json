@@ -1,0 +1,50 @@
+{
+  "result": "PASS",
+  "skeleton": "chromatic_slime_small",
+  "bones": 17,
+  "slots": 11,
+  "skins": [
+    "crimson",
+    "amber",
+    "azure"
+  ],
+  "animations": 12,
+  "loopErr": 0,
+  "reviveErr": 0,
+  "maxBoneScaleDev": 0,
+  "maxBodyRotDeg": 0,
+  "invertedTriangles": 0,
+  "maxDisplacementPx": 121.2,
+  "spitStats": {
+    "cast_azure": {
+      "maxAlpha": 1,
+      "minDx": -374.9,
+      "maxDy": 97.2,
+      "endAlpha": 0
+    },
+    "cast": {
+      "maxAlpha": 1,
+      "minDx": -369.4,
+      "maxDy": 78.1,
+      "endAlpha": 0
+    },
+    "attack_crimson": {
+      "maxAlpha": 1,
+      "minDx": -360.7,
+      "maxDy": 13.5,
+      "endAlpha": 0
+    },
+    "attack_amber": {
+      "maxAlpha": 1,
+      "minDx": -224.7,
+      "maxDy": -75,
+      "endAlpha": 0
+    },
+    "attack_azure": {
+      "maxAlpha": 1,
+      "minDx": -241.7,
+      "maxDy": -0.8,
+      "endAlpha": 0
+    }
+  }
+}

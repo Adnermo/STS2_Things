@@ -1,0 +1,229 @@
+human_face_tower.png
+size: 2048,2048
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+wall_sector_intact
+  rotate: false
+  xy: 4, 4
+  size: 1600, 360
+  orig: 1600, 360
+  offset: 0, 0
+  index: -1
+wall_sector_shattered
+  rotate: false
+  xy: 4, 370
+  size: 1600, 360
+  orig: 1600, 360
+  offset: 0, 0
+  index: -1
+bastion_unbolted_face
+  rotate: false
+  xy: 4, 736
+  size: 540, 360
+  orig: 540, 360
+  offset: 0, 0
+  index: -1
+lament_face
+  rotate: false
+  xy: 550, 736
+  size: 540, 360
+  orig: 540, 360
+  offset: 0, 0
+  index: -1
+mockery_face
+  rotate: false
+  xy: 1096, 736
+  size: 540, 360
+  orig: 540, 360
+  offset: 0, 0
+  index: -1
+wrath_upper
+  rotate: false
+  xy: 4, 1102
+  size: 540, 360
+  orig: 540, 360
+  offset: 0, 0
+  index: -1
+lament_tear_glow
+  rotate: false
+  xy: 550, 1102
+  size: 330, 184
+  orig: 330, 184
+  offset: 0, 0
+  index: -1
+wrath_throat_bg
+  rotate: false
+  xy: 886, 1102
+  size: 288, 132
+  orig: 288, 132
+  offset: 0, 0
+  index: -1
+wrath_crack_glow
+  rotate: false
+  xy: 1180, 1102
+  size: 160, 106
+  orig: 160, 106
+  offset: 0, 0
+  index: -1
+dust_puff
+  rotate: false
+  xy: 1346, 1102
+  size: 196, 104
+  orig: 196, 104
+  offset: 0, 0
+  index: -1
+lament_throat_bg
+  rotate: false
+  xy: 1548, 1102
+  size: 212, 92
+  orig: 212, 92
+  offset: 0, 0
+  index: -1
+bastion_clamp_intact
+  rotate: false
+  xy: 1766, 1102
+  size: 276, 80
+  orig: 276, 80
+  offset: 0, 0
+  index: -1
+bastion_keystone_glow
+  rotate: false
+  xy: 4, 1468
+  size: 92, 80
+  orig: 92, 80
+  offset: 0, 0
+  index: -1
+bastion_clamp_split_r
+  rotate: false
+  xy: 102, 1468
+  size: 140, 79
+  orig: 140, 79
+  offset: 0, 0
+  index: -1
+bastion_clamp_split_l
+  rotate: false
+  xy: 248, 1468
+  size: 135, 77
+  orig: 135, 77
+  offset: 0, 0
+  index: -1
+mockery_spark_glow
+  rotate: false
+  xy: 389, 1468
+  size: 84, 76
+  orig: 84, 76
+  offset: 0, 0
+  index: -1
+mockery_throat_bg
+  rotate: false
+  xy: 479, 1468
+  size: 296, 74
+  orig: 296, 74
+  offset: 0, 0
+  index: -1
+rubble_chip_7
+  rotate: false
+  xy: 781, 1468
+  size: 92, 71
+  orig: 92, 71
+  offset: 0, 0
+  index: -1
+wrath_teeth_upper
+  rotate: false
+  xy: 879, 1468
+  size: 226, 66
+  orig: 226, 66
+  offset: 0, 0
+  index: -1
+wrath_teeth_lower
+  rotate: false
+  xy: 1111, 1468
+  size: 226, 64
+  orig: 226, 64
+  offset: 0, 0
+  index: -1
+rubble_chip_0
+  rotate: false
+  xy: 1343, 1468
+  size: 75, 62
+  orig: 75, 62
+  offset: 0, 0
+  index: -1
+rubble_chip_5
+  rotate: false
+  xy: 1424, 1468
+  size: 68, 62
+  orig: 68, 62
+  offset: 0, 0
+  index: -1
+rubble_chip_2
+  rotate: false
+  xy: 1498, 1468
+  size: 74, 60
+  orig: 74, 60
+  offset: 0, 0
+  index: -1
+rubble_chip_3
+  rotate: false
+  xy: 1578, 1468
+  size: 79, 59
+  orig: 79, 59
+  offset: 0, 0
+  index: -1
+rubble_chip_9
+  rotate: false
+  xy: 1663, 1468
+  size: 79, 59
+  orig: 79, 59
+  offset: 0, 0
+  index: -1
+rubble_chip_8
+  rotate: false
+  xy: 1748, 1468
+  size: 71, 59
+  orig: 71, 59
+  offset: 0, 0
+  index: -1
+rubble_chip_1
+  rotate: false
+  xy: 1825, 1468
+  size: 70, 59
+  orig: 70, 59
+  offset: 0, 0
+  index: -1
+bastion_throat_bg
+  rotate: false
+  xy: 4, 1554
+  size: 208, 56
+  orig: 208, 56
+  offset: 0, 0
+  index: -1
+rubble_chip_6
+  rotate: false
+  xy: 218, 1554
+  size: 85, 56
+  orig: 85, 56
+  offset: 0, 0
+  index: -1
+mockery_eye_sclera
+  rotate: false
+  xy: 309, 1554
+  size: 330, 52
+  orig: 330, 52
+  offset: 0, 0
+  index: -1
+mockery_pupils
+  rotate: false
+  xy: 645, 1554
+  size: 304, 52
+  orig: 304, 52
+  offset: 0, 0
+  index: -1
+rubble_chip_4
+  rotate: false
+  xy: 955, 1554
+  size: 65, 50
+  orig: 65, 50
+  offset: 0, 0
+  index: -1

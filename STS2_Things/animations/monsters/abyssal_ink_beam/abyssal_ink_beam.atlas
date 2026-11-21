@@ -1,0 +1,54 @@
+abyssal_ink_beam.png
+size: 2048,1536
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+beam_column
+  rotate: false
+  xy: 2, 2
+  size: 240, 1180
+  orig: 240, 1180
+  offset: 0, 0
+  index: -1
+streak_1
+  rotate: false
+  xy: 246, 2
+  size: 68, 304
+  orig: 68, 304
+  offset: 0, 0
+  index: -1
+impact_crown
+  rotate: false
+  xy: 318, 2
+  size: 340, 244
+  orig: 340, 244
+  offset: 0, 0
+  index: -1
+streak_2
+  rotate: false
+  xy: 662, 2
+  size: 68, 179
+  orig: 68, 179
+  offset: 0, 0
+  index: -1
+shock_ring
+  rotate: false
+  xy: 734, 2
+  size: 260, 170
+  orig: 260, 170
+  offset: 0, 0
+  index: -1
+streak_3
+  rotate: false
+  xy: 998, 2
+  size: 82, 134
+  orig: 82, 134
+  offset: 0, 0
+  index: -1
+nozzle_ring
+  rotate: false
+  xy: 1084, 2
+  size: 210, 133
+  orig: 210, 133
+  offset: 0, 0
+  index: -1

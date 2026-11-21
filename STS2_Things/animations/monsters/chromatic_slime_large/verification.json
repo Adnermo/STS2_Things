@@ -1,0 +1,15 @@
+{
+  "result": "PASS",
+  "skeleton": "chromatic_slime_large",
+  "bones": 39,
+  "slots": 27,
+  "clipSlots": 3,
+  "meshSlots": 24,
+  "loopErrPx": 0,
+  "reviveErrPx": 0,
+  "maxBoneScaleDev": 0,
+  "maxBodyRotDeg": 0,
+  "maxFloorLiftPx": 0,
+  "invertedTriangles": 0,
+  "maxDisplacementPx": 166.8
+}

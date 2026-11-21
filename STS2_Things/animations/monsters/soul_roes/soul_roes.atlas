@@ -1,0 +1,250 @@
+soul_roes.png
+size: 1024,1536
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+beckon_aura
+  rotate: false
+  xy: 3, 3
+  size: 325, 280
+  orig: 325, 280
+  offset: 0, 0
+  index: -1
+intangible_aura
+  rotate: false
+  xy: 334, 3
+  size: 325, 280
+  orig: 325, 280
+  offset: 0, 0
+  index: -1
+beckon_ring
+  rotate: false
+  xy: 665, 3
+  size: 304, 270
+  orig: 304, 270
+  offset: 0, 0
+  index: -1
+intangible_shimmer
+  rotate: false
+  xy: 3, 289
+  size: 304, 270
+  orig: 304, 270
+  offset: 0, 0
+  index: -1
+brood_4
+  rotate: false
+  xy: 313, 289
+  size: 180, 179
+  orig: 180, 179
+  offset: 0, 0
+  index: -1
+brood_2
+  rotate: false
+  xy: 499, 289
+  size: 178, 177
+  orig: 178, 177
+  offset: 0, 0
+  index: -1
+brood_0
+  rotate: false
+  xy: 683, 289
+  size: 167, 172
+  orig: 167, 172
+  offset: 0, 0
+  index: -1
+brood_1
+  rotate: false
+  xy: 3, 565
+  size: 166, 165
+  orig: 166, 165
+  offset: 0, 0
+  index: -1
+brood_3
+  rotate: false
+  xy: 175, 565
+  size: 168, 163
+  orig: 168, 163
+  offset: 0, 0
+  index: -1
+sat_0
+  rotate: false
+  xy: 349, 565
+  size: 155, 160
+  orig: 155, 160
+  offset: 0, 0
+  index: -1
+sat_5
+  rotate: false
+  xy: 510, 565
+  size: 160, 157
+  orig: 160, 157
+  offset: 0, 0
+  index: -1
+sat_3
+  rotate: false
+  xy: 676, 565
+  size: 154, 156
+  orig: 154, 156
+  offset: 0, 0
+  index: -1
+brood_5
+  rotate: false
+  xy: 836, 565
+  size: 153, 156
+  orig: 153, 156
+  offset: 0, 0
+  index: -1
+sat_4
+  rotate: false
+  xy: 3, 736
+  size: 153, 154
+  orig: 153, 154
+  offset: 0, 0
+  index: -1
+sat_2
+  rotate: false
+  xy: 162, 736
+  size: 151, 152
+  orig: 151, 152
+  offset: 0, 0
+  index: -1
+sat_1
+  rotate: false
+  xy: 319, 736
+  size: 150, 152
+  orig: 150, 152
+  offset: 0, 0
+  index: -1
+brood_glow_4
+  rotate: false
+  xy: 475, 736
+  size: 146, 145
+  orig: 146, 145
+  offset: 0, 0
+  index: -1
+brood_glow_2
+  rotate: false
+  xy: 627, 736
+  size: 144, 144
+  orig: 144, 144
+  offset: 0, 0
+  index: -1
+brood_glow_0
+  rotate: false
+  xy: 777, 736
+  size: 137, 140
+  orig: 137, 140
+  offset: 0, 0
+  index: -1
+brood_glow_1
+  rotate: false
+  xy: 3, 896
+  size: 136, 136
+  orig: 136, 136
+  offset: 0, 0
+  index: -1
+brood_glow_3
+  rotate: false
+  xy: 145, 896
+  size: 138, 135
+  orig: 138, 135
+  offset: 0, 0
+  index: -1
+sat_glow_0
+  rotate: false
+  xy: 289, 896
+  size: 129, 133
+  orig: 129, 133
+  offset: 0, 0
+  index: -1
+trail_0
+  rotate: false
+  xy: 424, 896
+  size: 310, 132
+  orig: 310, 132
+  offset: 0, 0
+  index: -1
+trail_1
+  rotate: false
+  xy: 3, 1038
+  size: 310, 132
+  orig: 310, 132
+  offset: 0, 0
+  index: -1
+trail_2
+  rotate: false
+  xy: 319, 1038
+  size: 310, 132
+  orig: 310, 132
+  offset: 0, 0
+  index: -1
+trail_3
+  rotate: false
+  xy: 635, 1038
+  size: 310, 132
+  orig: 310, 132
+  offset: 0, 0
+  index: -1
+trail_4
+  rotate: false
+  xy: 3, 1176
+  size: 310, 132
+  orig: 310, 132
+  offset: 0, 0
+  index: -1
+trail_5
+  rotate: false
+  xy: 319, 1176
+  size: 310, 132
+  orig: 310, 132
+  offset: 0, 0
+  index: -1
+sat_glow_5
+  rotate: false
+  xy: 635, 1176
+  size: 133, 131
+  orig: 133, 131
+  offset: 0, 0
+  index: -1
+sat_glow_3
+  rotate: false
+  xy: 774, 1176
+  size: 129, 130
+  orig: 129, 130
+  offset: 0, 0
+  index: -1
+brood_glow_5
+  rotate: false
+  xy: 3, 1314
+  size: 128, 130
+  orig: 128, 130
+  offset: 0, 0
+  index: -1
+sat_glow_4
+  rotate: false
+  xy: 137, 1314
+  size: 128, 129
+  orig: 128, 129
+  offset: 0, 0
+  index: -1
+sat_glow_2
+  rotate: false
+  xy: 271, 1314
+  size: 127, 127
+  orig: 127, 127
+  offset: 0, 0
+  index: -1
+sat_glow_1
+  rotate: false
+  xy: 404, 1314
+  size: 126, 127
+  orig: 126, 127
+  offset: 0, 0
+  index: -1
+shadow
+  rotate: false
+  xy: 536, 1314
+  size: 380, 74
+  orig: 380, 74
+  offset: 0, 0
+  index: -1

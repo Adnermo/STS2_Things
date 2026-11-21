@@ -1,0 +1,24 @@
+{
+  "result": "PASS",
+  "runtime": "official Spine 4.2.43",
+  "bones": 25,
+  "animations": 10,
+  "meshSlots": 12,
+  "frames": 10236,
+  "loopErr": 0,
+  "reviveErr": 0.008148193359375,
+  "returnErrors": {
+    "idle_loop": 0.00128173828125,
+    "attack": 0.0673828125,
+    "slam": 0.02923583984375,
+    "cast": 0.01837158203125,
+    "flurry": 0.0198974609375,
+    "hurt": 0.13739013671875,
+    "revive": 0.0067138671875,
+    "summon": 0.135986328125,
+    "power_up": 0.09051513671875
+  },
+  "burrowDrift": 0,
+  "invertedTriangles": 0,
+  "maxDisplacement": 609.3025817871094
+}
