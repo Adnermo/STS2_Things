@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dxfmnjgk5hba8"
-path="res://.godot/imported/map_bottom_things_depths.png-71f85face21ee12a089c2a58623aa40f.ctex"
+path.bptc="res://.godot/imported/map_bottom_things_depths.png-71f85face21ee12a089c2a58623aa40f.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/packed/map/map_bgs/things_depths/map_bottom_things_depths.png"
-dest_files=["res://.godot/imported/map_bottom_things_depths.png-71f85face21ee12a089c2a58623aa40f.ctex"]
+dest_files=["res://.godot/imported/map_bottom_things_depths.png-71f85face21ee12a089c2a58623aa40f.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

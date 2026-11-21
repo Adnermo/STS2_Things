@@ -14,13 +14,85 @@ internal sealed class HumanFaceColumnGroup
     private readonly List<ThingsHumanFaceColumn> _members = [];
     private readonly HashSet<ThingsHumanFaceColumn> _broken = [];
     private readonly HashSet<ThingsHumanFaceColumn> _pendingStuns = [];
+    private ThingsHumanFaceColumn[]? _livingCache;
+    private int _livingCacheCount;
+    private int _livingCacheAliveMask;
+    private int _livingCacheLevelBits;
     private int _pendingLosses;
     private bool _resolving;
     public int Remaining { get; private set; } = ThingsHumanFaceColumn.InitialLayers;
     public int Reserve { get; private set; } = ThingsHumanFaceColumn.InitialLayers - 3;
-    public ThingsHumanFaceColumn[] Living => _members.Where(member => member.Creature.IsAlive)
-        .OrderBy(member => member.Level).ToArray();
-    public ThingsHumanFaceColumn? BottomLiving => _members.FirstOrDefault(member => member.Level == 0 && member.Creature.IsAlive);
+
+    private void InvalidateLivingCache() => _livingCache = null;
+
+    public ThingsHumanFaceColumn[] Living
+    {
+        get
+        {
+            int count = _members.Count;
+            int aliveMask = 0;
+            int levelBits = 0;
+            int livingCount = 0;
+            for (int i = 0; i < count; i++)
+            {
+                ThingsHumanFaceColumn member = _members[i];
+                levelBits = (levelBits << 3) | (member.Level & 7);
+                if (member.Creature.IsAlive)
+                {
+                    aliveMask |= 1 << i;
+                    livingCount++;
+                }
+            }
+
+            if (_livingCache != null &&
+                _livingCacheCount == count &&
+                _livingCacheAliveMask == aliveMask &&
+                _livingCacheLevelBits == levelBits)
+            {
+                return _livingCache;
+            }
+
+            var result = livingCount == 0 ? Array.Empty<ThingsHumanFaceColumn>() : new ThingsHumanFaceColumn[livingCount];
+            int idx = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if ((aliveMask & (1 << i)) != 0)
+                    result[idx++] = _members[i];
+            }
+
+            for (int i = 1; i < result.Length; i++)
+            {
+                ThingsHumanFaceColumn key = result[i];
+                int j = i - 1;
+                while (j >= 0 && result[j].Level > key.Level)
+                {
+                    result[j + 1] = result[j];
+                    j--;
+                }
+                result[j + 1] = key;
+            }
+
+            _livingCache = result;
+            _livingCacheCount = count;
+            _livingCacheAliveMask = aliveMask;
+            _livingCacheLevelBits = levelBits;
+            return result;
+        }
+    }
+
+    public ThingsHumanFaceColumn? BottomLiving
+    {
+        get
+        {
+            for (int i = 0; i < _members.Count; i++)
+            {
+                ThingsHumanFaceColumn member = _members[i];
+                if (member.Level == 0 && member.Creature.IsAlive)
+                    return member;
+            }
+            return null;
+        }
+    }
 
     public static IReadOnlyList<(MonsterModel, string?)> CreateInitial()
     {
@@ -52,6 +124,7 @@ internal sealed class HumanFaceColumnGroup
         var originalMiddle = broken.Level == 0
             ? _members.FirstOrDefault(member => member.Level == 1) : null;
         if (!_members.Remove(broken)) return;
+        InvalidateLivingCache();
         if (originalMiddle != null) _pendingStuns.Add(originalMiddle);
         Remaining = Math.Max(0, Remaining - 1);
         _pendingLosses++;
@@ -78,12 +151,14 @@ internal sealed class HumanFaceColumnGroup
                 .Select(index => NHumanFaceColumnVisuals.IncomingPose(survivors.LastOrDefault()?.Creature, index)).ToArray();
             Reserve -= replacements;
             for (int level = 0; level < survivors.Length; level++) survivors[level].LowerTo(level);
+            InvalidateLivingCache();
             for (int i = 0; i < replacements; i++)
             {
                 int level = Living.Length;
                 var replacement = (ThingsHumanFaceColumn)ModelDb.Monster<ThingsHumanFaceColumn>().ToMutable();
                 replacement.Configure(this, level, 0, replacement: true);
                 _members.Add(replacement);
+                InvalidateLivingCache();
                 string slotName = ThingsHumanFaceColumn.LayerSlots[level];
                 string? validSlot = combat.Encounter?.Slots.Contains(slotName) == true ? slotName : null;
                 await CreatureCmd.Add(replacement, combat, CombatSide.Enemy, validSlot);

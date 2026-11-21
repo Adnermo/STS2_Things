@@ -123,6 +123,16 @@ public partial class BaseLibBridgeProbeNode : Node
                 "Bridge BossOriginFogmogForced default is true.");
             Assert(GetBridgeBool(bridge, "FeatureDefensiveEngineGuardsEnabled"),
                 "Bridge FeatureDefensiveEngineGuardsEnabled default is false.");
+            Assert(GetBridgeBool(bridge, "CardsEnabled") &&
+                   GetBridgeBool(bridge, "CardCollisionEnabled") &&
+                   GetBridgeBool(bridge, "AreCustomCardsEnabled"),
+                "Bridge custom card toggles default is false.");
+            SetBridgeBool(bridge, "CardsEnabled", false);
+            Assert(!GetBridgeBool(bridge, "AreCustomCardsEnabled"),
+                "AreCustomCardsEnabled must hide individual card toggles when CardsEnabled is false.");
+            SetBridgeBool(bridge, "CardsEnabled", true);
+            Assert(GetBridgeBool(bridge, "AreCustomCardsEnabled"),
+                "AreCustomCardsEnabled did not restore when CardsEnabled returned to true.");
             Assert(!GetBridgeBool(bridge, "FeatureCustomBgmEnabled") &&
                    !GetBridgeBool(bridge, "FeatureMerchantBargainEnabled") &&
                    (int)GetBridgeValue(bridge, "BossScaleBeetleWeightPercent") == 240,
@@ -145,12 +155,16 @@ public partial class BaseLibBridgeProbeNode : Node
             SetBridgeValue(bridge, "BossScaleBeetleWeightPercent", 370);
             SetBridgeBool(bridge, "FeatureCustomBgmEnabled", true);
             SetBridgeBool(bridge, "BossOnlyModBosses", true);
+            SetBridgeBool(bridge, "CardCollisionEnabled", false);
             InvokeBridge(config!, "Changed");
             Assert((int)thingsConfig.GetMethod("GetInt")!.Invoke(null, ["BossScaleBeetleWeightPercent"])! == 370,
                 "Slider change did not reach the live model before Save.");
             Assert((bool)thingsConfig.GetMethod("GetBool")!.Invoke(null, ["FeatureCustomBgmEnabled"])! &&
-                   (bool)thingsConfig.GetMethod("GetBool")!.Invoke(null, ["BossOnlyModBosses"])!,
+                   (bool)thingsConfig.GetMethod("GetBool")!.Invoke(null, ["BossOnlyModBosses"])! &&
+                   !(bool)thingsConfig.GetMethod("GetBool")!.Invoke(null, ["CardCollisionEnabled"])!,
                 "New toggle changes did not reach the live model before Save.");
+            SetBridgeBool(bridge, "CardCollisionEnabled", true);
+            InvokeBridge(config!, "Changed");
             // RitsuLib/main writes must also update the mirror before a delayed
             // BaseLib save, or switching pages would silently discard the edit.
             thingsConfig.GetMethod("SetValue")!.Invoke(null, ["BossScaleBeetleWeightPercent", 620]);

@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bwrc18joxdemb"
-path="res://.godot/imported/things_narrow_gate.png-99ca6a32b4beadd86588b09c96753b4e.ctex"
+path.bptc="res://.godot/imported/things_narrow_gate.png-99ca6a32b4beadd86588b09c96753b4e.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/events/things_narrow_gate.png"
-dest_files=["res://.godot/imported/things_narrow_gate.png-99ca6a32b4beadd86588b09c96753b4e.ctex"]
+dest_files=["res://.godot/imported/things_narrow_gate.png-99ca6a32b4beadd86588b09c96753b4e.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

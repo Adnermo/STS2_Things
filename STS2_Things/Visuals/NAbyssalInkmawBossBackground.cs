@@ -106,8 +106,24 @@ public partial class NAbyssalInkmawBossBackground : Node2D
     private bool _outerLeftSmallEventConnected;
     private bool _outerRightSmallEventConnected;
 
+    private static readonly StringName MethodGetX = "get_x";
+    private static readonly StringName MethodGetY = "get_y";
+
     private GodotObject? _cameraShakeBone;
     private Vector2? _initialScenePos;
+    private Control? _cachedAllyContainer;
+    private bool _hasSyncedTransform;
+    private Vector2 _lastViewportSize;
+    private Transform2D _lastParentGlobal;
+    private Vector2 _lastScenePos;
+    private float _lastShakeX;
+    private float _lastShakeY;
+    private bool _lastLeftFloorBreach;
+    private bool _lastRightFloorBreach;
+    private int _lastCreatureCount = -1;
+    private int _lastAllyCount = -1;
+    private bool _beamPlaying;
+    private int _beamPlayGeneration;
     private bool _bodyReady;
     private bool _beamReady;
     private bool _leftWaterReady;
@@ -176,6 +192,10 @@ public partial class NAbyssalInkmawBossBackground : Node2D
             _beamOverlay.Position = BodyRigPos;
             _beamOverlay.ZAsRelative = false;
             _beamOverlay.ZIndex = ForegroundBeamZIndex;
+        }
+        if (_beamNode != null)
+        {
+            _beamNode.Visible = false;
         }
 
         if (_leftWaterNode != null) _leftWaterNode.Position = LeftWaterTentaclePos;
@@ -278,6 +298,9 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         DisconnectEvent(_outerRightSmallNode, _smallTentacleEventCallable, ref _outerRightSmallEventConnected);
         _presentationEnded = true;
         _cameraShakeBone = null;
+        _cachedAllyContainer = null;
+        _hasSyncedTransform = false;
+        _beamPlayGeneration++;
         if (_activeInstance == this)
             _activeInstance = null;
     }
@@ -288,7 +311,7 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         if (_presentationEnded)
             return;
 
-        SyncChamberTransform();
+        SyncChamberTransformInternal(force: false);
     }
 
     public void AlignStageAndPlayers()
@@ -361,8 +384,18 @@ public partial class NAbyssalInkmawBossBackground : Node2D
 
         if (_beamReady && _beamSprite?.TryGetAnimationState() is { } beamState)
         {
+            SetBeamActive(true);
             SetTrackImmediate(beamState, "ink_spray", loop: false, ActionTrack, mix: 0f);
             beamState.AddAnimation("idle_hidden", 0f, loop: true, ActionTrack);
+            _beamSprite.BoundObject.Call("update_skeleton", 0f);
+            float duration = beamState.GetCurrentAnimationDuration(ActionTrack) is { } d && d > 0.1f ? d : 2.05f;
+            int generation = ++_beamPlayGeneration;
+            GetTree().CreateTimer(duration + 0.12f).Timeout += () =>
+            {
+                if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _beamPlayGeneration != generation)
+                    return;
+                SetBeamActive(false);
+            };
         }
     }
 
@@ -428,10 +461,13 @@ public partial class NAbyssalInkmawBossBackground : Node2D
     public void PlayBossDie()
     {
         _bossDead = true;
+        _beamPlayGeneration++;
         if (_beamReady && _beamSprite?.TryGetAnimationState() is { } beamState)
         {
             SetTrackImmediate(beamState, "idle_hidden", loop: true, ActionTrack, mix: 0.05f);
+            _beamSprite.BoundObject.Call("update_skeleton", 0f);
         }
+        SetBeamActive(false);
 
         if (_bodyReady && _bodySprite?.TryGetAnimationState() is { } bodyState)
         {
@@ -476,6 +512,7 @@ public partial class NAbyssalInkmawBossBackground : Node2D
             SetTrackImmediate(state, steadyBase, loop: true, BaseModeTrack, mix: 0f);
         }
 
+        sprite.BoundObject.Call("update_skeleton", 0f);
         SyncChamberTransform();
     }
 
@@ -759,17 +796,32 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         return _outerRightSmallSprite;
     }
 
+    private static void SetSpineNodeActive(Node2D? node, bool visible, bool ready)
+    {
+        if (node == null || !GodotObject.IsInstanceValid(node))
+            return;
+        node.Visible = visible;
+        if (visible)
+            node.ProcessMode = ProcessModeEnum.Inherit;
+        else if (ready)
+            node.ProcessMode = ProcessModeEnum.Disabled;
+    }
+
+    private void SetBeamActive(bool active)
+    {
+        _beamPlaying = active;
+        SetSpineNodeActive(_beamNode, active, _beamReady);
+    }
+
     private void UpdateSmallTentacleVisibility(bool isOuterLeft)
     {
         if (isOuterLeft)
         {
-            if (_outerLeftSmallNode != null && GodotObject.IsInstanceValid(_outerLeftSmallNode))
-                _outerLeftSmallNode.Visible = _outerLeftSmallAlive;
+            SetSpineNodeActive(_outerLeftSmallNode, _outerLeftSmallAlive, _outerLeftSmallReady);
         }
         else
         {
-            if (_outerRightSmallNode != null && GodotObject.IsInstanceValid(_outerRightSmallNode))
-                _outerRightSmallNode.Visible = _outerRightSmallAlive;
+            SetSpineNodeActive(_outerRightSmallNode, _outerRightSmallAlive, _outerRightSmallReady);
         }
     }
 
@@ -822,17 +874,13 @@ public partial class NAbyssalInkmawBossBackground : Node2D
     {
         if (isLeft)
         {
-            if (_leftWaterNode != null && GodotObject.IsInstanceValid(_leftWaterNode))
-                _leftWaterNode.Visible = _leftAlive && !_leftFloorBreach;
-            if (_leftFloorNode != null && GodotObject.IsInstanceValid(_leftFloorNode))
-                _leftFloorNode.Visible = _leftAlive && _leftFloorBreach;
+            SetSpineNodeActive(_leftWaterNode, _leftAlive && !_leftFloorBreach, _leftWaterReady);
+            SetSpineNodeActive(_leftFloorNode, _leftAlive && _leftFloorBreach, _leftFloorReady);
         }
         else
         {
-            if (_rightWaterNode != null && GodotObject.IsInstanceValid(_rightWaterNode))
-                _rightWaterNode.Visible = _rightAlive && !_rightFloorBreach;
-            if (_rightFloorNode != null && GodotObject.IsInstanceValid(_rightFloorNode))
-                _rightFloorNode.Visible = _rightAlive && _rightFloorBreach;
+            SetSpineNodeActive(_rightWaterNode, _rightAlive && !_rightFloorBreach, _rightWaterReady);
+            SetSpineNodeActive(_rightFloorNode, _rightAlive && _rightFloorBreach, _rightFloorReady);
         }
     }
 
@@ -866,6 +914,7 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         ConnectEvent(_beamNode, _beamEventCallable, ref _beamEventConnected);
         SetTrackImmediate(state, "idle_hidden", loop: true, ActionTrack, mix: 0f);
         _beamSprite?.BoundObject.Call("update_skeleton", 0f);
+        SetBeamActive(_beamPlaying);
     }
 
     private void OnTentacleSpineReady(MegaAnimationState state, bool isLeft, bool isFloor)
@@ -972,7 +1021,19 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         return new MegaEvent(spineEvent).GetData().GetEventName();
     }
 
-    public void SyncChamberTransform()
+    public void SyncChamberTransform() => SyncChamberTransformInternal(force: true);
+
+    private Control? GetCachedAllyContainer(Control? sceneContainer)
+    {
+        if (_cachedAllyContainer != null && GodotObject.IsInstanceValid(_cachedAllyContainer) && _cachedAllyContainer.IsInsideTree())
+            return _cachedAllyContainer;
+
+        _cachedAllyContainer = NCombatRoom.Instance?.GetNodeOrNull<Control>("%AllyContainer")
+            ?? sceneContainer?.GetNodeOrNull<Control>("AllyContainer");
+        return _cachedAllyContainer;
+    }
+
+    private void SyncChamberTransformInternal(bool force)
     {
         if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
             return;
@@ -983,16 +1044,16 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         if (viewportSize.X < 1f || viewportSize.Y < 1f)
             viewportSize = new Vector2(1920f, 1080f);
 
-        float targetGlobalScale = MathF.Max(viewportSize.X / 1920f, viewportSize.Y / 1080f) * ChamberOverscanScale;
-
-        Control? sceneContainer = NCombatRoom.Instance?.SceneContainer
+        NCombatRoom? room = NCombatRoom.Instance;
+        Control? sceneContainer = room?.SceneContainer
             ?? bgParent.GetParent() as Control;
 
+        Vector2 scenePos = sceneContainer?.Position ?? Vector2.Zero;
         Vector2 nativeShake = Vector2.Zero;
         if (sceneContainer != null)
         {
-            _initialScenePos ??= sceneContainer.Position;
-            Vector2 deltaPos = sceneContainer.Position - _initialScenePos.Value;
+            _initialScenePos ??= scenePos;
+            Vector2 deltaPos = scenePos - _initialScenePos.Value;
             if (deltaPos.LengthSquared() <= 4096f)
                 nativeShake = deltaPos;
         }
@@ -1001,14 +1062,54 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         float shakeY = 0f;
         if (!_presentationEnded && _cameraShakeBone != null && GodotObject.IsInstanceValid(_cameraShakeBone))
         {
-            shakeX = _cameraShakeBone.Call("get_x").AsSingle();
-            shakeY = _cameraShakeBone.Call("get_y").AsSingle();
+            shakeX = _cameraShakeBone.Call(MethodGetX).AsSingle();
+            shakeY = _cameraShakeBone.Call(MethodGetY).AsSingle();
         }
 
+        Transform2D parentGlobal = bgParent.GetGlobalTransform();
+        Control? allyContainer = GetCachedAllyContainer(sceneContainer);
+        int creatureCount = -1;
+        if (room != null)
+        {
+            if (!room.CreatureNodes.TryGetNonEnumeratedCount(out creatureCount))
+            {
+                creatureCount = 0;
+                foreach (var _ in room.CreatureNodes)
+                    creatureCount++;
+            }
+        }
+        int allyCount = allyContainer?.GetChildCount() ?? -1;
+
+        if (!force &&
+            _hasSyncedTransform &&
+            viewportSize == _lastViewportSize &&
+            parentGlobal == _lastParentGlobal &&
+            scenePos == _lastScenePos &&
+            shakeX == _lastShakeX &&
+            shakeY == _lastShakeY &&
+            _leftFloorBreach == _lastLeftFloorBreach &&
+            _rightFloorBreach == _lastRightFloorBreach &&
+            creatureCount == _lastCreatureCount &&
+            allyCount == _lastAllyCount)
+        {
+            return;
+        }
+
+        _hasSyncedTransform = true;
+        _lastViewportSize = viewportSize;
+        _lastParentGlobal = parentGlobal;
+        _lastScenePos = scenePos;
+        _lastShakeX = shakeX;
+        _lastShakeY = shakeY;
+        _lastLeftFloorBreach = _leftFloorBreach;
+        _lastRightFloorBreach = _rightFloorBreach;
+        _lastCreatureCount = creatureCount;
+        _lastAllyCount = allyCount;
+
+        float targetGlobalScale = MathF.Max(viewportSize.X / 1920f, viewportSize.Y / 1080f) * ChamberOverscanScale;
         Vector2 baseCenterGlobal = viewportSize * 0.5f + nativeShake;
         Vector2 shakenCenterGlobal = baseCenterGlobal + new Vector2(shakeX, -shakeY) * targetGlobalScale;
 
-        Transform2D parentGlobal = bgParent.GetGlobalTransform();
         Vector2 parentScale = parentGlobal.Scale.Abs();
         if (parentScale.X > 0.001f && parentScale.Y > 0.001f)
         {
@@ -1017,19 +1118,18 @@ public partial class NAbyssalInkmawBossBackground : Node2D
             bgControl.Position = parentGlobal.AffineInverse() * shakenCenterGlobal;
         }
 
-        SyncStageAndCreatureAnchors(viewportSize, sceneContainer, baseCenterGlobal, shakenCenterGlobal, targetGlobalScale);
+        SyncStageAndCreatureAnchors(viewportSize, sceneContainer, allyContainer, baseCenterGlobal, shakenCenterGlobal, targetGlobalScale);
     }
 
     private void SyncStageAndCreatureAnchors(
         Vector2 viewportSize,
         Control? sceneContainer,
+        Control? allyContainer,
         Vector2 baseCenterGlobal,
         Vector2 shakenCenterGlobal,
         float targetGlobalScale)
     {
-        Control? allyContainer = NCombatRoom.Instance?.GetNodeOrNull<Control>("%AllyContainer")
-            ?? sceneContainer?.GetNodeOrNull<Control>("AllyContainer");
-        if (allyContainer != null)
+        if (allyContainer != null && GodotObject.IsInstanceValid(allyContainer))
         {
             ApplyMonumentalScaleToAllies(allyContainer);
             if (allyContainer.GetParent() is CanvasItem allyParent)
@@ -1163,6 +1263,8 @@ public partial class NAbyssalInkmawBossBackground : Node2D
 
         _presentationEnded = true;
         _cameraShakeBone = null;
+        _beamPlayGeneration++;
+        SetBeamActive(false);
         if (GodotObject.IsInstanceValid(this) && IsInsideTree())
             SyncChamberTransform();
     }

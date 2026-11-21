@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -21,6 +22,7 @@ internal static class BugRunRecorder
 {
     private sealed record TrackedLocalChecksum(uint Id, uint Checksum, string Context, NetFullCombatState State);
 
+    private static readonly FieldInfo? RunManagerStartTimeField = AccessTools.Field(typeof(RunManager), "_startTime");
     private static readonly System.Net.Http.HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(18) };
     private static readonly Uri Endpoint = new("https://reports.adnermo.online/api/reports");
     private static readonly BugSubmissionGuard SubmissionGuard = new();
@@ -37,7 +39,7 @@ internal static class BugRunRecorder
     private static long _lastErrorPoll;
     private static long _lastSnapshotAt;
     private static bool _snapshotDirty, _journalDirty;
-    private const int SnapshotIntervalMs = 500;
+    private const int SnapshotIntervalMs = 30_000;
     private static GameAction? _reportedErrorAction;
     private static long _combatCheckpointAt;
     private static bool _startupWaitRecorded;
@@ -67,12 +69,13 @@ internal static class BugRunRecorder
         if (_ready) return;
 
         BugRuntimeFaults.HarmonyOwnerResolver = BugHarmonyInspector.ResolveOwnersForFrames;
-        BugFileFingerprints.PrimeMany(BugHarmonyInspector.CollectAllFingerprintPaths());
+        BugRuntimeFaults.BeginHarmonyResolutionBatch = BugHarmonyInspector.BeginOwnerResolutionBatch;
+        BugFileFingerprints.PrimeDeferred(BugHarmonyInspector.CollectAllFingerprintPaths);
 
         RunManager.Instance.RunStarted += OnStarted;
         RunManager.Instance.RoomEntered += () => Track("room_entered", persist: true);
-        CombatManager.Instance.CombatBegan += _ => Track("combat_started", persist: true);
-        CombatManager.Instance.TurnStarted += _ => Track("turn_started", persist: true);
+        CombatManager.Instance.CombatBegan += _ => Track("combat_started", persist: false);
+        CombatManager.Instance.TurnStarted += _ => Track("turn_started", persist: false);
         CombatManager.Instance.CombatEnded += OnCombatEnded;
 
         // Start-of-room/turn fire-and-forget failures do not belong to ActionExecutor.
@@ -121,11 +124,7 @@ internal static class BugRunRecorder
         {
             if (Store.Current is not null)
             {
-                var replay = BugReplayCapture.CaptureCombatReplay();
-                if (replay["available"]?.GetValue<bool>() == true)
-                {
-                    Store.Current["combat_replay"] = replay.DeepClone();
-                }
+                BugReplayCapture.BeginCaptureCombatReplay(_run);
             }
         }
         catch (Exception)
@@ -137,7 +136,7 @@ internal static class BugRunRecorder
 
     private static string RunKey(RunState run)
     {
-        long started = (long)(AccessTools.Field(typeof(RunManager), "_startTime").GetValue(RunManager.Instance) ?? 0L);
+        long started = (long)(RunManagerStartTimeField?.GetValue(RunManager.Instance) ?? 0L);
         int profile;
         try
         {
@@ -158,21 +157,31 @@ internal static class BugRunRecorder
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input)));
     }
 
+    internal static void EnsureRunStarted(RunState run)
+    {
+        if (!ReferenceEquals(_run, run))
+        {
+            OnStarted(run);
+        }
+    }
+
     private static void OnStarted(RunState run)
     {
         try
         {
             if (ReferenceEquals(_run, run)) return;
-            if (_run is not null) Store.Archive(); // Pure frozen serialization; no live state reads.
+            ApplyPendingReplayCaptures();
             DetachExecutor();
             BugReplayCapture.ClearRunState();
             _reportedErrorAction = null;
             _combatCheckpointAt = 0;
             _startupWaitRecorded = false;
 
-            BugFileFingerprints.PrimeMany(BugHarmonyInspector.CollectAllFingerprintPaths());
-            var metadata = RuntimeMetadata(run);
-            bool resumed = Store.Begin(RunKey(run), metadata, BugSnapshot.Capture(run));
+            // Defer file discovery & SHA-256 hashing to the single sequential background worker
+            // and defer heavy Harmony/assembly reflection until F2 CaptureSnapshotAsync().
+            BugFileFingerprints.PrimeDeferred(BugHarmonyInspector.CollectAllFingerprintPaths);
+            var metadata = RuntimeMetadata(run, includeHeavyInspection: false, resolveHarmonyOwners: false);
+            bool resumed = Store.Begin(RunKey(run), metadata, BugSnapshot.Capture(run), syncArchive: false);
             _run = run;
 
             _executor = RunManager.Instance.ActionExecutor;
@@ -184,7 +193,10 @@ internal static class BugRunRecorder
             AttachChecksumTracker(RunManager.Instance.ChecksumTracker);
 
             Track(resumed ? "run_resumed" : "run_first_observed", persist: true);
-            FlushJournal(force: true);
+            _lastSnapshotAt = System.Environment.TickCount64;
+            _snapshotDirty = false;
+            _journalDirty = false;
+            _ = Store.QueuePersist();
         }
         catch (Exception ex)
         {
@@ -336,16 +348,18 @@ internal static class BugRunRecorder
                 ["remote_checksum"] = desync["remote_checksum"]?.DeepClone(),
                 ["diff_count"] = (desync["field_diffs"] as JsonArray)?.Count ?? 0,
             }, persist: true);
-            FlushJournal(force: true);
+            _ = Store.QueuePersist();
         }
         return desync;
     }
 
-    private static JsonObject RuntimeMetadata(RunState? activeRun = null)
+    private static JsonObject RuntimeMetadata(
+        RunState? activeRun = null,
+        bool includeHeavyInspection = true,
+        bool resolveHarmonyOwners = true)
     {
-        var faultsSnapshot = BugRuntimeFaults.Snapshot();
+        var faultsSnapshot = BugRuntimeFaults.Snapshot(resolveHarmonyOwners: resolveHarmonyOwners);
         var errorsAlias = new JsonArray(faultsSnapshot.Select(n => n?.DeepClone()).ToArray());
-        var priorityFrames = ExtractFaultFrames(faultsSnapshot);
         var configObj = BugSnapshot.Object(new
         {
             session_active = Config.MultiplayerConfig.IsActive,
@@ -376,12 +390,16 @@ internal static class BugRunRecorder
 
         metadata["runtime_faults"] = faultsSnapshot;
         metadata["runtime_errors"] = errorsAlias;
-        metadata["assemblies"] = BugHarmonyInspector.CaptureLoadedAssemblies();
-        metadata["harmony_patches"] = BugHarmonyInspector.CaptureHarmonyPatches(priorityFrames);
-        metadata["game_file"] = BugFileFingerprints.Describe(
-            BugHarmonyInspector.ResolveAssemblyDiskPath(typeof(MegaCrit.Sts2.Core.Models.AbstractModel).Assembly));
-        metadata["things_files"] = ThingsOwnFiles();
-        metadata["mod_files"] = ModFiles();
+        if (includeHeavyInspection)
+        {
+            var priorityFrames = ExtractFaultFrames(faultsSnapshot);
+            metadata["assemblies"] = BugHarmonyInspector.CaptureLoadedAssemblies();
+            metadata["harmony_patches"] = BugHarmonyInspector.CaptureHarmonyPatches(priorityFrames);
+            metadata["game_file"] = BugFileFingerprints.Describe(
+                BugHarmonyInspector.ResolveAssemblyDiskPath(typeof(MegaCrit.Sts2.Core.Models.AbstractModel).Assembly));
+            metadata["things_files"] = ThingsOwnFiles();
+            metadata["mod_files"] = ModFiles();
+        }
         metadata["things_config"] = configObj;
         metadata["config"] = configObj.DeepClone();
 
@@ -424,6 +442,13 @@ internal static class BugRunRecorder
         return frames;
     }
 
+    internal static void NoteCheckpointStarted(CheckpointMetadata metadata)
+    {
+        bool isCombatEntry = metadata.EntryKind is "combat_entry" or "boss_entry" or "event_combat_entry";
+        _combatCheckpointAt = isCombatEntry ? System.Environment.TickCount64 : 0;
+        _startupWaitRecorded = false;
+    }
+
     internal static void RecordCheckpoint(JsonObject checkpoint)
     {
         try
@@ -435,11 +460,22 @@ internal static class BugRunRecorder
             {
                 Store.Current["checkpoint"] = checkpoint.DeepClone();
                 bool isCombatEntry = checkpoint["entry_kind"]?.GetValue<string>() is "combat_entry" or "boss_entry" or "event_combat_entry";
-                _combatCheckpointAt = isCombatEntry ? System.Environment.TickCount64 : 0;
-                _startupWaitRecorded = false;
+                if (isCombatEntry)
+                {
+                    if (_combatCheckpointAt == 0)
+                    {
+                        _combatCheckpointAt = System.Environment.TickCount64;
+                        _startupWaitRecorded = false;
+                    }
+                }
+                else
+                {
+                    _combatCheckpointAt = 0;
+                    _startupWaitRecorded = false;
+                }
 
                 string eventKind = isCombatEntry ? "combat_checkpoint" : "room_checkpoint";
-                Store.Track(new JsonObject
+                Store.TrackOwned(new JsonObject
                 {
                     ["kind"] = eventKind,
                     ["at"] = DateTimeOffset.UtcNow.ToString("O"),
@@ -454,12 +490,28 @@ internal static class BugRunRecorder
                     },
                 });
                 _journalDirty = true;
-                FlushJournal(force: true);
             }
         }
         catch (Exception)
         {
             // Checkpoint observation must never interrupt room entry.
+        }
+    }
+
+    private static void ApplyPendingReplayCaptures()
+    {
+        if (!BugReplayCapture.HasPendingApply) return;
+        if (BugReplayCapture.TryTakeCompletedCheckpoint(_run, out var checkpoint) && checkpoint is not null)
+        {
+            RecordCheckpoint(checkpoint);
+        }
+        if (BugReplayCapture.TryTakeCompletedCombatReplay(_run, out var replay)
+            && replay is not null
+            && Store.Current is not null
+            && replay["available"]?.GetValue<bool>() == true)
+        {
+            Store.Current["combat_replay"] = replay.DeepClone();
+            _journalDirty = true;
         }
     }
 
@@ -607,17 +659,42 @@ internal static class BugRunRecorder
         action.BeforeCancelled -= Cancelled;
     }
 
-    private static JsonObject ActionRecord(GameAction action) => BugSnapshot.Object(new
+    private static JsonObject ActionRecord(GameAction action)
     {
-        action_id = action.Id,
-        action_type = action.GetType().Name,
-        action_state = action.State.ToString(),
-        card = action is PlayCardAction card ? card.CardModelId.ToString() : null,
-        target = action is PlayCardAction targetCard ? targetCard.TargetId : action is UsePotionAction potion ? potion.TargetId : null,
-        potion_slot = action is UsePotionAction use ? (int?)use.PotionIndex : null,
-        player_index = _run?.Players.ToList().FindIndex(p => p.NetId == action.OwnerId),
-        error = BugSnapshot.Error(action.Exception),
-    });
+        int? playerIndex = null;
+        if (_run is { } run)
+        {
+            var players = run.Players;
+            int found = -1;
+            for (int i = 0; i < players.Count; i++)
+            {
+                if (players[i].NetId == action.OwnerId)
+                {
+                    found = i;
+                    break;
+                }
+            }
+            playerIndex = found;
+        }
+
+        uint? target = action is PlayCardAction targetCard
+            ? targetCard.TargetId
+            : action is UsePotionAction potion
+                ? potion.TargetId
+                : null;
+
+        return new JsonObject
+        {
+            ["action_id"] = JsonValue.Create(action.Id),
+            ["action_type"] = action.GetType().Name,
+            ["action_state"] = action.State.ToString(),
+            ["card"] = action is PlayCardAction card ? card.CardModelId.ToString() : null,
+            ["target"] = JsonValue.Create(target),
+            ["potion_slot"] = JsonValue.Create(action is UsePotionAction use ? (int?)use.PotionIndex : null),
+            ["player_index"] = JsonValue.Create(playerIndex),
+            ["error"] = action.Exception is null ? null : BugSnapshot.Object(BugSnapshot.Error(action.Exception)!),
+        };
+    }
 
     private static void BeforeAction(GameAction action)
     {
@@ -627,22 +704,22 @@ internal static class BugRunRecorder
             action.BeforeResumedAfterPlayerChoice += AfterChoice;
             action.BeforeCancelled += Cancelled;
         }
-        Track("action_started", ActionRecord(action), persist: true);
+        Track("action_started", ActionRecord(action), persist: false);
     }
 
-    private static void BeforeChoice(GameAction action) => Track("action_waiting_for_choice", ActionRecord(action), persist: true);
-    private static void AfterChoice(GameAction action) => Track("action_resumed", ActionRecord(action), persist: true);
+    private static void BeforeChoice(GameAction action) => Track("action_waiting_for_choice", ActionRecord(action), persist: false);
+    private static void AfterChoice(GameAction action) => Track("action_resumed", ActionRecord(action), persist: false);
 
     private static void Cancelled(GameAction action)
     {
-        Track("action_cancelled", ActionRecord(action), persist: true);
+        Track("action_cancelled", ActionRecord(action), persist: false);
         DetachAction(action);
         TrackedActions.Remove(action);
     }
 
     private static void AfterAction(GameAction action)
     {
-        Track("action_completed", ActionRecord(action), persist: true);
+        Track("action_completed", ActionRecord(action), persist: false);
         DetachAction(action);
         TrackedActions.Remove(action);
     }
@@ -652,13 +729,14 @@ internal static class BugRunRecorder
         if (System.Environment.TickCount64 - _lastErrorPoll < 250) return;
         _lastErrorPoll = System.Environment.TickCount64;
         DrainRuntimeErrors();
+        ApplyPendingReplayCaptures();
 
         var currentRun = RunManager.Instance.DebugOnlyGetState();
         if (currentRun is null && _run is not null)
         {
             try
             {
-                Store.Archive();
+                _ = Store.ArchiveAsync();
             }
             catch (IOException)
             {
@@ -719,6 +797,7 @@ internal static class BugRunRecorder
 
     private static void DrainRuntimeErrors()
     {
+        if (!BugRuntimeFaults.HasPending) return;
         _drainingRuntimeErrors = true;
         try
         {
@@ -744,11 +823,11 @@ internal static class BugRunRecorder
             if (run is null) return;
             if (!ReferenceEquals(_run, run)) OnStarted(run);
             if (!ReferenceEquals(_run, run)) return;
-            Store.Track(new JsonObject
+            Store.TrackOwned(new JsonObject
             {
                 ["at"] = DateTimeOffset.UtcNow.ToString("O"),
                 ["kind"] = kind,
-                ["detail"] = detail?.DeepClone(),
+                ["detail"] = detail is null ? null : (detail.Parent is not null ? detail.DeepClone() : detail),
                 ["act_index"] = run.CurrentActIndex,
                 ["floor"] = run.ActFloor,
                 ["room"] = run.CurrentRoom?.GetType().Name,
@@ -764,15 +843,24 @@ internal static class BugRunRecorder
 
     private static void FlushJournal(bool force = false)
     {
+        if (force)
+        {
+            BugReplayCapture.WaitPendingCaptures(5000);
+        }
+        ApplyPendingReplayCaptures();
+
         if (_run is null || (!force && !_journalDirty)) return;
         long now = System.Environment.TickCount64;
         if (!force && now - _lastSnapshotAt < SnapshotIntervalMs) return;
         if (_snapshotDirty || force)
         {
-            Store.Update(BugSnapshot.Capture(_run, TrackedActions.LastOrDefault()), clone: false);
+            var snapshot = force
+                ? BugSnapshot.Capture(_run, TrackedActions.LastOrDefault())
+                : BugSnapshot.CapturePeriodic(_run, TrackedActions.LastOrDefault());
+            Store.Update(snapshot, clone: false);
             if (Store.Current is not null)
             {
-                var faults = BugRuntimeFaults.Snapshot();
+                var faults = BugRuntimeFaults.Snapshot(resolveHarmonyOwners: force);
                 Store.Current["runtime_faults"] = faults;
                 Store.Current["runtime_errors"] = new JsonArray(faults.Select(n => n?.DeepClone()).ToArray());
             }
@@ -786,34 +874,79 @@ internal static class BugRunRecorder
 
     /// <summary>
     /// Captures a complete Schema v4 upload journal on the calling thread, then awaits any in-flight
-    /// background SHA-256 computations so game/mod DLL and PCK fingerprints are never "pending".
+    /// background checkpoint/replay encodings and sequential SHA-256 computations so game/mod DLL and
+    /// PCK fingerprints are never "pending".
     /// </summary>
     internal static async Task<JsonObject> CaptureSnapshotAsync(int fingerprintTimeoutMs = 1500)
     {
         DrainRuntimeErrors();
-        FlushJournal(force: true);
-
         var activeRun = RunManager.Instance.DebugOnlyGetState();
+        if (activeRun is not null && !ReferenceEquals(_run, activeRun))
+        {
+            OnStarted(activeRun);
+        }
+
+        // Kick off non-blocking CombatReplay snapshot encoding if a combat replay is currently active.
+        BugReplayCapture.BeginCaptureCombatReplay(activeRun);
+        ApplyPendingReplayCaptures();
+
+        if (_run is not null)
+        {
+            Store.Update(BugSnapshot.Capture(_run, TrackedActions.LastOrDefault()), clone: false);
+            if (Store.Current is not null)
+            {
+                var faults = BugRuntimeFaults.Snapshot(resolveHarmonyOwners: true);
+                Store.Current["runtime_faults"] = faults;
+                Store.Current["runtime_errors"] = new JsonArray(faults.Select(n => n?.DeepClone()).ToArray());
+            }
+            _lastSnapshotAt = System.Environment.TickCount64;
+            _snapshotDirty = false;
+            _journalDirty = false;
+        }
+
         var journal = Store.JournalForUpload();
-        var combatReplay = BugReplayCapture.CaptureCombatReplay();
-        var preAwaitMeta = RuntimeMetadata(activeRun);
+        var preAwaitMeta = RuntimeMetadata(activeRun, includeHeavyInspection: false, resolveHarmonyOwners: true);
+        List<string> priorityFrames = preAwaitMeta["runtime_faults"] is JsonArray faultArray
+            ? ExtractFaultFrames(faultArray)
+            : [];
+        var harmonyPatches = BugHarmonyInspector.CaptureHarmonyPatches(priorityFrames);
         var fingerprintPaths = BugHarmonyInspector.CollectAllFingerprintPaths();
 
         BugFileFingerprints.PrimeMany(fingerprintPaths);
-        bool allFingerprintsReady = await BugFileFingerprints.FlushPendingAsync(fingerprintTimeoutMs);
+        if (Store.Current is not null)
+        {
+            _ = Store.QueuePersist();
+        }
+
+        await BugReplayCapture.FlushPendingAsync(Math.Max(fingerprintTimeoutMs, 2500)).ConfigureAwait(false);
+        bool allFingerprintsReady = await BugFileFingerprints.FlushPendingAsync(fingerprintTimeoutMs).ConfigureAwait(false);
+        await Store.FlushPendingWritesAsync(1500).ConfigureAwait(false);
 
         foreach (var item in preAwaitMeta)
         {
             journal[item.Key] = item.Value?.DeepClone();
         }
 
-        // Re-read file-backed SHA-256 descriptors now that FlushPendingAsync has completed.
+        if (BugReplayCapture.GetLatestCheckpoint(activeRun) is { } latestCheckpoint)
+        {
+            journal["checkpoint"] = latestCheckpoint;
+        }
+
+        // Read file-backed SHA-256 descriptors now that FlushPendingAsync has completed.
         journal["game_file"] = BugFileFingerprints.Describe(
             BugHarmonyInspector.ResolveAssemblyDiskPath(typeof(MegaCrit.Sts2.Core.Models.AbstractModel).Assembly));
         journal["things_files"] = ThingsOwnFiles();
         journal["mod_files"] = ModFiles();
         journal["assemblies"] = BugHarmonyInspector.CaptureLoadedAssemblies();
-        journal["combat_replay"] = combatReplay;
+        journal["harmony_patches"] = harmonyPatches;
+        if (BugReplayCapture.GetLatestCombatReplay() is { } latestReplay)
+        {
+            journal["combat_replay"] = latestReplay;
+        }
+        else if (journal["combat_replay"]?["available"]?.GetValue<bool>() != true)
+        {
+            journal["combat_replay"] = BugReplayCodec.UnavailableCombatReplay("no_active_combat_replay");
+        }
         journal["dropped_runtime_errors"] = BugRuntimeFaults.Dropped;
         journal["report_context"] = activeRun is null ? "last_recorded_run_or_menu" : "active_run";
         journal["capture_capabilities"] = new JsonObject

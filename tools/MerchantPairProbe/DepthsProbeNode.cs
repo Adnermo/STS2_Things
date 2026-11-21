@@ -74,15 +74,21 @@ public partial class DepthsProbeNode : Node
                 Assert(pair.Slots.SequenceEqual(new[]{"merchant_left","merchant_right"}), "Distinct slots");
                 Assert(pair.MinGoldReward == 300 && pair.MaxGoldReward == 300, "Existing encounter reward retained once");
                 var room = new CombatRoom(pair,run);
-                foreach(var p in party){p.ResetCombatState();room.CombatState.AddPlayer(p);}
+                foreach(var p in party){room.CombatState.AddPlayer(p);}
+                Assert(party.All(p=>p.PlayerCombatState==null), "EventLayoutType.Combat layout state starts with null PlayerCombatState before SetUpCombat");
                 foreach(var (model,slot) in pair.MonstersWithSlots)
                 {
                     var creature = room.CombatState.CreateCreature(model,CombatSide.Enemy,slot);room.CombatState.AddCreature(creature);
-                    model.SetUpForCombat();model.RollMove(party.Select(p=>p.Creature));
                 }
                 int[] original = room.CombatState.Enemies.Select(c=>c.MaxHp).ToArray();
                 var prepare = typeof(ThingsRobberyFakeMerchantEncounter).GetMethod("PrepareForFight",BindingFlags.Instance|BindingFlags.NonPublic)!;
                 for(int callback=0;callback<=players;callback++)await (Task)prepare.Invoke(pair,[room.CombatState])!;
+                // Simulate CombatManager.SetUpCombat after EnterCombatWithoutExitingEvent: players get combat state and monsters roll opening moves.
+                foreach(var p in party){p.ResetCombatState();}
+                foreach(var (model,_) in pair.MonstersWithSlots)
+                {
+                    model.SetUpForCombat();model.RollMove(party.Select(p=>p.Creature));
+                }
                 Assert(room.CombatState.Enemies.Select(c=>c.MaxHp).SequenceEqual(original.Select(h=>Math.Max(1,h/3))), "Health cut to a third once despite all player callbacks");
                 Assert(room.CombatState.Enemies.All(c=>c.CurrentHp==c.MaxHp && c.Monster!.NextMove.Intents.Any()), "Both have correct HP and native move intents");
                 Assert(room.CombatState.Enemies.All(c=>c.Powers.OfType<ThingsShiftyPartnersPower>().Count()==1 && !c.GetPower<ThingsShiftyPartnersPower>()!.IsVisible

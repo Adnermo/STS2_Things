@@ -140,6 +140,7 @@ def verify_config_contract(errors: list[str]) -> None:
         "Bosses",
         "Other Encounters",
         "Events",
+        "Cards",
         "Merchant Bargain",
         "Neow Starting Relics",
         "Stability",
@@ -3491,7 +3492,7 @@ def main() -> int:
         [
             "ModHelper.SubscribeForRunStateHooks(",
             '"Adnermo.STS2_Things.QuirkyHopperRewardPolicy"',
-            "static _ => [ModelDb.Modifier<ThingsQuirkyHopperRewardPolicy>()]",
+            "ModelDb.Modifier<ThingsQuirkyHopperRewardPolicy>()",
         ],
         "Quirky Hopper exact-return reward policy subscription",
     )

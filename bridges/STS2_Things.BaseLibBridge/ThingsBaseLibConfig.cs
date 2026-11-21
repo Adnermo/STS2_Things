@@ -293,6 +293,32 @@ public sealed class ThingsBaseLibConfig : SimpleModConfig
     [ConfigSection("Events")]
     public static bool EventSpikedDoorEnabled { get; set; } = true;
 
+    // ---- 卡牌 ----
+
+    [ConfigSection("Cards")]
+    [ConfigHoverTip]
+    public static bool CardsEnabled { get; set; } = true;
+
+    [ConfigSection("Cards")]
+    [ConfigVisibleIf(nameof(AreCustomCardsEnabled))]
+    public static bool CardCollisionEnabled { get; set; } = true;
+
+    [ConfigSection("Cards")]
+    [ConfigVisibleIf(nameof(AreCustomCardsEnabled))]
+    public static bool CardReuseEnabled { get; set; } = true;
+
+    [ConfigSection("Cards")]
+    [ConfigVisibleIf(nameof(AreCustomCardsEnabled))]
+    public static bool CardSoulfyshDiseaseEnabled { get; set; } = true;
+
+    [ConfigSection("Cards")]
+    [ConfigVisibleIf(nameof(AreCustomCardsEnabled))]
+    public static bool CardRecallEnabled { get; set; } = true;
+
+    [ConfigSection("Cards")]
+    [ConfigVisibleIf(nameof(AreCustomCardsEnabled))]
+    public static bool CardPackUpEnabled { get; set; } = true;
+
     // ---- 商人猜拳 ----
 
     [ConfigSection("Merchant Bargain")]
@@ -312,6 +338,8 @@ public sealed class ThingsBaseLibConfig : SimpleModConfig
     [ConfigSection("Stability")]
     [ConfigHoverTip]
     public static bool FeatureDefensiveEngineGuardsEnabled { get; set; } = true;
+
+    public static bool AreCustomCardsEnabled() => CardsEnabled;
 
     public static bool CanForceOriginFogmog() => !BossScaleBeetleForced;
 

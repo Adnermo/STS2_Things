@@ -17,11 +17,23 @@ public partial class NThingsBackgroundViewportFitter : Node
     private Vector2 _nominalSize = new(2764.8f, 1296.0f);
     private Vector2? _initialScenePos;
     private Viewport? _connectedViewport;
+    private Control? _bgControl;
+    private CanvasItem? _bgParent;
+    private Control? _sceneContainer;
+    private bool _isLiveBgContainer;
+    private bool _hasLastState;
+    private Vector2 _lastViewportSize;
+    private Transform2D _lastParentGlobal;
+    private Vector2 _lastScenePos;
+    private Vector2 _lastNominalSize;
 
     public void Configure(Vector2 nominalSize)
     {
-        if (nominalSize.X > 1f && nominalSize.Y > 1f)
+        if (nominalSize.X > 1f && nominalSize.Y > 1f && nominalSize != _nominalSize)
+        {
             _nominalSize = nominalSize;
+            _hasLastState = false;
+        }
     }
 
     public override void _Ready()
@@ -30,7 +42,7 @@ public partial class NThingsBackgroundViewportFitter : Node
         if (viewport != null)
         {
             _connectedViewport = viewport;
-            viewport.SizeChanged += SyncTransform;
+            viewport.SizeChanged += OnViewportSizeChanged;
         }
 
         Callable.From(SyncTransform).CallDeferred();
@@ -39,9 +51,14 @@ public partial class NThingsBackgroundViewportFitter : Node
     public override void _ExitTree()
     {
         if (_connectedViewport != null && GodotObject.IsInstanceValid(_connectedViewport))
-            _connectedViewport.SizeChanged -= SyncTransform;
+            _connectedViewport.SizeChanged -= OnViewportSizeChanged;
         _connectedViewport = null;
         _initialScenePos = null;
+        _bgControl = null;
+        _bgParent = null;
+        _sceneContainer = null;
+        _isLiveBgContainer = false;
+        _hasLastState = false;
     }
 
     public override void _Process(double delta)
@@ -49,44 +66,102 @@ public partial class NThingsBackgroundViewportFitter : Node
         SyncTransform();
     }
 
+    private void OnViewportSizeChanged()
+    {
+        _hasLastState = false;
+        SyncTransform();
+    }
+
     public void SyncTransform()
     {
         if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
             return;
-        if (GetParent() is not Control bgControl || !GodotObject.IsInstanceValid(bgControl))
+
+        if (_bgControl == null || !GodotObject.IsInstanceValid(_bgControl))
+        {
+            _bgControl = GetParent() as Control;
+            _bgParent = null;
+            _sceneContainer = null;
+            _initialScenePos = null;
+            _isLiveBgContainer = false;
+            _hasLastState = false;
+        }
+        if (_bgControl == null || !GodotObject.IsInstanceValid(_bgControl))
             return;
-        if (bgControl.GetParent() is not CanvasItem bgParent || !GodotObject.IsInstanceValid(bgParent))
+
+        if (_bgParent == null || !GodotObject.IsInstanceValid(_bgParent))
+        {
+            _bgParent = _bgControl.GetParent() as CanvasItem;
+            _sceneContainer = null;
+            _initialScenePos = null;
+            _isLiveBgContainer = false;
+            _hasLastState = false;
+        }
+        if (_bgParent == null || !GodotObject.IsInstanceValid(_bgParent))
             return;
 
         // Only engage inside live combat rooms / BgContainer; leave isolated headless SubViewport probes untouched.
-        bool isLiveBgContainer = bgParent.Name == "BgContainer" || NCombatRoom.Instance != null;
-        if (!isLiveBgContainer)
-            return;
+        if (!_isLiveBgContainer)
+        {
+            bool isLive = _bgParent.Name == "BgContainer" || NCombatRoom.Instance != null;
+            if (!isLive)
+            {
+                _bgParent = null;
+                return;
+            }
+            _isLiveBgContainer = true;
+        }
 
-        Vector2 viewportSize = bgControl.GetViewportRect().Size;
+        Vector2 viewportSize = _bgControl.GetViewportRect().Size;
         if (viewportSize.X < 1f || viewportSize.Y < 1f)
             return;
 
+        if (_sceneContainer == null || !GodotObject.IsInstanceValid(_sceneContainer))
+        {
+            _sceneContainer = NCombatRoom.Instance?.SceneContainer ?? _bgParent.GetParent() as Control;
+            _initialScenePos = null;
+            _hasLastState = false;
+        }
+
+        Vector2 scenePos = Vector2.Zero;
+        bool hasSceneContainer = _sceneContainer != null && GodotObject.IsInstanceValid(_sceneContainer);
+        if (hasSceneContainer)
+            scenePos = _sceneContainer!.Position;
+
+        Transform2D parentGlobal = _bgParent.GetGlobalTransform();
+        if (_hasLastState &&
+            viewportSize == _lastViewportSize &&
+            parentGlobal == _lastParentGlobal &&
+            scenePos == _lastScenePos &&
+            _nominalSize == _lastNominalSize)
+        {
+            return;
+        }
+
         float targetGlobalScale = MathF.Max(viewportSize.X / _nominalSize.X, viewportSize.Y / _nominalSize.Y) * OverscanMargin;
 
-        Control? sceneContainer = NCombatRoom.Instance?.SceneContainer ?? bgParent.GetParent() as Control;
         Vector2 nativeShake = Vector2.Zero;
-        if (sceneContainer != null && GodotObject.IsInstanceValid(sceneContainer))
+        if (hasSceneContainer)
         {
-            _initialScenePos ??= sceneContainer.Position;
-            Vector2 deltaPos = sceneContainer.Position - _initialScenePos.Value;
+            _initialScenePos ??= scenePos;
+            Vector2 deltaPos = scenePos - _initialScenePos.Value;
             if (deltaPos.LengthSquared() <= 4096f)
                 nativeShake = deltaPos;
         }
 
         Vector2 targetCenterGlobal = viewportSize * 0.5f + nativeShake;
-        Transform2D parentGlobal = bgParent.GetGlobalTransform();
         Vector2 parentScale = parentGlobal.Scale.Abs();
         if (parentScale.X > 0.001f && parentScale.Y > 0.001f)
         {
-            bgControl.PivotOffset = Vector2.Zero;
-            bgControl.Scale = new Vector2(targetGlobalScale / parentScale.X, targetGlobalScale / parentScale.Y);
-            bgControl.Position = parentGlobal.AffineInverse() * targetCenterGlobal;
+            _bgControl.PivotOffset = Vector2.Zero;
+            _bgControl.Scale = new Vector2(targetGlobalScale / parentScale.X, targetGlobalScale / parentScale.Y);
+            _bgControl.Position = parentGlobal.AffineInverse() * targetCenterGlobal;
+
+            _lastViewportSize = viewportSize;
+            _lastParentGlobal = parentGlobal;
+            _lastScenePos = scenePos;
+            _lastNominalSize = _nominalSize;
+            _hasLastState = true;
         }
     }
 }

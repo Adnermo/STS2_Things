@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://d1dbieujyocr1"
-path="res://.godot/imported/things_plinko_bowl.png-3239ce77f5e59c2fde6fb27b2b9186c3.ctex"
+path.bptc="res://.godot/imported/things_plinko_bowl.png-3239ce77f5e59c2fde6fb27b2b9186c3.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/events/minigames/things_plinko_bowl.png"
-dest_files=["res://.godot/imported/things_plinko_bowl.png-3239ce77f5e59c2fde6fb27b2b9186c3.ctex"]
+dest_files=["res://.godot/imported/things_plinko_bowl.png-3239ce77f5e59c2fde6fb27b2b9186c3.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

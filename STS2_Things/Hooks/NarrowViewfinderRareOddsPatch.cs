@@ -1,8 +1,12 @@
+using System;
+using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Factories;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Odds;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
@@ -21,15 +25,27 @@ internal static class NarrowViewfinderRareOddsContext
             AccessTools.DeclaredMethod(typeof(CardRarityOdds), "GetBaseOdds")
                 ?? throw new MissingMethodException(typeof(CardRarityOdds).FullName, "GetBaseOdds"));
 
-    private static readonly MethodInfo RollWithoutChangingMethod =
-        typeof(CardRarityOdds).GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .FirstOrDefault(m => m.Name == nameof(CardRarityOdds.RollWithoutChangingFutureOdds)
-                && m.GetParameters() is var p
-                && p.Length >= 2
-                && p[0].ParameterType == typeof(CardRarityOddsType)
-                && p[1].ParameterType == typeof(float))
-        ?? throw new MissingMethodException(typeof(CardRarityOdds).FullName,
-            nameof(CardRarityOdds.RollWithoutChangingFutureOdds));
+#if STS2_V113_1
+    private static readonly Func<CardRarityOdds, CardRarityOddsType, float, Rng?, CardRarity> RollWithoutChangingDelegate =
+        (Func<CardRarityOdds, CardRarityOddsType, float, Rng?, CardRarity>)Delegate.CreateDelegate(
+            typeof(Func<CardRarityOdds, CardRarityOddsType, float, Rng?, CardRarity>),
+            AccessTools.Method(
+                typeof(CardRarityOdds),
+                nameof(CardRarityOdds.RollWithoutChangingFutureOdds),
+                [typeof(CardRarityOddsType), typeof(float), typeof(Rng)])
+            ?? throw new MissingMethodException(typeof(CardRarityOdds).FullName,
+                nameof(CardRarityOdds.RollWithoutChangingFutureOdds)));
+#else
+    private static readonly Func<CardRarityOdds, CardRarityOddsType, float, CardRarity> RollWithoutChangingDelegate =
+        (Func<CardRarityOdds, CardRarityOddsType, float, CardRarity>)Delegate.CreateDelegate(
+            typeof(Func<CardRarityOdds, CardRarityOddsType, float, CardRarity>),
+            AccessTools.Method(
+                typeof(CardRarityOdds),
+                nameof(CardRarityOdds.RollWithoutChangingFutureOdds),
+                [typeof(CardRarityOddsType), typeof(float)])
+            ?? throw new MissingMethodException(typeof(CardRarityOdds).FullName,
+                nameof(CardRarityOdds.RollWithoutChangingFutureOdds)));
+#endif
 
     public static bool IsDoublingActive => ActiveDepth.Value > 0 && SuppressDoubleDepth.Value == 0;
 
@@ -51,15 +67,12 @@ internal static class NarrowViewfinderRareOddsContext
         SuppressDoubleDepth.Value++;
         try
         {
-            object?[] invokeArgs = RollWithoutChangingMethod.GetParameters().Length switch
-            {
-                2 => [type, doubledOffset],
-                3 => [type, doubledOffset, rngOverride],
-                _ => throw new InvalidOperationException(
-                    $"Unexpected parameter count for RollWithoutChangingFutureOdds: {RollWithoutChangingMethod.GetParameters().Length}")
-            };
-            return (CardRarity)(RollWithoutChangingMethod.Invoke(instance, invokeArgs)
-                ?? throw new InvalidOperationException("RollWithoutChangingFutureOdds returned null."));
+#if STS2_V113_1
+            return RollWithoutChangingDelegate(instance, type, doubledOffset, rngOverride);
+#else
+            _ = rngOverride;
+            return RollWithoutChangingDelegate(instance, type, doubledOffset);
+#endif
         }
         finally
         {
@@ -83,7 +96,17 @@ internal static class NarrowViewfinderCreateForRewardScopePatch
         {
             return;
         }
-        if (!player.Relics.OfType<ThingsNarrowViewfinder>().Any())
+        bool hasViewfinder = false;
+        IReadOnlyList<RelicModel> relics = player.Relics;
+        for (int i = 0; i < relics.Count; i++)
+        {
+            if (relics[i] is ThingsNarrowViewfinder)
+            {
+                hasViewfinder = true;
+                break;
+            }
+        }
+        if (!hasViewfinder)
             return;
 
         NarrowViewfinderRareOddsContext.PushScope();
@@ -100,17 +123,22 @@ internal static class NarrowViewfinderCreateForRewardScopePatch
 [HarmonyPatch]
 internal static class NarrowViewfinderRollWithoutChangingPatch
 {
-    private static MethodBase TargetMethod()
-        => typeof(CardRarityOdds).GetMethods(BindingFlags.Public | BindingFlags.Instance)
-               .FirstOrDefault(m => m.Name == nameof(CardRarityOdds.RollWithoutChangingFutureOdds)
-                   && m.GetParameters() is var p
-                   && p.Length >= 2
-                   && p[0].ParameterType == typeof(CardRarityOddsType)
-                   && p[1].ParameterType == typeof(float))
-           ?? throw new MissingMethodException(typeof(CardRarityOdds).FullName,
-               nameof(CardRarityOdds.RollWithoutChangingFutureOdds));
+    private static MethodBase TargetMethod() =>
+#if STS2_V113_1
+        AccessTools.Method(
+            typeof(CardRarityOdds),
+            nameof(CardRarityOdds.RollWithoutChangingFutureOdds),
+            [typeof(CardRarityOddsType), typeof(float), typeof(Rng)])
+#else
+        AccessTools.Method(
+            typeof(CardRarityOdds),
+            nameof(CardRarityOdds.RollWithoutChangingFutureOdds),
+            [typeof(CardRarityOddsType), typeof(float)])
+#endif
+        ?? throw new MissingMethodException(typeof(CardRarityOdds).FullName,
+            nameof(CardRarityOdds.RollWithoutChangingFutureOdds));
 
-    private static void Prefix([HarmonyArgument(0)] CardRarityOddsType type, [HarmonyArgument(1)] ref float offset)
+    private static void Prefix(CardRarityOddsType type, ref float offset)
     {
         if (!NarrowViewfinderRareOddsContext.IsDoublingActive)
             return;
@@ -121,26 +149,45 @@ internal static class NarrowViewfinderRollWithoutChangingPatch
 [HarmonyPatch]
 internal static class NarrowViewfinderRollWithBaseOddsPatch
 {
-    private static MethodBase TargetMethod()
-        => typeof(CardRarityOdds).GetMethods(BindingFlags.Public | BindingFlags.Instance)
-               .FirstOrDefault(m => m.Name == nameof(CardRarityOdds.RollWithBaseOdds)
-                   && m.GetParameters() is var p
-                   && p.Length >= 1
-                   && p[0].ParameterType == typeof(CardRarityOddsType))
-           ?? throw new MissingMethodException(typeof(CardRarityOdds).FullName,
-               nameof(CardRarityOdds.RollWithBaseOdds));
+    private static MethodBase TargetMethod() =>
+#if STS2_V113_1
+        AccessTools.Method(
+            typeof(CardRarityOdds),
+            nameof(CardRarityOdds.RollWithBaseOdds),
+            [typeof(CardRarityOddsType), typeof(Rng)])
+#else
+        AccessTools.Method(
+            typeof(CardRarityOdds),
+            nameof(CardRarityOdds.RollWithBaseOdds),
+            [typeof(CardRarityOddsType)])
+#endif
+        ?? throw new MissingMethodException(typeof(CardRarityOdds).FullName,
+            nameof(CardRarityOdds.RollWithBaseOdds));
 
+#if STS2_V113_1
     private static bool Prefix(
         CardRarityOdds __instance,
-        [HarmonyArgument(0)] CardRarityOddsType type,
-        object[] __args,
+        CardRarityOddsType type,
+        Rng? rngOverride,
         ref CardRarity __result)
     {
         if (!NarrowViewfinderRareOddsContext.IsDoublingActive)
             return true;
 
-        Rng? rngOverride = __args.Length >= 2 ? __args[1] as Rng : null;
         __result = NarrowViewfinderRareOddsContext.RollDoubledWithBaseOdds(__instance, type, rngOverride);
         return false;
     }
+#else
+    private static bool Prefix(
+        CardRarityOdds __instance,
+        CardRarityOddsType type,
+        ref CardRarity __result)
+    {
+        if (!NarrowViewfinderRareOddsContext.IsDoublingActive)
+            return true;
+
+        __result = NarrowViewfinderRareOddsContext.RollDoubledWithBaseOdds(__instance, type, null);
+        return false;
+    }
+#endif
 }

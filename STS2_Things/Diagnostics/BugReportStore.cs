@@ -13,8 +13,10 @@ internal sealed class BugReportStore(string directory)
     internal string DirectoryPath { get; } = directory;
     internal JsonObject? Current { get; private set; }
     private string CurrentPath => Path.Combine(DirectoryPath, "current-run.json");
+    private string LastRunPath => Path.Combine(DirectoryPath, "last-run.json");
     private readonly object _writeGate = new();
-    private string? _pendingWrite;
+    private string? _pendingCurrentWrite;
+    private string? _pendingArchiveWrite;
     private Task _writeTask = Task.CompletedTask;
     private bool _writing;
     private Exception? _writeFailure;
@@ -100,12 +102,20 @@ internal sealed class BugReportStore(string directory)
         return null;
     }
 
-    internal bool Begin(string runKey, JsonObject metadata, JsonObject snapshot)
+    internal bool Begin(string runKey, JsonObject metadata, JsonObject snapshot, bool syncArchive = true)
     {
         if (Current?["local_run_key"]?.GetValue<string>() == runKey) return true;
         // Capture/serialize is deliberately pure. Archiving cannot initialize another run.
-        if (Current is not null) Archive();
-        JsonObject? disk = ReadObject(CurrentPath);
+        bool hadCurrent = Current is not null;
+        if (hadCurrent)
+        {
+            if (syncArchive) Archive();
+            else _ = ArchiveAsync();
+        }
+
+        // Only inspect current-run.json when starting from a cold store (process boot / restore).
+        // When switching runs in-process, Current already held the previous run and was just archived.
+        JsonObject? disk = hadCurrent ? null : ReadObject(CurrentPath);
         bool restored = disk?["local_run_key"]?.GetValue<string>() == runKey;
         if (restored)
         {
@@ -113,7 +123,12 @@ internal sealed class BugReportStore(string directory)
         }
         else
         {
-            if (disk is not null) WriteAtomic(Path.Combine(DirectoryPath, "last-run.json"), disk.ToJsonString());
+            if (disk is not null)
+            {
+                string diskJson = disk.ToJsonString();
+                if (syncArchive) WriteAtomic(LastRunPath, diskJson);
+                else _ = EnqueueWrite(currentJson: null, archiveJson: diskJson);
+            }
             Current = new JsonObject
             {
                 ["schema"] = SchemaVersion,
@@ -132,7 +147,7 @@ internal sealed class BugReportStore(string directory)
         Current!["schema"] = SchemaVersion;
         Current["schema_version"] = SchemaVersion;
         if (Current["events"] is not JsonArray) Current["events"] = new JsonArray();
-        Update(snapshot);
+        Update(snapshot, clone: false);
         return restored;
     }
 
@@ -143,12 +158,18 @@ internal sealed class BugReportStore(string directory)
         Current["updated_at"] = DateTimeOffset.UtcNow.ToString("O");
     }
 
-    internal void Track(JsonObject record)
+    internal void Track(JsonObject record) => AppendEvent(record.DeepClone());
+
+    /// <summary>Appends a freshly constructed event record without redundant DeepClone overhead.</summary>
+    internal void TrackOwned(JsonObject record) =>
+        AppendEvent(record.Parent is not null ? record.DeepClone() : record);
+
+    private void AppendEvent(JsonNode record)
     {
         if (Current is null) return;
         var events = Current["events"] as JsonArray ?? new JsonArray();
         Current["events"] = events;
-        events.Add(record.DeepClone());
+        events.Add(record);
         while (events.Count > MaxEvents)
         {
             events.RemoveAt(0);
@@ -171,10 +192,49 @@ internal sealed class BugReportStore(string directory)
         // The worker never reads game/Godot objects, and superseded pending writes coalesce.
         if (Current is null) return Task.CompletedTask;
         string frozenJson = Current.ToJsonString();
+        return EnqueueWrite(currentJson: frozenJson, archiveJson: null);
+    }
+
+    internal Task ArchiveAsync()
+    {
+        if (Current is null) return Task.CompletedTask;
+        string frozenJson = Current.ToJsonString();
+        return EnqueueWrite(currentJson: frozenJson, archiveJson: frozenJson);
+    }
+
+    internal async Task FlushPendingWritesAsync(int timeoutMs = 1500)
+    {
+        Task pending;
         lock (_writeGate)
         {
-            _pendingWrite = frozenJson;
-            if (!_writing)
+            pending = _writeTask;
+        }
+        if (pending.IsCompleted) return;
+        try
+        {
+            await pending
+                .WaitAsync(TimeSpan.FromMilliseconds(Math.Clamp(timeoutMs, 50, 15_000)))
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            // Bounded barrier: never stall caller indefinitely on slow disks.
+        }
+    }
+
+    private Task EnqueueWrite(string? currentJson, string? archiveJson)
+    {
+        lock (_writeGate)
+        {
+            if (archiveJson is not null)
+            {
+                _pendingArchiveWrite = archiveJson;
+            }
+            if (currentJson is not null)
+            {
+                _pendingCurrentWrite = currentJson;
+            }
+            if (!_writing && (_pendingArchiveWrite is not null || _pendingCurrentWrite is not null))
             {
                 _writing = true;
                 _writeTask = Task.Run(WritePending);
@@ -187,20 +247,36 @@ internal sealed class BugReportStore(string directory)
     {
         while (true)
         {
-            string snapshotJson;
+            string? archiveJson = null;
+            string? currentJson = null;
             lock (_writeGate)
             {
-                if (_pendingWrite is null)
+                if (_pendingArchiveWrite is not null)
+                {
+                    archiveJson = _pendingArchiveWrite;
+                    _pendingArchiveWrite = null;
+                }
+                else if (_pendingCurrentWrite is not null)
+                {
+                    currentJson = _pendingCurrentWrite;
+                    _pendingCurrentWrite = null;
+                }
+                else
                 {
                     _writing = false;
                     return;
                 }
-                snapshotJson = _pendingWrite;
-                _pendingWrite = null;
             }
             try
             {
-                WriteAtomic(CurrentPath, snapshotJson);
+                if (archiveJson is not null)
+                {
+                    WriteAtomic(LastRunPath, archiveJson);
+                }
+                else if (currentJson is not null)
+                {
+                    WriteAtomic(CurrentPath, currentJson);
+                }
                 lock (_writeGate) _writeFailure = null;
             }
             catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
@@ -213,15 +289,18 @@ internal sealed class BugReportStore(string directory)
     internal void Archive()
     {
         if (Current is null) return;
-        Persist();
-        WriteAtomic(Path.Combine(DirectoryPath, "last-run.json"), Current.ToJsonString());
+        ArchiveAsync().GetAwaiter().GetResult();
+        lock (_writeGate)
+        {
+            if (_writeFailure is { } failure) throw new IOException("Unable to archive the local report journal.", failure);
+        }
     }
 
     internal JsonObject JournalForUpload()
     {
         var journal = (JsonObject)(Current?.DeepClone()
             ?? ReadObject(CurrentPath)
-            ?? ReadObject(Path.Combine(DirectoryPath, "last-run.json"))
+            ?? ReadObject(LastRunPath)
             ?? new JsonObject { ["schema"] = SchemaVersion, ["events"] = new JsonArray(), ["state"] = null });
         journal.Remove("local_run_key");
         journal["schema"] = SchemaVersion;
@@ -328,19 +407,55 @@ internal sealed class BugReportOutbox(string directory, HttpClient client, Uri e
     }
 
     private static bool ExceedsWireBudget(JsonObject payload) =>
-        Encoding.UTF8.GetByteCount(payload.ToJsonString()) > MaxBytes
-        || BugReportSchemaV4.CountJsonNodes(payload) > 55_000;
+        BugReportSchemaV4.ExceedsJsonNodeLimit(payload, 55_000)
+        || Encoding.UTF8.GetByteCount(payload.ToJsonString()) > MaxBytes;
+
+    private static void RemoveLeadingItems(JsonArray array, int count)
+    {
+        if (count <= 0 || array.Count == 0) return;
+        int actual = Math.Min(count, array.Count);
+        if (actual >= array.Count)
+        {
+            array.Clear();
+            return;
+        }
+        if (actual < 16)
+        {
+            for (int i = 0; i < actual; i++) array.RemoveAt(0);
+            return;
+        }
+        int keepCount = array.Count - actual;
+        var kept = new JsonNode?[keepCount];
+        for (int i = 0; i < keepCount; i++)
+        {
+            kept[i] = array[actual + i];
+        }
+        array.Clear();
+        for (int i = 0; i < kept.Length; i++)
+        {
+            array.Add(kept[i]);
+        }
+    }
+
+    private static void RemoveLeadingEvents(JsonObject run, JsonArray events, int count)
+    {
+        if (count <= 0 || events.Count == 0) return;
+        int actual = Math.Min(count, events.Count);
+        RemoveLeadingItems(events, actual);
+        run["dropped_events"] = (run["dropped_events"]?.GetValue<int>() ?? 0) + actual;
+    }
 
     private static void Reduce(JsonObject payload)
     {
         var run = (JsonObject)payload["run"]!;
         bool clamped = BugReportSchemaV4.EnforceBoundedTree(payload);
-        if (!clamped && !ExceedsWireBudget(payload)) return;
+        bool exceeds = ExceedsWireBudget(payload);
+        if (!clamped && !exceeds) return;
 
         var changes = run["upload_truncation"] as JsonArray ?? new JsonArray();
         run["upload_truncation"] = changes;
         if (clamped) changes.Add("bounded_tree_field_clamps");
-        if (!ExceedsWireBudget(payload)) return;
+        if (!exceeds) return;
 
         if (run["initial_state"] is JsonObject initial)
         {
@@ -350,21 +465,28 @@ internal sealed class BugReportOutbox(string directory, HttpClient client, Uri e
         }
 
         var events = run["events"] as JsonArray;
-        while (ExceedsWireBudget(payload) && events?.Count > 100)
+        bool droppedEvents = false;
+        exceeds = ExceedsWireBudget(payload);
+        while (exceeds && events is { Count: > 100 })
         {
-            events.RemoveAt(0);
-            run["dropped_events"] = (run["dropped_events"]?.GetValue<int>() ?? 0) + 1;
+            int excess = events.Count - 100;
+            // Drop excess events in batches (halving remaining excess, minimum 25) instead of
+            // 1 event per full 1.2 MB ToJsonString() + 55k-node walk.
+            int drop = excess <= 25 ? excess : Math.Max(25, (excess + 1) / 2);
+            RemoveLeadingEvents(run, events, drop);
+            droppedEvents = true;
+            exceeds = ExceedsWireBudget(payload);
         }
-        changes.Add("oldest events if needed");
-        if (!ExceedsWireBudget(payload)) return;
+        if (droppedEvents) changes.Add("oldest events if needed");
+        if (!exceeds) return;
 
         if (run["state"] is JsonObject state && state["route"] is JsonArray route)
         {
             foreach (var act in route.OfType<JsonObject>())
             {
-                if (act["points"] is JsonArray points)
+                if (act["points"] is JsonArray points && points.Count > 15)
                 {
-                    while (points.Count > 15) points.RemoveAt(0);
+                    RemoveLeadingItems(points, points.Count - 15);
                 }
             }
             changes.Add("oldest route points");
@@ -380,10 +502,9 @@ internal sealed class BugReportOutbox(string directory, HttpClient client, Uri e
         if (ExceedsWireBudget(payload) && run["state"] is JsonObject largeState)
         {
             // Preserve the native checkpoint and latest faults before secondary duplicate history.
-            while (events?.Count > 10)
+            if (events is { Count: > 10 })
             {
-                events.RemoveAt(0);
-                run["dropped_events"] = (run["dropped_events"]?.GetValue<int>() ?? 0) + 1;
+                RemoveLeadingEvents(run, events, events.Count - 10);
             }
             foreach (var player in (largeState["players"] as JsonArray ?? []).OfType<JsonObject>())
             {

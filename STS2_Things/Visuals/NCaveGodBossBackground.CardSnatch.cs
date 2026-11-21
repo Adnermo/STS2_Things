@@ -185,8 +185,9 @@ public partial class NCaveGodBossBackground
             bone.Call("set_y", bone.Call("get_y").AsSingle() + _cardSnatchAimOffset.Y * reach * retract);
         }
         if (!foreground) return;
-        foreach (bool left in new[] { true, false })
+        for (int side = 0; side < 2; side++)
         {
+            bool left = side == 0;
             Marker2D? marker = GetStolenCardPos(left);
             int heldCount = left ? _leftStolenCardCount : _rightStolenCardCount;
             if (marker is not { Visible: true } || (heldCount <= 0 && marker.GetChildCount() == 0)) continue;
@@ -197,7 +198,7 @@ public partial class NCaveGodBossBackground
             if (!reaching)
             {
                 string slot = left ? "arm1_3" : "arm2_3";
-                skeleton.Call("set_attachment", slot, slot);
+                skeleton.Call(MethodSetAttachment, slot, slot);
             }
         }
     }

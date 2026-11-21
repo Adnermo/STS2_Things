@@ -27,6 +27,9 @@ public partial class NRadioJellyfishVisuals : NCreatureVisuals
     private Sprite2D? _second;
     private int _revision = -1;
     private float _capturePulse;
+    private RadioProgram _cachedProgram;
+    private RadioProgram? _lastActiveProgram;
+    private bool _programCached;
 
     public override void _Ready()
     {
@@ -44,13 +47,25 @@ public partial class NRadioJellyfishVisuals : NCreatureVisuals
                 if (p is NCreature creature) { _host = creature; break; }
         if (_host?.Entity.Monster is not ThingsRadioJellyfish jelly || _first == null || _second == null) return;
         var receiver = _host.Entity.GetPower<ThingsRadioReceptionPower>();
-        if (receiver != null && receiver.Revision != _revision)
+        int currentRevision = receiver?.Revision ?? -1;
+        bool revisionChanged = receiver != null && currentRevision != _revision;
+        if (revisionChanged)
         {
             _capturePulse = _revision < 0 ? 0 : 1;
-            _revision = receiver.Revision;
+            _revision = currentRevision;
         }
         _capturePulse = Mathf.MoveToward(_capturePulse, 0, (float)delta * 2.8f);
-        var program = jelly.CurrentProgram;
+
+        RadioProgram? activeProgram = jelly.ActiveProgram;
+        if (!_programCached || revisionChanged || activeProgram != _lastActiveProgram || (receiver == null && _revision >= 0))
+        {
+            if (receiver == null)
+                _revision = -1;
+            _lastActiveProgram = activeProgram;
+            _cachedProgram = activeProgram ?? receiver?.GetProgram() ?? default;
+            _programCached = true;
+        }
+        var program = _cachedProgram;
         float time = -1;
         float tuningTime = -1;
         using (TrackEntryScope(SpineBody?.TryGetAnimationState()?.GetCurrent(0), out MegaTrackEntry? entry))

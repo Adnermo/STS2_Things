@@ -26,9 +26,9 @@ float vnoise(vec2 p) {
 
 float fbm(vec2 p) {
 	float v = 0.0;
-	float a = 0.52;
+	float a = 0.65;
 	mat2 rot = mat2(vec2(0.80, 0.60), vec2(-0.60, 0.80));
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < 2; i++) {
 		v += a * vnoise(p);
 		p = rot * p * 2.05 + vec2(1.7, 9.2);
 		a *= 0.5;
@@ -66,24 +66,28 @@ void fragment() {
 	col += vec3(0.045, 0.055, 0.085) * desc_lift;
 
 	// Subtle hypnotic swirling shimmer along the painted seafoam-cyan vortex strokes in portrait
-	vec2 vp = uv - vec2(0.50, 0.34);
-	float ang = atan(vp.y, vp.x);
-	float rad = length(vp);
-	float vortex_wave = 0.5 + 0.5 * sin(ang * 3.0 - rad * 26.0 + t * 2.4);
-	float cyan_ink = clamp((tex.g + tex.b) * 0.5 - tex.r, 0.0, 1.0);
-	col += vec3(0.08, 0.26, 0.28) * portrait_mask * smoothstep(0.05, 0.22, cyan_ink) * vortex_wave * 0.62;
+	if (portrait_mask > 0.001) {
+		vec2 vp = uv - vec2(0.50, 0.34);
+		float ang = atan(vp.y, vp.x);
+		float rad = length(vp);
+		float vortex_wave = 0.5 + 0.5 * sin(ang * 3.0 - rad * 26.0 + t * 2.4);
+		float cyan_ink = clamp((tex.g + tex.b) * 0.5 - tex.r, 0.0, 1.0);
+		col += vec3(0.08, 0.26, 0.28) * portrait_mask * smoothstep(0.05, 0.22, cyan_ink) * vortex_wave * 0.62;
+	}
 
 	// Subtle flowing abyssal indigo current inside dark portrait & lower ink-stained text box
-	vec2 q = vec2(
-		fbm(uv * vec2(3.8, 5.0) + vec2(t * 0.22, -t * 0.28)),
-		fbm(uv * vec2(4.0, 4.8) + vec2(-t * 0.24 + 2.3, t * 0.18 + 3.9))
-	);
-	float swirl = fbm(uv * vec2(4.6, 5.8) + q * 1.65 + vec2(0.0, -t * 0.34));
-	float luma = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
-	float dark_ink = smoothstep(0.14, 0.04, luma);
-	col += vec3(0.045, 0.040, 0.110) * (portrait_mask * 0.45 + desc_mask * 0.70) * smoothstep(0.46, 0.82, swirl);
+	float inner_mask = portrait_mask * 0.45 + desc_mask * 0.70;
+	if (inner_mask > 0.001) {
+		vec2 q = vec2(
+			fbm(uv * vec2(3.8, 5.0) + vec2(t * 0.22, -t * 0.28)),
+			fbm(uv * vec2(4.0, 4.8) + vec2(-t * 0.24 + 2.3, t * 0.18 + 3.9))
+		);
+		float swirl = fbm(uv * vec2(4.6, 5.8) + q * 1.65 + vec2(0.0, -t * 0.34));
+		col += vec3(0.045, 0.040, 0.110) * inner_mask * smoothstep(0.46, 0.82, swirl);
+	}
 
 	// Wet glossy highlight gliding gently down the pitch-black squid-ink drips & blotches
+	float dark_ink = smoothstep(0.14, 0.04, base_luma);
 	float wet_band = exp(-pow(fract(uv.y * 1.45 - t * 0.24 + uv.x * 0.3) - 0.5, 2.0) / 0.012);
 	col += vec3(0.11, 0.24, 0.30) * dark_ink * wet_band * 0.55;
 

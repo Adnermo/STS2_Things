@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c8mhgbm58cxbj"
-path="res://.godot/imported/things_relic_workshop.png-f63e794a996cb0727a8059b75588f16c.ctex"
+path.bptc="res://.godot/imported/things_relic_workshop.png-f63e794a996cb0727a8059b75588f16c.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/events/things_relic_workshop.png"
-dest_files=["res://.godot/imported/things_relic_workshop.png-f63e794a996cb0727a8059b75588f16c.ctex"]
+dest_files=["res://.godot/imported/things_relic_workshop.png-f63e794a996cb0727a8059b75588f16c.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

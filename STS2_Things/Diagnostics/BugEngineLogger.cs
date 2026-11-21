@@ -12,11 +12,13 @@ public partial class BugEngineLogger : Godot.Logger
         if (errorType == (int)ErrorType.Warning) return;
         try
         {
+            if (BugRuntimeFaults.TryRecordEngineRepeat(code, rationale, function)) return;
+
             var functions = new List<string>();
             foreach (var trace in scriptBacktraces)
                 for (int i = 0; i < Math.Min(20, trace.GetFrameCount()); i++) functions.Add(trace.GetFrameFunction(i));
             if (functions.Count == 0) functions.Add(function);
-            BugRuntimeFaults.Capture(code + "\n" + rationale, 0, functions);
+            BugRuntimeFaults.CaptureEngineError(code, rationale, function, functions);
         }
         catch (Exception) { /* Never log from an engine logger callback. */ }
     }

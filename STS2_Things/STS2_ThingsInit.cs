@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Models.RelicPools;
+using MegaCrit.Sts2.Core.Rooms;
 using STS2_Things.Audio;
 using STS2_Things.Cards;
 using STS2_Things.Compatibility;
@@ -20,8 +21,10 @@ using STS2_Things.Relics;
 public static class STS2_ThingsInit
 {
     public const string HarmonyId = "Adnermo.STS2_Things";
-    public const string ModVersion = "2.0.1";
+    public const string ModVersion = "2.0.2";
     private static bool _initialized;
+    private static AbstractModel[]? _quirkyHopperPolicy;
+    private static AbstractModel[]? _spentEmberPolicy;
 
     public static void Initialize()
     {
@@ -77,10 +80,14 @@ public static class STS2_ThingsInit
             // ---- Deterministic RunState Hook Policies ----
             ModHelper.SubscribeForRunStateHooks(
                 "Adnermo.STS2_Things.QuirkyHopperRewardPolicy",
-                static _ => [ModelDb.Modifier<ThingsQuirkyHopperRewardPolicy>()]);
+                static runState => runState.CurrentRoom is CombatRoom
+                    ? _quirkyHopperPolicy ??= [ModelDb.Modifier<ThingsQuirkyHopperRewardPolicy>()]
+                    : Array.Empty<AbstractModel>());
             ModHelper.SubscribeForRunStateHooks(
                 "Adnermo.STS2_Things.SpentEmberRestPolicy",
-                static _ => [ModelDb.Modifier<ThingsSpentEmberRestPolicy>()]);
+                static runState => runState.CurrentRoom is RestSiteRoom
+                    ? _spentEmberPolicy ??= [ModelDb.Modifier<ThingsSpentEmberRestPolicy>()]
+                    : Array.Empty<AbstractModel>());
             ThingsMerchantBargainPricePolicy.EnsureSubscribed();
 
             // ---- Harmony Patch Installation & Legacy ID Migration ----

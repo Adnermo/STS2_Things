@@ -53,7 +53,15 @@ public sealed class ThingsWaterSponge : ThingsSpineMonster
         ModelDb.Power<ThingsAbsorbentSpongePower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsSpongeReservoirPower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsSpongeRinsePower>().ResolvedBigIconPath,
-        NSplashVfx.scenePath]);
+        NSplashVfx.scenePath,
+        "res://shaders/monsters/sponge_water.gdshader",
+        "res://sfx/gravetide_slug/gravetide_slug_attack_light-01.wav",
+        "res://sfx/gravetide_slug/gravetide_slug_attack_light-02.wav",
+        "res://sfx/gravetide_slug/gravetide_slug_attack_light-03.wav",
+        "res://sfx/gravetide_slug/gravetide_slug_devour-01.wav",
+        "res://sfx/gravetide_slug/gravetide_slug_devour-02.wav",
+        "res://sfx/gravetide_slug/gravetide_slug_die-01.wav",
+        "res://sfx/gravetide_slug/gravetide_slug_die-02.wav"]);
 
     public override async Task BeforeCombatStart()
     {

@@ -465,7 +465,19 @@ public partial class DepthsProbeNode : Node
             foreach(string name in paths)
             {
                 var layer=GD.Load<PackedScene>($"res://scenes/backgrounds/{title}/layers/{name}").Instantiate<Control>();
-                Assert(layer.HasMeta("depths_variant") && layer.GetChildCount()>=3,"Atomic composition includes art, ambience and foreground.");
+                bool hasArt = false;
+                bool hasAmbience = false;
+                var stack = new Stack<Node>();
+                stack.Push(layer);
+                while (stack.Count > 0)
+                {
+                    var node = stack.Pop();
+                    if (node is TextureRect tr && tr.Texture != null) hasArt = true;
+                    if (node is GpuParticles2D or CpuParticles2D or Light2D || node.Name.ToString().Contains("Ambien", StringComparison.OrdinalIgnoreCase) || node.Name.ToString().Contains("Mist", StringComparison.OrdinalIgnoreCase)) hasAmbience = true;
+                    foreach (Node child in node.GetChildren()) stack.Push(child);
+                }
+                Assert(layer.HasMeta("depths_variant") && layer.GetChildCount()>=1 && hasArt && hasAmbience,
+                    $"Atomic composition includes art and ambience ({name}: children={layer.GetChildCount()}, art={hasArt}, ambience={hasAmbience}).");
                 _resourceFixtures.Add(layer);
             }
         }

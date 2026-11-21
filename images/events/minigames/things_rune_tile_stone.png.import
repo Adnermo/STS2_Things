@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://piylgt5wfbwa"
-path="res://.godot/imported/things_rune_tile_stone.png-a9ed940dcc3468acd94866f354d1311d.ctex"
+path.bptc="res://.godot/imported/things_rune_tile_stone.png-a9ed940dcc3468acd94866f354d1311d.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/events/minigames/things_rune_tile_stone.png"
-dest_files=["res://.godot/imported/things_rune_tile_stone.png-a9ed940dcc3468acd94866f354d1311d.ctex"]
+dest_files=["res://.godot/imported/things_rune_tile_stone.png-a9ed940dcc3468acd94866f354d1311d.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

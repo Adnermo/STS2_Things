@@ -36,6 +36,7 @@ public partial class NCrossroadLayer : Node2D
     private readonly Dictionary<NMapPoint, (NodePath Before, NodePath Road)> _focusLinks = [];
     private NGenericPopup? _popup;
     private bool _asking;
+    private bool _wasScreenOpen;
 
     public static void Attach(NMapScreen screen, RunState run, ActMap map)
     {
@@ -121,10 +122,22 @@ public partial class NCrossroadLayer : Node2D
             UpdateRoadPlacement(visuals);
         }
         RefreshInteraction(refreshNavigation: true);
+        _wasScreenOpen = _screen.IsOpen;
     }
 
     public override void _Process(double delta)
     {
+        if (!_screen.IsOpen)
+        {
+            if (_wasScreenOpen)
+            {
+                _wasScreenOpen = false;
+                RefreshInteraction();
+            }
+            return;
+        }
+        _wasScreenOpen = true;
+
         // NMapScreen sets native map point positions before the Control anchor
         // layout has necessarily settled. Reposition icons and dashed roads when
         // the endpoints move (including viewport resizes or map rebuilds).
@@ -194,7 +207,11 @@ public partial class NCrossroadLayer : Node2D
                 refreshNavigation = true;
             }
             // Disabled locks must also let map scrolling/drawing pass through.
-            button.MouseFilter = enabled ? Control.MouseFilterEnum.Stop : Control.MouseFilterEnum.Ignore;
+            Control.MouseFilterEnum desiredFilter = enabled
+                ? Control.MouseFilterEnum.Stop
+                : Control.MouseFilterEnum.Ignore;
+            if (button.MouseFilter != desiredFilter)
+                button.MouseFilter = desiredFilter;
         }
         if (!refreshNavigation) return;
         RestoreFocusLinks();

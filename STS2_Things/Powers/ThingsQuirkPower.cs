@@ -364,10 +364,74 @@ public sealed class ThingsQuirkPower : ThingsPowerModel
         throw new InvalidOperationException("The stolen card is not in the player's deck.");
     }
 
+    private sealed record ModelCatalogCache<TModel>(
+        IEnumerable<TModel> SourceRef,
+        int CatalogCount,
+        TModel[] Models,
+        Dictionary<ModelId, int> IndexById);
+
+    private static ModelCatalogCache<CardModel>? _cardCatalogCache;
+    private static ModelCatalogCache<PotionModel>? _potionCatalogCache;
+
+    private static int GetModelDbCount() => ModelDb.All switch
+    {
+        ICollection<AbstractModel> col => col.Count,
+        IReadOnlyCollection<AbstractModel> roCol => roCol.Count,
+        _ => -1,
+    };
+
+    private static ModelCatalogCache<CardModel> GetCardCatalog()
+    {
+        IEnumerable<CardModel> source = ModelDb.AllCards;
+        int catalogCount = GetModelDbCount();
+        ModelCatalogCache<CardModel>? cached = _cardCatalogCache;
+        if (cached != null &&
+            ReferenceEquals(cached.SourceRef, source) &&
+            cached.CatalogCount == catalogCount)
+        {
+            return cached;
+        }
+
+        CardModel[] models = source.OrderBy(model => model.Id.Entry, StringComparer.Ordinal).ToArray();
+        var indexById = new Dictionary<ModelId, int>(models.Length);
+        for (int i = 0; i < models.Length; i++)
+        {
+            indexById.TryAdd(models[i].Id, i);
+        }
+
+        cached = new ModelCatalogCache<CardModel>(source, catalogCount, models, indexById);
+        _cardCatalogCache = cached;
+        return cached;
+    }
+
+    private static ModelCatalogCache<PotionModel> GetPotionCatalog()
+    {
+        IEnumerable<PotionModel> source = ModelDb.AllPotions;
+        int catalogCount = GetModelDbCount();
+        ModelCatalogCache<PotionModel>? cached = _potionCatalogCache;
+        if (cached != null &&
+            ReferenceEquals(cached.SourceRef, source) &&
+            cached.CatalogCount == catalogCount)
+        {
+            return cached;
+        }
+
+        PotionModel[] models = source.OrderBy(model => model.Id.Entry, StringComparer.Ordinal).ToArray();
+        var indexById = new Dictionary<ModelId, int>(models.Length);
+        for (int i = 0; i < models.Length; i++)
+        {
+            indexById.TryAdd(models[i].Id, i);
+        }
+
+        cached = new ModelCatalogCache<PotionModel>(source, catalogCount, models, indexById);
+        _potionCatalogCache = cached;
+        return cached;
+    }
+
     private static int GetCardModelIndex(CardModel card)
     {
-        int index = GetCardModels().ToList().FindIndex(model => model.Id == card.Id);
-        if (index is < 0 or >= CardModelRadix - 1)
+        if (!GetCardCatalog().IndexById.TryGetValue(card.Id, out int index) ||
+            index is < 0 or >= CardModelRadix - 1)
         {
             throw new InvalidOperationException("Card model is unavailable for Quirk Power's synchronized state.");
         }
@@ -377,8 +441,8 @@ public sealed class ThingsQuirkPower : ThingsPowerModel
 
     private static int GetPotionModelIndex(PotionModel potion)
     {
-        int index = GetPotionModels().ToList().FindIndex(model => model.Id == potion.Id);
-        if (index is < 0 or >= PotionModelRadix - 1)
+        if (!GetPotionCatalog().IndexById.TryGetValue(potion.Id, out int index) ||
+            index is < 0 or >= PotionModelRadix - 1)
         {
             throw new InvalidOperationException("Potion model is unavailable for Quirk Power's synchronized state.");
         }
@@ -386,15 +450,9 @@ public sealed class ThingsQuirkPower : ThingsPowerModel
         return index;
     }
 
-    private static IReadOnlyList<CardModel> GetCardModels()
-    {
-        return ModelDb.AllCards.OrderBy(model => model.Id.Entry, StringComparer.Ordinal).ToList();
-    }
+    private static IReadOnlyList<CardModel> GetCardModels() => GetCardCatalog().Models;
 
-    private static IReadOnlyList<PotionModel> GetPotionModels()
-    {
-        return ModelDb.AllPotions.OrderBy(model => model.Id.Entry, StringComparer.Ordinal).ToList();
-    }
+    private static IReadOnlyList<PotionModel> GetPotionModels() => GetPotionCatalog().Models;
 
     private static int EncodeCardState(int playerIndex, int deckIndexToken, int cardModelToken)
     {

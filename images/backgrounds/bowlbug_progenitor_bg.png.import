@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://spjww8taibdb"
-path="res://.godot/imported/bowlbug_progenitor_bg.png-ebcea06e983bf9a191ab0e3ba229b281.ctex"
+path.bptc="res://.godot/imported/bowlbug_progenitor_bg.png-ebcea06e983bf9a191ab0e3ba229b281.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/backgrounds/bowlbug_progenitor_bg.png"
-dest_files=["res://.godot/imported/bowlbug_progenitor_bg.png-ebcea06e983bf9a191ab0e3ba229b281.ctex"]
+dest_files=["res://.godot/imported/bowlbug_progenitor_bg.png-ebcea06e983bf9a191ab0e3ba229b281.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

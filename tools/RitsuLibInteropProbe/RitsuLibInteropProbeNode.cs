@@ -63,12 +63,12 @@ public partial class RitsuLibInteropProbeNode : Node
             // its actual bindings (a schema-only test would miss dropped sliders).
             object page = pageArgs[2]!;
             object[] sections = ((IEnumerable)Get(page, "Sections")).Cast<object>().ToArray();
-            Assert(sections.Length == 7, $"Expected 7 registered RitsuLib sections, got {sections.Length}.");
+            Assert(sections.Length == 8, $"Expected 8 registered RitsuLib sections, got {sections.Length}.");
             object[] decoratedEntries = sections
                 .SelectMany(section => ((IEnumerable)Get(section, "Entries")).Cast<object>()).ToArray();
             object[] actualEntries = decoratedEntries.Select(Unwrap).ToArray();
-            Assert(actualEntries.Length == ThingsModConfig.Entries.Count && actualEntries.Length == 72,
-                $"Expected 72 registered RitsuLib entries, got {actualEntries.Length}.");
+            Assert(actualEntries.Length == ThingsModConfig.Entries.Count && actualEntries.Length == 78,
+                $"Expected 78 registered RitsuLib entries, got {actualEntries.Length}.");
             object[] sliders = actualEntries.Where(entry => entry.GetType().Name == "IntSliderModSettingsEntryDefinition").ToArray();
             Assert(sliders.Length == 9, $"Expected nine registered sliders, got {sliders.Length}.");
             var entriesById = ((object[])schema["sections"]!).Cast<IDictionary<string, object?>>()
@@ -89,6 +89,8 @@ public partial class RitsuLibInteropProbeNode : Node
             foreach ((string id, string key, bool value) in new[]
                      { ("custom_bgm", ThingsModConfig.FeatureCustomBgmEnabled, false),
                        ("only_mod_bosses", ThingsModConfig.BossOnlyModBosses, true),
+                       ("cards_enabled", ThingsModConfig.CardsEnabled, false),
+                       ("card_collision_enabled", ThingsModConfig.CardCollisionEnabled, false),
                        ("defensive_engine_guards_enabled", ThingsModConfig.FeatureDefensiveEngineGuardsEnabled, false) })
             {
                 object entry = actualEntries.Single(entry => (string)Get(entry, "Id") == id);
@@ -96,6 +98,14 @@ public partial class RitsuLibInteropProbeNode : Node
                 binding.GetType().GetMethod("Write")!.Invoke(binding, [value]);
                 Assert(ThingsModConfig.GetBool(key) == value, $"Real toggle binding did not update {key}.");
             }
+            Assert(!RitsuLibInteropProvider.IsSettingVisible(ThingsModConfig.CardCollisionEnabled),
+                "Individual card toggle must hide when CardsEnabled is false.");
+            Assert(RitsuLibInteropProvider.IsSettingVisible(ThingsModConfig.CardsEnabled),
+                "Master CardsEnabled toggle must stay visible when CardsEnabled is false.");
+            ThingsModConfig.SetValue(ThingsModConfig.CardsEnabled, true);
+            ThingsModConfig.SetValue(ThingsModConfig.CardCollisionEnabled, true);
+            Assert(RitsuLibInteropProvider.IsSettingVisible(ThingsModConfig.CardCollisionEnabled),
+                "Individual card toggle did not reappear when CardsEnabled returned to true.");
             ThingsModConfig.SetValue(ThingsModConfig.FeatureDefensiveEngineGuardsEnabled, true);
 
             // 值访问器往返（与 ThingsModConfig 共享同一内存态）。

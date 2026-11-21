@@ -14,43 +14,82 @@ namespace STS2_Things.Hooks;
 /// </summary>
 internal static class ThingsEventCatalog
 {
-    public static IEnumerable<EventModel> AddOvergrowthAndUnderdocksEvents(IEnumerable<EventModel> source)
+    private sealed class CachedEventCatalog
     {
-        return Add(source,
+        public required IEnumerable<EventModel> SourceRef { get; init; }
+        public required EventModel[] SourceSnapshot { get; init; }
+        public required int ConfigVersion { get; init; }
+        public required EventModel[] Result { get; init; }
+    }
+
+    private static (string EnabledKey, EventModel Event)[]? _sharedAct1Candidates;
+    private static (string EnabledKey, EventModel Event)[]? _overgrowthCandidates;
+    private static (string EnabledKey, EventModel Event)[]? _underdocksCandidates;
+    private static (string EnabledKey, EventModel Event)[]? _hiveCandidates;
+    private static (string EnabledKey, EventModel Event)[]? _depthsCandidates;
+    private static (string EnabledKey, EventModel Event)[]? _gloryCandidates;
+
+    private static CachedEventCatalog? _sharedAct1Cache;
+    private static CachedEventCatalog? _overgrowthCache;
+    private static CachedEventCatalog? _underdocksCache;
+    private static CachedEventCatalog? _hiveCache;
+    private static CachedEventCatalog? _depthsCache;
+    private static CachedEventCatalog? _gloryCache;
+
+    private static (string EnabledKey, EventModel Event)[] GetSharedAct1Candidates() =>
+        _sharedAct1Candidates ??=
+        [
             (ThingsModConfig.EventRobberyFakeMerchantEnabled, ModelDb.Event<ThingsRobberyFakeMerchant>()),
             (ThingsModConfig.EventBackroomsEnabled, ModelDb.Event<ThingsBackrooms>()),
             (ThingsModConfig.EventCuttingItCloseEnabled, ModelDb.Event<ThingsCuttingItClose>()),
-            (ThingsModConfig.EventBlindCrabInkwellEnabled, ModelDb.Event<ThingsBlindCrabInkwell>()));
+            (ThingsModConfig.EventBlindCrabInkwellEnabled, ModelDb.Event<ThingsBlindCrabInkwell>()),
+        ];
+
+    public static IEnumerable<EventModel> AddOvergrowthAndUnderdocksEvents(IEnumerable<EventModel> source)
+    {
+        return AddCached(ref _sharedAct1Cache, source, GetSharedAct1Candidates());
     }
 
     public static IEnumerable<EventModel> AddOvergrowthEvents(IEnumerable<EventModel> source)
     {
-        return Add(AddOvergrowthAndUnderdocksEvents(source),
+        _overgrowthCandidates ??=
+        [
+            .. GetSharedAct1Candidates(),
             (ThingsModConfig.EventMossRuneLoomEnabled, ModelDb.Event<ThingsMossRuneLoom>()),
             (ThingsModConfig.EventForestPlinkoEnabled, ModelDb.Event<ThingsForestPlinko>()),
-            (ThingsModConfig.EventLendingVineEnabled, ModelDb.Event<ThingsLendingVine>()));
+            (ThingsModConfig.EventLendingVineEnabled, ModelDb.Event<ThingsLendingVine>()),
+        ];
+        return AddCached(ref _overgrowthCache, source, _overgrowthCandidates);
     }
 
     public static IEnumerable<EventModel> AddUnderdocksEvents(IEnumerable<EventModel> source)
     {
-        return Add(AddOvergrowthAndUnderdocksEvents(source),
+        _underdocksCandidates ??=
+        [
+            .. GetSharedAct1Candidates(),
             (ThingsModConfig.EventBilgeMinesEnabled, ModelDb.Event<ThingsBilgeMines>()),
-            (ThingsModConfig.EventClamClawEnabled, ModelDb.Event<ThingsClamClaw>()));
+            (ThingsModConfig.EventClamClawEnabled, ModelDb.Event<ThingsClamClaw>()),
+        ];
+        return AddCached(ref _underdocksCache, source, _underdocksCandidates);
     }
 
     public static IEnumerable<EventModel> AddHiveEvents(IEnumerable<EventModel> source)
     {
-        return Add(source,
+        _hiveCandidates ??=
+        [
             (ThingsModConfig.EventMedusaEnabled, ModelDb.Event<ThingsMedusa>()),
             (ThingsModConfig.EventWarmRoyalCellEnabled, ModelDb.Event<ThingsWarmRoyalCell>()),
             (ThingsModConfig.EventAntSortingTableEnabled, ModelDb.Event<ThingsAntSortingTable>()),
             (ThingsModConfig.EventOverstuffedBroodEnabled, ModelDb.Event<ThingsOverstuffedBrood>()),
-            (ThingsModConfig.EventSpikedDoorEnabled, ModelDb.Event<ThingsSpikedDoor>()));
+            (ThingsModConfig.EventSpikedDoorEnabled, ModelDb.Event<ThingsSpikedDoor>()),
+        ];
+        return AddCached(ref _hiveCache, source, _hiveCandidates);
     }
 
     public static IEnumerable<EventModel> AddDepthsEvents(IEnumerable<EventModel> source)
     {
-        return Add(source,
+        _depthsCandidates ??=
+        [
             (ThingsModConfig.EventRealityAlignedHousesEnabled, ModelDb.Event<ThingsRealityAlignedHouses>()),
             (ThingsModConfig.EventShadowCloakroomEnabled, ModelDb.Event<ThingsShadowCloakroom>()),
             (ThingsModConfig.EventEchoingWellEnabled, ModelDb.Event<ThingsEchoingWell>()),
@@ -72,27 +111,82 @@ internal static class ThingsEventCatalog
             (ThingsModConfig.EventSiltWinchEnabled, ModelDb.Event<ThingsSiltWinch>()),
             (ThingsModConfig.EventBronzeCauldronEnabled, ModelDb.Event<ThingsBronzeCauldron>()),
             (ThingsModConfig.EventWallCrackLedgerEnabled, ModelDb.Event<ThingsWallCrackLedger>()),
-            (ThingsModConfig.EventSpikedDoorEnabled, ModelDb.Event<ThingsSpikedDoor>()));
+            (ThingsModConfig.EventSpikedDoorEnabled, ModelDb.Event<ThingsSpikedDoor>()),
+        ];
+        return AddCached(ref _depthsCache, source, _depthsCandidates);
     }
 
     public static IEnumerable<EventModel> AddGloryEvents(IEnumerable<EventModel> source)
     {
-        return Add(source,
+        _gloryCandidates ??=
+        [
             (ThingsModConfig.EventChronometerRigEnabled, ModelDb.Event<ThingsChronometerRig>()),
             (ThingsModConfig.EventSilveredGalleryEnabled, ModelDb.Event<ThingsSilveredGallery>()),
             (ThingsModConfig.EventScalesOfVanityEnabled, ModelDb.Event<ThingsScalesOfVanity>()),
-            (ThingsModConfig.EventSpikedDoorEnabled, ModelDb.Event<ThingsSpikedDoor>()));
+            (ThingsModConfig.EventSpikedDoorEnabled, ModelDb.Event<ThingsSpikedDoor>()),
+        ];
+        return AddCached(ref _gloryCache, source, _gloryCandidates);
     }
 
-    private static IEnumerable<EventModel> Add(
-        IEnumerable<EventModel> source,
-        params (string EnabledKey, EventModel Event)[] candidates)
+    private static bool MatchesSource(
+        IEnumerable<EventModel> cachedRef,
+        EventModel[] cachedSnapshot,
+        IEnumerable<EventModel> source)
     {
-        return DeterministicContentOrder.SortBaseThenMods(
-            source.Concat(candidates
+        if (ReferenceEquals(cachedRef, source))
+            return source is not ICollection<EventModel> col || col.Count == cachedSnapshot.Length;
+
+        if (source is IReadOnlyList<EventModel> list)
+        {
+            if (list.Count != cachedSnapshot.Length)
+                return false;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (!ReferenceEquals(list[i], cachedSnapshot[i]))
+                    return false;
+            }
+            return true;
+        }
+
+        int index = 0;
+        foreach (EventModel item in source)
+        {
+            if (index >= cachedSnapshot.Length || !ReferenceEquals(item, cachedSnapshot[index]))
+                return false;
+            index++;
+        }
+        return index == cachedSnapshot.Length;
+    }
+
+    private static IEnumerable<EventModel> AddCached(
+        ref CachedEventCatalog? cache,
+        IEnumerable<EventModel> source,
+        (string EnabledKey, EventModel Event)[] candidates)
+    {
+        int configVersion = ThingsModConfig.Version;
+        CachedEventCatalog? cached = cache;
+        if (cached != null &&
+            cached.ConfigVersion == configVersion &&
+            MatchesSource(cached.SourceRef, cached.SourceSnapshot, source))
+        {
+            return cached.Result;
+        }
+
+        EventModel[] sourceSnapshot = source as EventModel[] ?? source.ToArray();
+        EventModel[] result = DeterministicContentOrder.SortBaseThenMods(
+            sourceSnapshot.Concat(candidates
                     .Where(candidate => ThingsModConfig.IsEnabled(candidate.EnabledKey))
                     .Select(candidate => candidate.Event))
-                .Distinct());
+                .Distinct()).ToArray();
+
+        cache = new CachedEventCatalog
+        {
+            SourceRef = source,
+            SourceSnapshot = sourceSnapshot,
+            ConfigVersion = configVersion,
+            Result = result,
+        };
+        return result;
     }
 }
 

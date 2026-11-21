@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -19,10 +20,39 @@ namespace STS2_Things.Diagnostics;
 
 internal static class BugSnapshot
 {
+    private sealed class CachedRouteState(
+        WeakReference<RunState> runRef,
+        int actCount,
+        int totalPoints,
+        int currentActIndex,
+        int actFloor,
+        int totalFloor,
+        int lastPointRoomsCount,
+        int lastPointPlayerStatsCount,
+        JsonArray sanitizedRoute,
+        int redactions,
+        bool integerEncodingChanged)
+    {
+        internal WeakReference<RunState> RunRef { get; } = runRef;
+        internal int ActCount { get; } = actCount;
+        internal int TotalPoints { get; } = totalPoints;
+        internal int CurrentActIndex { get; } = currentActIndex;
+        internal int ActFloor { get; } = actFloor;
+        internal int TotalFloor { get; } = totalFloor;
+        internal int LastPointRoomsCount { get; } = lastPointRoomsCount;
+        internal int LastPointPlayerStatsCount { get; } = lastPointPlayerStatsCount;
+        internal JsonArray SanitizedRoute { get; } = sanitizedRoute;
+        internal int Redactions { get; } = redactions;
+        internal bool IntegerEncodingChanged { get; } = integerEncodingChanged;
+    }
+
     private static readonly string Session = Guid.NewGuid().ToString("N")[..8];
     private sealed class Identity { internal string Value { get; } = "entity-" + Session + "-" + Interlocked.Increment(ref _next); }
     private static long _next;
     private static readonly ConditionalWeakTable<object, Identity> Ids = new();
+    private static readonly ConcurrentDictionary<(Type Type, string Name), FieldInfo?> FieldCache = new();
+    private static readonly ConcurrentDictionary<(Type Type, string Name), (PropertyInfo? Property, FieldInfo? Field)> MemberCache = new();
+    private static CachedRouteState? _cachedRoute;
 
     internal static string? InstanceId(object? value) => value is null ? null : Ids.GetValue(value, _ => new Identity()).Value;
     internal static JsonObject Object(object value) => JsonSerializer.SerializeToNode(value)!.AsObject();
@@ -86,11 +116,29 @@ internal static class BugSnapshot
         };
     }
 
-    internal static JsonObject Capture(RunState run, GameAction? waitingAction = null)
+    internal static JsonObject Capture(RunState run, GameAction? waitingAction = null) =>
+        CaptureInternal(run, waitingAction, forceFreshRoute: true);
+
+    internal static JsonObject CapturePeriodic(RunState run, GameAction? waitingAction = null) =>
+        CaptureInternal(run, waitingAction, forceFreshRoute: false);
+
+    private static JsonObject CaptureInternal(RunState run, GameAction? waitingAction, bool forceFreshRoute)
     {
         var manager = CombatManager.Instance;
         var combat = manager.DebugOnlyGetState();
         var action = RunManager.Instance.ActionExecutor?.CurrentlyRunningAction ?? waitingAction;
+        int localPlayerIndex = -1;
+        var playerIds = new ulong[run.Players.Count];
+        for (int i = 0; i < run.Players.Count; i++)
+        {
+            var player = run.Players[i];
+            playerIds[i] = player.NetId;
+            if (localPlayerIndex < 0 && LocalContext.IsMe(player))
+            {
+                localPlayerIndex = i;
+            }
+        }
+
         var result = Object(new
         {
             seed = run.Rng.StringSeed,
@@ -103,7 +151,7 @@ internal static class BugSnapshot
             current_act_index = run.CurrentActIndex,
             current_act = run.Act.Id.ToString(),
             network_type = RunManager.Instance.NetService.Type.ToString(),
-            local_player_index = run.Players.ToList().FindIndex(LocalContext.IsMe),
+            local_player_index = localPlayerIndex,
             network = new
             {
                 connected = RunManager.Instance.NetService.IsConnected,
@@ -144,23 +192,6 @@ internal static class BugSnapshot
                     play_pile = pc.PlayPile.Cards.Take(1200).Select(Card).ToArray(),
                 } : null,
             }).ToArray(),
-            route = run.MapPointHistory.Take(20).Select((act, ai) => new
-            {
-                act_index = ai,
-                points = act.Take(400).Select((point, fi) => new
-                {
-                    floor_index = fi,
-                    map_point_type = point.MapPointType.ToString(),
-                    rooms = point.Rooms.Take(40).Select(room => new
-                    {
-                        type = room.RoomType.ToString(),
-                        model_id = room.ModelId?.ToString(),
-                        monster_ids = room.MonsterIds.Take(80).Select(id => id.ToString()).ToArray(),
-                        turns = room.TurnsTaken,
-                    }).ToArray(),
-                    players = point.PlayerStats.Take(8).Select(CaptureRoutePlayer).ToArray(),
-                }).ToArray(),
-            }).ToArray(),
             combat = manager.IsInProgress && combat is not null ? new
             {
                 round = combat.RoundNumber,
@@ -196,7 +227,95 @@ internal static class BugSnapshot
             queues = CaptureQueues(run),
             ui = CaptureUi(),
         });
-        return BugReplayCodec.SanitizeSnapshot(result, run.Players.Select(p => p.NetId).ToArray());
+        var sanitized = BugReplayCodec.SanitizeSnapshot(result, playerIds);
+        var (routeArray, routeRedactions, routeIntegerEncoding) = CaptureRoute(run, playerIds, forceFreshRoute);
+        sanitized["route"] = routeArray;
+        if (routeRedactions > 0)
+        {
+            sanitized["privacy_redactions"] = (sanitized["privacy_redactions"]?.GetValue<int>() ?? 0) + routeRedactions;
+        }
+        if (routeIntegerEncoding)
+        {
+            sanitized["integer_encoding"] = "exact-decimal-strings-above-2^53";
+        }
+        return sanitized;
+    }
+
+    private static (JsonArray Route, int Redactions, bool IntegerEncodingChanged) CaptureRoute(
+        RunState run,
+        ulong[] playerIds,
+        bool forceFresh)
+    {
+        var history = run.MapPointHistory;
+        int actCount = history.Count;
+        int totalPoints = 0;
+        int lastPointRoomsCount = 0;
+        int lastPointPlayerStatsCount = 0;
+        for (int i = 0; i < actCount; i++)
+        {
+            var act = history[i];
+            totalPoints += act.Count;
+            if (i == actCount - 1 && act.Count > 0)
+            {
+                var lastPoint = act[act.Count - 1];
+                lastPointRoomsCount = lastPoint.Rooms.Count;
+                lastPointPlayerStatsCount = lastPoint.PlayerStats.Count;
+            }
+        }
+
+        if (!forceFresh
+            && _cachedRoute is { } cached
+            && cached.RunRef.TryGetTarget(out var cachedRun)
+            && ReferenceEquals(cachedRun, run)
+            && cached.ActCount == actCount
+            && cached.TotalPoints == totalPoints
+            && cached.CurrentActIndex == run.CurrentActIndex
+            && cached.ActFloor == run.ActFloor
+            && cached.TotalFloor == run.TotalFloor
+            && cached.LastPointRoomsCount == lastPointRoomsCount
+            && cached.LastPointPlayerStatsCount == lastPointPlayerStatsCount)
+        {
+            return ((JsonArray)cached.SanitizedRoute.DeepClone(), cached.Redactions, cached.IntegerEncodingChanged);
+        }
+
+        var rawRoute = JsonSerializer.SerializeToNode(history.Take(20).Select((act, ai) => new
+        {
+            act_index = ai,
+            points = act.Take(400).Select((point, fi) => new
+            {
+                floor_index = fi,
+                map_point_type = point.MapPointType.ToString(),
+                rooms = point.Rooms.Take(40).Select(room => new
+                {
+                    type = room.RoomType.ToString(),
+                    model_id = room.ModelId?.ToString(),
+                    monster_ids = room.MonsterIds.Take(80).Select(id => id.ToString()).ToArray(),
+                    turns = room.TurnsTaken,
+                }).ToArray(),
+                players = point.PlayerStats.Take(8).Select(CaptureRoutePlayer).ToArray(),
+            }).ToArray(),
+        }).ToArray())!.AsArray();
+
+        var sanitizedWrapper = BugReplayCodec.SanitizeSnapshot(new JsonObject { ["route"] = rawRoute }, playerIds);
+        var sanitizedRoute = (JsonArray)sanitizedWrapper["route"]!;
+        sanitizedWrapper.Remove("route");
+        int redactions = sanitizedWrapper["privacy_redactions"]?.GetValue<int>() ?? 0;
+        bool intEncoded = sanitizedWrapper["integer_encoding"] is not null;
+
+        _cachedRoute = new CachedRouteState(
+            new WeakReference<RunState>(run),
+            actCount,
+            totalPoints,
+            run.CurrentActIndex,
+            run.ActFloor,
+            run.TotalFloor,
+            lastPointRoomsCount,
+            lastPointPlayerStatsCount,
+            (JsonArray)sanitizedRoute.DeepClone(),
+            redactions,
+            intEncoded);
+
+        return (sanitizedRoute, redactions, intEncoded);
     }
 
     private static JsonObject CaptureRoutePlayer(PlayerMapPointHistoryEntry ps, int index)
@@ -232,6 +351,16 @@ internal static class BugSnapshot
         return entry;
     }
 
+    private static int FindPlayerIndexByOwnerId(RunState run, object? ownerId)
+    {
+        var players = run.Players;
+        for (int i = 0; i < players.Count; i++)
+        {
+            if (Equals(players[i].NetId, ownerId)) return i;
+        }
+        return -1;
+    }
+
     private static object? CaptureQueues(RunState run)
     {
         try
@@ -243,7 +372,7 @@ internal static class BugSnapshot
                 next_action_id = Read(queue, "NextActionId"),
                 players = Items(Field(queue, "_actionQueues")).Select(q => new
                 {
-                    player_index = run.Players.ToList().FindIndex(p => Equals(p.NetId, Read(q, "ownerId"))),
+                    player_index = FindPlayerIndexByOwnerId(run, Read(q, "ownerId")),
                     paused = Read(q, "isPaused"),
                     cancelling = Read(q, "isCancellingCombatActions"),
                     actions = Items(Read(q, "actions")).OfType<GameAction>().Select(a => new
@@ -263,20 +392,46 @@ internal static class BugSnapshot
     }
 
     // Only fixed game fields cross the compatibility seam, never report/user-supplied reflection names.
-    private static object? Field(object value, string name)
+    private static FieldInfo? ResolveField(Type rootType, string name)
     {
-        for (var type = value.GetType(); type is not null; type = type.BaseType)
+        for (var type = rootType; type is not null; type = type.BaseType)
         {
             if (type.GetField(name, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly) is { } field)
             {
-                return field.GetValue(value);
+                return field;
             }
         }
         return null;
     }
 
-    private static object? Read(object? value, string name) => value?.GetType().GetProperty(name)?.GetValue(value)
-        ?? (value is null ? null : Field(value, name));
+    private static PropertyInfo? ResolveProperty(Type rootType, string name)
+    {
+        for (var type = rootType; type is not null; type = type.BaseType)
+        {
+            if (type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly) is { } prop)
+            {
+                return prop;
+            }
+        }
+        return null;
+    }
+
+    private static object? Field(object value, string name) =>
+        FieldCache.GetOrAdd((value.GetType(), name), static key => ResolveField(key.Type, key.Name))?.GetValue(value);
+
+    private static object? Read(object? value, string name)
+    {
+        if (value is null) return null;
+        var member = MemberCache.GetOrAdd((value.GetType(), name), static key =>
+        {
+            PropertyInfo? prop = ResolveProperty(key.Type, key.Name);
+            if (prop is not null) return (prop, (FieldInfo?)null);
+            return ((PropertyInfo?)null, ResolveField(key.Type, key.Name));
+        });
+        return member.Property is not null
+            ? member.Property.GetValue(value)
+            : member.Field?.GetValue(value);
+    }
 
     private static List<object> Items(object? value) => value is IEnumerable items ? items.Cast<object>().Take(200).ToList() : [];
 
@@ -321,8 +476,9 @@ internal static class BugSnapshot
                 time_scale = FiniteOrZero(Engine.TimeScale),
                 holders = holders.Select(h =>
                 {
-                    var card = Read(Read(h, "CardNode"), "Model");
-                    var cardNode = Read(h, "CardNode") as Node;
+                    var cardNodeObj = Read(h, "CardNode");
+                    var card = Read(cardNodeObj, "Model");
+                    var cardNode = cardNodeObj as Node;
                     var cost = cardNode?.GetNodeOrNull<Label>("%EnergyLabel");
                     return new
                     {

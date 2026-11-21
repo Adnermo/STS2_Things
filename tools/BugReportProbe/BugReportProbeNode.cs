@@ -342,6 +342,49 @@ public partial class BugReportProbeNode : Node
             Check(send.GetParameters().Length == 5 && send.GetParameters()[1].ParameterType == typeof(byte[]),
                 "v113.1 native F2 signature carries screenshot bytes and owned FeedbackLogFiles");
 #endif
+            // Verify ThingsFeedbackSelectionPatch handles both v111.1 (NMegaTextEdit : TextEdit) and v113.1 (NMegaTextEdit : Control wrapper) without InvalidCastException.
+            {
+                var screen = new MegaCrit.Sts2.Core.Nodes.Screens.FeedbackScreen.NSendFeedbackScreen();
+                var dropdown = new MegaCrit.Sts2.Core.Nodes.Screens.FeedbackScreen.NFeedbackCategoryDropdown();
+                var megaInput = new MegaCrit.Sts2.Core.Nodes.GodotExtensions.NMegaTextEdit();
+                TextEdit innerTextEdit;
+#if STS2_V111_1
+                innerTextEdit = megaInput;
+#else
+                innerTextEdit = new TextEdit { Name = "TextEdit" };
+                megaInput.AddChild(innerTextEdit);
+                megaInput.TextEdit = innerTextEdit;
+#endif
+                innerTextEdit.PlaceholderText = "ORIGINAL_PLACEHOLDER";
+                bool textChangedEmitted = false;
+                innerTextEdit.Connect(TextEdit.SignalName.TextChanged, Callable.From(() => textChangedEmitted = true));
+
+                screen.AddChild(megaInput);
+                screen.AddChild(dropdown);
+                typeof(MegaCrit.Sts2.Core.Nodes.Screens.FeedbackScreen.NSendFeedbackScreen)
+                    .GetField("_descriptionInput", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(screen, megaInput);
+                typeof(MegaCrit.Sts2.Core.Nodes.Screens.FeedbackScreen.NFeedbackCategoryDropdown)
+                    .GetField("_categories", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(dropdown, new[] { "bug", "things_bug", "things_bug_retry" });
+                var currentIdxField = typeof(MegaCrit.Sts2.Core.Nodes.Screens.FeedbackScreen.NFeedbackCategoryDropdown)
+                    .GetField("_currentCategoryIndex", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                var postfix = ModAssembly.GetType("STS2_Things.Diagnostics.ThingsFeedbackSelectionPatch")!
+                    .GetMethod("Postfix", BindingFlags.Static | BindingFlags.NonPublic)!;
+
+                currentIdxField.SetValue(dropdown, 1); // things_bug
+                postfix.Invoke(null, [dropdown]);
+                Check(innerTextEdit.PlaceholderText != "ORIGINAL_PLACEHOLDER", "selecting things_bug updates feedback placeholder without cast error");
+
+                currentIdxField.SetValue(dropdown, 0); // bug
+                postfix.Invoke(null, [dropdown]);
+                Check(innerTextEdit.PlaceholderText == "ORIGINAL_PLACEHOLDER", "switching back to vanilla category restores original placeholder");
+
+                currentIdxField.SetValue(dropdown, 2); // things_bug_retry
+                postfix.Invoke(null, [dropdown]);
+                Check(innerTextEdit.Text == "Retry pending Things reports" && textChangedEmitted,
+                    "selecting things_bug_retry populates text and emits TextChanged on inner TextEdit");
+
+                screen.Free();
+            }
             Invoke("DetachExecutor");
             DeactivateSyntheticCombat();
             GD.Print($"BugReport native probe: PASS ({_checks} assertions)");

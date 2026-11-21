@@ -87,8 +87,10 @@ public partial class NAbyssalInkSprayOverlay : CanvasLayer
 
     public override void _Ready()
     {
-        _cachedShader ??= GD.Load<Shader>(ShaderPath);
-        _cachedSplatter ??= GD.Load<Texture2D>(SplatterTexturePath);
+        if (_cachedShader == null || !GodotObject.IsInstanceValid(_cachedShader))
+            _cachedShader = GD.Load<Shader>(ShaderPath);
+        if (_cachedSplatter == null || !GodotObject.IsInstanceValid(_cachedSplatter))
+            _cachedSplatter = GD.Load<Texture2D>(SplatterTexturePath);
 
         _material = new ShaderMaterial
         {

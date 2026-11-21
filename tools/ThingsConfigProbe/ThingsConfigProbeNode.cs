@@ -4,17 +4,22 @@ using System.Runtime.Loader;
 using System.Text.Json;
 using Godot;
 using GodotFileAccess = Godot.FileAccess;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Acts;
+using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Models.Encounters;
+using MegaCrit.Sts2.Core.Nodes.Screens.CardLibrary;
+using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Unlocks;
 using STS2_Things;
 using STS2_Things.Acts;
+using STS2_Things.Cards;
 using STS2_Things.Config;
 using STS2_Things.Encounters;
 using STS2_Things.Events;
@@ -75,6 +80,7 @@ public partial class ThingsConfigProbeNode : Node
             VerifyEliteFrequency();
             VerifyMusicSetting();
             VerifyEventGating();
+            VerifyCardPoolGating();
             MultiplayerConfigChecks.Run();
             BugFixRegressions.Run(this);
 
@@ -96,13 +102,17 @@ public partial class ThingsConfigProbeNode : Node
             $"Expected CurrentSchemaVersion=3, got {ThingsModConfig.CurrentSchemaVersion}.");
         Assert(ThingsConfigSnapshotMessage.Protocol == 2,
             $"Expected ThingsConfigSnapshotMessage.Protocol=2, got {ThingsConfigSnapshotMessage.Protocol}.");
-        Assert(ThingsModConfig.Entries.Count == 72,
-            $"Expected 72 config entries, got {ThingsModConfig.Entries.Count}.");
+        Assert(ThingsModConfig.Entries.Count == 78,
+            $"Expected 78 config entries, got {ThingsModConfig.Entries.Count}.");
         Assert(ThingsModConfig.Entries.Any(entry =>
                    entry.Key == ThingsModConfig.FeatureDefensiveEngineGuardsEnabled &&
                    entry.Category == ThingsModConfig.Category.Stability &&
                    entry.Default is true),
             "Missing FeatureDefensiveEngineGuardsEnabled entry in Category.Stability.");
+        Assert(ThingsModConfig.Entries.Count(entry =>
+                   entry.Category == ThingsModConfig.Category.Card &&
+                   entry.Default is true) == 6,
+            "Expected 6 default-enabled entries in Category.Card.");
 
         foreach (ThingsModConfig.Entry entry in ThingsModConfig.Entries)
         {
@@ -296,6 +306,103 @@ public partial class ThingsConfigProbeNode : Node
         ThingsModConfig.SetValue(ThingsModConfig.EventMedusaEnabled, false);
         Assert(hive.AllEvents.All(e => e.Id != ModelDb.Event<ThingsMedusa>().Id),
             "The disabled ThingsMedusa event is still offered in Hive events.");
+        ResetAll();
+    }
+
+    private static void VerifyCardPoolGating()
+    {
+        CardPoolModel ironclad = ModelDb.CardPool<IroncladCardPool>();
+        CardPoolModel defect = ModelDb.CardPool<DefectCardPool>();
+        CardPoolModel silent = ModelDb.CardPool<SilentCardPool>();
+        CardPoolModel eventPool = ModelDb.CardPool<EventCardPool>();
+        CardPoolModel tokenPool = ModelDb.CardPool<TokenCardPool>();
+
+        ModelId collisionId = ModelDb.Card<ThingsCollision>().Id;
+        ModelId reuseId = ModelDb.Card<ThingsReuse>().Id;
+        ModelId soulfyshId = ModelDb.Card<ThingsSoulfyshDisease>().Id;
+        ModelId recallId = ModelDb.Card<ThingsRecall>().Id;
+        ModelId packUpId = ModelDb.Card<ThingsPackUp>().Id;
+        ModelId surrenderId = ModelDb.Card<ThingsSurrender>().Id;
+        ModelId leechParasiteId = ModelDb.Card<ThingsLeechParasite>().Id;
+
+        static bool HasCard(CardPoolModel pool, ModelId id) =>
+            pool.GetUnlockedCards(UnlockState.all, CardMultiplayerConstraint.None).Any(card => card.Id == id);
+
+        // 1) 默认状态：5 张自制职业牌均在各自卡池中。
+        Assert(HasCard(ironclad, collisionId), "ThingsCollision missing from default IroncladCardPool.");
+        Assert(HasCard(defect, reuseId), "ThingsReuse missing from default DefectCardPool.");
+        Assert(HasCard(silent, soulfyshId) && HasCard(silent, recallId) && HasCard(silent, packUpId),
+            "Silent custom cards missing from default SilentCardPool.");
+        Assert(HasCard(eventPool, surrenderId), "ThingsSurrender missing from EventCardPool.");
+        Assert(HasCard(tokenPool, leechParasiteId), "ThingsLeechParasite missing from TokenCardPool.");
+
+        // 2) 单卡禁用：仅移除对应卡牌，其余自制牌、AllCards 与 ModelDb.AllCards 保持完整。
+        ThingsModConfig.SetValue(ThingsModConfig.CardSoulfyshDiseaseEnabled, false);
+        Assert(!HasCard(silent, soulfyshId), "Disabled ThingsSoulfyshDisease still appeared in SilentCardPool.");
+        Assert(HasCard(silent, recallId) && HasCard(silent, packUpId),
+            "Disabling ThingsSoulfyshDisease removed other Silent custom cards.");
+        Assert(HasCard(ironclad, collisionId) && HasCard(defect, reuseId),
+            "Disabling ThingsSoulfyshDisease affected other character pools.");
+        Assert(silent.AllCards.Any(card => card.Id == soulfyshId) &&
+               ModelDb.AllCards.Any(card => card.Id == soulfyshId),
+            "Disabling a custom card must not mutate AllCards or ModelDb.AllCards.");
+
+        // 3) 总开关关闭：移除全部 5 张自制职业牌，但不影响事件牌/衍生牌及卡牌图鉴。
+        ThingsModConfig.SetValue(ThingsModConfig.CardsEnabled, false);
+        Assert(!HasCard(ironclad, collisionId) &&
+               !HasCard(defect, reuseId) &&
+               !HasCard(silent, soulfyshId) &&
+               !HasCard(silent, recallId) &&
+               !HasCard(silent, packUpId),
+            "Disabling CardsEnabled left custom class cards in unlocked pools.");
+        Assert(HasCard(eventPool, surrenderId),
+            "Disabling CardsEnabled unexpectedly affected EventCardPool (ThingsSurrender).");
+        Assert(HasCard(tokenPool, leechParasiteId),
+            "Disabling CardsEnabled unexpectedly affected TokenCardPool (ThingsLeechParasite).");
+        Assert(ironclad.AllCards.Any(card => card.Id == collisionId) &&
+               defect.AllCards.Any(card => card.Id == reuseId) &&
+               silent.AllCards.Any(card => card.Id == recallId) &&
+               silent.AllCards.Any(card => card.Id == packUpId),
+            "Disabling CardsEnabled must not mutate CardPoolModel.AllCards.");
+
+        // 4) 卡牌图鉴豁免：NCardLibraryGrid.RefreshVisibility 期间保持已解锁，退出后恢复过滤。
+        SaveManager.Instance.InitProfileId(1);
+        SaveManager.Instance.InitProgressData();
+        var libraryGrid = new NCardLibraryGrid();
+        try
+        {
+            libraryGrid.RefreshVisibility();
+            object unlockedObj = typeof(NCardLibraryGrid)
+                .GetField("_unlockedCards", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(libraryGrid)!;
+            HashSet<ModelId> libraryUnlockedIds = unlockedObj switch
+            {
+                HashSet<ModelId> ids => ids,
+                HashSet<CardModel> cards => cards.Select(card => card.Id).ToHashSet(),
+                _ => throw new InvalidOperationException($"Unexpected _unlockedCards type: {unlockedObj.GetType().FullName}"),
+            };
+            foreach (ModelId id in new[] { collisionId, reuseId, soulfyshId, recallId, packUpId })
+            {
+                Assert(libraryUnlockedIds.Contains(id),
+                    $"Card Library hid or locked disabled custom card {id}.");
+            }
+        }
+        finally
+        {
+            libraryGrid.Free();
+        }
+        Assert(!HasCard(ironclad, collisionId),
+            "Card Library unfiltered scope leaked after RefreshVisibility completed.");
+
+        // 5) 重新开启总开关后，单卡偏好仍保留（仅异鱼症保持禁用）。
+        ThingsModConfig.SetValue(ThingsModConfig.CardsEnabled, true);
+        Assert(HasCard(ironclad, collisionId) &&
+               HasCard(defect, reuseId) &&
+               HasCard(silent, recallId) &&
+               HasCard(silent, packUpId) &&
+               !HasCard(silent, soulfyshId),
+            "Re-enabling CardsEnabled did not preserve individual card toggle state.");
+
         ResetAll();
     }
 

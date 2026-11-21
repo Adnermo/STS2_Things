@@ -5,12 +5,25 @@ using System.Text.Json.Nodes;
 namespace STS2_Things.Diagnostics;
 
 /// <summary>
-/// Background SHA-256 file fingerprinting with bounded async flush barrier so submitted reports
-/// never emit "pending" hashes for STS2_Things.dll, STS2_Things.pck, or active mod files.
+/// Single-worker sequential background SHA-256 file fingerprinting with bounded async flush barrier
+/// so startup avoids I/O and ThreadPool storms while submitted reports never emit "pending" hashes
+/// for STS2_Things.dll, STS2_Things.pck, or active mod files.
 /// </summary>
 internal static class BugFileFingerprints
 {
-    private static readonly ConcurrentDictionary<string, Task<JsonObject>> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private sealed class Entry(string fullPath)
+    {
+        internal string FullPath { get; } = fullPath;
+        internal TaskCompletionSource<JsonObject> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private static readonly ConcurrentDictionary<string, Entry> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentQueue<Entry> WorkQueue = new();
+    private static readonly ConcurrentQueue<Func<IReadOnlyList<string>>> DiscoveryQueue = new();
+    private static readonly object WorkerGate = new();
+    private static Task _workerTask = Task.CompletedTask;
+    private static bool _workerRunning;
 
     internal static void Prime(string? path)
     {
@@ -28,6 +41,13 @@ internal static class BugFileFingerprints
         }
     }
 
+    internal static void PrimeDeferred(Func<IReadOnlyList<string>> discoverPaths)
+    {
+        if (discoverPaths is null) return;
+        DiscoveryQueue.Enqueue(discoverPaths);
+        EnsureWorkerStarted();
+    }
+
     internal static JsonObject Describe(string? path)
     {
         try
@@ -38,7 +58,23 @@ internal static class BugFileFingerprints
             }
             var file = new FileInfo(path);
             string key = file.FullName + "|" + file.Length + "|" + file.LastWriteTimeUtc.Ticks;
-            var task = Cache.GetOrAdd(key, _ => Task.Run(() => Hash(file.FullName)));
+            if (!Cache.TryGetValue(key, out Entry? entry))
+            {
+                var created = new Entry(file.FullName);
+                if (Cache.TryAdd(key, created))
+                {
+                    entry = created;
+                    WorkQueue.Enqueue(created);
+                    EnsureWorkerStarted();
+                }
+                else
+                {
+                    Cache.TryGetValue(key, out entry);
+                }
+            }
+
+            if (entry is null) return new JsonObject { ["state"] = "pending" };
+            var task = entry.Completion.Task;
             return task.IsCompletedSuccessfully
                 ? (JsonObject)task.Result.DeepClone()
                 : new JsonObject { ["state"] = task.IsFaulted ? "unavailable" : "pending" };
@@ -66,21 +102,54 @@ internal static class BugFileFingerprints
     }
 
     /// <summary>
-    /// Awaits all in-flight background SHA-256 computations up to <paramref name="timeoutMs"/>.
+    /// Awaits all in-flight sequential background SHA-256 computations up to <paramref name="timeoutMs"/>.
     /// Returns true if all pending computations completed within the timeout.
     /// </summary>
     internal static async Task<bool> FlushPendingAsync(int timeoutMs = 1500, CancellationToken cancellationToken = default)
     {
         int clampedMs = Math.Clamp(timeoutMs, 50, 15_000);
-        var pending = Cache.Values.Where(t => !t.IsCompleted).ToArray();
-        if (pending.Length == 0) return true;
+        long deadline = System.Environment.TickCount64 + clampedMs;
 
         try
         {
-            await Task.WhenAll(pending)
-                .WaitAsync(TimeSpan.FromMilliseconds(clampedMs), cancellationToken)
-                .ConfigureAwait(false);
-            return Cache.Values.All(t => t.IsCompleted);
+            while (true)
+            {
+                Task worker;
+                bool idle;
+                lock (WorkerGate)
+                {
+                    worker = _workerTask;
+                    idle = !_workerRunning && DiscoveryQueue.IsEmpty && WorkQueue.IsEmpty;
+                }
+
+                if (idle && Cache.Values.All(e => e.Completion.Task.IsCompleted))
+                {
+                    return true;
+                }
+
+                long remainingMs = deadline - System.Environment.TickCount64;
+                if (remainingMs <= 0) return false;
+
+                if (!worker.IsCompleted)
+                {
+                    await worker
+                        .WaitAsync(TimeSpan.FromMilliseconds(remainingMs), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    if (!DiscoveryQueue.IsEmpty || !WorkQueue.IsEmpty)
+                    {
+                        EnsureWorkerStarted();
+                        continue;
+                    }
+                    var pending = Cache.Values.Select(e => e.Completion.Task).Where(t => !t.IsCompleted).ToArray();
+                    if (pending.Length == 0) return true;
+                    await Task.WhenAll(pending)
+                        .WaitAsync(TimeSpan.FromMilliseconds(remainingMs), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
         }
         catch (TimeoutException)
         {
@@ -97,7 +166,69 @@ internal static class BugFileFingerprints
         }
     }
 
-    internal static void ClearForTests() => Cache.Clear();
+    internal static void ClearForTests()
+    {
+        Cache.Clear();
+        while (DiscoveryQueue.TryDequeue(out _)) { }
+        while (WorkQueue.TryDequeue(out _)) { }
+    }
+
+    private static void EnsureWorkerStarted()
+    {
+        lock (WorkerGate)
+        {
+            if (!_workerRunning)
+            {
+                _workerRunning = true;
+                _workerTask = Task.Run(WorkerLoop);
+            }
+        }
+    }
+
+    private static void WorkerLoop()
+    {
+        while (true)
+        {
+            if (DiscoveryQueue.TryDequeue(out var discover))
+            {
+                try
+                {
+                    IReadOnlyList<string>? paths = discover();
+                    if (paths is not null)
+                    {
+                        PrimeMany(paths);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Deferred path discovery is best-effort.
+                }
+                continue;
+            }
+
+            if (WorkQueue.TryDequeue(out Entry? entry))
+            {
+                try
+                {
+                    entry.Completion.TrySetResult(Hash(entry.FullPath));
+                }
+                catch (Exception)
+                {
+                    entry.Completion.TrySetResult(new JsonObject { ["state"] = "unavailable" });
+                }
+                continue;
+            }
+
+            lock (WorkerGate)
+            {
+                if (DiscoveryQueue.IsEmpty && WorkQueue.IsEmpty)
+                {
+                    _workerRunning = false;
+                    return;
+                }
+            }
+        }
+    }
 
     private static JsonObject Hash(string path)
     {

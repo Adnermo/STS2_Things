@@ -379,8 +379,16 @@ public static class Sts2VersionSeam
             : null;
 
 #if !STS2_V113_1
-    private static readonly MethodInfo? CardPortraitPngPathGetter =
-        AccessTools.PropertyGetter(typeof(CardModel), "PortraitPngPath");
+    private static readonly Func<CardModel, string?>? CardPortraitPngPathGetter =
+        CreateCardPortraitPngPathGetter();
+
+    private static Func<CardModel, string?>? CreateCardPortraitPngPathGetter()
+    {
+        MethodInfo? getter = AccessTools.PropertyGetter(typeof(CardModel), "PortraitPngPath");
+        if (getter == null || getter.ReturnType != typeof(string))
+            return null;
+        return (Func<CardModel, string?>)Delegate.CreateDelegate(typeof(Func<CardModel, string?>), getter);
+    }
 #endif
 
     public static Texture2D? TryGetBigCardPortrait(CardModel? card)
@@ -391,7 +399,8 @@ public static class Sts2VersionSeam
 #if STS2_V113_1
         return card.BigPortrait;
 #else
-        if (CardPortraitPngPathGetter?.Invoke(card, null) is not string pngPath || string.IsNullOrEmpty(pngPath))
+        string? pngPath = CardPortraitPngPathGetter?.Invoke(card);
+        if (string.IsNullOrEmpty(pngPath))
             return null;
         return PreloadManager.Cache.GetTexture2D(pngPath);
 #endif

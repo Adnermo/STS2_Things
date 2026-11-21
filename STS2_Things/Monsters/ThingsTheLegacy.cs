@@ -73,6 +73,7 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
 
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat(
     [
+        ..HeartbeatFiles,
         ModelDb.Power<ThingsLegacyBeatOfDeathPower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsDazedPower>().ResolvedBigIconPath,
         ModelDb.Power<HardenedShellPower>().ResolvedBigIconPath,

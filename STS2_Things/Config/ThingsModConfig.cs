@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using Godot;
 
 namespace STS2_Things.Config;
@@ -19,6 +20,7 @@ public static class ThingsModConfig
         Boss,
         Encounter,
         Event,
+        Card,
         Feature,
         NeowRelic,
         Audio,
@@ -118,6 +120,14 @@ public static class ThingsModConfig
     public const string EventWallCrackLedgerEnabled = "EventWallCrackLedgerEnabled";
     public const string EventSpikedDoorEnabled = "EventSpikedDoorEnabled";
 
+    // ---- 卡牌 ----
+    public const string CardsEnabled = "CardsEnabled";
+    public const string CardCollisionEnabled = "CardCollisionEnabled";
+    public const string CardReuseEnabled = "CardReuseEnabled";
+    public const string CardSoulfyshDiseaseEnabled = "CardSoulfyshDiseaseEnabled";
+    public const string CardRecallEnabled = "CardRecallEnabled";
+    public const string CardPackUpEnabled = "CardPackUpEnabled";
+
     // ---- 商人猜拳 ----
     public const string FeatureMerchantBargainEnabled = "FeatureMerchantBargainEnabled";
 
@@ -205,6 +215,12 @@ public static class ThingsModConfig
         new(EventScalesOfVanityEnabled, Category.Event, Default: true),
         new(EventWallCrackLedgerEnabled, Category.Event, Default: true),
         new(EventSpikedDoorEnabled, Category.Event, Default: true),
+        new(CardsEnabled, Category.Card, Default: true),
+        new(CardCollisionEnabled, Category.Card, Default: true),
+        new(CardReuseEnabled, Category.Card, Default: true),
+        new(CardSoulfyshDiseaseEnabled, Category.Card, Default: true),
+        new(CardRecallEnabled, Category.Card, Default: true),
+        new(CardPackUpEnabled, Category.Card, Default: true),
         new(FeatureMerchantBargainEnabled, Category.Feature, Default: true),
         new(NeowRelicCurseRemoverEnabled, Category.NeowRelic, Default: true),
         new(NeowRelicWhiteFlagEnabled, Category.NeowRelic, Default: true),
@@ -217,6 +233,26 @@ public static class ThingsModConfig
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
+    private static int _version;
+    private static volatile bool _defensiveEngineGuardsEnabled = true;
+    private static volatile bool _allCustomCardsEnabled = true;
+    private static volatile bool _customBgmEnabled = true;
+    private static volatile bool _bossOnlyModBosses;
+    private static volatile bool _merchantBargainEnabled = true;
+    private static volatile bool _cardsEnabled = true;
+
+    public static int Version => Volatile.Read(ref _version);
+
+    public static bool DefensiveEngineGuardsEnabled => _defensiveEngineGuardsEnabled;
+
+    public static bool AllCustomCardsEnabled => _allCustomCardsEnabled;
+
+    public static bool CustomBgmEnabled => _customBgmEnabled;
+
+    public static bool BossOnlyModBossesEnabled => _bossOnlyModBosses;
+
+    public static bool MerchantBargainEnabled => _merchantBargainEnabled;
+
     /// <summary>配置发生变化（含强制冲突裁决后的降级）时触发。</summary>
     public static event Action? Changed;
 
@@ -226,7 +262,12 @@ public static class ThingsModConfig
 
     public static bool CanEdit(string key) => MultiplayerConfig.CanEdit(key);
 
-    internal static void NotifyEffectiveChanged() => Changed?.Invoke();
+    internal static void NotifyEffectiveChanged()
+    {
+        RefreshHotCaches();
+        Interlocked.Increment(ref _version);
+        Changed?.Invoke();
+    }
 
     internal static object? GetLocalValue(string key) => Values.GetValueOrDefault(key);
 
@@ -237,11 +278,57 @@ public static class ThingsModConfig
 
     public static bool IsForced(string key) => GetBool(key);
 
+    public static bool IsIndividualCardKey(string key) =>
+        key is CardCollisionEnabled
+            or CardReuseEnabled
+            or CardSoulfyshDiseaseEnabled
+            or CardRecallEnabled
+            or CardPackUpEnabled;
+
+    public static bool IsCustomCardEnabled(string key) =>
+        _cardsEnabled && GetBool(key);
+
     /// <summary>读取任意布尔键（含 Forced 键）。</summary>
-    public static bool GetBool(string key) => GetValue(key) is true;
+    public static bool GetBool(string key)
+    {
+        if (ReferenceEquals(key, FeatureDefensiveEngineGuardsEnabled))
+            return _defensiveEngineGuardsEnabled;
+        if (ReferenceEquals(key, FeatureCustomBgmEnabled))
+            return _customBgmEnabled;
+        if (ReferenceEquals(key, BossOnlyModBosses))
+            return _bossOnlyModBosses;
+        if (ReferenceEquals(key, FeatureMerchantBargainEnabled))
+            return _merchantBargainEnabled;
+        if (ReferenceEquals(key, CardsEnabled))
+            return _cardsEnabled;
+        return GetBoolCore(key);
+    }
+
+    private static bool GetBoolCore(string key) =>
+        MultiplayerConfig.TryGetBoolOverride(key, out bool overridden)
+            ? overridden
+            : GetLocalValue(key) is true;
 
     public static int GetInt(string key) =>
-        GetValue(key) is int integer ? integer : 0;
+        MultiplayerConfig.TryGetIntOverride(key, out int overridden)
+            ? overridden
+            : GetLocalValue(key) is int integer ? integer : 0;
+
+    private static void RefreshHotCaches()
+    {
+        _defensiveEngineGuardsEnabled = GetBoolCore(FeatureDefensiveEngineGuardsEnabled);
+        _customBgmEnabled = GetBoolCore(FeatureCustomBgmEnabled);
+        _bossOnlyModBosses = GetBoolCore(BossOnlyModBosses);
+        _merchantBargainEnabled = GetBoolCore(FeatureMerchantBargainEnabled);
+        bool cardsEnabled = GetBoolCore(CardsEnabled);
+        _cardsEnabled = cardsEnabled;
+        _allCustomCardsEnabled = cardsEnabled
+            && GetBoolCore(CardCollisionEnabled)
+            && GetBoolCore(CardReuseEnabled)
+            && GetBoolCore(CardSoulfyshDiseaseEnabled)
+            && GetBoolCore(CardRecallEnabled)
+            && GetBoolCore(CardPackUpEnabled);
+    }
 
     public static bool HasBossWeightOverrides(string slot) =>
         Entries.Any(entry => entry.Slot == slot && entry.Default is int && GetInt(entry.Key) != (int)entry.Default);
@@ -327,11 +414,13 @@ public static class ThingsModConfig
         needsSave |= ResolveConflicts(logWarnings: true);
         if (needsSave)
             Save();
-        if (Values.Any(pair => !previous.TryGetValue(pair.Key, out object? old) || !Equals(old, pair.Value)))
-        {
+        bool anyChanged = Values.Any(pair => !previous.TryGetValue(pair.Key, out object? old) || !Equals(old, pair.Value));
+        if (anyChanged)
             LocalChanged?.Invoke();
+        RefreshHotCaches();
+        Interlocked.Increment(ref _version);
+        if (anyChanged)
             Changed?.Invoke();
-        }
     }
 
     public static void Save()
@@ -385,6 +474,8 @@ public static class ThingsModConfig
             return;
         ResolveConflicts(logWarnings: true);
         LocalChanged?.Invoke();
+        RefreshHotCaches();
+        Interlocked.Increment(ref _version);
         Changed?.Invoke();
     }
 

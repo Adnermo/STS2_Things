@@ -116,6 +116,31 @@ internal static class LogSanitizer
         @"^\[\d+\]\s*",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    private static readonly Regex ErrorLinePrefixRegex = new(
+        @"^(?:ERROR:\s*|SCRIPT ERROR:\s*|\[ERROR\]\s*)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private static readonly string? CachedUserProfile = ResolveUserProfile();
+    private static readonly string? CachedUserProfileBackslash = CachedUserProfile is null ? null : CachedUserProfile + "\\";
+    private static readonly string? CachedUserProfileSlash = CachedUserProfile is null ? null : CachedUserProfile + "/";
+
+    private static string? ResolveUserProfile()
+    {
+        try
+        {
+            string profile = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(profile) && profile.Length >= 4)
+            {
+                return profile.TrimEnd('\\', '/');
+            }
+        }
+        catch (Exception)
+        {
+            // Environment lookup is best-effort only.
+        }
+        return null;
+    }
+
     internal static string Scrub(string? input, int maxLength = MaxMessageLength)
     {
         if (string.IsNullOrEmpty(input)) return string.Empty;
@@ -124,20 +149,11 @@ internal static class LogSanitizer
         value = value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 
         // Also scrub OS-reported user profile directory if non-standard location
-        try
+        if (CachedUserProfile is not null)
         {
-            string profile = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
-            if (!string.IsNullOrWhiteSpace(profile) && profile.Length >= 4)
-            {
-                string trimmed = profile.TrimEnd('\\', '/');
-                value = value.Replace(trimmed + "\\", "<USER_HOME>/", StringComparison.OrdinalIgnoreCase);
-                value = value.Replace(trimmed + "/", "<USER_HOME>/", StringComparison.OrdinalIgnoreCase);
-                value = value.Replace(trimmed, "<USER_HOME>", StringComparison.OrdinalIgnoreCase);
-            }
-        }
-        catch (Exception)
-        {
-            // Environment lookup is best-effort only.
+            value = value.Replace(CachedUserProfileBackslash!, "<USER_HOME>/", StringComparison.OrdinalIgnoreCase);
+            value = value.Replace(CachedUserProfileSlash!, "<USER_HOME>/", StringComparison.OrdinalIgnoreCase);
+            value = value.Replace(CachedUserProfile, "<USER_HOME>", StringComparison.OrdinalIgnoreCase);
         }
 
         value = WindowsUserHomeRegex.Replace(value, "<USER_HOME>/");
@@ -491,7 +507,7 @@ internal static class LogSanitizer
                     if (remainder.Length > 0) messageLines.Add(remainder);
                     continue;
                 }
-                string cleanedPrefix = Regex.Replace(trimmed, @"^(?:ERROR:\s*|SCRIPT ERROR:\s*|\[ERROR\]\s*)", "", RegexOptions.CultureInvariant);
+                string cleanedPrefix = ErrorLinePrefixRegex.Replace(trimmed, "");
                 messageLines.Add(cleanedPrefix);
             }
             else if (messageLines.Count < 6)

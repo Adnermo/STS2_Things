@@ -12,6 +12,8 @@ public static class MultiplayerConfig
     private static bool _initialized;
     private static readonly Dictionary<string, int> Indices = ThingsModConfig.Entries
         .Select((entry, index) => (entry.Key, index)).ToDictionary(pair => pair.Key, pair => pair.index);
+    private static readonly bool[] IsBoolEntry = ThingsModConfig.Entries
+        .Select(entry => entry.Default is bool).ToArray();
 
     public static bool IsActive => _service is not null;
     public static bool IsHost => _service?.Type == NetGameType.Host;
@@ -28,10 +30,34 @@ public static class MultiplayerConfig
     public static bool CanEdit(string key) => !IsActive ||
         IsHost && (!IsLocked || key == ThingsModConfig.FeatureCustomBgmEnabled);
 
+    public static bool TryGetBoolOverride(string key, out bool value)
+    {
+        if (_snapshot is { } snapshot && Indices.TryGetValue(key, out int index) && IsBoolEntry[index])
+        {
+            value = snapshot.Values[index] == 1;
+            return true;
+        }
+
+        value = false;
+        return false;
+    }
+
+    public static bool TryGetIntOverride(string key, out int value)
+    {
+        if (_snapshot is { } snapshot && Indices.TryGetValue(key, out int index) && !IsBoolEntry[index])
+        {
+            value = snapshot.Values[index];
+            return true;
+        }
+
+        value = 0;
+        return false;
+    }
+
     public static object? GetOverride(string key)
     {
         if (_snapshot is not { } snapshot || !Indices.TryGetValue(key, out int index)) return null;
-        return ThingsModConfig.Entries[index].Default is bool ? (object)(snapshot.Values[index] == 1) : snapshot.Values[index];
+        return IsBoolEntry[index] ? (object)(snapshot.Values[index] == 1) : snapshot.Values[index];
     }
 
     public static void Bind(INetGameService service, bool lockForLoadedRun = false)

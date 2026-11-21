@@ -339,8 +339,11 @@ public partial class DepthsProbeNode
         {
             var b = await StrongBattle(ModelDb.Encounter<ThingsReverseSalamanderElite>(), players, ascension);
             var salamander = b.Monster<ThingsReverseSalamander>();
-            int expectedBlockPerPlayer = ascension == 0 ? 5 : 7;
-            Assert(salamander.UnplayedRecallBlock == expectedBlockPerPlayer, "Salamander UnplayedRecallBlock is 5 (A0) / 7 (A8+).");
+            int expectedBlockPerPlayer = ascension == 0 ? 10 : 14;
+            int expectedGrowth = ascension == 0 ? 2 : 3;
+            Assert(salamander.MinInitialHp == (ascension == 0 ? 172 : 192), "Salamander HP is 172 (A0) / 192 (A8+).");
+            Assert(salamander.GrowthAmount == expectedGrowth, "Salamander GrowthAmount is 2 (A0) / 3 (A9+).");
+            Assert(salamander.UnplayedRecallBlock == expectedBlockPerPlayer, "Salamander UnplayedRecallBlock is 10 (A0) / 14 (A8+).");
             var playerCreatures = b.Players.Select(p => p.Creature).ToArray();
             foreach (var p in b.Players) { p.Creature.SetMaxHpInternal(1000); p.Creature.SetCurrentHpInternal(1000); }
 
@@ -453,11 +456,94 @@ public partial class DepthsProbeNode
             await Hook.BeforeSideTurnStart(b.State, CombatSide.Enemy, b.Enemies);
             await salamander.Creature.AfterTurnStart(CombatSide.Enemy);
             await Hook.AfterBlockCleared(b.State, salamander.Creature);
-            Assert(salamander.NextMove.Id == "GATHER_MOVE", "Salamander Turn 4 executes GATHER_MOVE.");
-            int strBeforeGather = salamander.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            Assert(salamander.NextMove.Id == "GATHER_MOVE", "Salamander Turn 4 executes GATHER_MOVE (Surging Flow) right after 3-hit Backwash.");
+            Assert(salamander.NextMove.Intents.OfType<SingleAttackIntent>().Count() == 1 &&
+                   salamander.NextMove.Intents.OfType<DefendIntent>().Count() == 1 &&
+                   salamander.NextMove.Intents.OfType<DebuffIntent>().Count() == 1,
+                "Surging Flow shows Attack + Defend + Debuff intents.");
             await salamander.PerformMove();
-            Assert(salamander.Creature.GetPower<StrengthPower>()?.Amount == strBeforeGather + 1,
-                "Salamander GATHER_MOVE grants +1 Strength for soft-enrage tempo.");
+            Assert(b.Players.All(p => p.Creature.HasPower<ThingsReverseSurgePower>()),
+                "Surging Flow arms ThingsReverseSurgePower on every living player for next turn.");
+            await SideEnding(b, CombatSide.Enemy, b.Enemies);
+            await SideEnded(b, CombatSide.Enemy, b.Enemies);
+            salamander.RollMove(playerCreatures);
+
+            // Turn 5 (Surging Flow): ALL playable cards in Hand (Attack, Skill, Power, Exhaust) get Reflux + -1 cost;
+            // playing any ONE card clears Reflux and restores normal cost on all remaining cards!
+            b.State.RoundNumber = 5;
+            b.State.CurrentSide = CombatSide.Player;
+            await Hook.BeforeSideTurnStart(b.State, CombatSide.Player, playerCreatures);
+            int strBeforeSurgePlay = salamander.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            foreach (var p in b.Players)
+            {
+                p.PlayerCombatState!.IncrementTurnNumber();
+                await p.Creature.AfterTurnStart(CombatSide.Player);
+                await PlayerCmd.SetEnergy(3, p);
+                var bash = b.State.CreateCard<Bash>(p);
+                var demonForm = b.State.CreateCard<DemonForm>(p);
+                var shockwave = b.State.CreateCard<Shockwave>(p);
+                var wound = b.State.CreateCard<Wound>(p);
+                await CardPileCmd.AddGeneratedCardToCombat(bash, PileType.Hand, null);
+                await CardPileCmd.AddGeneratedCardToCombat(demonForm, PileType.Hand, null);
+                await CardPileCmd.AddGeneratedCardToCombat(shockwave, PileType.Hand, null);
+                await CardPileCmd.AddGeneratedCardToCombat(wound, PileType.Hand, null);
+
+                await Hook.AfterPlayerTurnStart(b.State, Choice, p);
+                Assert(!p.Creature.HasPower<ThingsReverseSurgePower>(), "Surging marker is consumed after opening draw.");
+                Assert(bash.Affliction is ThingsUpstreamRecall &&
+                       demonForm.Affliction is ThingsUpstreamRecall &&
+                       shockwave.Affliction is ThingsUpstreamRecall,
+                    "Surging Flow afflicts all playable cards in Hand (Attack, Power, Exhaust Skill) with Reflux.");
+                Assert(wound.Affliction == null, "Surging Flow skips Unplayable cards in Hand.");
+                Assert(bash.EnergyCost.GetWithModifiers(CostModifiers.All) == bash.EnergyCost.Canonical - 1 &&
+                       demonForm.EnergyCost.GetWithModifiers(CostModifiers.All) == demonForm.EnergyCost.Canonical - 1 &&
+                       shockwave.EnergyCost.GetWithModifiers(CostModifiers.All) == shockwave.EnergyCost.Canonical - 1,
+                    "All Surging Reflux cards in Hand temporarily cost 1 less.");
+
+                // Play the Exhaust Skill (Shockwave) as the single chosen card -> must still trigger Strength & clear all others!
+                await CardCmd.AutoPlay(Choice, shockwave, null, skipCardPileVisuals: true);
+                Assert(!p.PlayerCombatState.AllCards.Any(c => c.Affliction is ThingsUpstreamRecall),
+                    "Playing any single Surging card immediately clears Reflux from all remaining cards.");
+                Assert(bash.EnergyCost.GetWithModifiers(CostModifiers.All) == bash.EnergyCost.Canonical &&
+                       demonForm.EnergyCost.GetWithModifiers(CostModifiers.All) == demonForm.EnergyCost.Canonical,
+                    "Clearing Reflux immediately restores normal energy cost on remaining hand cards.");
+            }
+            Assert(salamander.Creature.GetPower<StrengthPower>()?.Amount == strBeforeSurgePlay + players * expectedGrowth,
+                "Playing one Surging Reflux card per player grants Strength once per player.");
+            int blockBeforeTurnEnd = (int)salamander.Creature.Block;
+            await SideEnding(b, CombatSide.Player, playerCreatures);
+            Assert(salamander.Creature.Block == blockBeforeTurnEnd, "Zero additional unplayed-Reflux Block after playing one Surging card.");
+            DeactivateSyntheticCombat();
+        }
+
+        // Dedicated check: leaving ALL Surging Flow cards unplayed grants UnplayedRecallBlock ONCE (not per card) and restores costs.
+        {
+            var b = await StrongBattle(ModelDb.Encounter<ThingsReverseSalamanderElite>(), 1, 20);
+            var salamander = b.Monster<ThingsReverseSalamander>();
+            var p = b.Players[0];
+            p.Creature.SetMaxHpInternal(1000);
+            p.Creature.SetCurrentHpInternal(1000);
+            await PowerCmd.Apply<ThingsReverseSurgePower>(Choice, p.Creature, 1, salamander.Creature, null);
+            b.State.RoundNumber = 5;
+            b.State.CurrentSide = CombatSide.Player;
+            await Hook.BeforeSideTurnStart(b.State, CombatSide.Player, [p.Creature]);
+            p.PlayerCombatState!.IncrementTurnNumber();
+            await p.Creature.AfterTurnStart(CombatSide.Player);
+            await PlayerCmd.SetEnergy(3, p);
+            var bash = b.State.CreateCard<Bash>(p);
+            var strike = b.State.CreateCard<StrikeIronclad>(p);
+            await CardPileCmd.AddGeneratedCardToCombat(bash, PileType.Hand, null);
+            await CardPileCmd.AddGeneratedCardToCombat(strike, PileType.Hand, null);
+            await Hook.AfterPlayerTurnStart(b.State, Choice, p);
+            Assert(bash.Affliction is ThingsUpstreamRecall && strike.Affliction is ThingsUpstreamRecall,
+                "Multiple hand cards receive Reflux under Surging Flow.");
+            await SideEnding(b, CombatSide.Player, [p.Creature]);
+            Assert(salamander.Creature.Block == 14,
+                "Leaving all Surging Flow cards unplayed grants UnplayedRecallBlock (14 on A20) once per player, not per card.");
+            Assert(bash.Affliction == null && strike.Affliction == null &&
+                   bash.EnergyCost.GetWithModifiers(CostModifiers.All) == bash.EnergyCost.Canonical &&
+                   strike.EnergyCost.GetWithModifiers(CostModifiers.All) == strike.EnergyCost.Canonical,
+                "Ending turn clears all Surging Reflux afflictions and restores energy costs.");
             DeactivateSyntheticCombat();
         }
 
@@ -499,7 +585,7 @@ public partial class DepthsProbeNode
                 $"Radio Jellyfish Playback deals {expectedHit}x2 damage for one recorded Attack plus finale.");
             DeactivateSyntheticCombat();
         }
-        GD.Print("PASS Reverse Salamander unplayed-Reflux Block carry (5/7) & Radio Jellyfish 11/12 damage and 7/8 Skill Block.");
+        GD.Print("PASS Reverse Salamander Surging Flow + Reflux (172/192 HP, 2/3 Str, 10/14 Block) & Radio Jellyfish 11/12 damage and 7/8 Skill Block.");
     }
 
     private static async Task VerifyBowlbugProgenitorMechanics()

@@ -105,7 +105,7 @@ public partial class NCaveMawMealVfx : Node2D
         var card = _card;
         _card = null;
         if (card != null && IsInstanceValid(card))
-            card.QueueFreeSafely();
+            CardPreviewVisualFactory.ReturnPreviewSafely(card, parentExitingTree: false);
         if (IsInstanceValid(this) && !IsQueuedForDeletion())
             this.QueueFreeSafely();
     }

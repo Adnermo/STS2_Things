@@ -1,8 +1,11 @@
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.UI;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -21,33 +24,35 @@ namespace STS2_Things.Hooks;
 /// </summary>
 internal static class CrispCardPortraitPatch
 {
-    private const int MaxGridBatchUpgradeCount = 80;
+    private const int MaxGridInitialUpgradeCount = 12;
+    private const int GridUpgradeBatchPerFrame = 4;
 
-    internal static void TryUpgradeCardNode(NCard? cardNode)
+    internal static bool TryUpgradeCardNode(NCard? cardNode)
     {
         if (cardNode == null || !GodotObject.IsInstanceValid(cardNode))
-            return;
+            return false;
         if (cardNode.Visibility != ModelVisibility.Visible)
-            return;
+            return false;
 
         CardModel? model = cardNode.Model;
         if (model == null || !model.HasPortrait)
-            return;
+            return false;
 
         Texture2D? current = Sts2VersionSeam.GetCurrentCardPortraitTexture(cardNode);
         if (current == null || !GodotObject.IsInstanceValid(current))
-            return;
+            return false;
 
         // Respect custom card-art replacement mods (e.g. CardArtEditor): only upgrade vanilla atlas portraits.
         Texture2D defaultPortrait = model.Portrait;
         if (!ReferenceEquals(current, defaultPortrait))
-            return;
+            return false;
 
         Texture2D? bigPortrait = Sts2VersionSeam.TryGetBigCardPortrait(model);
         if (bigPortrait == null || ReferenceEquals(bigPortrait, current) || !GodotObject.IsInstanceValid(bigPortrait))
-            return;
+            return false;
 
         Sts2VersionSeam.ApplyCardPortraitTexture(cardNode, bigPortrait);
+        return true;
     }
 
     internal static void UpgradeCardsInSubtree(Node? root, ref int remaining)
@@ -74,6 +79,82 @@ internal static class CrispCardPortraitPatch
             UpgradeCardsInSubtree(root.GetChild(i), ref remaining);
     }
 
+    private static void CollectVisibleGridCards(
+        Node? root,
+        Rect2 viewportRect,
+        bool hasViewportRect,
+        List<NCard> results,
+        int limit)
+    {
+        if (root == null || results.Count >= limit || !GodotObject.IsInstanceValid(root))
+            return;
+
+        if (root is NCardHolder holder)
+        {
+            if (holder.CardNode is { } card && GodotObject.IsInstanceValid(card) &&
+                (!hasViewportRect || IsHolderPotentiallyVisible(holder, viewportRect)))
+            {
+                results.Add(card);
+            }
+            return;
+        }
+
+        if (root is NCard standaloneCard)
+        {
+            results.Add(standaloneCard);
+            return;
+        }
+
+        int childCount = root.GetChildCount();
+        for (int i = 0; i < childCount && results.Count < limit; i++)
+            CollectVisibleGridCards(root.GetChild(i), viewportRect, hasViewportRect, results, limit);
+    }
+
+    private static bool IsHolderPotentiallyVisible(Control holder, Rect2 viewportRect)
+    {
+        Rect2 rect = holder.GetGlobalRect();
+        if (rect.Size.X <= 0f || rect.Size.Y <= 0f)
+            return true;
+        return viewportRect.Grow(240f).Intersects(rect);
+    }
+
+    private static int UpgradeCardBatch(List<NCard> cards, int startIndex, int maxUpgrades)
+    {
+        int upgraded = 0;
+        int index = startIndex;
+        while (index < cards.Count && upgraded < maxUpgrades)
+        {
+            NCard card = cards[index++];
+            if (GodotObject.IsInstanceValid(card) && card.IsInsideTree() && TryUpgradeCardNode(card))
+                upgraded++;
+        }
+        return index;
+    }
+
+    private static async Task UpgradeRemainingGridCardsAsync(
+        NCardGridSelectionScreen screen,
+        List<NCard> cards,
+        int startIndex)
+    {
+        int index = startIndex;
+        while (index < cards.Count)
+        {
+            if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree())
+                return;
+
+            SceneTree? tree = screen.GetTree();
+            if (tree == null)
+                return;
+
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+            if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree())
+                return;
+
+            index = UpgradeCardBatch(cards, index, GridUpgradeBatchPerFrame);
+        }
+    }
+
     internal static bool IsInsideGridSelectionScreen(Node? node)
     {
         Node? cursor = node?.GetParent();
@@ -95,12 +176,14 @@ internal static class CrispCardPortraitPatch
             if (__instance == null || !GodotObject.IsInstanceValid(__instance))
                 return;
 
-            TryUpgradeCardNode(__instance.CardNode);
-            Callable.From(() =>
+            if (!TryUpgradeCardNode(__instance.CardNode))
             {
-                if (GodotObject.IsInstanceValid(__instance))
-                    TryUpgradeCardNode(__instance.CardNode);
-            }).CallDeferred();
+                Callable.From(() =>
+                {
+                    if (GodotObject.IsInstanceValid(__instance))
+                        TryUpgradeCardNode(__instance.CardNode);
+                }).CallDeferred();
+            }
         }
     }
 
@@ -161,8 +244,21 @@ internal static class CrispCardPortraitPatch
         [HarmonyPostfix]
         private static void Postfix(NCardGridSelectionScreen __instance)
         {
-            int budget = MaxGridBatchUpgradeCount;
-            UpgradeCardsInSubtree(__instance, ref budget);
+            if (__instance == null || !GodotObject.IsInstanceValid(__instance))
+                return;
+
+            Rect2 viewportRect = __instance.GetViewportRect();
+            bool hasViewportRect = viewportRect.Size.X > 0f && viewportRect.Size.Y > 0f;
+            var candidates = new List<NCard>(MaxGridInitialUpgradeCount);
+            CollectVisibleGridCards(__instance, viewportRect, hasViewportRect, candidates, MaxGridInitialUpgradeCount);
+            if (candidates.Count == 0)
+                return;
+
+            int nextIndex = UpgradeCardBatch(candidates, 0, GridUpgradeBatchPerFrame);
+            if (nextIndex < candidates.Count)
+            {
+                _ = TaskHelper.RunSafely(UpgradeRemainingGridCardsAsync(__instance, candidates, nextIndex));
+            }
         }
     }
 
@@ -172,7 +268,8 @@ internal static class CrispCardPortraitPatch
         [HarmonyPostfix]
         private static void Postfix(NGridCardHolder __instance)
         {
-            TryUpgradeCardNode(__instance.CardNode);
+            if (IsInsideGridSelectionScreen(__instance))
+                TryUpgradeCardNode(__instance.CardNode);
         }
     }
 
@@ -182,7 +279,8 @@ internal static class CrispCardPortraitPatch
         [HarmonyPostfix]
         private static void Postfix(NGridCardHolder __instance)
         {
-            TryUpgradeCardNode(__instance.CardNode);
+            if (IsInsideGridSelectionScreen(__instance))
+                TryUpgradeCardNode(__instance.CardNode);
         }
     }
 

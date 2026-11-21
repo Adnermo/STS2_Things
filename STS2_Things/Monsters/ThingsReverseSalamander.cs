@@ -1,6 +1,7 @@
 using MegaCrit.Sts2.Core.Animation;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -20,23 +21,27 @@ namespace STS2_Things.Monsters;
 
 public sealed class ThingsReverseSalamander : ThingsSpineMonster
 {
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,168,152);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,192,172);
     public override int MaxInitialHp => MinInitialHp;
     public override float HpBarSizeReduction => 10f;
-    public int GrowthAmount => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,2,1);
-    public int UnplayedRecallBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,7,5);
+    public int GrowthAmount => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,3,2);
+    public int UnplayedRecallBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,14,10);
     private int TideDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,21,18);
     private int TailDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,26,23);
     private int RollDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,9,8);
     private int GatherDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies,19,16);
     private int GatherBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,13,10);
-    private const int GatherStrength = 1;
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Magic;
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_attack_light";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_die";
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([
         ModelDb.Power<ThingsReverseCurrentPower>().ResolvedBigIconPath,
-        ModelDb.Affliction<ThingsUpstreamRecall>().OverlayPath,NSplashVfx.scenePath]);
+        ModelDb.Affliction<ThingsUpstreamRecall>().OverlayPath,NSplashVfx.scenePath,
+        "res://sfx/gravetide_slug/gravetide_slug_attack_light-01.wav",
+        "res://sfx/gravetide_slug/gravetide_slug_attack_light-02.wav",
+        "res://sfx/gravetide_slug/gravetide_slug_attack_light-03.wav",
+        "res://sfx/gravetide_slug/gravetide_slug_die-01.wav",
+        "res://sfx/gravetide_slug/gravetide_slug_die-02.wav"]);
 
     public override async Task BeforeCombatStart()
     {
@@ -54,7 +59,7 @@ public sealed class ThingsReverseSalamander : ThingsSpineMonster
         var opening=new MoveState("UPSTREAM_MOVE",_=>Strike(TideDamage,"Tide","tide",[.56f],1.55f),new SingleAttackIntent(TideDamage));
         var tail=new MoveState("TAIL_WAVE_MOVE",_=>Strike(TailDamage,"Attack","attack",[.50f],1.40f),new SingleAttackIntent(TailDamage));
         var roll=new MoveState("BACKWASH_MOVE",_=>Strike(RollDamage,"Roll","roll",[.46f,.74f,1.02f],1.65f),new MultiAttackIntent(RollDamage,3));
-        var gather=new MoveState("GATHER_MOVE",Gather,new SingleAttackIntent(GatherDamage),new DefendIntent(),new BuffIntent());
+        var gather=new MoveState("GATHER_MOVE",Gather,new SingleAttackIntent(GatherDamage),new DefendIntent(),new DebuffIntent());
         opening.FollowUpState=tail;tail.FollowUpState=roll;roll.FollowUpState=gather;gather.FollowUpState=tail;
         return new MonsterMoveStateMachine([opening,tail,roll,gather],opening);
     }
@@ -81,7 +86,12 @@ public sealed class ThingsReverseSalamander : ThingsSpineMonster
         await Strike(GatherDamage,"Gather","gather",[.56f],1.20f);
         if(!Creature.IsAlive)return;
         await CreatureCmd.GainBlock(Creature,GatherBlock,ValueProp.Move,null);
-        await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(),Creature,GatherStrength,Creature,null);
+        Creature.GetPower<ThingsReverseCurrentPower>()?.FlashSurge();
+        foreach(var target in targets.Where(t=>t.IsAlive&&t.Player!=null).ToArray())
+        {
+            if(!Creature.IsAlive||CombatManager.Instance.IsOverOrEnding)return;
+            await PowerCmd.Apply<ThingsReverseSurgePower>(new ThrowingPlayerChoiceContext(),target,1,Creature,null);
+        }
         await WaitForPose("gather",1.55f,0);
     }
 

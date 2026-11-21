@@ -175,6 +175,31 @@ internal static class BugReportSchemaV4
         return count;
     }
 
+    internal static bool ExceedsJsonNodeLimit(JsonNode? node, int maxNodes)
+    {
+        int count = 0;
+        bool Walk(JsonNode? current)
+        {
+            if (++count > maxNodes) return true;
+            if (current is JsonObject obj)
+            {
+                foreach (var kv in obj)
+                {
+                    if (Walk(kv.Value)) return true;
+                }
+            }
+            else if (current is JsonArray arr)
+            {
+                foreach (var item in arr)
+                {
+                    if (Walk(item)) return true;
+                }
+            }
+            return false;
+        }
+        return Walk(node);
+    }
+
     /// <summary>
     /// Clamps non-blob strings, array lengths, object key counts, and non-finite numbers
     /// so any generated payload strictly satisfies validation.js boundedTree().

@@ -30,6 +30,7 @@ public sealed class ThingsGravetideSlugBossEncounter : ModBossEncounter
 
     public override IEnumerable<string> ExtraAssetPaths =>
     [
+        "res://music/gravetide_slug/gravetide_slug_boss_theme.wav",
         "res://images/ui/run_history/things_gravetide_slug_boss_encounter.png",
         "res://images/ui/run_history/things_gravetide_slug_boss_encounter_outline.png",
     ];

@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://gl6fika6lv8w"
-path="res://.godot/imported/hollow_grotto_moss_01.png-6aa394b00596e66ee6ae20894f4a78e9.ctex"
+path.bptc="res://.godot/imported/hollow_grotto_moss_01.png-6aa394b00596e66ee6ae20894f4a78e9.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/rooms/hollow_grotto_moss/hollow_grotto_moss_01.png"
-dest_files=["res://.godot/imported/hollow_grotto_moss_01.png-6aa394b00596e66ee6ae20894f4a78e9.ctex"]
+dest_files=["res://.godot/imported/hollow_grotto_moss_01.png-6aa394b00596e66ee6ae20894f4a78e9.bptc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=true
 compress/lossy_quality=1.0
 compress/uastc_level=2

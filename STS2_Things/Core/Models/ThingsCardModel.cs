@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Godot;
 using MegaCrit.Sts2.Core.Commands;
@@ -25,6 +27,10 @@ public abstract class ThingsCardModel(
     bool shouldShowInCardLibrary = true)
     : CardModel(canonicalEnergyCost, type, rarity, targetType, shouldShowInCardLibrary)
 {
+    private static readonly ConcurrentDictionary<string, string> _resolvedPortraitPaths =
+        new(StringComparer.Ordinal);
+    private string? _cachedPortraitPath;
+
     /// <summary>
     /// Override when a card stores its portrait outside the standard <c>packed/card_portraits/{pool}/{id}.png</c> layout.
     /// </summary>
@@ -34,15 +40,37 @@ public abstract class ThingsCardModel(
     {
         get
         {
+            if (_cachedPortraitPath != null)
+                return _cachedPortraitPath;
+
             if (!string.IsNullOrEmpty(CustomPortraitPath))
-                return CustomPortraitPath;
+            {
+                _cachedPortraitPath = CustomPortraitPath;
+                return _cachedPortraitPath;
+            }
 
             string atlasPath = base.PortraitPath;
-            if (ResourceLoader.Exists(atlasPath))
-                return atlasPath;
+            if (_resolvedPortraitPaths.TryGetValue(atlasPath, out string? cached))
+            {
+                _cachedPortraitPath = cached;
+                return cached;
+            }
 
-            return ImageHelper.GetImagePath(
+            if (ResourceLoader.Exists(atlasPath))
+            {
+                _resolvedPortraitPaths[atlasPath] = atlasPath;
+                _cachedPortraitPath = atlasPath;
+                return atlasPath;
+            }
+
+            string fallbackPath = ImageHelper.GetImagePath(
                 $"packed/card_portraits/{Pool.Title.ToLowerInvariant()}/{Id.Entry.ToLowerInvariant()}.png");
+            if (ResourceLoader.Exists(fallbackPath))
+            {
+                _resolvedPortraitPaths[atlasPath] = fallbackPath;
+                _cachedPortraitPath = fallbackPath;
+            }
+            return fallbackPath;
         }
     }
 

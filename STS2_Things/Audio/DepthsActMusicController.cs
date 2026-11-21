@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
@@ -55,11 +56,21 @@ public sealed partial class DepthsActMusicController : Node
     private static DepthsActMusicController? _instance;
     private static bool _customEventMusicActive;
     private static bool _eliteSecondPhase;
+    private static bool _syncScheduled;
+    private static NRunMusicController? _pendingSyncController;
 
     private AudioStreamPlayer? _explorePlayer;
     private AudioStreamPlayer? _combatPlayer;
     private AudioEffectLowPassFilter? _exploreFilter;
     private AudioEffectLowPassFilter? _combatFilter;
+    private int _exploreBusIdx = -1;
+    private int _combatBusIdx = -1;
+    private int _exploreFilterIdx = -1;
+    private int _combatFilterIdx = -1;
+    private bool _exploreFilterEnabled;
+    private bool _combatFilterEnabled;
+
+    private readonly HashSet<string> _threadedRequestedPaths = new(StringComparer.Ordinal);
 
     private int _loadedExploreSuite = -1;
     private int _loadedCombatSuite = -1;
@@ -86,6 +97,14 @@ public sealed partial class DepthsActMusicController : Node
     {
         ProcessMode = ProcessModeEnum.Always;
         EnsureBusesAndPlayers();
+        SetProcess(false);
+    }
+
+    public override void _ExitTree()
+    {
+        StopAllImmediate();
+        if (ReferenceEquals(_instance, this))
+            _instance = null;
     }
 
     public override void _Process(double delta)
@@ -102,14 +121,62 @@ public sealed partial class DepthsActMusicController : Node
         _curExploreCutoffHz = InterpCutoffLog(_curExploreCutoffHz, _targetExploreCutoffHz, filterLerp);
         _curCombatCutoffHz = InterpCutoffLog(_curCombatCutoffHz, _targetCombatCutoffHz, filterLerp);
 
-        if (_exploreFilter != null)
-            _exploreFilter.CutoffHz = _curExploreCutoffHz;
-        if (_combatFilter != null)
-            _combatFilter.CutoffHz = _curCombatCutoffHz;
+        bool exploreGainSettled = MathF.Abs(_curExploreGain - _targetExploreGain) <= 0.0005f;
+        bool combatGainSettled = MathF.Abs(_curCombatGain - _targetCombatGain) <= 0.0005f;
+        bool exploreCutoffSettled = (_curExploreGain <= 0.0005f && _targetExploreGain <= 0.0005f) ||
+                                    MathF.Abs(_curExploreCutoffHz - _targetExploreCutoffHz) <= 2f;
+        bool combatCutoffSettled = (_curCombatGain <= 0.0005f && _targetCombatGain <= 0.0005f) ||
+                                   MathF.Abs(_curCombatCutoffHz - _targetCombatCutoffHz) <= 2f;
 
+        if (exploreGainSettled && combatGainSettled && exploreCutoffSettled && combatCutoffSettled)
+        {
+            _curExploreGain = _targetExploreGain;
+            _curCombatGain = _targetCombatGain;
+            _curExploreCutoffHz = _targetExploreCutoffHz;
+            _curCombatCutoffHz = _targetCombatCutoffHz;
+
+            if (_currentStage == Stage.Inactive)
+                ReleaseAllStreams();
+
+            UpdateBusFilter(_exploreBusIdx, _exploreFilterIdx, _exploreFilter, _curExploreCutoffHz, _curExploreGain > 0.0005f, ref _exploreFilterEnabled);
+            UpdateBusFilter(_combatBusIdx, _combatFilterIdx, _combatFilter, _curCombatCutoffHz, _curCombatGain > 0.0005f, ref _combatFilterEnabled);
+            RefreshOutputVolumes();
+            SetProcess(false);
+            return;
+        }
+
+        UpdateBusFilter(_exploreBusIdx, _exploreFilterIdx, _exploreFilter, _curExploreCutoffHz, _curExploreGain > 0.0005f, ref _exploreFilterEnabled);
+        UpdateBusFilter(_combatBusIdx, _combatFilterIdx, _combatFilter, _curCombatCutoffHz, _curCombatGain > 0.0005f, ref _combatFilterEnabled);
+        RefreshOutputVolumes();
+    }
+
+    private void RefreshOutputVolumes()
+    {
         float settingsScale = ResolveSettingsGainLinear();
         ApplyDeckOutput(_explorePlayer, _curExploreGain, _targetExploreGain, settingsScale);
         ApplyDeckOutput(_combatPlayer, _curCombatGain, _targetCombatGain, settingsScale);
+    }
+
+    private void UpdateBusFilter(
+        int busIdx,
+        int effectIdx,
+        AudioEffectLowPassFilter? filter,
+        float cutoffHz,
+        bool deckAudible,
+        ref bool cachedEnabled)
+    {
+        if (filter != null)
+            filter.CutoffHz = cutoffHz;
+
+        if (busIdx < 0 || effectIdx < 0)
+            return;
+
+        bool shouldEnable = _currentStage != Stage.Inactive && deckAudible && cutoffHz < MaxCutoffHz - 1f;
+        if (shouldEnable != cachedEnabled)
+        {
+            AudioServer.SetBusEffectEnabled(busIdx, effectIdx, shouldEnable);
+            cachedEnabled = shouldEnable;
+        }
     }
 
     private static float InterpCutoffLog(float currentHz, float targetHz, float t)
@@ -176,11 +243,21 @@ public sealed partial class DepthsActMusicController : Node
         if (NonInteractiveMode.IsActive)
             return;
 
+        if (controller != null)
+            _pendingSyncController = controller;
+
+        if (_syncScheduled)
+            return;
+
+        _syncScheduled = true;
         Callable.From(() =>
         {
+            NRunMusicController? pending = _pendingSyncController;
+            _pendingSyncController = null;
+            _syncScheduled = false;
             try
             {
-                SyncOnMainThread(controller ?? NRunMusicController.Instance);
+                SyncOnMainThread(pending ?? NRunMusicController.Instance);
             }
             catch (Exception ex)
             {
@@ -202,16 +279,26 @@ public sealed partial class DepthsActMusicController : Node
         SyncWithCurrentRun(NRunMusicController.Instance);
     }
 
-    internal static void NotifyCustomMusicStopped()
+    internal static void NotifyCustomMusicStopped(NRunMusicController? controller = null)
     {
         _customEventMusicActive = false;
-        SyncWithCurrentRun(NRunMusicController.Instance);
+        SyncWithCurrentRun(controller ?? NRunMusicController.Instance);
     }
 
     internal static void NotifyEliteSecondPhase()
     {
         _eliteSecondPhase = true;
         SyncWithCurrentRun(NRunMusicController.Instance);
+    }
+
+    internal static void NotifySettingsVolumeChanged()
+    {
+        if (NonInteractiveMode.IsActive)
+            return;
+
+        NativeSfxPlayer.RefreshMusicVolume();
+        if (_instance != null && IsInstanceValid(_instance) && _instance._currentStage != Stage.Inactive)
+            _instance.RefreshOutputVolumes();
     }
 
     internal static void NotifyRunMusicStopped()
@@ -259,8 +346,17 @@ public sealed partial class DepthsActMusicController : Node
 
     private void EnsureBusesAndPlayers()
     {
-        _exploreFilter ??= EnsureLowPassBus(ExploreBusName);
-        _combatFilter ??= EnsureLowPassBus(CombatBusName);
+        if (_exploreFilter == null || _exploreBusIdx < 0 || _exploreFilterIdx < 0)
+        {
+            _exploreFilter = EnsureLowPassBus(ExploreBusName, out _exploreBusIdx, out _exploreFilterIdx);
+            _exploreFilterEnabled = AudioServer.IsBusEffectEnabled(_exploreBusIdx, _exploreFilterIdx);
+        }
+
+        if (_combatFilter == null || _combatBusIdx < 0 || _combatFilterIdx < 0)
+        {
+            _combatFilter = EnsureLowPassBus(CombatBusName, out _combatBusIdx, out _combatFilterIdx);
+            _combatFilterEnabled = AudioServer.IsBusEffectEnabled(_combatBusIdx, _combatFilterIdx);
+        }
 
         if (_explorePlayer == null || !IsInstanceValid(_explorePlayer))
         {
@@ -297,7 +393,7 @@ public sealed partial class DepthsActMusicController : Node
         }
     }
 
-    private static AudioEffectLowPassFilter EnsureLowPassBus(string busName)
+    private static AudioEffectLowPassFilter EnsureLowPassBus(string busName, out int busIdx, out int effectIdx)
     {
         int idx = AudioServer.GetBusIndex(busName);
         if (idx < 0)
@@ -312,7 +408,11 @@ public sealed partial class DepthsActMusicController : Node
         for (int i = 0; i < AudioServer.GetBusEffectCount(idx); i++)
         {
             if (AudioServer.GetBusEffect(idx, i) is AudioEffectLowPassFilter existing)
+            {
+                busIdx = idx;
+                effectIdx = i;
                 return existing;
+            }
         }
 
         var lpf = new AudioEffectLowPassFilter
@@ -321,7 +421,11 @@ public sealed partial class DepthsActMusicController : Node
             Resonance = 0.36f,
             Db = AudioEffectFilter.FilterDB.Filter12Db,
         };
+        int addedIdx = AudioServer.GetBusEffectCount(idx);
         AudioServer.AddBusEffect(idx, lpf);
+        AudioServer.SetBusEffectEnabled(idx, addedIdx, false);
+        busIdx = idx;
+        effectIdx = addedIdx;
         return lpf;
     }
 
@@ -354,6 +458,8 @@ public sealed partial class DepthsActMusicController : Node
         _currentStage = Stage.Inactive;
         _targetExploreGain = 0f;
         _targetCombatGain = 0f;
+        _targetExploreCutoffHz = MaxCutoffHz;
+        _targetCombatCutoffHz = MaxCutoffHz;
         _fadeSpeedPerSec = 2.0f;
 
         if (restoreNativeActMusic && _fmodActSuppressed)
@@ -364,6 +470,22 @@ public sealed partial class DepthsActMusicController : Node
         else if (!restoreNativeActMusic)
         {
             _fmodActSuppressed = false;
+        }
+
+        if (_curExploreGain <= 0.0005f && _curCombatGain <= 0.0005f)
+        {
+            _curExploreGain = 0f;
+            _curCombatGain = 0f;
+            _curExploreCutoffHz = MaxCutoffHz;
+            _curCombatCutoffHz = MaxCutoffHz;
+            ReleaseAllStreams();
+            UpdateBusFilter(_exploreBusIdx, _exploreFilterIdx, _exploreFilter, MaxCutoffHz, deckAudible: false, ref _exploreFilterEnabled);
+            UpdateBusFilter(_combatBusIdx, _combatFilterIdx, _combatFilter, MaxCutoffHz, deckAudible: false, ref _combatFilterEnabled);
+            SetProcess(false);
+        }
+        else
+        {
+            SetProcess(true);
         }
     }
 
@@ -376,12 +498,24 @@ public sealed partial class DepthsActMusicController : Node
         _curExploreCutoffHz = _targetExploreCutoffHz = MaxCutoffHz;
         _curCombatCutoffHz = _targetCombatCutoffHz = MaxCutoffHz;
 
+        ReleaseAllStreams();
+        UpdateBusFilter(_exploreBusIdx, _exploreFilterIdx, _exploreFilter, MaxCutoffHz, deckAudible: false, ref _exploreFilterEnabled);
+        UpdateBusFilter(_combatBusIdx, _combatFilterIdx, _combatFilter, MaxCutoffHz, deckAudible: false, ref _combatFilterEnabled);
+        SetProcess(false);
+    }
+
+    private void ReleaseAllStreams()
+    {
+        _loadedExploreSuite = -1;
+        _loadedCombatSuite = -1;
+
         if (_explorePlayer != null && IsInstanceValid(_explorePlayer))
         {
             _explorePlayer.VolumeLinear = 0f;
             if (_explorePlayer.Playing)
                 _explorePlayer.Stop();
             _explorePlayer.StreamPaused = false;
+            _explorePlayer.Stream = null;
         }
 
         if (_combatPlayer != null && IsInstanceValid(_combatPlayer))
@@ -390,6 +524,24 @@ public sealed partial class DepthsActMusicController : Node
             if (_combatPlayer.Playing)
                 _combatPlayer.Stop();
             _combatPlayer.StreamPaused = false;
+            _combatPlayer.Stream = null;
+        }
+
+        if (_threadedRequestedPaths.Count > 0)
+        {
+            foreach (string path in _threadedRequestedPaths)
+            {
+                try
+                {
+                    if (ResourceLoader.LoadThreadedGetStatus(path) == ResourceLoader.ThreadLoadStatus.Loaded)
+                        _ = ResourceLoader.LoadThreadedGet(path);
+                }
+                catch (Exception)
+                {
+                    // Best-effort drain of completed background music preloads.
+                }
+            }
+            _threadedRequestedPaths.Clear();
         }
     }
 
@@ -540,6 +692,9 @@ public sealed partial class DepthsActMusicController : Node
         }
 
         _currentStage = desired;
+        if (desired != Stage.YieldToCustom && desired != Stage.Inactive)
+            PreloadUpcomingSuites(desiredSuite, state.ActFloor, floorThreshold);
+        SetProcess(true);
     }
 
     private Stage ResolveStage(AbstractRoom? room)
@@ -607,6 +762,68 @@ public sealed partial class DepthsActMusicController : Node
         };
     }
 
+    private void PreloadUpcomingSuites(int desiredSuite, int actFloor, int floorThreshold)
+    {
+        int clamped = Math.Clamp(desiredSuite, 0, Suites.Length - 1);
+        if (_loadedExploreSuite != clamped || _explorePlayer?.Stream == null)
+            RequestThreadedPreload(Suites[clamped].Explore);
+        if (_loadedCombatSuite != clamped || _combatPlayer?.Stream == null)
+            RequestThreadedPreload(Suites[clamped].Combat);
+
+        // Pre-request the lower-Depths companion suite a couple floors before the mid-act switch.
+        int prewarmFloor = Math.Max(1, floorThreshold - 2);
+        if (actFloor < floorThreshold && actFloor >= prewarmFloor && Suites.Length > 1)
+        {
+            int nextSuite = 1 - clamped;
+            if (_loadedExploreSuite != nextSuite)
+                RequestThreadedPreload(Suites[nextSuite].Explore);
+            if (_loadedCombatSuite != nextSuite)
+                RequestThreadedPreload(Suites[nextSuite].Combat);
+        }
+    }
+
+    private void RequestThreadedPreload(string path)
+    {
+        if (string.IsNullOrEmpty(path) || _threadedRequestedPaths.Contains(path))
+            return;
+        if (!ResourceLoader.Exists(path))
+            return;
+
+        try
+        {
+            Error err = ResourceLoader.LoadThreadedRequest(path, "", useSubThreads: false, ResourceLoader.CacheMode.Reuse);
+            if (err == Error.Ok)
+                _threadedRequestedPaths.Add(path);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"[DepthsActMusicController] Threaded preload request failed for {path}: {ex.Message}");
+        }
+    }
+
+    private AudioStream? LoadSuiteTrack(string path)
+    {
+        if (_threadedRequestedPaths.Remove(path))
+        {
+            try
+            {
+                ResourceLoader.ThreadLoadStatus status = ResourceLoader.LoadThreadedGetStatus(path);
+                if (status == ResourceLoader.ThreadLoadStatus.Loaded ||
+                    status == ResourceLoader.ThreadLoadStatus.InProgress)
+                {
+                    if (ResourceLoader.LoadThreadedGet(path) is AudioStream threadedStream)
+                        return NativeSfxPlayer.EnsureLoopingMusicStream(threadedStream);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"[DepthsActMusicController] Threaded preload consume failed for {path}: {ex.Message}");
+            }
+        }
+
+        return NativeSfxPlayer.LoadLoopingMusicStream(path);
+    }
+
     private void EnsureExplorePlaying(int suiteIndex, bool restartIfNewSuite)
     {
         if (_explorePlayer == null || !IsInstanceValid(_explorePlayer))
@@ -616,7 +833,7 @@ public sealed partial class DepthsActMusicController : Node
         bool canSwitchSuite = _curExploreGain <= 0.02f || !_explorePlayer.Playing || _explorePlayer.StreamPaused;
         if (_loadedExploreSuite != clamped && (canSwitchSuite || _explorePlayer.Stream == null))
         {
-            AudioStream? stream = NativeSfxPlayer.LoadLoopingMusicStream(Suites[clamped].Explore);
+            AudioStream? stream = LoadSuiteTrack(Suites[clamped].Explore);
             if (stream != null)
             {
                 _explorePlayer.Stream = stream;
@@ -651,7 +868,7 @@ public sealed partial class DepthsActMusicController : Node
         bool canSwitchSuite = _curCombatGain <= 0.02f || !_combatPlayer.Playing || _combatPlayer.StreamPaused;
         if ((_loadedCombatSuite != clamped && canSwitchSuite) || _combatPlayer.Stream == null)
         {
-            AudioStream? stream = NativeSfxPlayer.LoadLoopingMusicStream(Suites[clamped].Combat);
+            AudioStream? stream = LoadSuiteTrack(Suites[clamped].Combat);
             if (stream != null)
             {
                 _combatPlayer.Stream = stream;
@@ -707,13 +924,13 @@ internal static class DepthsMusicUpdateActPatch
     [HarmonyPostfix]
     private static void Postfix(NRunMusicController __instance)
     {
-        DepthsActMusicController.NotifyCustomMusicStopped();
-        DepthsActMusicController.SyncWithCurrentRun(__instance);
+        DepthsActMusicController.NotifyCustomMusicStopped(__instance);
     }
 }
 
-[HarmonyPatch(typeof(NRunMusicController), nameof(NRunMusicController.UpdateTrack), new Type[] { })]
-internal static class DepthsMusicUpdateTrackPatch
+#if STS2_V113_1
+[HarmonyPatch(typeof(NRunMusicController), nameof(NRunMusicController.UpdateTrack), new[] { typeof(RoomType) })]
+internal static class DepthsMusicUpdateTrackByRoomTypePatch
 {
     [HarmonyPostfix]
     private static void Postfix(NRunMusicController __instance)
@@ -721,10 +938,9 @@ internal static class DepthsMusicUpdateTrackPatch
         DepthsActMusicController.SyncWithCurrentRun(__instance);
     }
 }
-
-#if STS2_V113_1
-[HarmonyPatch(typeof(NRunMusicController), nameof(NRunMusicController.UpdateTrack), new[] { typeof(RoomType) })]
-internal static class DepthsMusicUpdateTrackByRoomTypePatch
+#else
+[HarmonyPatch(typeof(NRunMusicController), nameof(NRunMusicController.UpdateTrack), new Type[] { })]
+internal static class DepthsMusicUpdateTrackPatch
 {
     [HarmonyPostfix]
     private static void Postfix(NRunMusicController __instance)
@@ -750,8 +966,7 @@ internal static class DepthsMusicResumeAfterCustomPatch
     [HarmonyPostfix]
     private static void Postfix(NRunMusicController __instance)
     {
-        DepthsActMusicController.NotifyCustomMusicStopped();
-        DepthsActMusicController.SyncWithCurrentRun(__instance);
+        DepthsActMusicController.NotifyCustomMusicStopped(__instance);
     }
 }
 
@@ -792,5 +1007,25 @@ internal static class DepthsMusicExitTreePatch
     private static void Postfix()
     {
         DepthsActMusicController.NotifyRunMusicStopped();
+    }
+}
+
+[HarmonyPatch(typeof(NAudioManager), nameof(NAudioManager.SetMasterVol))]
+internal static class DepthsMusicMasterVolumePatch
+{
+    [HarmonyPostfix]
+    private static void Postfix()
+    {
+        DepthsActMusicController.NotifySettingsVolumeChanged();
+    }
+}
+
+[HarmonyPatch(typeof(NAudioManager), nameof(NAudioManager.SetBgmVol))]
+internal static class DepthsMusicBgmVolumePatch
+{
+    [HarmonyPostfix]
+    private static void Postfix()
+    {
+        DepthsActMusicController.NotifySettingsVolumeChanged();
     }
 }

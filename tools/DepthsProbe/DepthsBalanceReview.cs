@@ -45,9 +45,12 @@ public partial class DepthsProbeNode
                     string text = reflux.HoverTips.OfType<HoverTip>().First().Description;
                     Assert(text.Contains($"[blue]{salamander.GrowthAmount}[/blue]"),
                         "Native Reflux tooltip displays the actual A0/A20 Strength gift.");
-                    Assert(salamander.UnplayedRecallBlock == (ascension == 0 ? 5 : 7) &&
+                    Assert(salamander.MinInitialHp == (ascension == 0 ? 172 : 192) &&
+                           salamander.GrowthAmount == (ascension == 0 ? 2 : 3) &&
+                           salamander.UnplayedRecallBlock == (ascension == 0 ? 10 : 14) &&
+                           reflux.DynamicVars["StrengthAmount"].IntValue == salamander.GrowthAmount &&
                            reflux.DynamicVars["UnplayedBlock"].IntValue == salamander.UnplayedRecallBlock,
-                        "Reverse Current power exposes 5 (A0) / 7 (A8+) UnplayedBlock.");
+                        "Reverse Salamander exposes 172/192 HP, 2/3 Strength, and 10/14 UnplayedBlock.");
                 }
                 if (creature.Monster is ThingsRadioJellyfish jelly && creature.GetPower<ThingsRadioReceptionPower>() is { } reception)
                 {

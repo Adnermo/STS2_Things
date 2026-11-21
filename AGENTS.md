@@ -2,9 +2,9 @@
 
 ## 发布规则
 
-- 每次获准发布本模组的 Steam 创意工坊更新，必须同步对应源码到 GitHub，并发布同版本 GitHub Release；GitHub 同步包含在该次 Steam 发布授权内，无需另行询问。
-- 两端使用同一版本、对应源码提交／标签和同一套已验证运行文件。GitHub Release 附统一 ZIP、SHA256 校验文件与更新说明；具体核验按 [发布准则](source_assets/production_skill/sts2-things-production/references/delivery.md)执行。
-- 只有核实 Steam 更新和 GitHub Release 均成功后，才算本次发布完成，并交付两个平台链接。单端失败时说明已完成与待完成部分，继续处理已授权的同步工作。
+- 每次获准发布本模组的 Steam 创意工坊更新，必须同步对应源码到 GitHub，发布同版本 GitHub Release，并通过 `scripts/publish-r2-release.ps1` 上传同版本整合包与单文件至 Cloudflare R2 个人网盘（`https://pan.adnermo.online`）；GitHub 与 R2 网盘同步均包含在该次发布授权内，无需另行询问。
+- 三端使用同一版本、对应源码提交／标签和同一套已验证运行文件。GitHub Release 附统一 ZIP、SHA256 校验文件与更新说明；R2 个人网盘同步同一套 ZIP、拆包单文件、校验文件与更新说明并更新 `latest` 指向；具体核验按 [发布准则](source_assets/production_skill/sts2-things-production/references/delivery.md)执行。
+- 只有核实 Steam 更新、GitHub Release 与 R2 个人网盘均成功后，才算本次发布完成，并交付三端链接（Steam 创意工坊、GitHub Release、最新版本的个人网盘直链 `https://pan.adnermo.online/STS2_Things/v<版本>/` 与 `latest`）。单端失败时说明已完成与待完成部分，继续处理已授权的同步工作。
 
 ## 制作规则
 

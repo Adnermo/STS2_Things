@@ -14,10 +14,15 @@ public partial class NScalePeelerVisuals : NThingsSpineCreatureVisuals
 {
     private static readonly string[] PlateSlots = ["plate_0", "plate_1", "plate_2", "plate_3"];
     private static readonly int[] PlateThresholds = [1, 6, 12, 20];
+    private static readonly StringName MethodSetColor = "set_color";
 
     private NCreature? _host;
     private readonly GodotObject?[] _plateSlots = new GodotObject?[4];
     private readonly float[] _plateAlpha = [1f, 1f, 1f, 1f];
+    private readonly float[] _appliedPlateAlpha = [-1f, -1f, -1f, -1f];
+    private float _appliedGlowBoost = -1f;
+    private bool _plateColorsDirty = true;
+    private bool _wasDead;
     private Callable _beforeTransformCallable;
     private bool _slotsBound;
     private bool _beforeTransformConnected;
@@ -34,7 +39,10 @@ public partial class NScalePeelerVisuals : NThingsSpineCreatureVisuals
             {
                 if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
                     return;
-                ApplyPlateColors();
+                // Spine's die/revive clips keyframe plate_0..3 rgba; all other clips leave slot color untouched.
+                bool forceReapply = _host?.Entity?.IsDead == true;
+                if (_plateColorsDirty || forceReapply)
+                    ApplyPlateColors(force: forceReapply);
             });
             SpineBody.ConnectBeforeWorldTransformsChange(_beforeTransformCallable);
         }
@@ -52,7 +60,10 @@ public partial class NScalePeelerVisuals : NThingsSpineCreatureVisuals
         for (int i = 0; i < _plateSlots.Length; i++)
         {
             _plateSlots[i] = null;
+            _appliedPlateAlpha[i] = -1f;
         }
+        _appliedGlowBoost = -1f;
+        _plateColorsDirty = true;
         _slotsBound = false;
         base._ExitTree();
     }
@@ -63,6 +74,7 @@ public partial class NScalePeelerVisuals : NThingsSpineCreatureVisuals
         TryResolveHost();
 
         int targetCount = ResolveVisiblePlateCount();
+        bool isDead = _host?.Entity?.IsDead == true;
         bool firstSync = _lastPlateCount < 0 && _host?.Entity != null;
         if (_host?.Entity is { IsAlive: true } entity && _lastPlateCount >= 0 && targetCount < _lastPlateCount)
         {
@@ -72,14 +84,28 @@ public partial class NScalePeelerVisuals : NThingsSpineCreatureVisuals
             _lastPlateCount = targetCount;
 
         float rate = (float)delta * 9.5f;
+        bool changed = !_slotsBound || isDead != _wasDead;
+        _wasDead = isDead;
         for (int i = 0; i < PlateSlots.Length; i++)
         {
             float target = i < targetCount ? 1f : 0f;
-            _plateAlpha[i] = firstSync ? target : Mathf.MoveToward(_plateAlpha[i], target, rate);
+            float next = firstSync ? target : Mathf.MoveToward(_plateAlpha[i], target, rate);
+            _plateAlpha[i] = next;
+            if (!Mathf.IsEqualApprox(next, _appliedPlateAlpha[i]))
+                changed = true;
         }
 
-        // Also enforce slot alphas in _Process so UpdateMode_Manual poses keep exact Block plate state.
-        ApplyPlateColors();
+        float glowBoost = (_host?.Entity?.Block ?? 0) >= 20 ? 1.12f : 1f;
+        if (!Mathf.IsEqualApprox(glowBoost, _appliedGlowBoost))
+            changed = true;
+
+        if (changed)
+        {
+            _plateColorsDirty = true;
+            // Apply directly when dirty so UpdateMode_Manual poses keep exact Block plate state,
+            // while clearing _plateColorsDirty avoids a duplicate apply in before_world_transforms_change.
+            ApplyPlateColors(force: !_slotsBound || isDead);
+        }
     }
 
     private int ResolveVisiblePlateCount()
@@ -100,7 +126,7 @@ public partial class NScalePeelerVisuals : NThingsSpineCreatureVisuals
         return visible;
     }
 
-    private void ApplyPlateColors()
+    private void ApplyPlateColors(bool force)
     {
         if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() ||
             SpineBody == null || !GodotObject.IsInstanceValid(SpineBody.BoundObject))
@@ -118,19 +144,28 @@ public partial class NScalePeelerVisuals : NThingsSpineCreatureVisuals
                 using Variant slotVar = skeleton.BoundObject.Call("find_slot", PlateSlots[i]);
                 _plateSlots[i] = slotVar.VariantType == Variant.Type.Object ? slotVar.AsGodotObject() : null;
             }
+            force = true;
         }
 
         int block = _host?.Entity?.Block ?? 0;
         float glowBoost = block >= 20 ? 1.12f : 1f;
+        bool glowChanged = force || !Mathf.IsEqualApprox(glowBoost, _appliedGlowBoost);
         for (int i = 0; i < _plateSlots.Length; i++)
         {
+            float alpha = _plateAlpha[i];
+            if (!glowChanged && Mathf.IsEqualApprox(alpha, _appliedPlateAlpha[i]))
+                continue;
+
             GodotObject? slot = _plateSlots[i];
             if (slot == null || !GodotObject.IsInstanceValid(slot))
                 continue;
 
-            using Variant _ = slot.Call("set_color",
-                new Color(glowBoost, glowBoost, glowBoost, _plateAlpha[i]));
+            using Variant _ = slot.Call(MethodSetColor,
+                new Color(glowBoost, glowBoost, glowBoost, alpha));
+            _appliedPlateAlpha[i] = alpha;
         }
+        _appliedGlowBoost = glowBoost;
+        _plateColorsDirty = false;
     }
 
     private void TryResolveHost()

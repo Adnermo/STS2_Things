@@ -1,58 +1,160 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace STS2_Things.Diagnostics;
 
 /// <summary>
-/// Captures scrubbed runtime faults, nested inner exception chains, Harmony owner attribution,
+/// Captures scrubbed runtime faults, nested inner exception chains, lazy Harmony owner attribution,
 /// and deduplicated fault signatures across the current and previous game session.
 /// </summary>
 internal static class BugRuntimeFaults
 {
     internal const int MaxRetainedRecords = 32;
+    private const int MaxRawDedupEntries = 128;
 
     private static readonly ConcurrentQueue<JsonObject> Pending = new();
     private static readonly ConcurrentQueue<JsonObject> Recent = new();
     private static readonly object RecordsLock = new();
     private static readonly Dictionary<string, JsonObject> Repeated = new(StringComparer.Ordinal);
     private static readonly Dictionary<JsonObject, string> RecordKeys = new(ReferenceEqualityComparer.Instance);
+    private static readonly Dictionary<(string RawKey, string? Source), string> RawToSignature = new();
+    private static readonly Dictionary<(string Code, string Rationale, string Function), string> EngineHintToSignature = new();
+    private static readonly Dictionary<JsonObject, List<string>> UnresolvedHarmonyFrames = new(ReferenceEqualityComparer.Instance);
+    private static readonly Regex StartupErrorBlockRegex = new(
+        @"(?m)^(?:ERROR:|SCRIPT ERROR:|\[ERROR\])[^\n]*(?:\n(?!ERROR:|SCRIPT ERROR:|\[ERROR\]|\[INFO\]|\[WARN\])[^\n]*){0,35}",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static long _next;
     private static int _dropped;
+    private static long _lastIsoTick;
+    private static string? _lastIsoValue;
     private static readonly string Session = Guid.NewGuid().ToString("N")[..8];
     private static readonly object DiskLock = new();
     private static string? _path;
     private static int _writer, _dirty;
 
     internal static int Dropped => Volatile.Read(ref _dropped);
+    internal static bool HasPending => !Pending.IsEmpty;
 
     /// <summary>
     /// Optional hook wired by BugRunRecorder to attribute Harmony patch owners touching fault stack frames.
+    /// Invoked lazily on Snapshot / F2 capture rather than on synchronous log callbacks.
     /// </summary>
     internal static Func<IReadOnlyList<string>, IReadOnlyList<string>>? HarmonyOwnerResolver { get; set; }
 
+    /// <summary>
+    /// Optional batch scope factory so resolving Harmony owners across multiple faults scans
+    /// Harmony.GetAllPatchedMethods() once per batch instead of once per fault.
+    /// </summary>
+    internal static Func<IDisposable>? BeginHarmonyResolutionBatch { get; set; }
+
+    internal static bool TryRecordEngineRepeat(string? code, string? rationale, string? function)
+    {
+        var hintKey = BuildEngineHintKey(code, rationale, function);
+        lock (RecordsLock)
+        {
+            if (EngineHintToSignature.TryGetValue(hintKey, out string? existingSignature))
+            {
+                if (RecordRepeatedLocked(existingSignature, UtcNowIsoLocked()))
+                {
+                    return true;
+                }
+                EngineHintToSignature.Remove(hintKey);
+            }
+        }
+        return false;
+    }
+
+    internal static void CaptureEngineError(string? code, string? rationale, string? function, IReadOnlyList<string> engineFunctions)
+    {
+        var hintKey = BuildEngineHintKey(code, rationale, function);
+        string text = (code ?? string.Empty) + "\n" + (rationale ?? string.Empty);
+        CaptureCore(text, 0, engineFunctions, hintKey);
+    }
+
     internal static void Capture(string text, int skipFrames, IEnumerable<string>? engineFunctions = null)
+    {
+        CaptureCore(text, skipFrames, engineFunctions, engineHintKey: null);
+    }
+
+    private static void CaptureCore(
+        string text,
+        int skipFrames,
+        IEnumerable<string>? engineFunctions,
+        (string Code, string Rationale, string Function)? engineHintKey)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
         if (text.StartsWith("[Things BugReport]", StringComparison.Ordinal)) return;
 
-        var parsed = LogSanitizer.ParseLogText(text, skipFrames + 1, engineFunctions);
-        RecordParsedFault(parsed);
+        // Avoid re-enumerating single-pass iterables while extracting a cheap O(1) source hint.
+        IEnumerable<string>? reusableFunctions = engineFunctions;
+        string? sourceKey = null;
+        if (engineFunctions is IReadOnlyList<string> list)
+        {
+            sourceKey = list.Count switch
+            {
+                0 => null,
+                1 => list[0],
+                _ => list[0] + "|" + list[^1],
+            };
+        }
+        else if (engineFunctions is not null)
+        {
+            string[] materialized = engineFunctions.Take(20).ToArray();
+            reusableFunctions = materialized;
+            sourceKey = materialized.Length switch
+            {
+                0 => null,
+                1 => materialized[0],
+                _ => materialized[0] + "|" + materialized[^1],
+            };
+        }
+
+        var rawKey = (BuildRawTextKey(text), sourceKey);
+
+        // Fast bounded O(1) pre-deduplication BEFORE LogSanitizer regexes, StackTrace, or SHA-256.
+        lock (RecordsLock)
+        {
+            if (RawToSignature.TryGetValue(rawKey, out string? existingSignature))
+            {
+                if (RecordRepeatedLocked(existingSignature, UtcNowIsoLocked()))
+                {
+                    if (engineHintKey is { } hint)
+                    {
+                        RememberEngineHintLocked(hint, existingSignature);
+                    }
+                    return;
+                }
+                RawToSignature.Remove(rawKey);
+            }
+        }
+
+        var parsed = LogSanitizer.ParseLogText(text, skipFrames + 1, reusableFunctions);
+        RecordParsedFault(parsed, rawKey, engineHintKey);
     }
 
     internal static void CaptureException(Exception exception, int skipFrames = 0)
     {
         if (exception is null) return;
         var parsed = LogSanitizer.ParseException(exception, skipFrames + 1);
-        RecordParsedFault(parsed);
+        RecordParsedFault(parsed, rawKey: null, engineHintKey: null);
     }
 
-    private static void RecordParsedFault(ParsedFaultInfo parsed)
+    private static void RecordParsedFault(
+        ParsedFaultInfo parsed,
+        (string RawKey, string? Source)? rawKey,
+        (string Code, string Rationale, string Function)? engineHintKey)
     {
         string nowIso = DateTimeOffset.UtcNow.ToString("O");
         lock (RecordsLock)
         {
-            if (RecordRepeatedLocked(parsed.Signature, nowIso)) return;
+            if (RecordRepeatedLocked(parsed.Signature, nowIso))
+            {
+                if (rawKey is { } rk) RememberRawKeyLocked(rk, parsed.Signature);
+                if (engineHintKey is { } hk) RememberEngineHintLocked(hk, parsed.Signature);
+                return;
+            }
         }
 
         var allFramesForAttribution = new List<string>(parsed.Frames);
@@ -64,28 +166,28 @@ internal static class BugRuntimeFaults
             }
         }
 
-        IReadOnlyList<string> harmonyOwners = [];
-        if (HarmonyOwnerResolver is { } resolver && allFramesForAttribution.Count > 0)
-        {
-            try
-            {
-                harmonyOwners = resolver(allFramesForAttribution);
-            }
-            catch (Exception)
-            {
-                // Harmony attribution must never fail fault capture.
-                harmonyOwners = [];
-            }
-        }
-
-        var detail = BuildFaultObject(parsed, harmonyOwners, nowIso);
+        // Harmony owner resolution is deferred lazily off the synchronous log callback path
+        // and completed on demand when Snapshot(resolveHarmonyOwners: true) / F2 capture runs.
+        var detail = BuildFaultObject(parsed, [], nowIso);
 
         lock (RecordsLock)
         {
-            if (RecordRepeatedLocked(parsed.Signature, nowIso)) return;
+            if (RecordRepeatedLocked(parsed.Signature, nowIso))
+            {
+                if (rawKey is { } rk) RememberRawKeyLocked(rk, parsed.Signature);
+                if (engineHintKey is { } hk) RememberEngineHintLocked(hk, parsed.Signature);
+                return;
+            }
 
             Repeated[parsed.Signature] = detail;
             RecordKeys[detail] = parsed.Signature;
+            if (rawKey is { } rkNew) RememberRawKeyLocked(rkNew, parsed.Signature);
+            if (engineHintKey is { } hkNew) RememberEngineHintLocked(hkNew, parsed.Signature);
+            if (allFramesForAttribution.Count > 0)
+            {
+                UnresolvedHarmonyFrames[detail] = allFramesForAttribution;
+            }
+
             Pending.Enqueue(detail);
             Recent.Enqueue(detail);
 
@@ -95,12 +197,131 @@ internal static class BugRuntimeFaults
                 if (Recent.TryDequeue(out JsonObject? old))
                 {
                     if (RecordKeys.Remove(old, out string? oldKey)) Repeated.Remove(oldKey);
+                    UnresolvedHarmonyFrames.Remove(old);
                     Interlocked.Increment(ref _dropped);
                 }
             }
         }
 
         SchedulePersist();
+    }
+
+    internal static void ResolvePendingHarmonyOwners()
+    {
+        var resolver = HarmonyOwnerResolver;
+        if (resolver is null) return;
+
+        List<(JsonObject Record, List<string> Frames)> work;
+        lock (RecordsLock)
+        {
+            if (UnresolvedHarmonyFrames.Count == 0) return;
+            work = new List<(JsonObject, List<string>)>(UnresolvedHarmonyFrames.Count);
+            foreach (var kv in UnresolvedHarmonyFrames)
+            {
+                work.Add((kv.Key, kv.Value));
+            }
+        }
+
+        IDisposable? batchScope = null;
+        try
+        {
+            try
+            {
+                batchScope = BeginHarmonyResolutionBatch?.Invoke();
+            }
+            catch (Exception)
+            {
+                // Batch index initialization is an optimization; fall back to direct resolver calls.
+            }
+
+            var resolved = new List<(JsonObject Record, IReadOnlyList<string> Owners)>(work.Count);
+            foreach (var (record, frames) in work)
+            {
+                IReadOnlyList<string> owners = [];
+                try
+                {
+                    owners = resolver(frames);
+                }
+                catch (Exception)
+                {
+                    // Harmony attribution must never fail snapshot creation.
+                    owners = [];
+                }
+                resolved.Add((record, owners));
+            }
+
+            lock (RecordsLock)
+            {
+                foreach (var (record, owners) in resolved)
+                {
+                    if (!UnresolvedHarmonyFrames.Remove(record)) continue;
+                    if (owners.Count > 0)
+                    {
+                        var ownerNodes = owners
+                            .Where(o => !string.IsNullOrWhiteSpace(o))
+                            .Select(o => LogSanitizer.Cap(o.Trim(), 300))
+                            .Distinct(StringComparer.Ordinal)
+                            .Take(100)
+                            .Select(o => (JsonNode?)JsonValue.Create(o))
+                            .ToArray();
+                        record["harmony_owners"] = new JsonArray(ownerNodes);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            batchScope?.Dispose();
+        }
+    }
+
+    private static string BuildRawTextKey(string text)
+    {
+        if (text.Length <= 512) return text;
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{text.AsSpan(0, 384)}|{text.AsSpan(text.Length - 128)}|{text.Length}");
+    }
+
+    private static (string Code, string Rationale, string Function) BuildEngineHintKey(string? code, string? rationale, string? function) => (
+        CapRawKeyPart(code, 256),
+        CapRawKeyPart(rationale, 256),
+        CapRawKeyPart(function, 256));
+
+    private static string CapRawKeyPart(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    private static void RememberRawKeyLocked((string RawKey, string? Source) key, string signature)
+    {
+        if (RawToSignature.Count >= MaxRawDedupEntries && !RawToSignature.ContainsKey(key))
+        {
+            RawToSignature.Clear();
+        }
+        RawToSignature[key] = signature;
+    }
+
+    private static void RememberEngineHintLocked((string Code, string Rationale, string Function) key, string signature)
+    {
+        if (EngineHintToSignature.Count >= MaxRawDedupEntries && !EngineHintToSignature.ContainsKey(key))
+        {
+            EngineHintToSignature.Clear();
+        }
+        EngineHintToSignature[key] = signature;
+    }
+
+    private static string UtcNowIsoLocked()
+    {
+        long now = System.Environment.TickCount64;
+        if (_lastIsoValue is not null && now - _lastIsoTick < 50)
+        {
+            return _lastIsoValue;
+        }
+        _lastIsoTick = now;
+        _lastIsoValue = DateTimeOffset.UtcNow.ToString("O");
+        return _lastIsoValue;
     }
 
     private static JsonObject BuildFaultObject(ParsedFaultInfo parsed, IReadOnlyList<string> harmonyOwners, string nowIso)
@@ -206,8 +427,12 @@ internal static class BugRuntimeFaults
         }
     }
 
-    internal static JsonArray Snapshot()
+    internal static JsonArray Snapshot(bool resolveHarmonyOwners = true)
     {
+        if (resolveHarmonyOwners)
+        {
+            ResolvePendingHarmonyOwners();
+        }
         lock (RecordsLock) return new(Recent.Select(e => e.DeepClone()).ToArray());
     }
 
@@ -279,7 +504,7 @@ internal static class BugRuntimeFaults
         Interlocked.Exchange(ref _dirty, 0);
         try
         {
-            var snapshot = Snapshot();
+            var snapshot = Snapshot(resolveHarmonyOwners: false);
             var errorsAlias = new JsonArray(snapshot.Select(n => n?.DeepClone()).ToArray());
             lock (DiskLock)
             {
@@ -309,7 +534,7 @@ internal static class BugRuntimeFaults
             stream.Seek(Math.Max(0, stream.Length - 128_000), SeekOrigin.Begin);
             using var reader = new StreamReader(stream);
             string text = reader.ReadToEnd();
-            var blocks = Regex.Matches(text, @"(?m)^(?:ERROR:|SCRIPT ERROR:|\[ERROR\])[^\n]*(?:\n(?!ERROR:|SCRIPT ERROR:|\[ERROR\]|\[INFO\]|\[WARN\])[^\n]*){0,35}");
+            var blocks = StartupErrorBlockRegex.Matches(text);
             foreach (Match block in blocks.Cast<Match>().TakeLast(24))
             {
                 Capture(block.Value, 0);
@@ -333,6 +558,11 @@ internal static class BugRuntimeFaults
             while (Recent.TryDequeue(out _)) { }
             Repeated.Clear();
             RecordKeys.Clear();
+            RawToSignature.Clear();
+            EngineHintToSignature.Clear();
+            UnresolvedHarmonyFrames.Clear();
+            _lastIsoTick = 0;
+            _lastIsoValue = null;
             Interlocked.Exchange(ref _dropped, 0);
             Interlocked.Exchange(ref _next, 0);
             _path = null;

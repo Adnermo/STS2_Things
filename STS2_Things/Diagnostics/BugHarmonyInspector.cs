@@ -15,14 +15,39 @@ internal static class BugHarmonyInspector
     private const int MaxPatchEntriesPerKind = 20;
     private const int MaxReportedAssemblies = 300;
 
-    internal static IReadOnlyList<string> ResolveOwnersForFrames(IReadOnlyList<string> frames)
+    private sealed class PatchOwnerEntry(
+        string targetSymbol,
+        string[] targetOwners,
+        (string PatchSymbol, string PatchDeclaring, string Owner)[] patchMethods)
     {
-        if (frames.Count == 0) return [];
+        internal string TargetSymbol { get; } = targetSymbol;
+        internal string[] TargetOwners { get; } = targetOwners;
+        internal (string PatchSymbol, string PatchDeclaring, string Owner)[] PatchMethods { get; } = patchMethods;
+    }
 
-        var owners = new List<string>();
-        var seenOwners = new HashSet<string>(StringComparer.Ordinal);
-        var frameSet = new HashSet<string>(frames, StringComparer.Ordinal);
+    private sealed class BatchScope : IDisposable
+    {
+        public void Dispose() => _batchIndex = null;
+    }
 
+    private sealed class NoopDisposable : IDisposable
+    {
+        internal static readonly NoopDisposable Instance = new();
+        public void Dispose() { }
+    }
+
+    [ThreadStatic] private static PatchOwnerEntry[]? _batchIndex;
+
+    internal static IDisposable BeginOwnerResolutionBatch()
+    {
+        if (_batchIndex is not null) return NoopDisposable.Instance;
+        _batchIndex = BuildPatchOwnerIndex();
+        return new BatchScope();
+    }
+
+    private static PatchOwnerEntry[] BuildPatchOwnerIndex()
+    {
+        var entries = new List<PatchOwnerEntry>();
         try
         {
             foreach (MethodBase target in Harmony.GetAllPatchedMethods().ToArray())
@@ -31,40 +56,67 @@ internal static class BugHarmonyInspector
                 if (info is null || info.Owners.Count == 0) continue;
 
                 string targetSymbol = FormatMethodSymbol(target);
-                bool matchesTarget = targetSymbol.Length > 0 && frames.Any(f =>
-                    string.Equals(f, targetSymbol, StringComparison.Ordinal)
-                    || f.StartsWith(targetSymbol + "_Patch", StringComparison.Ordinal));
+                string[] targetOwners = info.Owners
+                    .Where(o => !string.IsNullOrWhiteSpace(o))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
 
-                if (matchesTarget)
-                {
-                    foreach (string owner in info.Owners)
-                    {
-                        if (!string.IsNullOrWhiteSpace(owner) && seenOwners.Add(owner))
-                        {
-                            owners.Add(LogSanitizer.Cap(owner, 300));
-                            if (owners.Count >= 50) return owners;
-                        }
-                    }
-                }
-
+                var patchList = new List<(string PatchSymbol, string PatchDeclaring, string Owner)>();
                 foreach (Patch patch in EnumerateAllPatches(info))
                 {
                     if (string.IsNullOrWhiteSpace(patch.owner) || patch.PatchMethod is null) continue;
                     string patchSymbol = FormatMethodSymbol(patch.PatchMethod);
                     string patchDeclaring = NormalizeTypeName(patch.PatchMethod.DeclaringType);
-                    bool matchesPatch = (patchSymbol.Length > 0 && frameSet.Contains(patchSymbol))
-                        || (patchDeclaring.Length > 0 && frames.Any(f => f.StartsWith(patchDeclaring + ".", StringComparison.Ordinal)));
-                    if (matchesPatch && seenOwners.Add(patch.owner))
-                    {
-                        owners.Add(LogSanitizer.Cap(patch.owner, 300));
-                        if (owners.Count >= 50) return owners;
-                    }
+                    patchList.Add((patchSymbol, patchDeclaring, patch.owner));
                 }
+
+                entries.Add(new PatchOwnerEntry(targetSymbol, targetOwners, patchList.ToArray()));
             }
         }
         catch (Exception)
         {
             // Harmony global state inspection is read-only and best-effort.
+        }
+        return entries.ToArray();
+    }
+
+    internal static IReadOnlyList<string> ResolveOwnersForFrames(IReadOnlyList<string> frames)
+    {
+        if (frames.Count == 0) return [];
+
+        var owners = new List<string>();
+        var seenOwners = new HashSet<string>(StringComparer.Ordinal);
+        var frameSet = new HashSet<string>(frames, StringComparer.Ordinal);
+        var index = _batchIndex ?? BuildPatchOwnerIndex();
+
+        foreach (var entry in index)
+        {
+            bool matchesTarget = entry.TargetSymbol.Length > 0 && frames.Any(f =>
+                string.Equals(f, entry.TargetSymbol, StringComparison.Ordinal)
+                || f.StartsWith(entry.TargetSymbol + "_Patch", StringComparison.Ordinal));
+
+            if (matchesTarget)
+            {
+                foreach (string owner in entry.TargetOwners)
+                {
+                    if (seenOwners.Add(owner))
+                    {
+                        owners.Add(LogSanitizer.Cap(owner, 300));
+                        if (owners.Count >= 50) return owners;
+                    }
+                }
+            }
+
+            foreach (var (patchSymbol, patchDeclaring, owner) in entry.PatchMethods)
+            {
+                bool matchesPatch = (patchSymbol.Length > 0 && frameSet.Contains(patchSymbol))
+                    || (patchDeclaring.Length > 0 && frames.Any(f => f.StartsWith(patchDeclaring + ".", StringComparison.Ordinal)));
+                if (matchesPatch && seenOwners.Add(owner))
+                {
+                    owners.Add(LogSanitizer.Cap(owner, 300));
+                    if (owners.Count >= 50) return owners;
+                }
+            }
         }
 
         return owners;
@@ -216,14 +268,19 @@ internal static class BugHarmonyInspector
 
     internal static IReadOnlyList<string> CollectAllFingerprintPaths()
     {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var ordered = new List<string>();
 
         void AddIfOnDisk(string? candidate)
         {
             if (string.IsNullOrWhiteSpace(candidate)) return;
             try
             {
-                if (File.Exists(candidate)) paths.Add(Path.GetFullPath(candidate));
+                if (File.Exists(candidate))
+                {
+                    string full = Path.GetFullPath(candidate);
+                    if (seen.Add(full)) ordered.Add(full);
+                }
             }
             catch (Exception)
             {
@@ -231,6 +288,7 @@ internal static class BugHarmonyInspector
             }
         }
 
+        // Prioritize core game and STS2_Things binaries first so sequential hashing completes them immediately.
         AddIfOnDisk(ResolveAssemblyDiskPath(typeof(MegaCrit.Sts2.Core.Models.AbstractModel).Assembly));
 
         string? thingsDll = ResolveAssemblyDiskPath(typeof(BugRunRecorder).Assembly);
@@ -275,7 +333,7 @@ internal static class BugHarmonyInspector
             // ModManager may not be populated in minimal unit harnesses.
         }
 
-        return paths.ToArray();
+        return ordered.ToArray();
     }
 
     private static Dictionary<Assembly, string> BuildModAssemblyMap(out List<string> modDirectories)

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
@@ -89,7 +88,13 @@ public partial class NCaveGodBossBackground : Node2D
         "arm1_2", "arm1_2_back", "arm2_2"
     ];
 
-    private static readonly Color TransparentColor = new(1f, 1f, 1f, 0f);
+    private static readonly StringName MethodSetAttachment = "set_attachment";
+    private static readonly StringName MethodGetA = "get_a";
+    private static readonly StringName MethodGetB = "get_b";
+    private static readonly StringName MethodGetC = "get_c";
+    private static readonly StringName MethodGetD = "get_d";
+    private static readonly StringName MethodGetWorldX = "get_world_x";
+    private static readonly StringName MethodGetWorldY = "get_world_y";
 
     private static readonly Vector2[] HurtScatterOffsets =
     [
@@ -188,6 +193,8 @@ public partial class NCaveGodBossBackground : Node2D
 
     private Marker2D? _stolenCardPosLeft;
     private Marker2D? _stolenCardPosRight;
+    private Marker2D? _leftHandCreatureMarker;
+    private Marker2D? _rightHandCreatureMarker;
     private int _leftStolenCardCount;
     private int _rightStolenCardCount;
 
@@ -404,9 +411,6 @@ public partial class NCaveGodBossBackground : Node2D
                 }
             }
         }
-
-        UpdateFrontFistOverlay();
-        UpdateStolenCardPositions();
     }
 
     /// <summary>Keep targeting, impact effects and health bars attached to the enlarged Spine fists.</summary>
@@ -436,6 +440,8 @@ public partial class NCaveGodBossBackground : Node2D
         _armsSnatchRig = null;
         _bodyContactRig = null;
         _armsContactRig = null;
+        _leftHandCreatureMarker = null;
+        _rightHandCreatureMarker = null;
         HideFrontFistOverlay();
         ClearMainEntries();
         ClearAllStolenCards();
@@ -519,14 +525,6 @@ public partial class NCaveGodBossBackground : Node2D
         SetupArmsSprite(_armsController);
 
         Callable.From(AlignStageAndPlayers).CallDeferred();
-
-        // Preload Living Megalith audio variants for zero-latency combat feedback
-        for (int i = 1; i <= 5; i++)
-        {
-            NativeSfxPlayer.Preload($"res://sfx/cave_god/cave_god_hurt-{i:D2}.wav");
-        }
-        NativeSfxPlayer.Preload("res://sfx/cave_god/anger_roar.mp3");
-        NativeSfxPlayer.Preload("res://sfx/cave_god/rock_death.mp3");
 
         Log.Info("[CaveGodBackground] Dual-pass CaveGod Spine controllers initialized.");
     }
@@ -612,30 +610,19 @@ public partial class NCaveGodBossBackground : Node2D
                 ApplyAnimatedHandPose(sprite, foreground: false);
                 // 1. Permanently mask ALL arm/hand/shoulder slots on background body pass
                 // Under NO circumstances should _bodyNode EVER render any arm geometry!
+                // Clearing slot attachment skips slot mesh generation completely in Spine (color is unused without attachment).
                 for (int i = 0; i < _bodyMaskArmSlots.Count; i++)
                 {
-                    _bodyMaskArmSlots[i].Call("set_attachment", default(Variant));
-                    _bodyMaskArmSlots[i].Call("set_color", TransparentColor);
+                    _bodyMaskArmSlots[i].Call(MethodSetAttachment, default(Variant));
                 }
 
                 // 2. Strict phase slot isolation (when not dynamically cross-fading during transformation)
                 if (!_isTransforming)
                 {
-                    if (_isAngry)
+                    List<GodotObject> hiddenPhaseSlots = _isAngry ? _bodyBlueSlots : _bodyRedSlots;
+                    for (int i = 0; i < hiddenPhaseSlots.Count; i++)
                     {
-                        for (int i = 0; i < _bodyBlueSlots.Count; i++)
-                        {
-                            _bodyBlueSlots[i].Call("set_attachment", default(Variant));
-                            _bodyBlueSlots[i].Call("set_color", TransparentColor);
-                        }
-                    }
-                    else
-                    {
-                        for (int i = 0; i < _bodyRedSlots.Count; i++)
-                        {
-                            _bodyRedSlots[i].Call("set_attachment", default(Variant));
-                            _bodyRedSlots[i].Call("set_color", TransparentColor);
-                        }
+                        hiddenPhaseSlots[i].Call(MethodSetAttachment, default(Variant));
                     }
                 }
             });
@@ -697,30 +684,18 @@ public partial class NCaveGodBossBackground : Node2D
                 // Under NO circumstances should _armsNode EVER render any body geometry!
                 for (int i = 0; i < _armsMaskBodySlots.Count; i++)
                 {
-                        _armsMaskBodySlots[i].Call("set_attachment", default(Variant));
-                        _armsMaskBodySlots[i].Call("set_color", TransparentColor);
-                    }
+                    _armsMaskBodySlots[i].Call(MethodSetAttachment, default(Variant));
+                }
 
-                    // 2. Strict phase slot isolation (when not dynamically cross-fading during transformation)
-                    if (!_isTransforming)
+                // 2. Strict phase slot isolation (when not dynamically cross-fading during transformation)
+                if (!_isTransforming)
+                {
+                    List<GodotObject> hiddenPhaseSlots = _isAngry ? _armsBlueSlots : _armsRedSlots;
+                    for (int i = 0; i < hiddenPhaseSlots.Count; i++)
                     {
-                        if (_isAngry)
-                        {
-                            for (int i = 0; i < _armsBlueSlots.Count; i++)
-                            {
-                                _armsBlueSlots[i].Call("set_attachment", default(Variant));
-                                _armsBlueSlots[i].Call("set_color", TransparentColor);
-                            }
-                        }
-                        else
-                        {
-                            for (int i = 0; i < _armsRedSlots.Count; i++)
-                            {
-                                _armsRedSlots[i].Call("set_attachment", default(Variant));
-                                _armsRedSlots[i].Call("set_color", TransparentColor);
-                            }
-                        }
+                        hiddenPhaseSlots[i].Call(MethodSetAttachment, default(Variant));
                     }
+                }
                 });
                 _armsWorldTransformsCallable = Callable.From((Variant _) =>
                 {
@@ -1925,8 +1900,56 @@ public partial class NCaveGodBossBackground : Node2D
 
     public const float StolenCardScale = 0.50f;
 
+    private Marker2D? GetHandCreatureStolenCardMarker(bool isLeft)
+    {
+        ref Marker2D? cached = ref (isLeft ? ref _leftHandCreatureMarker : ref _rightHandCreatureMarker);
+        if (cached != null && GodotObject.IsInstanceValid(cached) && cached.IsInsideTree())
+            return cached;
+
+        cached = null;
+        NCombatRoom? room = NCombatRoom.Instance;
+        if (room == null || !GodotObject.IsInstanceValid(room))
+            return null;
+
+        foreach (NCreature node in room.CreatureNodes)
+        {
+            if (node == null || !GodotObject.IsInstanceValid(node))
+                continue;
+            bool match = isLeft
+                ? node.Entity?.Monster is ThingsCaveGodLeftHand
+                : node.Entity?.Monster is ThingsCaveGodRightHand;
+            if (!match)
+                continue;
+
+            Marker2D? marker = node.GetSpecialNode<Marker2D>("%StolenCardPos");
+            if (marker != null && GodotObject.IsInstanceValid(marker) && marker.IsInsideTree())
+            {
+                cached = marker;
+                return cached;
+            }
+            break;
+        }
+
+        return null;
+    }
+
+    private static void ApplyStolenCardMarkerTransform(Marker2D? marker, Vector2 pos, float rot)
+    {
+        if (marker == null || !GodotObject.IsInstanceValid(marker) || !marker.IsInsideTree())
+            return;
+
+        marker.GlobalPosition = pos;
+        marker.GlobalRotation = rot;
+        marker.Scale = new Vector2(StolenCardScale, StolenCardScale);
+        marker.ZIndex = StolenCardZIndex;
+        marker.ZAsRelative = false;
+    }
+
     private void UpdateStolenCardPositions()
     {
+        if (_leftStolenCardCount == 0 && _rightStolenCardCount == 0)
+            return;
+
         if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _presentationEnded ||
             _armsController == null || !GodotObject.IsInstanceValid(_armsController.BoundObject))
         {
@@ -1934,78 +1957,37 @@ public partial class NCaveGodBossBackground : Node2D
         }
 
         // 1. Left hand: bone "arm1_3" (with fallback to "fist1")
-        Transform2D? leftHand = _armsController.GetGlobalBoneTransform("arm1_3")
-            ?? _armsController.GetGlobalBoneTransform("fist1");
-        if (leftHand.HasValue)
+        if (_leftStolenCardCount > 0)
         {
-            // Carry the card inside the knuckles; use the full bone transform so
-            // reaching, wrist rotation, and camera zoom never leave it floating behind.
-            Vector2 pos = leftHand.Value * new Vector2(160f, -5f);
-            float rot = leftHand.Value.X.Angle() + MathF.PI / 2 - 0.12f;
-            Marker2D? leftMarker = GetStolenCardPos(true);
-            if (leftMarker != null && GodotObject.IsInstanceValid(leftMarker) && leftMarker.IsInsideTree())
+            Transform2D? leftHand = _armsController.GetGlobalBoneTransform("arm1_3")
+                ?? _armsController.GetGlobalBoneTransform("fist1");
+            if (leftHand.HasValue)
             {
-                leftMarker.GlobalPosition = pos;
-                leftMarker.GlobalRotation = rot;
-                leftMarker.Scale = new Vector2(StolenCardScale, StolenCardScale);
-                leftMarker.ZIndex = StolenCardZIndex;
-                leftMarker.ZAsRelative = false;
-            }
-
-            NCombatRoom? room = NCombatRoom.Instance;
-            if (room != null && GodotObject.IsInstanceValid(room))
-            {
-                NCreature? leftCreature = room.CreatureNodes.FirstOrDefault(c =>
-                    c != null && GodotObject.IsInstanceValid(c) && c.Entity?.Monster is ThingsCaveGodLeftHand);
-                Marker2D? creatureMarker = leftCreature?.GetSpecialNode<Marker2D>("%StolenCardPos");
-                if (creatureMarker != null && GodotObject.IsInstanceValid(creatureMarker) && creatureMarker.IsInsideTree())
-                {
-                    creatureMarker.GlobalPosition = pos;
-                    creatureMarker.GlobalRotation = rot;
-                    creatureMarker.Scale = new Vector2(StolenCardScale, StolenCardScale);
-                    creatureMarker.ZIndex = StolenCardZIndex;
-                    creatureMarker.ZAsRelative = false;
-                }
+                // Carry the card inside the knuckles; use the full bone transform so
+                // reaching, wrist rotation, and camera zoom never leave it floating behind.
+                Vector2 pos = leftHand.Value * new Vector2(160f, -5f);
+                float rot = leftHand.Value.X.Angle() + MathF.PI / 2 - 0.12f;
+                ApplyStolenCardMarkerTransform(GetStolenCardPos(true), pos, rot);
+                ApplyStolenCardMarkerTransform(GetHandCreatureStolenCardMarker(true), pos, rot);
             }
         }
 
         // 2. Right hand: bone "arm2_3" (with fallback to "fist2")
-        Transform2D? rightHand = _armsController.GetGlobalBoneTransform("arm2_3")
-            ?? _armsController.GetGlobalBoneTransform("fist2");
-        if (rightHand.HasValue)
+        if (_rightStolenCardCount > 0)
         {
-            // The right wrist has its own native bind pose; use its transform directly.
-            Vector2 pos = rightHand.Value * new Vector2(160f, 5f);
-            float rot = rightHand.Value.X.Angle() + MathF.PI / 2 + 0.12f;
-            Marker2D? rightMarker = GetStolenCardPos(false);
-            if (rightMarker != null && GodotObject.IsInstanceValid(rightMarker) && rightMarker.IsInsideTree())
+            Transform2D? rightHand = _armsController.GetGlobalBoneTransform("arm2_3")
+                ?? _armsController.GetGlobalBoneTransform("fist2");
+            if (rightHand.HasValue)
             {
-                rightMarker.GlobalPosition = pos;
-                rightMarker.GlobalRotation = rot;
-                rightMarker.Scale = new Vector2(StolenCardScale, StolenCardScale);
-                rightMarker.ZIndex = StolenCardZIndex;
-                rightMarker.ZAsRelative = false;
-            }
-
-            NCombatRoom? room = NCombatRoom.Instance;
-            if (room != null && GodotObject.IsInstanceValid(room))
-            {
-                NCreature? rightCreature = room.CreatureNodes.FirstOrDefault(c =>
-                    c != null && GodotObject.IsInstanceValid(c) && c.Entity?.Monster is ThingsCaveGodRightHand);
-                Marker2D? creatureMarker = rightCreature?.GetSpecialNode<Marker2D>("%StolenCardPos");
-                if (creatureMarker != null && GodotObject.IsInstanceValid(creatureMarker) && creatureMarker.IsInsideTree())
-                {
-                    creatureMarker.GlobalPosition = pos;
-                    creatureMarker.GlobalRotation = rot;
-                    creatureMarker.Scale = new Vector2(StolenCardScale, StolenCardScale);
-                    creatureMarker.ZIndex = StolenCardZIndex;
-                    creatureMarker.ZAsRelative = false;
-                }
+                // The right wrist has its own native bind pose; use its transform directly.
+                Vector2 pos = rightHand.Value * new Vector2(160f, 5f);
+                float rot = rightHand.Value.X.Angle() + MathF.PI / 2 + 0.12f;
+                ApplyStolenCardMarkerTransform(GetStolenCardPos(false), pos, rot);
+                ApplyStolenCardMarkerTransform(GetHandCreatureStolenCardMarker(false), pos, rot);
             }
         }
     }
 
-    private readonly record struct FistVertexWeight(int LocalBone, float Vx, float Vy, float Weight);
     private readonly record struct BoneWorldMatrix(float A, float B, float C, float D, float WorldX, float WorldY);
     private sealed record FistBoneRig(
         GodotObject Arm1_2,
@@ -2014,15 +1996,11 @@ public partial class NCaveGodBossBackground : Node2D
         GodotObject Arm2_2,
         GodotObject Arm2_3,
         GodotObject Fist2);
-    private sealed record FistMesh(Vector2[] Uvs, Godot.Collections.Array Polygons, FistVertexWeight[][] Weights);
-    private sealed record FistOverlayAssets(
-        FistMesh LeftMesh,
-        FistMesh RightMesh,
-        ImageTexture LeftTexture,
-        ImageTexture RightTexture);
+    private sealed record FistMesh(Vector2[] Uvs, Godot.Collections.Array Polygons, CaveGodFistOverlayData.VertexWeight[][] Weights);
 
-    private static FistOverlayAssets? _fistOverlayAssets;
-    private static bool _fistOverlayAssetsAttempted;
+    private static FistMesh? _leftFistMesh;
+    private static FistMesh? _rightFistMesh;
+    private static Texture2D? _cachedFistAtlasTexture;
 
     private void HideFrontFistOverlay()
     {
@@ -2070,16 +2048,16 @@ public partial class NCaveGodBossBackground : Node2D
             return;
         }
 
-        FistOverlayAssets? assets = EnsureFistOverlayAssets();
+        Texture2D? atlasTex = EnsureFistAtlasTexture();
         FistBoneRig? rig = EnsureArmsFistRig();
-        if (assets == null || rig == null)
+        if (atlasTex == null || rig == null)
         {
             HideFrontFistOverlay();
             return;
         }
 
         bool right = _isRightGrab;
-        FistMesh mesh = right ? assets.RightMesh : assets.LeftMesh;
+        FistMesh mesh = GetBakedFistMesh(right);
         BoneWorldMatrix m0 = ReadBoneWorldMatrix(right ? rig.Arm2_2 : rig.Arm1_2);
         BoneWorldMatrix m1 = ReadBoneWorldMatrix(right ? rig.Arm2_3 : rig.Arm1_3);
         BoneWorldMatrix m2 = ReadBoneWorldMatrix(right ? rig.Fist2 : rig.Fist1);
@@ -2099,14 +2077,15 @@ public partial class NCaveGodBossBackground : Node2D
             buffer = _leftFistBuffer;
         }
 
+        Transform2D armsToLocal = GetGlobalTransform().AffineInverse() * _armsNode.GetGlobalTransform();
         for (int v = 0; v < vertexCount; v++)
         {
             float wx = 0f;
             float wy = 0f;
-            FistVertexWeight[] vw = mesh.Weights[v];
+            CaveGodFistOverlayData.VertexWeight[] vw = mesh.Weights[v];
             for (int k = 0; k < vw.Length; k++)
             {
-                FistVertexWeight w = vw[k];
+                CaveGodFistOverlayData.VertexWeight w = vw[k];
                 BoneWorldMatrix bm = w.LocalBone switch
                 {
                     0 => m0,
@@ -2116,14 +2095,14 @@ public partial class NCaveGodBossBackground : Node2D
                 wx += (w.Vx * bm.A + w.Vy * bm.B + bm.WorldX) * w.Weight;
                 wy += (w.Vx * bm.C + w.Vy * bm.D + bm.WorldY) * w.Weight;
             }
-            buffer[v] = ToLocal(_armsNode.ToGlobal(new Vector2(wx, wy)));
+            buffer[v] = armsToLocal * new Vector2(wx, wy);
         }
 
         int desiredSide = right ? 2 : 1;
-        if (_activeFistOverlaySide != desiredSide)
+        if (_activeFistOverlaySide != desiredSide || _frontFistOverlay.Texture != atlasTex)
         {
             _activeFistOverlaySide = desiredSide;
-            _frontFistOverlay.Texture = right ? assets.RightTexture : assets.LeftTexture;
+            _frontFistOverlay.Texture = atlasTex;
             _frontFistOverlay.UV = mesh.Uvs;
             _frontFistOverlay.Polygons = mesh.Polygons;
         }
@@ -2136,12 +2115,12 @@ public partial class NCaveGodBossBackground : Node2D
     }
 
     private static BoneWorldMatrix ReadBoneWorldMatrix(GodotObject bone) => new(
-        bone.Call("get_a").AsSingle(),
-        bone.Call("get_b").AsSingle(),
-        bone.Call("get_c").AsSingle(),
-        bone.Call("get_d").AsSingle(),
-        bone.Call("get_world_x").AsSingle(),
-        bone.Call("get_world_y").AsSingle());
+        bone.Call(MethodGetA).AsSingle(),
+        bone.Call(MethodGetB).AsSingle(),
+        bone.Call(MethodGetC).AsSingle(),
+        bone.Call(MethodGetD).AsSingle(),
+        bone.Call(MethodGetWorldX).AsSingle(),
+        bone.Call(MethodGetWorldY).AsSingle());
 
     private FistBoneRig? EnsureArmsFistRig()
     {
@@ -2168,180 +2147,49 @@ public partial class NCaveGodBossBackground : Node2D
         return _armsFistRig;
     }
 
-    private static FistOverlayAssets? EnsureFistOverlayAssets()
+    private static Texture2D? EnsureFistAtlasTexture()
     {
-        if (_fistOverlayAssets != null)
-            return _fistOverlayAssets;
-        if (_fistOverlayAssetsAttempted)
-            return null;
-        _fistOverlayAssetsAttempted = true;
+        if (_cachedFistAtlasTexture != null && GodotObject.IsInstanceValid(_cachedFistAtlasTexture))
+            return _cachedFistAtlasTexture;
 
-        try
+        _cachedFistAtlasTexture = GD.Load<Texture2D>(CaveGodFistOverlayData.AtlasTexturePath);
+        if (_cachedFistAtlasTexture == null || !GodotObject.IsInstanceValid(_cachedFistAtlasTexture))
         {
-            string spjson = Godot.FileAccess.GetFileAsString("res://animations/monsters/cave_god/cave_god.spjson");
-            if (string.IsNullOrEmpty(spjson))
-            {
-                Log.Error("[CaveGodBackground] Could not read cave_god.spjson for front fist overlay.");
-                return null;
-            }
-
-            using JsonDocument doc = JsonDocument.Parse(spjson);
-            JsonElement root = doc.RootElement;
-            JsonElement bonesElement = root.GetProperty("bones");
-            string[] boneNames = new string[bonesElement.GetArrayLength()];
-            int bi = 0;
-            foreach (JsonElement boneEl in bonesElement.EnumerateArray())
-            {
-                boneNames[bi++] = boneEl.GetProperty("name").GetString() ?? "";
-            }
-
-            JsonElement skinsElement = root.GetProperty("skins");
-            JsonElement attachmentsElement = skinsElement.ValueKind == JsonValueKind.Array
-                ? skinsElement[0].GetProperty("attachments")
-                : skinsElement.GetProperty("default");
-
-            FistMesh leftMesh = ParseFistMesh(
-                attachmentsElement.GetProperty("arm1_3").GetProperty("arm1_3"),
-                boneNames,
-                "arm1_2",
-                "arm1_3",
-                "fist1",
-                origWidth: 196f,
-                origHeight: 183f);
-            FistMesh rightMesh = ParseFistMesh(
-                attachmentsElement.GetProperty("arm2_3").GetProperty("arm2_3"),
-                boneNames,
-                "arm2_2",
-                "arm2_3",
-                "fist2",
-                origWidth: 200f,
-                origHeight: 182f);
-
-            Texture2D? atlasTex = GD.Load<Texture2D>("res://animations/monsters/cave_god/cave_god.png");
-            Image? atlasImg = atlasTex?.GetImage();
-            if (atlasImg == null)
-            {
-                Log.Error("[CaveGodBackground] Could not load cave_god.png image for front fist overlay.");
-                return null;
-            }
-
-            if (atlasImg.IsCompressed())
-                atlasImg.Decompress();
-            if (atlasImg.GetFormat() != Image.Format.Rgba8)
-                atlasImg.Convert(Image.Format.Rgba8);
-
-            ImageTexture leftTex = BuildFistOverlayTexture(
-                atlasImg,
-                srcRect: new Rect2I(1732, 695, 196, 182),
-                dstOffset: new Vector2I(0, 1),
-                origWidth: 196,
-                origHeight: 183);
-            ImageTexture rightTex = BuildFistOverlayTexture(
-                atlasImg,
-                srcRect: new Rect2I(822, 2, 200, 175),
-                dstOffset: new Vector2I(0, 6),
-                origWidth: 200,
-                origHeight: 182);
-
-            _fistOverlayAssets = new FistOverlayAssets(leftMesh, rightMesh, leftTex, rightTex);
-            return _fistOverlayAssets;
-        }
-        catch (Exception ex)
-        {
-            Log.Error($"[CaveGodBackground] Failed to build front fist overlay assets: {ex}");
+            _cachedFistAtlasTexture = null;
+            Log.Error("[CaveGodBackground] Could not load cave_god.png texture for front fist overlay.");
             return null;
         }
+
+        return _cachedFistAtlasTexture;
     }
 
-    private static FistMesh ParseFistMesh(
-        JsonElement meshEl,
-        string[] boneNames,
-        string bone0,
-        string bone1,
-        string bone2,
-        float origWidth,
-        float origHeight)
+    private static FistMesh GetBakedFistMesh(bool right)
     {
-        JsonElement uvsEl = meshEl.GetProperty("uvs");
-        int uvLen = uvsEl.GetArrayLength();
-        int vertexCount = uvLen / 2;
-        Vector2[] uvs = new Vector2[vertexCount];
-        int ui = 0;
-        float prevU = 0f;
-        foreach (JsonElement val in uvsEl.EnumerateArray())
+        if (right)
         {
-            float f = val.GetSingle();
-            if ((ui & 1) == 0)
-                prevU = f;
-            else
-                uvs[ui / 2] = new Vector2(prevU * origWidth, f * origHeight);
-            ui++;
+            return _rightFistMesh ??= BuildBakedFistMesh(
+                CaveGodFistOverlayData.RightAtlasUvs,
+                CaveGodFistOverlayData.RightTriangles,
+                CaveGodFistOverlayData.RightWeights);
         }
 
-        JsonElement trisEl = meshEl.GetProperty("triangles");
-        int[] tris = new int[trisEl.GetArrayLength()];
-        int ti = 0;
-        foreach (JsonElement val in trisEl.EnumerateArray())
-        {
-            tris[ti++] = val.GetInt32();
-        }
+        return _leftFistMesh ??= BuildBakedFistMesh(
+            CaveGodFistOverlayData.LeftAtlasUvs,
+            CaveGodFistOverlayData.LeftTriangles,
+            CaveGodFistOverlayData.LeftWeights);
+    }
+
+    private static FistMesh BuildBakedFistMesh(
+        Vector2[] atlasUvs,
+        int[] triangles,
+        CaveGodFistOverlayData.VertexWeight[][] weights)
+    {
         var polygons = new Godot.Collections.Array();
-        for (int t = 0; t + 2 < tris.Length; t += 3)
+        for (int t = 0; t + 2 < triangles.Length; t += 3)
         {
-            polygons.Add(Variant.From(new int[] { tris[t], tris[t + 1], tris[t + 2] }));
+            polygons.Add(Variant.From(new int[] { triangles[t], triangles[t + 1], triangles[t + 2] }));
         }
 
-        JsonElement vertsEl = meshEl.GetProperty("vertices");
-        float[] raw = new float[vertsEl.GetArrayLength()];
-        int vi = 0;
-        foreach (JsonElement val in vertsEl.EnumerateArray())
-        {
-            raw[vi++] = val.GetSingle();
-        }
-
-        FistVertexWeight[][] weights = new FistVertexWeight[vertexCount][];
-        if (raw.Length == uvLen)
-        {
-            for (int v = 0; v < vertexCount; v++)
-            {
-                weights[v] = [new FistVertexWeight(1, raw[v * 2], raw[v * 2 + 1], 1f)];
-            }
-        }
-        else
-        {
-            int cursor = 0;
-            for (int v = 0; v < vertexCount; v++)
-            {
-                int boneCount = (int)MathF.Round(raw[cursor++]);
-                FistVertexWeight[] vw = new FistVertexWeight[boneCount];
-                for (int b = 0; b < boneCount; b++)
-                {
-                    int spineBoneIdx = (int)MathF.Round(raw[cursor]);
-                    float vx = raw[cursor + 1];
-                    float vy = raw[cursor + 2];
-                    float w = raw[cursor + 3];
-                    cursor += 4;
-
-                    string bName = (uint)spineBoneIdx < (uint)boneNames.Length ? boneNames[spineBoneIdx] : bone1;
-                    int localSlot = bName == bone0 ? 0 : (bName == bone2 ? 2 : 1);
-                    vw[b] = new FistVertexWeight(localSlot, vx, vy, w);
-                }
-                weights[v] = vw;
-            }
-        }
-
-        return new FistMesh(uvs, polygons, weights);
-    }
-
-    private static ImageTexture BuildFistOverlayTexture(
-        Image atlasImg,
-        Rect2I srcRect,
-        Vector2I dstOffset,
-        int origWidth,
-        int origHeight)
-    {
-        Image img = Image.CreateEmpty(origWidth, origHeight, false, Image.Format.Rgba8);
-        img.BlitRect(atlasImg, srcRect, dstOffset);
-        return ImageTexture.CreateFromImage(img);
+        return new FistMesh(atlasUvs, polygons, weights);
     }
 }

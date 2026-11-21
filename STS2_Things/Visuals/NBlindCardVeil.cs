@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.addons.mega_text;
@@ -17,7 +19,21 @@ namespace STS2_Things.Visuals;
 public partial class NBlindCardVeil : Node
 {
     private const string ChildName = "LanternBlindVeil";
+    private const string ShaderPath = "res://shaders/cards/lantern_blindness.gdshader";
     private const string Glyphs = "#%&?+=/*01@$!:;";
+    private const int ScrambleTableSize = 16;
+    private const double ScrambleHz = 4.5;
+
+    private static readonly string[] PortraitNodeNames = ["%Portrait", "%AncientPortrait"];
+    private static readonly string[] ScrambledTitles = BuildScrambledTitles();
+    private static readonly string[] ScrambledDescriptions = BuildScrambledDescriptions();
+
+    private static readonly HashSet<NBlindCardVeil> ActiveVeils = [];
+    private static readonly ConditionalWeakTable<NCard, NBlindCardVeil> VeilsByCard = new();
+
+    private static Shader? _cachedShader;
+    private static ShaderMaterial? _sharedMaterial;
+
     private NCard _card = null!;
     private CardModel? _boundModel;
     private MegaLabel? _title;
@@ -25,15 +41,75 @@ public partial class NBlindCardVeil : Node
     private readonly List<ColorRect> _portraits = [];
     private readonly List<(TextureRect Portrait, Material? SavedMaterial)> _savedPortraits = [];
     private bool _active;
+    private bool _detaching;
+    private bool _textSized;
     private double _clock;
     private int _frame = -1;
+    private int _scrambleOffset;
     private CardPreviewMode _previewMode;
+
+    internal static bool HasActiveVeils => ActiveVeils.Count > 0;
+
+    private static string[] BuildScrambledTitles()
+    {
+        var table = new string[ScrambleTableSize];
+        for (int i = 0; i < ScrambleTableSize; i++)
+            table[i] = Scramble(i, 8, 17);
+        return table;
+    }
+
+    private static string[] BuildScrambledDescriptions()
+    {
+        var table = new string[ScrambleTableSize];
+        for (int i = 0; i < ScrambleTableSize; i++)
+        {
+            table[i] = "[center]" + Scramble(i, 13, 71) + "\n" +
+                       Scramble(i, 12, 137) + "\n" + Scramble(i, 13, 251) + "[/center]";
+        }
+        return table;
+    }
+
+    private static ShaderMaterial? GetSharedMaterial()
+    {
+        if (_sharedMaterial != null && GodotObject.IsInstanceValid(_sharedMaterial) &&
+            _sharedMaterial.Shader != null && GodotObject.IsInstanceValid(_sharedMaterial.Shader))
+        {
+            return _sharedMaterial;
+        }
+
+        if (_cachedShader == null || !GodotObject.IsInstanceValid(_cachedShader))
+            _cachedShader = GD.Load<Shader>(ShaderPath);
+
+        if (_cachedShader == null || !GodotObject.IsInstanceValid(_cachedShader))
+            return null;
+
+        _sharedMaterial = new ShaderMaterial { Shader = _cachedShader };
+        return _sharedMaterial;
+    }
+
+    private static NBlindCardVeil? FindVeil(NCard card)
+    {
+        if (ActiveVeils.Count == 0)
+            return null;
+
+        if (VeilsByCard.TryGetValue(card, out NBlindCardVeil? veil))
+        {
+            if (GodotObject.IsInstanceValid(veil) && !veil._detaching && !veil.IsQueuedForDeletion())
+                return veil;
+            VeilsByCard.Remove(card);
+        }
+
+        return null;
+    }
 
     public static void RefreshOnTable(CardModel model)
     {
+        if (!LanternBlindness.HasPotentialState && ActiveVeils.Count == 0)
+            return;
+
         if (NCard.FindOnTable(model) is { } node &&
             GodotObject.IsInstanceValid(node) &&
-            (LanternBlindness.IsVeiled(model) || node.HasNode(ChildName)))
+            (LanternBlindness.IsVeiled(model) || FindVeil(node) != null))
         {
             node.UpdateVisuals(node.DisplayingPile, CardPreviewMode.Normal);
         }
@@ -41,10 +117,13 @@ public partial class NBlindCardVeil : Node
 
     public static void Refresh(NCard card, CardPreviewMode mode)
     {
+        if (!LanternBlindness.HasPotentialState && ActiveVeils.Count == 0)
+            return;
+
         if (!GodotObject.IsInstanceValid(card) || !card.IsNodeReady())
             return;
 
-        var veil = card.GetNodeOrNull<NBlindCardVeil>(ChildName);
+        NBlindCardVeil? veil = FindVeil(card);
         bool shouldVeil = LanternBlindness.IsVeiled(card.Model);
         if (!shouldVeil)
         {
@@ -69,7 +148,10 @@ public partial class NBlindCardVeil : Node
                 _card = card,
                 _boundModel = card.Model,
                 _previewMode = mode,
+                _scrambleOffset = card.GetHashCode() & (ScrambleTableSize - 1),
             };
+            ActiveVeils.Add(veil);
+            VeilsByCard.AddOrUpdate(card, veil);
             card.AddChild(veil);
             return;
         }
@@ -82,18 +164,20 @@ public partial class NBlindCardVeil : Node
 
     public static void DetachFromCard(NCard card, bool restorePortraitMaterials)
     {
-        if (!GodotObject.IsInstanceValid(card))
+        if (ActiveVeils.Count == 0 || !GodotObject.IsInstanceValid(card))
             return;
-        if (card.GetNodeOrNull<NBlindCardVeil>(ChildName) is { } veil)
+        if (FindVeil(card) is { } veil)
             veil.DetachAndFree(restorePortraitMaterials);
     }
 
     public override void _EnterTree()
     {
         base._EnterTree();
+        ActiveVeils.Add(this);
         CombatManager.Instance.CombatEnded += OnCombatEnded;
         if (GodotObject.IsInstanceValid(_card))
         {
+            VeilsByCard.AddOrUpdate(_card, this);
             _card.ModelChanged -= OnCardModelChanged;
             _card.ModelChanged += OnCardModelChanged;
         }
@@ -101,6 +185,9 @@ public partial class NBlindCardVeil : Node
 
     public override void _ExitTree()
     {
+        ActiveVeils.Remove(this);
+        if (_card != null && VeilsByCard.TryGetValue(_card, out NBlindCardVeil? mapped) && ReferenceEquals(mapped, this))
+            VeilsByCard.Remove(_card);
         CombatManager.Instance.CombatEnded -= OnCombatEnded;
         if (GodotObject.IsInstanceValid(_card))
             _card.ModelChanged -= OnCardModelChanged;
@@ -114,14 +201,16 @@ public partial class NBlindCardVeil : Node
 
         _title = _card.GetNodeOrNull<MegaLabel>("%TitleLabel");
         _description = _card.GetNodeOrNull<MegaRichTextLabel>("%DescriptionLabel");
-        foreach (string name in new[] { "%Portrait", "%AncientPortrait" })
+        ShaderMaterial? sharedMaterial = GetSharedMaterial();
+        foreach (string name in PortraitNodeNames)
         {
             if (_card.GetNodeOrNull<TextureRect>(name) is not { } portrait) continue;
             _savedPortraits.Add((portrait, portrait.Material));
             var rect = new ColorRect
             {
-                Name = "BlindStatic", MouseFilter = Control.MouseFilterEnum.Ignore,
-                Material = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/cards/lantern_blindness.gdshader") },
+                Name = "BlindStatic",
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                Material = sharedMaterial,
                 Visible = false
             };
             portrait.AddChild(rect);
@@ -179,11 +268,19 @@ public partial class NBlindCardVeil : Node
 
     private void DetachAndFree(bool restorePortraitMaterials)
     {
+        if (_detaching)
+            return;
+        _detaching = true;
+
+        ActiveVeils.Remove(this);
+        if (_card != null && VeilsByCard.TryGetValue(_card, out NBlindCardVeil? mapped) && ReferenceEquals(mapped, this))
+            VeilsByCard.Remove(_card);
         CombatManager.Instance.CombatEnded -= OnCombatEnded;
         if (GodotObject.IsInstanceValid(_card))
             _card.ModelChanged -= OnCardModelChanged;
         SetProcess(false);
         _active = false;
+        _textSized = false;
         _frame = -1;
 
         foreach (ColorRect rect in _portraits)
@@ -243,19 +340,31 @@ public partial class NBlindCardVeil : Node
         if (!active)
         {
             _frame = -1;
+            _textSized = false;
             SetProcess(false);
             if (changed && !nativeRefreshed && _card.Model != null)
                 _card.UpdateVisuals(_card.DisplayingPile, _previewMode);
             return;
         }
         SetProcess(true);
-        int frame = (int)(_clock * 8);
+        int frame = (int)(_clock * ScrambleHz);
         if (!nativeRefreshed && frame == _frame) return;
         _frame = frame;
+        int slot = (frame + _scrambleOffset) & (ScrambleTableSize - 1);
         // Stable lengths avoid layout jitter. BBCode delimiters are never generated.
-        _title?.SetTextAutoSize(Scramble(frame, 8, 17));
-        _description?.SetTextAutoSize("[center]" + Scramble(frame, 13, 71) + "\n" +
-            Scramble(frame, 12, 137) + "\n" + Scramble(frame, 13, 251) + "[/center]");
+        if (nativeRefreshed || !_textSized)
+        {
+            _title?.SetTextAutoSize(ScrambledTitles[slot]);
+            _description?.SetTextAutoSize(ScrambledDescriptions[slot]);
+            _textSized = true;
+        }
+        else
+        {
+            if (_title != null && GodotObject.IsInstanceValid(_title))
+                ((Label)_title).Text = ScrambledTitles[slot];
+            if (_description != null && GodotObject.IsInstanceValid(_description))
+                ((RichTextLabel)_description).Text = ScrambledDescriptions[slot];
+        }
     }
 
     private static string Scramble(int frame, int count, uint salt)
@@ -274,11 +383,19 @@ public partial class NBlindCardVeil : Node
 [HarmonyPatch(typeof(NCard), nameof(NCard.UpdateVisuals))]
 internal static class LanternBlindnessCardVisualPatch
 {
-    private static void Postfix(NCard __instance, CardPreviewMode previewMode) => NBlindCardVeil.Refresh(__instance, previewMode);
+    private static void Postfix(NCard __instance, CardPreviewMode previewMode)
+    {
+        if (LanternBlindness.HasPotentialState || NBlindCardVeil.HasActiveVeils)
+            NBlindCardVeil.Refresh(__instance, previewMode);
+    }
 }
 
 [HarmonyPatch(typeof(NCard), nameof(NCard.OnFreedToPool))]
 internal static class LanternBlindnessPoolCleanupPatch
 {
-    private static void Postfix(NCard __instance) => NBlindCardVeil.DetachFromCard(__instance, restorePortraitMaterials: true);
+    private static void Postfix(NCard __instance)
+    {
+        if (NBlindCardVeil.HasActiveVeils)
+            NBlindCardVeil.DetachFromCard(__instance, restorePortraitMaterials: true);
+    }
 }

@@ -4,9 +4,11 @@ using System.IO;
 using System.Reflection;
 using System.Text;
 using Godot;
+using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Saves;
 using FileAccess = Godot.FileAccess;
 
@@ -14,18 +16,24 @@ namespace STS2_Things.Audio;
 
 public static class NativeSfxPlayer
 {
-    private static readonly Dictionary<string, AudioStream> _streamCache = new();
+    private const int OneShotPoolCapacity = 12;
+
+    // 仅缓存短音效（禁止常驻 res://music/... 长曲目），读取前验证 IsInstanceValid 以避免与 PreloadManager 卸载冲突
+    private static readonly Dictionary<string, AudioStream> _streamCache = new(StringComparer.Ordinal);
     private static readonly object _streamCacheLock = new();
-    private static readonly List<AudioStreamPlayer> _activePlayers = new();
+    private static readonly List<AudioStreamPlayer> _pooledPlayers = new(OneShotPoolCapacity);
+    private static readonly HashSet<AudioStreamPlayer> _busyPooledPlayers = new();
+    private static readonly List<AudioStreamPlayer> _overflowPlayers = new();
     private static readonly object _activePlayersLock = new();
     // 缓存目录到候选文件列表，避免每次播放随机变体都进行IO遍历
-    private static readonly Dictionary<string, string[]> _variantCache = new();
+    private static readonly Dictionary<string, string[]> _variantCache = new(StringComparer.Ordinal);
     private static readonly object _variantCacheLock = new();
     // 独立于游戏玩法 RNG 的本地音频变体 RNG。
     private static readonly RandomNumberGenerator _variantRng = new();
     private static readonly object _variantRngLock = new();
     private static AudioStreamPlayer? _musicPlayer;
     private static string? _musicPath;
+    private static float _musicAuthoredVolumeDb = -6f;
     private static AudioStreamPlayer? _seqLooper;
     private static string[]? _seqPaths;
     private static int _seqIndex;
@@ -62,9 +70,12 @@ public static class NativeSfxPlayer
                && (allowCombatEnding || !CombatManager.Instance.IsEnding);
     }
 
+    private static bool IsMusicPath(string resPath) =>
+        resPath.StartsWith("res://music/", StringComparison.OrdinalIgnoreCase);
+
     public static void Preload(string resPath)
     {
-        LoadStream(resPath);
+        LoadStream(resPath, cacheStream: !IsMusicPath(resPath));
     }
 
     public static void Play(
@@ -89,9 +100,21 @@ public static class NativeSfxPlayer
 
     internal static AudioStream? LoadLoopingMusicStream(string resPath)
     {
-        var stream = LoadStream(resPath);
+        var stream = LoadStream(resPath, cacheStream: false);
+        return EnsureLoopingMusicStream(stream);
+    }
+
+    internal static AudioStream? EnsureLoopingMusicStream(AudioStream? stream)
+    {
+        if (stream == null || !GodotObject.IsInstanceValid(stream))
+            return null;
+
         if (stream is AudioStreamWav wav)
         {
+            // 已烘焙 Forward 循环点的 .sample 直接复用，避免整首 48kHz WAV 内存翻倍复制。
+            if (wav.LoopMode == AudioStreamWav.LoopModeEnum.Forward && wav.LoopEnd > wav.LoopBegin)
+                return wav;
+
             var wavCopy = (AudioStreamWav)wav.Duplicate();
             if (wavCopy.LoopEnd <= wavCopy.LoopBegin)
             {
@@ -103,7 +126,16 @@ public static class NativeSfxPlayer
                 wavCopy.LoopMode = AudioStreamWav.LoopModeEnum.Forward;
             return wavCopy;
         }
+
         return stream;
+    }
+
+    internal static void RefreshMusicVolume()
+    {
+        if (_musicPlayer != null && GodotObject.IsInstanceValid(_musicPlayer) && _musicPlayer.Playing)
+        {
+            _musicPlayer.VolumeDb = ResolveMusicVolumeDb(_musicAuthoredVolumeDb);
+        }
     }
 
     public static void PlayMusic(string resPath, string bus = "Master", float volumeDb = -6f)
@@ -119,12 +151,19 @@ public static class NativeSfxPlayer
             }
 
             _musicPath = resPath;
+            _musicAuthoredVolumeDb = volumeDb;
 
             Callable.From(() =>
             {
                 try
                 {
                     if (_musicPath == null || !CanPlayAudio() || !string.Equals(_musicPath, resPath, StringComparison.Ordinal))
+                        return;
+
+                    AudioStream? liveStream = GodotObject.IsInstanceValid(stream)
+                        ? stream
+                        : LoadLoopingMusicStream(resPath);
+                    if (liveStream == null || !GodotObject.IsInstanceValid(liveStream))
                         return;
 
                     var tree = Engine.GetMainLoop() as SceneTree;
@@ -134,21 +173,13 @@ public static class NativeSfxPlayer
                         return;
                     }
 
-                    if (_musicPlayer != null)
-                    {
-                        if (GodotObject.IsInstanceValid(_musicPlayer))
-                        {
-                            if (_musicPlayer.Playing) _musicPlayer.Stop();
-                            if (_musicPlayer.IsInsideTree()) _musicPlayer.QueueFree();
-                        }
-                        _musicPlayer = null;
-                    }
+                    ReleaseMusicPlayer();
 
                     var player = new AudioStreamPlayer
                     {
-                        Stream = stream,
+                        Stream = liveStream,
                         Bus = bus,
-                        VolumeDb = ResolveMusicVolumeDb(volumeDb)
+                        VolumeDb = ResolveMusicVolumeDb(_musicAuthoredVolumeDb)
                     };
                     _musicPlayer = player;
 
@@ -158,7 +189,7 @@ public static class NativeSfxPlayer
                         if (_musicPlayer == player && _musicPath != null &&
                             GodotObject.IsInstanceValid(player) && player.IsInsideTree())
                         {
-                            player.VolumeDb = ResolveMusicVolumeDb(volumeDb);
+                            player.VolumeDb = ResolveMusicVolumeDb(_musicAuthoredVolumeDb);
                             player.Play();
                         }
                     };
@@ -185,15 +216,7 @@ public static class NativeSfxPlayer
             {
                 try
                 {
-                    if (_musicPlayer != null)
-                    {
-                        if (GodotObject.IsInstanceValid(_musicPlayer))
-                        {
-                            if (_musicPlayer.Playing) _musicPlayer.Stop();
-                            if (_musicPlayer.IsInsideTree()) _musicPlayer.QueueFree();
-                        }
-                        _musicPlayer = null;
-                    }
+                    ReleaseMusicPlayer();
                 }
                 catch (Exception ex)
                 {
@@ -205,6 +228,20 @@ public static class NativeSfxPlayer
         {
             Log.Warn($"[NativeSfxPlayer] StopMusic dispatch error: {e.Message}");
         }
+    }
+
+    private static void ReleaseMusicPlayer()
+    {
+        if (_musicPlayer == null)
+            return;
+
+        if (GodotObject.IsInstanceValid(_musicPlayer))
+        {
+            if (_musicPlayer.Playing) _musicPlayer.Stop();
+            _musicPlayer.Stream = null;
+            if (_musicPlayer.IsInsideTree()) _musicPlayer.QueueFree();
+        }
+        _musicPlayer = null;
     }
 
     /// <summary>
@@ -233,6 +270,7 @@ public static class NativeSfxPlayer
                         if (GodotObject.IsInstanceValid(_seqLooper))
                         {
                             if (_seqLooper.Playing) _seqLooper.Stop();
+                            _seqLooper.Stream = null;
                             if (_seqLooper.IsInsideTree()) _seqLooper.QueueFree();
                         }
                         _seqLooper = null;
@@ -274,7 +312,7 @@ public static class NativeSfxPlayer
             _seqIndex++;
             if (_seqIndex >= paths.Length) _seqIndex = 0;
 
-            var stream = LoadStream(path);
+            var stream = LoadStream(path, cacheStream: !IsMusicPath(path));
             if (stream == null)
             {
                 Log.Warn($"[NativeSfxPlayer] SeqLoop stream is null for {path}");
@@ -288,17 +326,24 @@ public static class NativeSfxPlayer
                     if (_seqPaths == null || !CanPlayAudio())
                         return;
 
+                    AudioStream? liveStream = GodotObject.IsInstanceValid(stream)
+                        ? stream
+                        : LoadStream(path, cacheStream: !IsMusicPath(path));
+                    if (liveStream == null || !GodotObject.IsInstanceValid(liveStream))
+                        return;
+
                     var tree = Engine.GetMainLoop() as SceneTree;
                     if (tree?.Root == null || !GodotObject.IsInstanceValid(tree.Root)) return;
 
                     if (_seqLooper != null && GodotObject.IsInstanceValid(_seqLooper))
                     {
                         if (_seqLooper.Playing) _seqLooper.Stop();
+                        _seqLooper.Stream = null;
                         if (_seqLooper.IsInsideTree()) _seqLooper.QueueFree();
                     }
 
                     float effectiveLoopDb = ResolveSfxVolumeDb(_seqVolumeDb) ?? -80f;
-                    var looper = new AudioStreamPlayer { Stream = stream, Bus = "Master", VolumeDb = effectiveLoopDb };
+                    var looper = new AudioStreamPlayer { Stream = liveStream, Bus = "Master", VolumeDb = effectiveLoopDb };
                     _seqLooper = looper;
                     tree.Root.AddChild(looper);
                     looper.Finished += () =>
@@ -323,22 +368,60 @@ public static class NativeSfxPlayer
         }
     }
 
-    private static AudioStream? LoadStream(string resPath)
+    private static AudioStream? TryGetPreloadedStream(string resPath)
     {
-        lock (_streamCacheLock)
+        try
         {
-            if (_streamCache.TryGetValue(resPath, out var cached)) return cached;
+            if (PreloadManager.Cache.ContainsKey(resPath))
+            {
+                var resource = PreloadManager.Cache.GetAsset<Resource>(resPath);
+                if (resource is AudioStream stream && GodotObject.IsInstanceValid(stream))
+                    return stream;
+            }
         }
+        catch (Exception)
+        {
+            // Fall through to standard loading if PreloadManager is not active or type differs.
+        }
+
+        return null;
+    }
+
+    private static AudioStream? LoadStream(string resPath, bool cacheStream = true)
+    {
+        bool allowCache = cacheStream && !IsMusicPath(resPath);
+
+        // 优先复用 PreloadManager 当前房间已预加载的有效资源，避免跨房间强引用或使用已卸载实例。
+        var preloaded = TryGetPreloadedStream(resPath);
+        if (preloaded != null)
+            return preloaded;
+
+        if (allowCache)
+        {
+            lock (_streamCacheLock)
+            {
+                if (_streamCache.TryGetValue(resPath, out var cached))
+                {
+                    if (GodotObject.IsInstanceValid(cached))
+                        return cached;
+                    _streamCache.Remove(resPath);
+                }
+            }
+        }
+
         try
         {
             if (ResourceLoader.Exists(resPath))
             {
                 var stream = ResourceLoader.Load<AudioStream>(resPath);
-                if (stream != null)
+                if (stream != null && GodotObject.IsInstanceValid(stream))
                 {
-                    lock (_streamCacheLock)
+                    if (allowCache)
                     {
-                        _streamCache[resPath] = stream;
+                        lock (_streamCacheLock)
+                        {
+                            _streamCache[resPath] = stream;
+                        }
                     }
                     return stream;
                 }
@@ -355,11 +438,14 @@ public static class NativeSfxPlayer
                     ".wav" => LoadWavFromBuffer(bytes),
                     _ => null
                 };
-                if (stream != null)
+                if (stream != null && GodotObject.IsInstanceValid(stream))
                 {
-                    lock (_streamCacheLock)
+                    if (allowCache)
                     {
-                        _streamCache[resPath] = stream;
+                        lock (_streamCacheLock)
+                        {
+                            _streamCache[resPath] = stream;
+                        }
                     }
                     return stream;
                 }
@@ -472,47 +558,170 @@ public static class NativeSfxPlayer
             if (ResolveSfxVolumeDb(volumeDb) == null)
                 return;
 
-            var stream = LoadStream(resPath);
+            var stream = LoadStream(resPath, cacheStream: true);
             if (stream == null) return;
+
+            if (NGame.IsMainThread() &&
+                Engine.GetMainLoop() is SceneTree { Root: { } readyRoot } &&
+                GodotObject.IsInstanceValid(readyRoot) &&
+                readyRoot.IsNodeReady())
+            {
+                PlayOneShotOnMainThread(resPath, stream, bus, volumeDb, allowCombatEnding);
+                return;
+            }
 
             Callable.From(() =>
             {
-                try
-                {
-                    if (!CanPlayAudio(allowCombatEnding))
-                        return;
-                    if (ResolveSfxVolumeDb(volumeDb) is not { } mainThreadVolumeDb)
-                        return;
-
-                    var tree = Engine.GetMainLoop() as SceneTree;
-                    if (tree?.Root == null || !GodotObject.IsInstanceValid(tree.Root)) return;
-
-                    var player = new AudioStreamPlayer { Stream = stream, Bus = bus, VolumeDb = mainThreadVolumeDb };
-                    tree.Root.AddChild(player);
-                    lock (_activePlayersLock)
-                    {
-                        _activePlayers.Add(player);
-                    }
-                    player.Finished += () =>
-                    {
-                        if (GodotObject.IsInstanceValid(player) && player.IsInsideTree())
-                            player.QueueFree();
-                        lock (_activePlayersLock)
-                        {
-                            _activePlayers.Remove(player);
-                        }
-                    };
-                    player.Play();
-                }
-                catch (Exception ex)
-                {
-                    Log.Warn($"[NativeSfxPlayer] PlayExact main-thread failed: {ex.Message}");
-                }
+                PlayOneShotOnMainThread(resPath, stream, bus, volumeDb, allowCombatEnding);
             }).CallDeferred();
         }
         catch (Exception e)
         {
             Log.Warn($"[NativeSfxPlayer] PlayExact dispatch failed: {e.Message}");
+        }
+    }
+
+    private static void PlayOneShotOnMainThread(
+        string resPath,
+        AudioStream stream,
+        string bus,
+        float volumeDb,
+        bool allowCombatEnding)
+    {
+        AudioStreamPlayer? acquiredPlayer = null;
+        bool isPooled = false;
+        try
+        {
+            if (!CanPlayAudio(allowCombatEnding))
+                return;
+            if (ResolveSfxVolumeDb(volumeDb) is not { } mainThreadVolumeDb)
+                return;
+
+            AudioStream? liveStream = GodotObject.IsInstanceValid(stream)
+                ? stream
+                : LoadStream(resPath, cacheStream: true);
+            if (liveStream == null || !GodotObject.IsInstanceValid(liveStream))
+                return;
+
+            var tree = Engine.GetMainLoop() as SceneTree;
+            if (tree?.Root == null || !GodotObject.IsInstanceValid(tree.Root))
+                return;
+
+            acquiredPlayer = AcquireOneShotPlayer(tree.Root, out isPooled);
+            acquiredPlayer.Stream = liveStream;
+            acquiredPlayer.Bus = bus;
+            acquiredPlayer.VolumeDb = mainThreadVolumeDb;
+            acquiredPlayer.Play();
+        }
+        catch (Exception ex)
+        {
+            if (acquiredPlayer != null)
+            {
+                if (GodotObject.IsInstanceValid(acquiredPlayer))
+                {
+                    acquiredPlayer.Stream = null;
+                    if (!isPooled && acquiredPlayer.IsInsideTree())
+                        acquiredPlayer.QueueFree();
+                }
+
+                lock (_activePlayersLock)
+                {
+                    if (isPooled)
+                        _busyPooledPlayers.Remove(acquiredPlayer);
+                    else
+                        _overflowPlayers.Remove(acquiredPlayer);
+                }
+            }
+            Log.Warn($"[NativeSfxPlayer] PlayExact main-thread failed: {ex.Message}");
+        }
+    }
+
+    private static AudioStreamPlayer AcquireOneShotPlayer(Node root, out bool isPooled)
+    {
+        int createPoolIndex = -1;
+        lock (_activePlayersLock)
+        {
+            for (int i = _pooledPlayers.Count - 1; i >= 0; i--)
+            {
+                var candidate = _pooledPlayers[i];
+                if (!GodotObject.IsInstanceValid(candidate) || !candidate.IsInsideTree())
+                {
+                    _busyPooledPlayers.Remove(candidate);
+                    _pooledPlayers.RemoveAt(i);
+                    continue;
+                }
+
+                if (!_busyPooledPlayers.Contains(candidate) && !candidate.Playing)
+                {
+                    _busyPooledPlayers.Add(candidate);
+                    isPooled = true;
+                    return candidate;
+                }
+            }
+
+            if (_pooledPlayers.Count < OneShotPoolCapacity)
+                createPoolIndex = _pooledPlayers.Count;
+        }
+
+        if (createPoolIndex >= 0)
+        {
+            var pooled = new AudioStreamPlayer { Name = $"ThingsSfxPool_{createPoolIndex}" };
+            pooled.Finished += () => OnPooledPlayerFinished(pooled);
+            pooled.TreeExiting += () => OnPooledPlayerTreeExiting(pooled);
+            root.AddChild(pooled);
+            lock (_activePlayersLock)
+            {
+                _pooledPlayers.Add(pooled);
+                _busyPooledPlayers.Add(pooled);
+            }
+            isPooled = true;
+            return pooled;
+        }
+
+        var overflow = new AudioStreamPlayer();
+        root.AddChild(overflow);
+        lock (_activePlayersLock)
+        {
+            _overflowPlayers.Add(overflow);
+        }
+        overflow.Finished += () =>
+        {
+            if (GodotObject.IsInstanceValid(overflow))
+            {
+                overflow.Stream = null;
+                if (overflow.IsInsideTree())
+                    overflow.QueueFree();
+            }
+            lock (_activePlayersLock)
+            {
+                _overflowPlayers.Remove(overflow);
+            }
+        };
+        isPooled = false;
+        return overflow;
+    }
+
+    private static void OnPooledPlayerFinished(AudioStreamPlayer player)
+    {
+        if (GodotObject.IsInstanceValid(player))
+            player.Stream = null;
+        lock (_activePlayersLock)
+        {
+            _busyPooledPlayers.Remove(player);
+        }
+    }
+
+    private static void OnPooledPlayerTreeExiting(AudioStreamPlayer player)
+    {
+        if (GodotObject.IsInstanceValid(player))
+        {
+            if (player.Playing) player.Stop();
+            player.Stream = null;
+        }
+        lock (_activePlayersLock)
+        {
+            _busyPooledPlayers.Remove(player);
+            _pooledPlayers.Remove(player);
         }
     }
 
@@ -528,18 +737,52 @@ public static class NativeSfxPlayer
             {
                 try
                 {
+                    List<AudioStreamPlayer> pooledSnapshot;
+                    List<AudioStreamPlayer> overflowSnapshot;
                     lock (_activePlayersLock)
                     {
-                        foreach (var player in _activePlayers)
-                        {
-                            if (GodotObject.IsInstanceValid(player))
-                            {
-                                if (player.Playing) player.Stop();
-                                if (player.IsInsideTree()) player.QueueFree();
-                            }
-                        }
-                        _activePlayers.Clear();
+                        pooledSnapshot = new List<AudioStreamPlayer>(_pooledPlayers);
+                        overflowSnapshot = new List<AudioStreamPlayer>(_overflowPlayers);
+                        _overflowPlayers.Clear();
+                        _busyPooledPlayers.Clear();
                     }
+
+                    var deadPooled = new List<AudioStreamPlayer>();
+                    foreach (var player in pooledSnapshot)
+                    {
+                        if (GodotObject.IsInstanceValid(player))
+                        {
+                            if (player.Playing) player.Stop();
+                            player.Stream = null;
+                            if (!player.IsInsideTree())
+                                deadPooled.Add(player);
+                        }
+                        else
+                        {
+                            deadPooled.Add(player);
+                        }
+                    }
+
+                    if (deadPooled.Count > 0)
+                    {
+                        lock (_activePlayersLock)
+                        {
+                            foreach (var dead in deadPooled)
+                                _pooledPlayers.Remove(dead);
+                        }
+                    }
+
+                    foreach (var player in overflowSnapshot)
+                    {
+                        if (GodotObject.IsInstanceValid(player))
+                        {
+                            if (player.Playing) player.Stop();
+                            player.Stream = null;
+                            if (player.IsInsideTree()) player.QueueFree();
+                        }
+                    }
+
+                    PruneDisposedStreamCacheEntries();
                 }
                 catch (Exception ex)
                 {
@@ -550,6 +793,31 @@ public static class NativeSfxPlayer
         catch (Exception e)
         {
             Log.Warn($"[NativeSfxPlayer] CleanupActivePlayers dispatch error: {e.Message}");
+        }
+    }
+
+    private static void PruneDisposedStreamCacheEntries()
+    {
+        lock (_streamCacheLock)
+        {
+            if (_streamCache.Count == 0)
+                return;
+
+            List<string>? staleKeys = null;
+            foreach (var kv in _streamCache)
+            {
+                if (!GodotObject.IsInstanceValid(kv.Value))
+                {
+                    staleKeys ??= new List<string>();
+                    staleKeys.Add(kv.Key);
+                }
+            }
+
+            if (staleKeys != null)
+            {
+                foreach (var key in staleKeys)
+                    _streamCache.Remove(key);
+            }
         }
     }
 

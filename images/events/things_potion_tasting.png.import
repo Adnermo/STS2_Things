@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cicefum1brg5a"
-path="res://.godot/imported/things_potion_tasting.png-cf663656770c0221ccee1b920e278808.ctex"
+path.bptc="res://.godot/imported/things_potion_tasting.png-cf663656770c0221ccee1b920e278808.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/events/things_potion_tasting.png"
-dest_files=["res://.godot/imported/things_potion_tasting.png-cf663656770c0221ccee1b920e278808.ctex"]
+dest_files=["res://.godot/imported/things_potion_tasting.png-cf663656770c0221ccee1b920e278808.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

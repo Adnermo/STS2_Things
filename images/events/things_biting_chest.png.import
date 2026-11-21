@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://yu56ix4a5amt"
-path="res://.godot/imported/things_biting_chest.png-0bfec1f66ade6a56c8092e23cdf5a340.ctex"
+path.bptc="res://.godot/imported/things_biting_chest.png-0bfec1f66ade6a56c8092e23cdf5a340.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/events/things_biting_chest.png"
-dest_files=["res://.godot/imported/things_biting_chest.png-0bfec1f66ade6a56c8092e23cdf5a340.ctex"]
+dest_files=["res://.godot/imported/things_biting_chest.png-0bfec1f66ade6a56c8092e23cdf5a340.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

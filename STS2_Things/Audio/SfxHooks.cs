@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -22,6 +23,14 @@ public static class SfxHooks
 {
     private const float OriginFogmogHurtChance = 0.35f;
 
+    // Case-insensitive lookup covering both raw and "things_"-prefixed MonsterId entries so
+    // vanilla monster damage/death checks never allocate id.ToLowerInvariant() strings.
+    private static readonly object _slugLookupLock = new();
+    private static Dictionary<string, string> _slugLookup = BuildSlugLookup();
+    private static int _syncedEntriesCount = CustomSfxMonsters.Entries.Count;
+    private static readonly ConcurrentDictionary<string, string[]> _monsterSoundAssetPathCache =
+        new(StringComparer.Ordinal);
+
     /// <summary>
     ///     兼容旧的战斗退出清理调用。死亡音效不再使用跨实例的全局去重状态。
     /// </summary>
@@ -43,6 +52,55 @@ public static class SfxHooks
         return !NonInteractiveMode.IsActive && CombatManager.Instance.IsInProgress;
     }
 
+    private static Dictionary<string, string> BuildSlugLookup()
+    {
+        var entries = CustomSfxMonsters.Entries;
+        var map = new Dictionary<string, string>(entries.Count * 2, StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in entries)
+        {
+            string canonical = NormalizeSfxSlug(raw);
+            map[canonical] = canonical;
+            map["things_" + canonical] = canonical;
+        }
+        return map;
+    }
+
+    private static bool TryGetCustomSfxEntry(string? id, out string canonicalSlug)
+    {
+        if (string.IsNullOrEmpty(id))
+        {
+            canonicalSlug = string.Empty;
+            return false;
+        }
+
+        var lookup = _slugLookup;
+        if (_syncedEntriesCount != CustomSfxMonsters.Entries.Count)
+        {
+            lock (_slugLookupLock)
+            {
+                if (_syncedEntriesCount != CustomSfxMonsters.Entries.Count)
+                {
+                    lookup = BuildSlugLookup();
+                    _slugLookup = lookup;
+                    _syncedEntriesCount = CustomSfxMonsters.Entries.Count;
+                }
+                else
+                {
+                    lookup = _slugLookup;
+                }
+            }
+        }
+
+        if (lookup.TryGetValue(id, out var matched))
+        {
+            canonicalSlug = matched;
+            return true;
+        }
+
+        canonicalSlug = string.Empty;
+        return false;
+    }
+
     private static string NormalizeSfxSlug(string id)
     {
         string lower = id.ToLowerInvariant();
@@ -51,27 +109,28 @@ public static class SfxHooks
             : lower;
     }
 
-    private static string? MapToNativePath(string fmodPath)
+    private static string? MapToNativePath(string fmodPath, string? matchedMonsterId = null)
     {
-        var segments = fmodPath.Split('/');
-        if (segments.Length < 2) return null;
-        var actionName = NormalizeSfxSlug(segments[^1]);
-        var monsterId = CustomSfxMonsters.Entries.FirstOrDefault(
+        int lastSlash = fmodPath.LastIndexOf('/');
+        if (lastSlash < 0) return null;
+        string? monsterId = matchedMonsterId ?? CustomSfxMonsters.Entries.FirstOrDefault(
             e => fmodPath.IndexOf(e, StringComparison.OrdinalIgnoreCase) >= 0);
         if (monsterId == null) return null;
+        var actionName = NormalizeSfxSlug(fmodPath[(lastSlash + 1)..]);
         return $"res://sfx/{monsterId}/{actionName}";
     }
 
-    private static string MapToNativePathForMonster(string monsterId, string actionName)
+    private static string MapToNativePathForMonster(string canonicalSlug, string actionName)
     {
-        var slug = NormalizeSfxSlug(monsterId);
-        return $"res://sfx/{slug}/{slug}_{actionName}";
+        return $"res://sfx/{canonicalSlug}/{canonicalSlug}_{actionName}";
     }
 
     public static IEnumerable<string> GetMonsterSoundAssetPaths(string monsterId)
     {
-        var slug = NormalizeSfxSlug(monsterId);
-        if (!CustomSfxMonsters.Entries.Contains(slug)) return [];
+        if (!TryGetCustomSfxEntry(monsterId, out var slug)) return [];
+        if (_monsterSoundAssetPathCache.TryGetValue(slug, out var cached))
+            return cached;
+
         var resDir = $"res://sfx/{slug}";
         var files = ListAudioFiles(resDir);
         if (files.Count == 0)
@@ -85,7 +144,15 @@ public static class SfxHooks
                         files.Add($"{resDir}/{Path.GetFileName(filePath)}");
         }
 
-        return files.Where(path => ResourceLoader.Exists(path)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
+        var resolved = files
+            .Where(path => ResourceLoader.Exists(path))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        if (resolved.Length > 0)
+            _monsterSoundAssetPathCache[slug] = resolved;
+        return resolved;
     }
 
     private static List<string> ListAudioFiles(string resDir)
@@ -130,7 +197,7 @@ public static class SfxHooks
                     // SfxCmd 的 volume 是线性增益；Godot AudioStreamPlayer 使用 dB。
                     // 0（以及非法/负值）表示静音，不创建无意义的播放器。
                     if (!CanPlayCombatAudio() || !float.IsFinite(volume) || volume <= 0f) return false;
-                    var nativePath = MapToNativePath(sfx);
+                    var nativePath = MapToNativePath(sfx, e);
                     if (nativePath != null)
                         NativeSfxPlayer.Play(nativePath, volumeDb: Mathf.LinearToDb(volume));
                     return false;
@@ -147,8 +214,7 @@ public static class SfxHooks
         public static bool Prefix(MonsterModel? monster, int damageAmount)
         {
             if (monster == null) return true;
-            var entry = NormalizeSfxSlug(monster.Id.Entry);
-            if (!CustomSfxMonsters.Entries.Contains(entry)) return true;
+            if (!TryGetCustomSfxEntry(monster.Id.Entry, out var entry)) return true;
             if (!CanPlayCombatAudio()) return false;
 
             // Keep the normal material impact on non-vocal hits. The custom
@@ -169,11 +235,10 @@ public static class SfxHooks
         public static bool Prefix(MonsterModel? monster)
         {
             if (monster == null) return true;
-            var entry = NormalizeSfxSlug(monster.Id.Entry);
             // Some of our creatures reuse a bundled sound owned by another
             // monster. PlayDeath goes directly to NAudioManager, so the normal
             // SfxCmd.Play path remapper never sees those aliases.
-            string? nativePath = CustomSfxMonsters.Entries.Contains(entry)
+            string? nativePath = TryGetCustomSfxEntry(monster.Id.Entry, out var entry)
                 ? MapToNativePathForMonster(entry, "die")
                 : monster.GetType().Assembly == typeof(SfxHooks).Assembly
                     ? MapToNativePath(monster.DeathSfx)

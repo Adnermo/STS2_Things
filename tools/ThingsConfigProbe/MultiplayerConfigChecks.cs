@@ -1,8 +1,10 @@
 using System.Reflection;
 using Godot;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Acts;
+using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -25,6 +27,7 @@ public static class MultiplayerConfigChecks
         ThingsModConfig.SetValue(ThingsModConfig.EncounterSoulRoesWeightPercent, 10);
         ThingsModConfig.SetValue(ThingsModConfig.EncounterQuirkyHopperEnabled, false);
         ThingsModConfig.SetValue(ThingsModConfig.EventBackroomsEnabled, false);
+        ThingsModConfig.SetValue(ThingsModConfig.CardCollisionEnabled, false);
         ThingsModConfig.SetValue(ThingsModConfig.NeowRelicWhiteFlagEnabled, false);
         var (host, hostWire) = ConfigNetworkFake.Host();
         var listener = DispatchProxy.Create<IStartRunLobbyListener, ConfigSilentListener>();
@@ -150,6 +153,9 @@ public static class MultiplayerConfigChecks
             }
             parts.Add(rng.NextInt().ToString());
         }
+        parts.AddRange(ModelDb.CardPool<IroncladCardPool>()
+            .GetUnlockedCards(UnlockState.all, CardMultiplayerConstraint.MultiplayerOnly)
+            .Select(card => card.Id.ToString()));
         return string.Join("|", parts);
     }
 

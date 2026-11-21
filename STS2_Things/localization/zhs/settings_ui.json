@@ -137,5 +137,13 @@
   "STS2_THINGS-EVENT_WALL_CRACK_LEDGER_ENABLED.title": "墙缝账房 · 启用",
   "STS2_THINGS-EVENT_WALL_CRACK_LEDGER_ENABLED.description": "允许在深处遇到此事件。",
   "STS2_THINGS-EVENT_SPIKED_DOOR_ENABLED.title": "谁去推门（多人） · 启用",
-  "STS2_THINGS-EVENT_SPIKED_DOOR_ENABLED.description": "允许在深处、蜂巢与荣耀多人局遇到此共享事件。"
+  "STS2_THINGS-EVENT_SPIKED_DOOR_ENABLED.description": "允许在深处、蜂巢与荣耀多人局遇到此共享事件。",
+  "STS2_THINGS-CARDS.title": "卡牌",
+  "STS2_THINGS-CARDS_ENABLED.title": "启用模组自制卡牌",
+  "STS2_THINGS-CARDS_ENABLED.hover.desc": "关闭后，所有本模组自制职业牌不再出现在奖励、商店、变化或随机生成池中；图鉴与已有存档不受影响。",
+  "STS2_THINGS-CARD_COLLISION_ENABLED.title": "对撞（铁甲战士） — 启用",
+  "STS2_THINGS-CARD_REUSE_ENABLED.title": "再利用（故障机器人） — 启用",
+  "STS2_THINGS-CARD_SOULFYSH_DISEASE_ENABLED.title": "异鱼症（静默猎手） — 启用",
+  "STS2_THINGS-CARD_RECALL_ENABLED.title": "追忆（静默猎手） — 启用",
+  "STS2_THINGS-CARD_PACK_UP_ENABLED.title": "整顿（静默猎手） — 启用"
 }

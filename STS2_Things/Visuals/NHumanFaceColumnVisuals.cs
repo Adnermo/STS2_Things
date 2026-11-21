@@ -20,6 +20,7 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
     private NCreatureStateDisplay? _stateDisplay;
     private Control? _nameplate;
     private readonly List<Node2D> _reserveSprites = [];
+    private readonly List<int> _reserveSettleFrames = [];
     private Tween? _dropTween;
     private Vector2? _motionTarget;
     private string _rotation = "";
@@ -29,6 +30,8 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
     private bool _initialAppearanceNormalized;
     private bool _compendiumDead;
     private float _rotationSpeed = 1;
+    private float _appliedRotationSpeed = float.NaN;
+    private int _lastReserveLevel = -1;
     private const float RotationDuration = 12f;
 
     public void SetCompendiumAnimState(string id)
@@ -37,6 +40,7 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
         {
             _compendiumDead = true;
             _rotation = "";
+            _appliedRotationSpeed = 0f;
             var state = SpineBody?.TryGetAnimationState();
             if (state != null)
             {
@@ -47,6 +51,7 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
         else
         {
             _compendiumDead = false;
+            _appliedRotationSpeed = float.NaN;
             if (_sprite != null)
                 _sprite.Modulate = Colors.White;
         }
@@ -66,7 +71,8 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
         base._Process(delta);
         FindHost();
         if (_host?.Entity.Monster is not ThingsHumanFaceColumn column || _sprite == null) return;
-        NormalizeColumnAppearance();
+        if (!_initialAppearanceNormalized || !Mathf.IsEqualApprox(DefaultScale, 1f) || !Scale.IsEqualApprox(Vector2.One))
+            NormalizeColumnAppearance();
         // The upper disc covers the lower disc's top plane at the contact seam.
         _host.ZIndex = 2 * column.Level;
         bool deadOrCompendiumDie = !_host.Entity.IsAlive || _compendiumDead;
@@ -100,10 +106,21 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
             }
             _rotation = rotation;
             _incomingPose = null;
+            _appliedRotationSpeed = float.NaN;
         }
         _rotationSpeed = Mathf.MoveToward(_rotationSpeed, column.IsDizzy ? .12f : 1,
             (float)delta * 2.4f);
-        using (TrackEntryScope(state?.GetCurrent(1), out MegaTrackEntry? track)) track?.SetTimeScale(_rotationSpeed);
+        if (state != null && !Mathf.IsEqualApprox(_rotationSpeed, _appliedRotationSpeed))
+        {
+            using (TrackEntryScope(state.GetCurrent(1), out MegaTrackEntry? track))
+            {
+                if (track != null)
+                {
+                    track.SetTimeScale(_rotationSpeed);
+                    _appliedRotationSpeed = _rotationSpeed;
+                }
+            }
+        }
         UpdateReserves(column);
 
         UpdateSideUi();
@@ -154,7 +171,9 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
         // Native UpdateBounds runs before the first 64px intent expands the
         // initially 40px HBox. Recenter using its settled size, including after
         // replacement/stun, without changing NIntent's own bob or fade.
-        _intents.Position = center - _intents.Size * .5f;
+        Vector2 desiredPos = center - _intents.Size * .5f;
+        if (!_intents.Position.IsEqualApprox(desiredPos))
+            _intents.Position = desiredPos;
     }
 
     private void FindHost()
@@ -189,12 +208,15 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
     private void UpdateReserves(ThingsHumanFaceColumn column)
     {
         int count = column.IsTopVisible ? column.ReserveLayers : 0;
+        bool countChanged = _reserveSprites.Count != count;
         while (_reserveSprites.Count > count)
         {
-            var last = _reserveSprites[^1];
+            int lastIdx = _reserveSprites.Count - 1;
+            var last = _reserveSprites[lastIdx];
             last.Visible = false;
             last.QueueFree();
-            _reserveSprites.RemoveAt(_reserveSprites.Count - 1);
+            _reserveSprites.RemoveAt(lastIdx);
+            _reserveSettleFrames.RemoveAt(lastIdx);
         }
         while (_reserveSprites.Count < count && _sprite != null)
         {
@@ -204,6 +226,7 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
             copy.Position = Vector2.Up * ThingsHumanFaceColumn.LayerSpacing * (i + 1);
             copy.Modulate = ReserveTint(i);
             copy.ZIndex = 5 + i;
+            copy.ProcessMode = ProcessModeEnum.Inherit;
             AddChild(copy);
             using Variant stateValue = copy.Call("get_animation_state");
             GodotObject? rawState = stateValue.VariantType == Variant.Type.Object ? stateValue.AsGodotObject() : null;
@@ -224,7 +247,39 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
                     }
                 }
             }
+            copy.Call("update_skeleton", 0f);
             _reserveSprites.Add(copy);
+            _reserveSettleFrames.Add(2);
+        }
+
+        if (_reserveSprites.Count == 0)
+        {
+            _lastReserveLevel = column.Level;
+            return;
+        }
+
+        if (countChanged || _lastReserveLevel != column.Level)
+        {
+            _lastReserveLevel = column.Level;
+            for (int i = 0; i < _reserveSprites.Count; i++)
+            {
+                if (_reserveSettleFrames[i] == 0 && GodotObject.IsInstanceValid(_reserveSprites[i]))
+                {
+                    _reserveSprites[i].ProcessMode = ProcessModeEnum.Inherit;
+                    _reserveSettleFrames[i] = 2;
+                }
+            }
+        }
+
+        // Disable per-frame Spine ticking on static reserve discs once their initial pose has settled.
+        for (int i = 0; i < _reserveSprites.Count; i++)
+        {
+            if (_reserveSettleFrames[i] > 0)
+            {
+                _reserveSettleFrames[i]--;
+                if (_reserveSettleFrames[i] == 0 && GodotObject.IsInstanceValid(_reserveSprites[i]))
+                    _reserveSprites[i].ProcessMode = ProcessModeEnum.Disabled;
+            }
         }
     }
 
@@ -239,6 +294,7 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
     {
         foreach (var node in _reserveSprites) { node.Visible = false; node.QueueFree(); }
         _reserveSprites.Clear();
+        _reserveSettleFrames.Clear();
     }
 
     private static float ReversePhase(float time)

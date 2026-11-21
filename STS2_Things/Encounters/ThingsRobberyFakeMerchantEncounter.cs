@@ -1,6 +1,4 @@
 using MegaCrit.Sts2.Core.Combat;
-using MegaCrit.Sts2.Core.Commands;
-using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.Rooms;
@@ -29,19 +27,30 @@ public sealed class ThingsRobberyFakeMerchantEncounter : EncounterModel
         (ModelDb.Monster<FakeMerchantMonster>().ToMutable(), "merchant_right"),
     ];
 
-    internal async Task PrepareForFight(ICombatState state)
+    internal Task PrepareForFight(ICombatState state)
     {
         AssertMutable();
-        if (_prepared) return;
+        if (_prepared) return Task.CompletedTask;
         // Shared events execute one callback per player against the same arena.
-        // Mark the mutable encounter before awaiting, so both merchants are
+        // Mark the mutable encounter before mutating, so both merchants are
         // reduced once after native multiplayer HP scaling, never once per voter.
+        // EventLayoutType.Combat invokes Fight() before CombatManager.SetUpCombat()
+        // creates Player.PlayerCombatState; avoid PowerCmd.Apply / CombatHistory here
+        // because CombatHistoryEntry reads player.PlayerCombatState.TurnNumber.
         _prepared = true;
         foreach (var merchant in state.Enemies.Where(c => c.Monster is FakeMerchantMonster))
         {
-            await CreatureCmd.SetMaxAndCurrentHp(merchant, Math.Max(1, merchant.MaxHp / HealthDivisor));
+            int reducedHp = Math.Max(1, merchant.MaxHp / HealthDivisor);
+            merchant.SetMaxHpInternal(reducedHp);
+            merchant.SetCurrentHpInternal(reducedHp);
             // The fight runs in this same layout state, so the power carries over.
-            await PowerCmd.Apply<ThingsShiftyPartnersPower>(new ThrowingPlayerChoiceContext(), merchant, 1, merchant, null);
+            if (!merchant.HasPower<ThingsShiftyPartnersPower>())
+            {
+                var power = (ThingsShiftyPartnersPower)ModelDb.Power<ThingsShiftyPartnersPower>().ToMutable();
+                power.Applier = merchant;
+                power.ApplyInternal(merchant, 1m, silent: true);
+            }
         }
+        return Task.CompletedTask;
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
@@ -128,12 +129,12 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 270, 250) + (Sts2VersionSeam.IsDread() ? 20 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
-    private static readonly System.Reflection.FieldInfo? CreatureField =
-        typeof(MonsterModel).GetField(
-            "_creature",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    private static readonly AccessTools.FieldRef<MonsterModel, Creature?>? CreatureFieldRef =
+        AccessTools.Field(typeof(MonsterModel), "_creature") != null
+            ? AccessTools.FieldRefAccess<MonsterModel, Creature?>("_creature")
+            : null;
 
-    private Creature? TryGetCreature() => IsMutable ? CreatureField?.GetValue(this) as Creature : null;
+    private Creature? TryGetCreature() => IsMutable && CreatureFieldRef != null ? CreatureFieldRef(this) : null;
 
     protected override bool IsMonsterInteractable => !IsDefeated && (TryGetCreature() is not { } creature || creature.IsAlive);
     public override bool ShouldAllowHitting(Creature creature) => creature != Creature || (!IsDefeated && Creature.IsAlive);

@@ -42,10 +42,22 @@ public partial class NHumanFaceTowerBossBackground : Node2D
 
     private static NHumanFaceTowerBossBackground? _activeInstance;
 
+    private static readonly StringName MethodGetX = "get_x";
+    private static readonly StringName MethodGetY = "get_y";
+
     private Node2D? _spineNode;
     private MegaSprite? _spineController;
     private GodotObject? _cameraShakeBone;
     private Vector2? _initialScenePos;
+    private Control? _cachedAllyContainer;
+    private bool _hasSyncedTransform;
+    private Vector2 _lastViewportSize;
+    private Transform2D _lastParentGlobal;
+    private Vector2 _lastScenePos;
+    private float _lastShakeX;
+    private float _lastShakeY;
+    private int _lastCreatureCount = -1;
+    private int _lastAllyCount = -1;
     private bool _spineReady;
     private bool _presentationEnded;
     private ulong _lastHurtTicks;
@@ -92,6 +104,8 @@ public partial class NHumanFaceTowerBossBackground : Node2D
         CombatManager.Instance.CombatEnded -= OnCombatEnded;
         _presentationEnded = true;
         _cameraShakeBone = null;
+        _cachedAllyContainer = null;
+        _hasSyncedTransform = false;
         if (_activeInstance == this)
             _activeInstance = null;
     }
@@ -102,7 +116,7 @@ public partial class NHumanFaceTowerBossBackground : Node2D
         if (_presentationEnded)
             return;
 
-        SyncChamberTransform();
+        SyncChamberTransformInternal(force: false);
     }
 
     public void AlignStageAndPlayers()
@@ -281,7 +295,19 @@ public partial class NHumanFaceTowerBossBackground : Node2D
         SyncChamberTransform();
     }
 
-    public void SyncChamberTransform()
+    public void SyncChamberTransform() => SyncChamberTransformInternal(force: true);
+
+    private Control? GetCachedAllyContainer(Control? sceneContainer)
+    {
+        if (_cachedAllyContainer != null && GodotObject.IsInstanceValid(_cachedAllyContainer) && _cachedAllyContainer.IsInsideTree())
+            return _cachedAllyContainer;
+
+        _cachedAllyContainer = NCombatRoom.Instance?.GetNodeOrNull<Control>("%AllyContainer")
+            ?? sceneContainer?.GetNodeOrNull<Control>("AllyContainer");
+        return _cachedAllyContainer;
+    }
+
+    private void SyncChamberTransformInternal(bool force)
     {
         if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
             return;
@@ -292,16 +318,16 @@ public partial class NHumanFaceTowerBossBackground : Node2D
         if (viewportSize.X < 1f || viewportSize.Y < 1f)
             viewportSize = new Vector2(1920f, 1080f);
 
-        float targetGlobalScale = MathF.Max(viewportSize.X / 1920f, viewportSize.Y / 1080f) * ChamberOverscanScale;
-
-        Control? sceneContainer = NCombatRoom.Instance?.SceneContainer
+        NCombatRoom? room = NCombatRoom.Instance;
+        Control? sceneContainer = room?.SceneContainer
             ?? bgParent.GetParent() as Control;
 
+        Vector2 scenePos = sceneContainer?.Position ?? Vector2.Zero;
         Vector2 nativeShake = Vector2.Zero;
         if (sceneContainer != null)
         {
-            _initialScenePos ??= sceneContainer.Position;
-            Vector2 deltaPos = sceneContainer.Position - _initialScenePos.Value;
+            _initialScenePos ??= scenePos;
+            Vector2 deltaPos = scenePos - _initialScenePos.Value;
             if (deltaPos.LengthSquared() <= 4096f)
                 nativeShake = deltaPos;
         }
@@ -310,16 +336,52 @@ public partial class NHumanFaceTowerBossBackground : Node2D
         float shakeY = 0f;
         if (!_presentationEnded && _cameraShakeBone != null && GodotObject.IsInstanceValid(_cameraShakeBone))
         {
-            shakeX = _cameraShakeBone.Call("get_x").AsSingle();
-            shakeY = _cameraShakeBone.Call("get_y").AsSingle();
+            shakeX = _cameraShakeBone.Call(MethodGetX).AsSingle();
+            shakeY = _cameraShakeBone.Call(MethodGetY).AsSingle();
         }
 
+        Transform2D parentGlobal = bgParent.GetGlobalTransform();
+        Control? allyContainer = GetCachedAllyContainer(sceneContainer);
+        int creatureCount = -1;
+        if (room != null)
+        {
+            if (!room.CreatureNodes.TryGetNonEnumeratedCount(out creatureCount))
+            {
+                creatureCount = 0;
+                foreach (var _ in room.CreatureNodes)
+                    creatureCount++;
+            }
+        }
+        int allyCount = allyContainer?.GetChildCount() ?? -1;
+
+        if (!force &&
+            _hasSyncedTransform &&
+            viewportSize == _lastViewportSize &&
+            parentGlobal == _lastParentGlobal &&
+            scenePos == _lastScenePos &&
+            shakeX == _lastShakeX &&
+            shakeY == _lastShakeY &&
+            creatureCount == _lastCreatureCount &&
+            allyCount == _lastAllyCount)
+        {
+            return;
+        }
+
+        _hasSyncedTransform = true;
+        _lastViewportSize = viewportSize;
+        _lastParentGlobal = parentGlobal;
+        _lastScenePos = scenePos;
+        _lastShakeX = shakeX;
+        _lastShakeY = shakeY;
+        _lastCreatureCount = creatureCount;
+        _lastAllyCount = allyCount;
+
+        float targetGlobalScale = MathF.Max(viewportSize.X / 1920f, viewportSize.Y / 1080f) * ChamberOverscanScale;
         Vector2 baseChamberCenterGlobal = viewportSize * 0.5f
             + new Vector2(0f, ChamberCenterLocalOffsetY * targetGlobalScale)
             + nativeShake;
         Vector2 shakenChamberCenterGlobal = baseChamberCenterGlobal + new Vector2(shakeX, -shakeY) * targetGlobalScale;
 
-        Transform2D parentGlobal = bgParent.GetGlobalTransform();
         Vector2 parentScale = parentGlobal.Scale.Abs();
         if (parentScale.X > 0.001f && parentScale.Y > 0.001f)
         {
@@ -328,19 +390,18 @@ public partial class NHumanFaceTowerBossBackground : Node2D
             bgControl.Position = parentGlobal.AffineInverse() * shakenChamberCenterGlobal;
         }
 
-        SyncStageAndCreatureAnchors(viewportSize, sceneContainer, baseChamberCenterGlobal, shakenChamberCenterGlobal, targetGlobalScale);
+        SyncStageAndCreatureAnchors(viewportSize, sceneContainer, allyContainer, baseChamberCenterGlobal, shakenChamberCenterGlobal, targetGlobalScale);
     }
 
     private static void SyncStageAndCreatureAnchors(
         Vector2 viewportSize,
         Control? sceneContainer,
+        Control? allyContainer,
         Vector2 baseChamberCenterGlobal,
         Vector2 shakenChamberCenterGlobal,
         float targetGlobalScale)
     {
-        Control? allyContainer = NCombatRoom.Instance?.GetNodeOrNull<Control>("%AllyContainer")
-            ?? sceneContainer?.GetNodeOrNull<Control>("AllyContainer");
-        if (allyContainer != null)
+        if (allyContainer != null && GodotObject.IsInstanceValid(allyContainer))
         {
             ApplyMonumentalScaleToAllies(allyContainer);
             if (allyContainer.GetParent() is CanvasItem allyParent)

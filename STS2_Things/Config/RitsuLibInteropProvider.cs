@@ -42,6 +42,7 @@ public static class RitsuLibInteropProvider
                 BossSection(),
                 EncounterSection(),
                 EventSection(),
+                CardSection(),
                 MerchantSection(),
                 NeowRelicSection(),
                 StabilitySection(),
@@ -67,7 +68,8 @@ public static class RitsuLibInteropProvider
 
     // The mirror schema exposes conditional visibility, but no enabled predicate.
     public static bool IsSettingVisible(string key) => ThingsModConfig.CanEdit(key) &&
-        (!key.EndsWith("Forced", StringComparison.Ordinal) || ThingsModConfig.CanForce(key));
+        (!key.EndsWith("Forced", StringComparison.Ordinal) || ThingsModConfig.CanForce(key)) &&
+        (!ThingsModConfig.IsIndividualCardKey(key) || ThingsModConfig.IsEnabled(ThingsModConfig.CardsEnabled));
 
     /// <summary>强制开关的可见条件：同槽位没有其他强制 Boss（或强制者正是本键）。</summary>
     public static bool IsBossForceVisible(string key)
@@ -201,6 +203,26 @@ public static class RitsuLibInteropProvider
                 "The Wall-Crack Ledger", "墙缝账房"),
             Entry("spiked_door_enabled", ThingsModConfig.EventSpikedDoorEnabled,
                 "The Spiked Door (Co-op)", "谁去推门（多人）"));
+    }
+
+    private static Dictionary<string, object?> CardSection()
+    {
+        // 名称与模组本地化一致（cards.json 的 .title 显示名）。
+        return Section("cards", "Cards", "卡牌",
+            Entry("cards_enabled", ThingsModConfig.CardsEnabled,
+                "Mod custom cards", "启用模组自制卡牌",
+                "Disable to exclude all custom class cards from this mod out of rewards, shops, transforms, and random card generation. Card Library and existing saves remain unaffected.",
+                "关闭后，所有本模组自制职业牌不再出现在奖励、商店、变化或随机生成池中；图鉴与已有存档不受影响。"),
+            Entry("card_collision_enabled", ThingsModConfig.CardCollisionEnabled,
+                "Collision (Ironclad)", "对撞（铁甲战士）"),
+            Entry("card_reuse_enabled", ThingsModConfig.CardReuseEnabled,
+                "Reuse (Defect)", "再利用（故障机器人）"),
+            Entry("card_soulfysh_disease_enabled", ThingsModConfig.CardSoulfyshDiseaseEnabled,
+                "Soulfysh Disease (Silent)", "异鱼症（静默猎手）"),
+            Entry("card_recall_enabled", ThingsModConfig.CardRecallEnabled,
+                "Reminisce (Silent)", "追忆（静默猎手）"),
+            Entry("card_pack_up_enabled", ThingsModConfig.CardPackUpEnabled,
+                "Pack Up (Silent)", "整顿（静默猎手）"));
     }
 
     private static Dictionary<string, object?> MerchantSection()

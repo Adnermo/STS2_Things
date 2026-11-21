@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://17ya2xd5hfny"
-path="res://.godot/imported/gravetide_slug_midground.png-e0cb4e53c8618d3b17def1ec01f0867c.ctex"
+path.bptc="res://.godot/imported/gravetide_slug_midground.png-e0cb4e53c8618d3b17def1ec01f0867c.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/backgrounds/gravetide_slug/gravetide_slug_midground.png"
-dest_files=["res://.godot/imported/gravetide_slug_midground.png-e0cb4e53c8618d3b17def1ec01f0867c.ctex"]
+dest_files=["res://.godot/imported/gravetide_slug_midground.png-e0cb4e53c8618d3b17def1ec01f0867c.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

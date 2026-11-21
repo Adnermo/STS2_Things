@@ -137,5 +137,13 @@
   "STS2_THINGS-EVENT_WALL_CRACK_LEDGER_ENABLED.title": "The Wall-Crack Ledger — enabled",
   "STS2_THINGS-EVENT_WALL_CRACK_LEDGER_ENABLED.description": "Allow this event in the Depths.",
   "STS2_THINGS-EVENT_SPIKED_DOOR_ENABLED.title": "The Spiked Door (Co-op) — enabled",
-  "STS2_THINGS-EVENT_SPIKED_DOOR_ENABLED.description": "Allow this multiplayer-exclusive event in the Depths, Hive, and Glory."
+  "STS2_THINGS-EVENT_SPIKED_DOOR_ENABLED.description": "Allow this multiplayer-exclusive event in the Depths, Hive, and Glory.",
+  "STS2_THINGS-CARDS.title": "Cards",
+  "STS2_THINGS-CARDS_ENABLED.title": "Mod custom cards",
+  "STS2_THINGS-CARDS_ENABLED.hover.desc": "Disable to exclude all custom class cards from this mod out of rewards, shops, transforms, and random card generation. Card Library and existing saves remain unaffected.",
+  "STS2_THINGS-CARD_COLLISION_ENABLED.title": "Collision (Ironclad) — enabled",
+  "STS2_THINGS-CARD_REUSE_ENABLED.title": "Reuse (Defect) — enabled",
+  "STS2_THINGS-CARD_SOULFYSH_DISEASE_ENABLED.title": "Soulfysh Disease (Silent) — enabled",
+  "STS2_THINGS-CARD_RECALL_ENABLED.title": "Reminisce (Silent) — enabled",
+  "STS2_THINGS-CARD_PACK_UP_ENABLED.title": "Pack Up (Silent) — enabled"
 }

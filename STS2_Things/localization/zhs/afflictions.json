@@ -6,6 +6,6 @@
   "THINGS_SILK_BOUND.description": "在打出[gold]牵丝·1[/gold]牌前，无法打出这张牌。",
   "THINGS_SILK_BOUND.extraCardText": "牵丝·2",
   "THINGS_UPSTREAM_RECALL.title": "回流",
-  "THINGS_UPSTREAM_RECALL.description": "这张牌在本回合的耗能减少[blue]1[/blue]点。打出时，存活的逆流蝾螈获得[blue]{Amount}[/blue]点[gold]力量[/gold]。",
+  "THINGS_UPSTREAM_RECALL.description": "这张牌在本回合的耗能减少[blue]1[/blue]点。打出时，解除你其余手牌的[gold]回流[/gold]，并使存活的逆流蝾螈获得[blue]{Amount}[/blue]点[gold]力量[/gold]。",
   "THINGS_UPSTREAM_RECALL.extraCardText": "回流"
 }

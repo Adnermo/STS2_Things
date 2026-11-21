@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Achievements;
 using MegaCrit.Sts2.Core.Models;
@@ -9,11 +11,34 @@ namespace STS2_Things.Hooks;
 [HarmonyPatch(typeof(ModelDb), nameof(ModelDb.Acts), MethodType.Getter)]
 internal static class DepthsActCatalogPatch
 {
+    private static IEnumerable<ActModel>? _cachedSourceRef;
+    private static int _cachedSourceCount = -1;
+    private static ActModel[]? _cachedResult;
+
     [HarmonyPriority(Priority.Last)]
     private static void Postfix(ref IEnumerable<ActModel> __result)
     {
-        __result = __result.Append(ModelDb.Act<ThingsDepths>()).Distinct()
+        IEnumerable<ActModel> source = __result;
+        int count = source switch
+        {
+            ICollection<ActModel> col => col.Count,
+            IReadOnlyCollection<ActModel> roCol => roCol.Count,
+            _ => -1,
+        };
+        if (_cachedResult != null &&
+            ReferenceEquals(_cachedSourceRef, source) &&
+            _cachedSourceCount == count)
+        {
+            __result = _cachedResult;
+            return;
+        }
+
+        ActModel[] result = source.Append(ModelDb.Act<ThingsDepths>()).Distinct()
             .OrderBy(act => act.Index).ThenBy(act => act.IsDefault ? 0 : 1).ToArray();
+        _cachedSourceRef = source;
+        _cachedSourceCount = count;
+        _cachedResult = result;
+        __result = result;
     }
 }
 

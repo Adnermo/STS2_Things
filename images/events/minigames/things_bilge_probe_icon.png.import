@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bupojf60islyf"
-path="res://.godot/imported/things_bilge_probe_icon.png-4d19e5d4a5cc061fa18f7bd16b277adf.ctex"
+path.bptc="res://.godot/imported/things_bilge_probe_icon.png-4d19e5d4a5cc061fa18f7bd16b277adf.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/events/minigames/things_bilge_probe_icon.png"
-dest_files=["res://.godot/imported/things_bilge_probe_icon.png-4d19e5d4a5cc061fa18f7bd16b277adf.ctex"]
+dest_files=["res://.godot/imported/things_bilge_probe_icon.png-4d19e5d4a5cc061fa18f7bd16b277adf.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

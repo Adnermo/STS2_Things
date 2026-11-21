@@ -6,6 +6,6 @@
   "THINGS_SILK_BOUND.description": "This card cannot be played until you play the [gold]Silken Link · 1[/gold] card.",
   "THINGS_SILK_BOUND.extraCardText": "Silken Link · 2",
   "THINGS_UPSTREAM_RECALL.title": "Reflux",
-  "THINGS_UPSTREAM_RECALL.description": "Costs [blue]1[/blue] less this turn. When played, living Reverse-Current Salamanders gain [blue]{Amount}[/blue] [gold]Strength[/gold].",
+  "THINGS_UPSTREAM_RECALL.description": "Costs [blue]1[/blue] less this turn. When played, removes [gold]Reflux[/gold] from your other cards and grants living Reverse-Current Salamanders [blue]{Amount}[/blue] [gold]Strength[/gold].",
   "THINGS_UPSTREAM_RECALL.extraCardText": "Reflux"
 }

@@ -5,7 +5,7 @@
     <!-- Build with /p:Sts2TargetVersion=v111.1 for the main-branch implementation. -->
     <Sts2TargetVersion Condition="'$(Sts2TargetVersion)' == ''">v113.1</Sts2TargetVersion>
     <AssemblyName>STS2_Things</AssemblyName>
-    <Version>2.0.1</Version>
+    <Version>2.0.2</Version>
     <RootNamespace>STS2_Things</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

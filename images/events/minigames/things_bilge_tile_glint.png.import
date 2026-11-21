@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://x4j5yhk83mgw"
-path="res://.godot/imported/things_bilge_tile_glint.png-f4d2ac8e78910e39103222d57af1b3bc.ctex"
+path.bptc="res://.godot/imported/things_bilge_tile_glint.png-f4d2ac8e78910e39103222d57af1b3bc.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/events/minigames/things_bilge_tile_glint.png"
-dest_files=["res://.godot/imported/things_bilge_tile_glint.png-f4d2ac8e78910e39103222d57af1b3bc.ctex"]
+dest_files=["res://.godot/imported/things_bilge_tile_glint.png-f4d2ac8e78910e39103222d57af1b3bc.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

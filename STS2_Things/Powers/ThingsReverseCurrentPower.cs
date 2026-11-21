@@ -26,7 +26,7 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
     public override PowerType Type => PowerType.Buff;
     public override PowerStackType StackType => PowerStackType.None;
     protected override IEnumerable<DynamicVar> CanonicalVars =>
-        [new IntVar("StrengthAmount", 1), new IntVar("UnplayedBlock", 5)];
+        [new IntVar("StrengthAmount", 2), new IntVar("UnplayedBlock", 10)];
 
     protected override void AfterCloned()
     {
@@ -36,52 +36,124 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
 
     public override Task AfterApplied(Creature? applier, CardModel? cardSource)
     {
-        DynamicVars["StrengthAmount"].BaseValue = Owner.Monster is ThingsReverseSalamander monster ? monster.GrowthAmount : 1;
-        DynamicVars["UnplayedBlock"].BaseValue = Owner.Monster is ThingsReverseSalamander m ? m.UnplayedRecallBlock : 5;
+        DynamicVars["StrengthAmount"].BaseValue = Owner.Monster is ThingsReverseSalamander monster ? monster.GrowthAmount : 2;
+        DynamicVars["UnplayedBlock"].BaseValue = Owner.Monster is ThingsReverseSalamander m ? m.UnplayedRecallBlock : 10;
         return Task.CompletedTask;
     }
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         [new HoverTip(new LocString("powers", "THINGS_REVERSE_CURRENT_POWER.refluxTitle"),
             new LocString("powers", "THINGS_REVERSE_CURRENT_POWER.refluxDescription")),
+         new HoverTip(new LocString("powers", "THINGS_REVERSE_CURRENT_POWER.surgeTitle"),
+            new LocString("powers", "THINGS_REVERSE_CURRENT_POWER.surgeDescription")),
          HoverTipFactory.FromPower<StrengthPower>(),
          HoverTipFactory.Static(StaticHoverTip.Block),
          HoverTipFactory.FromKeyword(CardKeyword.Exhaust)];
     private bool IsReturnSource => Owner.IsAlive && CombatState.Enemies
         .FirstOrDefault(c=>c.IsAlive&&c.GetPower<ThingsReverseCurrentPower>()!=null)==Owner;
+    internal void FlashSurge() => Flash();
+
+    public override bool TryModifyEnergyCostInCombat(CardModel card, decimal originalCost, out decimal modifiedCost)
+    {
+        if (card.Affliction is not ThingsUpstreamRecall || !IsReturnSource ||
+            card.EnergyCost.CostsX || card.EnergyCost.Canonical < 0 || originalCost <= 0m)
+        {
+            modifiedCost = originalCost;
+            return false;
+        }
+        modifiedCost = Math.Max(0m, originalCost - 1m);
+        return true;
+    }
 
     public override async Task AfterPlayerTurnStartLate(PlayerChoiceContext choiceContext,Player player)
     {
         if(!IsReturnSource||!player.Creature.IsAlive||player.PlayerCombatState==null)return;
         ClearFor(player);
+        bool surging=false;
+        if(player.Creature.GetPower<ThingsReverseSurgePower>() is { } surge)
+        {
+            surging=true;
+            await PowerCmd.Remove(surge);
+        }
+        if(!Owner.IsAlive||!player.Creature.IsAlive)return;
+
         // Same history predicate as vanilla HistoryCourse. Drawing/autoplay at
         // the start of this turn cannot overwrite the previous turn's history.
-        var card=CombatManager.Instance.History.CardPlaysFinished.LastOrDefault(e=>
+        var returned=CombatManager.Instance.History.CardPlaysFinished.LastOrDefault(e=>
             e.Actor==player.Creature&&e.CardPlay.Card.Owner==player&&e.HappenedLastPlayerTurn(player)&&!e.CardPlay.Card.IsDupe&&
-            IsAvailable(e.CardPlay.Card))?.CardPlay.Card;
-        if(card==null)return;
-        if(card.Pile?.Type!=PileType.Hand&&player.PlayerCombatState.Hand.Cards.Count>=CardPile.MaxCardsInHand)return;
-        Flash();
-        if(Owner.Monster is ThingsReverseSalamander monster)await monster.RecallPose();
-        if(!Owner.IsAlive||!IsAvailable(card))return;
-        if(card.Pile?.Type!=PileType.Hand)await CardPileCmd.Add(card,PileType.Hand);
-        if(card.Pile?.Type!=PileType.Hand||!Owner.IsAlive)return;
-        await CardCmd.AfflictAndPreview<ThingsUpstreamRecall>([card],Amount,CardPreviewStyle.None);
-        if(card.Affliction is not ThingsUpstreamRecall)return;
-        // Native "this turn" convention: expires on use or at turn end.
-        card.EnergyCost.AddThisTurnOrUntilPlayed(-1,reduceOnly:true);
-        card.InvokeEnergyCostChanged();
+            IsReturnEligible(e.CardPlay.Card))?.CardPlay.Card;
+
+        bool posed=false;
+        if(returned!=null&&(returned.Pile?.Type==PileType.Hand||player.PlayerCombatState.Hand.Cards.Count<CardPile.MaxCardsInHand))
+        {
+            Flash();
+            if(Owner.Monster is ThingsReverseSalamander monster)await monster.RecallPose();
+            posed=true;
+            if(!Owner.IsAlive||!player.Creature.IsAlive)return;
+            if(IsReturnEligible(returned)&&returned.Pile?.Type!=PileType.Hand)
+                await CardPileCmd.Add(returned,PileType.Hand);
+        }
+        if(!Owner.IsAlive||!player.Creature.IsAlive)return;
+
+        List<CardModel> targets;
+        if(surging)
+        {
+            targets=player.PlayerCombatState.Hand.Cards
+                .Where(c=>ModelDb.Affliction<ThingsUpstreamRecall>().CanAfflict(c))
+                .ToList();
+        }
+        else
+        {
+            targets=returned!=null&&returned.Pile?.Type==PileType.Hand&&
+                    ModelDb.Affliction<ThingsUpstreamRecall>().CanAfflict(returned)
+                ?[returned]:[];
+        }
+        if(targets.Count==0)return;
+
+        if(!posed)
+        {
+            Flash();
+            if(Owner.Monster is ThingsReverseSalamander monster)await monster.RecallPose();
+            if(!Owner.IsAlive||!player.Creature.IsAlive)return;
+            targets=targets
+                .Where(c=>c.Pile?.Type==PileType.Hand&&ModelDb.Affliction<ThingsUpstreamRecall>().CanAfflict(c))
+                .ToList();
+            if(targets.Count==0)return;
+        }
+
+        await CardCmd.AfflictAndPreview<ThingsUpstreamRecall>(targets,Amount,CardPreviewStyle.None);
+        foreach(var card in targets)
+            if(card.Affliction is ThingsUpstreamRecall)
+                card.InvokeEnergyCostChanged();
     }
 
-    private static bool IsAvailable(CardModel card) =>
+    private static bool IsReturnEligible(CardModel card) =>
         card.Pile?.Type is PileType.Hand or PileType.Draw or PileType.Discard &&
+        card.Type is CardType.Attack or CardType.Skill &&
+        !card.EnergyCost.CostsX && card.EnergyCost.Canonical>=0 &&
+        !card.Keywords.Contains(CardKeyword.Exhaust) &&
         ModelDb.Affliction<ThingsUpstreamRecall>().CanAfflict(card);
+
+    public override Task BeforeCardPlayed(CardPlay cardPlay)
+    {
+        if(cardPlay.Card.Affliction is not ThingsUpstreamRecall||cardPlay.Card.IsDupe||!IsReturnSource)
+            return Task.CompletedTask;
+        // Playing any Reflux card immediately cancels Reflux (and its -1 cost) on all other cards.
+        ClearFor(GetCardPlayActor(cardPlay),except:cardPlay.Card);
+        return Task.CompletedTask;
+    }
 
     public override async Task AfterCardPlayed(PlayerChoiceContext choiceContext,CardPlay cardPlay)
     {
-        if(!IsReturnSource||cardPlay.Card.IsDupe||cardPlay.Card.Affliction is not ThingsUpstreamRecall)return;
+        if(cardPlay.Card.Affliction is not ThingsUpstreamRecall||cardPlay.Card.IsDupe||!IsReturnSource)return;
         // Clearing all copies of the offer also limits the growth to once per
         // owning player per turn, without unsynchronized card-reference caches.
-        ClearFor(cardPlay.Card.Owner);
+        var actor=GetCardPlayActor(cardPlay);
+        ClearFor(actor);
+        if(cardPlay.Card.Affliction is ThingsUpstreamRecall)
+        {
+            CardCmd.ClearAffliction(cardPlay.Card);
+            cardPlay.Card.InvokeEnergyCostChanged();
+        }
         foreach(var enemy in CombatState.Enemies.Where(c=>c.IsAlive&&c.GetPower<ThingsReverseCurrentPower>()!=null).ToArray())
         {
             var current=enemy.GetPower<ThingsReverseCurrentPower>()!;current.Flash();
@@ -92,7 +164,11 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
 
     public override Task AfterCardChangedPiles(CardModel card,PileType oldPileType,AbstractModel? clonedBy)
     {
-        if(IsReturnSource&&card.Pile?.Type==PileType.Exhaust&&card.Affliction is ThingsUpstreamRecall)CardCmd.ClearAffliction(card);
+        if(card.Affliction is ThingsUpstreamRecall&&card.Pile?.Type==PileType.Exhaust&&oldPileType!=PileType.Play&&IsReturnSource)
+        {
+            CardCmd.ClearAffliction(card);
+            card.InvokeEnergyCostChanged();
+        }
         return Task.CompletedTask;
     }
 
@@ -153,9 +229,13 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
         return Task.CompletedTask;
     }
 
-    private static void ClearFor(Player player)
+    private static void ClearFor(Player player, CardModel? except = null)
     {
         foreach(var card in player.PlayerCombatState?.AllCards.ToArray()??[])
-            if(card.Affliction is ThingsUpstreamRecall)CardCmd.ClearAffliction(card);
+        {
+            if(ReferenceEquals(card,except)||card.Affliction is not ThingsUpstreamRecall)continue;
+            CardCmd.ClearAffliction(card);
+            card.InvokeEnergyCostChanged();
+        }
     }
 }

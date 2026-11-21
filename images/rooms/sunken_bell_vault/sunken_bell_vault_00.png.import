@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://ci7cio1pq4dpm"
-path="res://.godot/imported/sunken_bell_vault_00.png-3a529e48444e57c5a730983d6acee55b.ctex"
+path.bptc="res://.godot/imported/sunken_bell_vault_00.png-3a529e48444e57c5a730983d6acee55b.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/rooms/sunken_bell_vault/sunken_bell_vault_00.png"
-dest_files=["res://.godot/imported/sunken_bell_vault_00.png-3a529e48444e57c5a730983d6acee55b.ctex"]
+dest_files=["res://.godot/imported/sunken_bell_vault_00.png-3a529e48444e57c5a730983d6acee55b.bptc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=true
 compress/lossy_quality=1.0
 compress/uastc_level=2

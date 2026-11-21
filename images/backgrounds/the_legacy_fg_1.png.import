@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dc8x8lkrurkbg"
-path="res://.godot/imported/the_legacy_fg_1.png-4cfeafd58d8e524ed1ce90309ab2f0a0.ctex"
+path.bptc="res://.godot/imported/the_legacy_fg_1.png-4cfeafd58d8e524ed1ce90309ab2f0a0.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/backgrounds/the_legacy_fg_1.png"
-dest_files=["res://.godot/imported/the_legacy_fg_1.png-4cfeafd58d8e524ed1ce90309ab2f0a0.ctex"]
+dest_files=["res://.godot/imported/the_legacy_fg_1.png-4cfeafd58d8e524ed1ce90309ab2f0a0.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

@@ -3,20 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cacab461weeh7"
-path="res://.godot/imported/things_clam_hinge.png-3a4eea93799951e228cecd921b094eab.ctex"
+path.bptc="res://.godot/imported/things_clam_hinge.png-3a4eea93799951e228cecd921b094eab.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://images/events/minigames/things_clam_hinge.png"
-dest_files=["res://.godot/imported/things_clam_hinge.png-3a4eea93799951e228cecd921b094eab.ctex"]
+dest_files=["res://.godot/imported/things_clam_hinge.png-3a4eea93799951e228cecd921b094eab.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

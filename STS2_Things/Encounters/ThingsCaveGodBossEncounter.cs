@@ -34,6 +34,15 @@ public sealed class ThingsCaveGodBossEncounter : ModBossEncounter
     public override IEnumerable<string> ExtraAssetPaths =>
     [
         "res://music/cave_god/cave_god_boss_theme.wav",
+        "res://sfx/cave_god/cave_god_hurt-01.wav",
+        "res://sfx/cave_god/cave_god_hurt-02.wav",
+        "res://sfx/cave_god/cave_god_hurt-03.wav",
+        "res://sfx/cave_god/cave_god_hurt-04.wav",
+        "res://sfx/cave_god/cave_god_hurt-05.wav",
+        "res://sfx/cave_god/anger_roar.mp3",
+        "res://sfx/cave_god/rock_death.mp3",
+        "res://sfx/cave_god/rock_punch.mp3",
+        "res://sfx/cave_god/toss_impact.mp3",
         "res://images/map/cave_god_boss_icon.png",
         "res://images/map/cave_god_boss_icon_outline.png",
         "res://images/ui/run_history/things_cave_god_boss_encounter.png",

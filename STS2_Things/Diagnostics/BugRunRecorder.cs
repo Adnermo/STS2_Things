@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
@@ -14,35 +15,37 @@ namespace STS2_Things.Diagnostics;
 [HarmonyPatch(typeof(NFeedbackCategoryDropdown), "PopulateOptions")]
 internal static class ThingsFeedbackCategoryPatch
 {
+    private static readonly FieldInfo? CategoriesField = AccessTools.Field(typeof(NFeedbackCategoryDropdown), "_categories");
+    private static readonly FieldInfo? CategoryLocField = AccessTools.Field(typeof(NFeedbackCategoryDropdown), "_categoryLoc");
+    private static readonly FieldInfo? DropdownItemSceneField = AccessTools.Field(typeof(NFeedbackCategoryDropdown), "_dropdownItemScene");
+    private static readonly MethodInfo? OnDropdownItemSelectedMethod = AccessTools.Method(typeof(NFeedbackCategoryDropdown), "OnDropdownItemSelected");
+
     internal static readonly string[] Entries = ["things_bug", "things_bug_retry"];
 
-    internal static string Title(string entry) => MegaCrit.Sts2.Core.Localization.LocManager.Instance.Language == "zhs"
+    internal static string Title(string entry) => MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language == "zhs"
         ? entry == "things_bug_retry" ? "琐事 Bug（重试待发送）" : "琐事 Bug（上传本局）"
         : entry == "things_bug_retry" ? "Things Bug (retry pending)" : "Things Bug (upload run)";
 
     private static void Postfix(NFeedbackCategoryDropdown __instance)
     {
-        var type = typeof(NFeedbackCategoryDropdown);
-        var categoriesField = AccessTools.Field(type, "_categories");
-        var locField = AccessTools.Field(type, "_categoryLoc");
-        var sceneField = AccessTools.Field(type, "_dropdownItemScene");
-        var categories = (string[])categoriesField.GetValue(__instance)!;
+        if (CategoriesField is null || CategoryLocField is null || DropdownItemSceneField is null) return;
+        var categories = (string[])CategoriesField.GetValue(__instance)!;
         if (categories.Contains("things_bug")) return;
 
-        categoriesField.SetValue(__instance, categories.Concat(Entries).ToArray());
-        var localized = (MegaCrit.Sts2.Core.Localization.LocString[])locField.GetValue(__instance)!;
-        locField.SetValue(
+        CategoriesField.SetValue(__instance, categories.Concat(Entries).ToArray());
+        var localized = (MegaCrit.Sts2.Core.Localization.LocString[])CategoryLocField.GetValue(__instance)!;
+        CategoryLocField.SetValue(
             __instance,
             localized.Concat(Entries.Select(_ => new MegaCrit.Sts2.Core.Localization.LocString("settings_ui", "FEEDBACK_CATEGORY.bug"))).ToArray());
 
-        var scene = (PackedScene)sceneField.GetValue(__instance)!;
+        var scene = (PackedScene)DropdownItemSceneField.GetValue(__instance)!;
         var container = __instance.GetNode<Control>("DropdownContainer/VBoxContainer");
         for (int i = 0; i < Entries.Length; i++)
         {
             var item = scene.Instantiate<NFeedbackCategoryDropdownItem>();
             container.AddChild(item);
             item.Connect(NDropdownItem.SignalName.Selected, Callable.From<NDropdownItem>(selected =>
-                AccessTools.Method(type, "OnDropdownItemSelected").Invoke(__instance, [selected])));
+                OnDropdownItemSelectedMethod?.Invoke(__instance, [selected])));
             item.Init(categories.Length + i, Title(Entries[i]));
         }
         container.GetParent<NDropdownContainer>().RefreshLayout();
@@ -52,8 +55,22 @@ internal static class ThingsFeedbackCategoryPatch
 [HarmonyPatch(typeof(NFeedbackCategoryDropdown), "OnDropdownItemSelected")]
 internal static class ThingsFeedbackSelectionPatch
 {
+    private static readonly FieldInfo? DescriptionInputField = AccessTools.Field(typeof(NSendFeedbackScreen), "_descriptionInput");
+    private static readonly FieldInfo? CurrentOptionLabelField = AccessTools.Field(typeof(NDropdown), "_currentOptionLabel");
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextEdit, OriginalHint> Hints = new();
     private sealed class OriginalHint(string text) { internal string Text { get; } = text; }
+
+    private static TextEdit? TryGetDescriptionInput(NSendFeedbackScreen screen)
+    {
+        object? raw = DescriptionInputField?.GetValue(screen);
+        if (raw is TextEdit direct)
+            return direct;
+#if STS2_V113_1
+        if (raw is NMegaTextEdit wrapper)
+            return wrapper.TextEdit ?? wrapper.GetNodeOrNull<TextEdit>("TextEdit");
+#endif
+        return raw is Node node ? node.GetNodeOrNull<TextEdit>("TextEdit") : null;
+    }
 
     private static void Postfix(NFeedbackCategoryDropdown __instance)
     {
@@ -62,21 +79,22 @@ internal static class ThingsFeedbackSelectionPatch
         {
             if (parent is NSendFeedbackScreen screen)
             {
-                var input = (TextEdit)AccessTools.Field(typeof(NSendFeedbackScreen), "_descriptionInput").GetValue(screen)!;
-                var original = Hints.GetValue(input, field => new OriginalHint(field.PlaceholderText));
-                input.PlaceholderText = ours
-                    ? MegaCrit.Sts2.Core.Localization.LocManager.Instance.Language == "zhs"
-                        ? "随便说说哪里不对劲就行。\n游戏画面、脱敏异常、模组补丁信息与房间前存档会自动附上。"
-                        : "Just tell us what went wrong.\nA game screenshot, scrubbed faults, mod patches and an anonymous pre-room save are attached automatically."
-                    : original.Text;
+                if (TryGetDescriptionInput(screen) is { } input)
+                {
+                    var original = Hints.GetValue(input, field => new OriginalHint(field.PlaceholderText));
+                    input.PlaceholderText = ours
+                        ? MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language == "zhs"
+                            ? "随便说说哪里不对劲就行。\n游戏画面、脱敏异常、模组补丁信息与房间前存档会自动附上。"
+                            : "Just tell us what went wrong.\nA game screenshot, scrubbed faults, mod patches and an anonymous pre-room save are attached automatically."
+                        : original.Text;
+                }
                 break;
             }
         }
 
         if (!ours) return;
-        var label = (MegaCrit.Sts2.addons.mega_text.MegaLabel)AccessTools.Field(
-            typeof(NDropdown), "_currentOptionLabel").GetValue(__instance)!;
-        label.SetTextAutoSize(ThingsFeedbackCategoryPatch.Title(__instance.CurrentCategory));
+        var label = CurrentOptionLabelField?.GetValue(__instance) as MegaCrit.Sts2.addons.mega_text.MegaLabel;
+        label?.SetTextAutoSize(ThingsFeedbackCategoryPatch.Title(__instance.CurrentCategory));
 
         if (__instance.CurrentCategory == "things_bug_retry")
         {
@@ -84,8 +102,7 @@ internal static class ThingsFeedbackSelectionPatch
             {
                 if (parent is NSendFeedbackScreen screen)
                 {
-                    var input = (TextEdit)AccessTools.Field(typeof(NSendFeedbackScreen), "_descriptionInput").GetValue(screen)!;
-                    if (string.IsNullOrWhiteSpace(input.Text))
+                    if (TryGetDescriptionInput(screen) is { } input && string.IsNullOrWhiteSpace(input.Text))
                     {
                         input.Text = "Retry pending Things reports";
                         input.EmitSignal(TextEdit.SignalName.TextChanged);
@@ -147,14 +164,18 @@ internal static class ThingsFeedbackSendPatch
 [HarmonyPatch(typeof(NSendFeedbackScreen), "OnFeedbackSuccess")]
 internal static class ThingsFeedbackReceiptPatch
 {
+    internal static readonly FieldInfo? CategoryDropdownField = AccessTools.Field(typeof(NSendFeedbackScreen), "_categoryDropdown");
+    private static readonly FieldInfo? SuccessLabelField = AccessTools.Field(typeof(NSendFeedbackScreen), "_successLabel");
+    private static readonly FieldInfo? FailedLabelField = AccessTools.Field(typeof(NSendFeedbackScreen), "_failedLabel");
+
     private static void Prefix(NSendFeedbackScreen __instance) => SetLabel(__instance, "_successLabel", true);
 
     internal static void SetLabel(NSendFeedbackScreen screen, string field, bool success)
     {
-        var dropdown = (NFeedbackCategoryDropdown)AccessTools.Field(typeof(NSendFeedbackScreen), "_categoryDropdown").GetValue(screen)!;
+        if (CategoryDropdownField?.GetValue(screen) is not NFeedbackCategoryDropdown dropdown) return;
         if (!ThingsFeedbackCategoryPatch.Entries.Contains(dropdown.CurrentCategory)) return;
 
-        bool chinese = MegaCrit.Sts2.Core.Localization.LocManager.Instance.Language == "zhs";
+        bool chinese = MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language == "zhs";
         var result = BugRunRecorder.LastSubmission;
 
         string message;
@@ -188,20 +209,30 @@ internal static class ThingsFeedbackReceiptPatch
                 : reason;
         }
 
-        ((MegaCrit.Sts2.addons.mega_text.MegaLabel)AccessTools.Field(typeof(NSendFeedbackScreen), field).GetValue(screen)!)
-            .SetTextAutoSize(message);
+        FieldInfo? labelField = field switch
+        {
+            "_successLabel" => SuccessLabelField,
+            "_failedLabel" => FailedLabelField,
+            _ => AccessTools.Field(typeof(NSendFeedbackScreen), field),
+        };
+        if (labelField?.GetValue(screen) is MegaCrit.Sts2.addons.mega_text.MegaLabel label)
+        {
+            label.SetTextAutoSize(message);
+        }
     }
 }
 
 [HarmonyPatch(typeof(NSendFeedbackScreen), "OnFeedbackFailed")]
 internal static class ThingsFeedbackFailurePatch
 {
+    private static readonly FieldInfo? SendButtonField = AccessTools.Field(typeof(NSendFeedbackScreen), "_sendButton");
+
     private static void Prefix(NSendFeedbackScreen __instance) => ThingsFeedbackReceiptPatch.SetLabel(__instance, "_failedLabel", false);
 
     private static void Postfix(NSendFeedbackScreen __instance, ref Task __result)
     {
-        var dropdown = (NFeedbackCategoryDropdown)AccessTools.Field(typeof(NSendFeedbackScreen), "_categoryDropdown").GetValue(__instance)!;
-        if (ThingsFeedbackCategoryPatch.Entries.Contains(dropdown.CurrentCategory))
+        if (ThingsFeedbackReceiptPatch.CategoryDropdownField?.GetValue(__instance) is NFeedbackCategoryDropdown dropdown
+            && ThingsFeedbackCategoryPatch.Entries.Contains(dropdown.CurrentCategory))
         {
             __result = EnableRetry(__result, __instance);
         }
@@ -210,9 +241,10 @@ internal static class ThingsFeedbackFailurePatch
     private static async Task EnableRetry(Task nativeFailure, NSendFeedbackScreen screen)
     {
         await nativeFailure; // Resume on the existing Godot synchronization context.
-        if (GodotObject.IsInstanceValid(screen) && screen.IsVisibleInTree())
+        if (GodotObject.IsInstanceValid(screen) && screen.IsVisibleInTree()
+            && SendButtonField?.GetValue(screen) is NButton sendButton)
         {
-            ((NButton)AccessTools.Field(typeof(NSendFeedbackScreen), "_sendButton").GetValue(screen)!).Enable();
+            sendButton.Enable();
         }
     }
 }

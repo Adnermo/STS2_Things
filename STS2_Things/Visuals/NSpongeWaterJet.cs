@@ -10,11 +10,17 @@ namespace STS2_Things.Visuals;
 /// <summary>A pressure jet tied to the animated nozzle and actual player positions.</summary>
 public partial class NSpongeWaterJet : Node2D
 {
+    private const int RibbonSegments = 28;
     private MegaSprite? _spine;
     private NCreature? _owner;
     private readonly List<Vector2> _targets = [];
+    private readonly Vector2[] _ribbonPolygon = new Vector2[(RibbonSegments + 1) * 2];
+    private readonly Vector2[] _ribbonCell = new Vector2[4];
+    private readonly Color[] _ribbonColors = new Color[1];
+    private readonly Vector2[] _droplet = new Vector2[4];
     private float _time = -1;
     private float _pixel = 1;
+    private bool _wasActive;
     private const float LaunchTime = ThingsWaterSponge.SprayContact - .14f;
     private const float FinishTime = 1.23f;
     private Vector2 Mouth => new(-9 * _pixel, 0);
@@ -29,24 +35,34 @@ public partial class NSpongeWaterJet : Node2D
     public override void _Process(double delta)
     {
         _time = -1;
-        // SpineBoneNode can inherit both rig and creature scaling. Author the
-        // stream thickness in world pixels so it does not collapse into a line.
-        _pixel = 1 / Mathf.Max(.01f, GlobalTransform.X.Length());
         using var scope = TrackEntryScope(_spine?.TryGetAnimationState()?.GetCurrent(0), out MegaTrackEntry? track);
         if (track != null && track.GetAnimationName() == "cast") _time = track.GetTrackTime();
-        _targets.Clear();
-        if (_time >= LaunchTime && _time < FinishTime && _owner?.Entity is { IsAlive: true } entity)
+        bool active = _time >= LaunchTime && _time < FinishTime && _owner?.Entity.IsDead != true;
+        if (active)
         {
-            foreach (var player in entity.CombatState?.Players ?? [])
-                if (player.Creature.IsAlive && player.Creature.GetCreatureNode() is { } target)
-                    _targets.Add(ToLocal(target.VfxSpawnPosition));
-            // Standalone native render fixtures have real NCreature siblings but
-            // no singleton combat room. Keep their projection identical to play.
-            if (_targets.Count == 0 && _owner.GetParent() is { } parent)
-                foreach (var node in parent.FindChildren("*", "", true, false).OfType<NCreature>())
-                    if (node.Entity is { IsPlayer: true, IsAlive: true }) _targets.Add(ToLocal(node.VfxSpawnPosition));
+            // SpineBoneNode can inherit both rig and creature scaling. Author the
+            // stream thickness in world pixels so it does not collapse into a line.
+            _pixel = 1 / Mathf.Max(.01f, GlobalTransform.X.Length());
+            _targets.Clear();
+            if (_owner?.Entity is { IsAlive: true } entity)
+            {
+                foreach (var player in entity.CombatState?.Players ?? [])
+                    if (player.Creature.IsAlive && player.Creature.GetCreatureNode() is { } target)
+                        _targets.Add(ToLocal(target.VfxSpawnPosition));
+                // Standalone native render fixtures have real NCreature siblings but
+                // no singleton combat room. Keep their projection identical to play.
+                if (_targets.Count == 0 && _owner.GetParent() is { } parent)
+                    foreach (var node in parent.FindChildren("*", "", true, false).OfType<NCreature>())
+                        if (node.Entity is { IsPlayer: true, IsAlive: true }) _targets.Add(ToLocal(node.VfxSpawnPosition));
+            }
+            QueueRedraw();
         }
-        QueueRedraw();
+        else if (_wasActive)
+        {
+            _targets.Clear();
+            QueueRedraw();
+        }
+        _wasActive = active;
     }
 
     public override void _Draw()
@@ -89,38 +105,37 @@ public partial class NSpongeWaterJet : Node2D
             if (travel <= 0 || travel >= 1) continue;
             Vector2 at = Along(target, travel) + normal * ((index % 2 == 0 ? 1 : -1) * (5 + 14 * travel) * _pixel);
             float radius = (1.9f + (index % 3) * .5f) * _pixel;
-            Vector2[] droplet = [at - direction * radius * 1.8f, at + normal * radius * .65f,
-                at + direction * radius, at - normal * radius * .65f];
-            DrawColoredPolygon(droplet, new Color(.65f, .85f, .89f, opacity * .8f));
+            _droplet[0] = at - direction * radius * 1.8f;
+            _droplet[1] = at + normal * radius * .65f;
+            _droplet[2] = at + direction * radius;
+            _droplet[3] = at - normal * radius * .65f;
+            DrawColoredPolygon(_droplet, new Color(.65f, .85f, .89f, opacity * .8f));
         }
     }
 
     private void Ribbon(Vector2 target, float start, float end, float width, Color color, float offset = 0)
     {
-        const int segments = 28;
-        Vector2[] polygon = new Vector2[(segments + 1) * 2];
         Vector2 normal = (target - Mouth).Normalized().Orthogonal();
-        for (int index = 0; index <= segments; index++)
+        for (int index = 0; index <= RibbonSegments; index++)
         {
-            float u = index / (float)segments;
+            float u = index / (float)RibbonSegments;
             float position = Mathf.Lerp(start, end, u);
             float taper = Mathf.Max(.025f, Mathf.Pow(Mathf.Max(0, Mathf.Sin(u * Mathf.Pi)), .32f));
             float radius = width * (.72f + .28f * Mathf.Sin(position * Mathf.Pi)) * taper;
             Vector2 center = Along(target, position) + normal * offset;
-            polygon[index] = center + normal * radius;
-            polygon[polygon.Length - 1 - index] = center - normal * radius;
+            _ribbonPolygon[index] = center + normal * radius;
+            _ribbonPolygon[_ribbonPolygon.Length - 1 - index] = center - normal * radius;
         }
         // The two banks are already a strip. Drawing its convex cells directly
         // avoids ear-clipping a very thin 58-vertex polygon during launch/tail.
-        Vector2[] cell = new Vector2[4];
-        Color[] colors = [color];
-        for (int index = 0; index < segments; index++)
+        _ribbonColors[0] = color;
+        for (int index = 0; index < RibbonSegments; index++)
         {
-            cell[0] = polygon[index];
-            cell[1] = polygon[index + 1];
-            cell[2] = polygon[polygon.Length - 2 - index];
-            cell[3] = polygon[polygon.Length - 1 - index];
-            DrawPrimitive(cell, colors, []);
+            _ribbonCell[0] = _ribbonPolygon[index];
+            _ribbonCell[1] = _ribbonPolygon[index + 1];
+            _ribbonCell[2] = _ribbonPolygon[_ribbonPolygon.Length - 2 - index];
+            _ribbonCell[3] = _ribbonPolygon[_ribbonPolygon.Length - 1 - index];
+            DrawPrimitive(_ribbonCell, _ribbonColors, []);
         }
     }
 }

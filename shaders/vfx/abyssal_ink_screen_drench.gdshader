@@ -28,9 +28,9 @@ float vnoise(vec2 p) {
 
 float fbm(vec2 p) {
 	float v = 0.0;
-	float a = 0.5;
+	float a = 0.625;
 	mat2 r = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8));
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < 2; i++) {
 		v += a * vnoise(p);
 		p = r * p * 2.03 + vec2(3.1, 7.4);
 		a *= 0.5;
@@ -39,13 +39,23 @@ float fbm(vec2 p) {
 }
 
 void fragment() {
+	if (border_strength <= 0.001 && curtain_strength <= 0.001) {
+		discard;
+	}
+
 	vec2 uv = UV;
 	float t = TIME;
 
 	// 1. Hand-painted perimeter splatter & viscous hanging ink drips (gently oozing downward!)
-	float drip_n = vnoise(vec2(uv.x * 14.0, 0.5));
-	vec2 splat_uv = vec2(uv.x, clamp(uv.y - drip_offset * (0.45 + 0.9 * drip_n) * (1.0 - uv.y * 0.45), 0.0, 1.0));
+	vec2 splat_uv = uv;
+	if (drip_offset > 0.0001) {
+		float drip_n = vnoise(vec2(uv.x * 14.0, 0.5));
+		splat_uv.y = clamp(uv.y - drip_offset * (0.45 + 0.9 * drip_n) * (1.0 - uv.y * 0.45), 0.0, 1.0);
+	}
 	vec4 splat = texture(TEXTURE, splat_uv);
+	if (splat.a <= 0.002 && curtain_strength <= 0.001) {
+		discard;
+	}
 
 	// Reveal splatter left-to-right as the sweeping ink cannon blasts across the viewport!
 	float sweep_mask = 1.0;
