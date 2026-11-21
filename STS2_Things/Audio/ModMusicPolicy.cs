@@ -44,6 +44,8 @@ public static class ModMusicPolicy
 
     private static void RefreshCurrentCombat()
     {
+        DepthsActMusicController.SyncWithCurrentRun(NRunMusicController.Instance);
+
         if (RunManager.Instance.DebugOnlyGetState()?.CurrentRoom is not CombatRoom { Encounter: ModBossEncounter encounter } ||
             NRunMusicController.Instance is not { } controller)
             return;

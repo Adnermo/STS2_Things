@@ -56,7 +56,7 @@ public partial class CaveGodProbeNode : Node
             SaveManager.Instance.InitSettingsDataForTest();
             SaveManager.Instance.SettingsSave.Language = "eng";
             LocManager.Initialize();
-            ImplementationAssembly.GetType("STS2_Things.Compatibility.Sts2VersionCompatibility", true)!
+            ImplementationAssembly.GetType("STS2_Things.Platform.Sts2VersionSeam", true)!
                 .GetMethod("InitializeBeforeModelDatabase")!.Invoke(null, null);
             InitializeModelDb();
             EnsureScriptsLookedUp();
@@ -86,19 +86,21 @@ public partial class CaveGodProbeNode : Node
         var run = RunState.CreateForTest(players, seed: "cavegod-regression", ascensionLevel: ascension);
         typeof(RunManager).GetProperty("State", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(RunManager.Instance, run);
         typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, ProbeRuntimeApi.Ascension(ascension));
-        var room = new CombatRoom(ModelDb.Encounter<CaveGodBossEncounter>().ToMutable(), run);
+        var room = new CombatRoom(ModelDb.Encounter<ThingsCaveGodBossEncounter>().ToMutable(), run);
         run.PushRoom(room);
         foreach (var player in players)
         {
             player.ResetCombatState(); room.CombatState.AddPlayer(player);
             player.Creature.SetMaxHpInternal(10000); player.Creature.SetCurrentHpInternal(10000);
         }
-        var left = Add<ThingsCaveGodLeftHand>(room.CombatState, CaveGodBossEncounter.LeftHandSlot);
-        var right = Add<ThingsCaveGodRightHand>(room.CombatState, CaveGodBossEncounter.RightHandSlot);
-        var body = Add<ThingsCaveGodBody>(room.CombatState, CaveGodBossEncounter.BodySlot);
+        var left = Add<ThingsCaveGodLeftHand>(room.CombatState, ThingsCaveGodBossEncounter.LeftHandSlot);
+        var right = Add<ThingsCaveGodRightHand>(room.CombatState, ThingsCaveGodBossEncounter.RightHandSlot);
+        var body = Add<ThingsCaveGodBody>(room.CombatState, ThingsCaveGodBossEncounter.BodySlot);
         ActivateSyntheticCombat(room.CombatState);
         left.EnsureAgingPower().GetAwaiter().GetResult();
         right.EnsureAgingPower().GetAwaiter().GetResult();
+        body.EnsureBulwarkPower().GetAwaiter().GetResult();
+        body.SetRightLeadsForTest(false);
         return new Fixture(room.CombatState, body, left, right);
     }
 
@@ -338,8 +340,8 @@ public partial class CaveGodProbeNode : Node
     private static void VerifyDetachedTwinPartner()
     {
         Fixture fixture = Scenario();
-        MycorrhizalVanguard vanguard = Add<MycorrhizalVanguard>(fixture.State, "probe_vanguard");
-        MycorrhizalBulwark bulwark = Add<MycorrhizalBulwark>(fixture.State, "probe_bulwark");
+        ThingsMycorrhizalVanguard vanguard = Add<ThingsMycorrhizalVanguard>(fixture.State, "probe_vanguard");
+        ThingsMycorrhizalBulwark bulwark = Add<ThingsMycorrhizalBulwark>(fixture.State, "probe_bulwark");
         Assert(vanguard.Partner == bulwark && bulwark.Partner == vanguard, "Living twins resolve each other as partners.");
         fixture.State.RemoveCreature(bulwark.Creature);
         Assert(bulwark.Creature.CombatState == null && bulwark.Partner == null,

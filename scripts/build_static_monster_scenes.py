@@ -12,12 +12,9 @@ from build_spine_monsters import (
 
 
 STATIC_SCRIPT = "res://STS2_Things/Visuals/NThingsStaticCreatureVisuals.cs"
-TEXTURE_KEYS = {
-    "soul_roe_1": "soul_roe_1",
-    "soul_roe_2": "soul_roe_2",
-    "soul_roe_3": "soul_roe_3",
-    "soul_roes": "soul_roes",
-}
+TEXTURE_KEYS: dict[str, str] = {}
+# All custom monsters in STS2_Things now ship native Spine 4.2 rigs under
+# STS2_Things/animations/monsters/* (including soul_roe_1..3 and soul_roes).
 # the_legacy ships a native Spine 4.2 rig (STS2_Things/animations/monsters/the_legacy);
 # its scene is hand-authored and must not be regenerated as a static Sprite2D.
 # bowlbug_progenitor likewise ships a native Spine 4.2 rig

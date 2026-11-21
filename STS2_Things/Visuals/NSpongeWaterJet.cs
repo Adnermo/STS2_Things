@@ -3,7 +3,7 @@ using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using STS2_Things.Monsters;
-using static STS2_Things.Compatibility.Sts2VersionCompatibility;
+using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Visuals;
 
@@ -15,7 +15,7 @@ public partial class NSpongeWaterJet : Node2D
     private readonly List<Vector2> _targets = [];
     private float _time = -1;
     private float _pixel = 1;
-    private const float LaunchTime = WaterSponge.SprayContact - .14f;
+    private const float LaunchTime = ThingsWaterSponge.SprayContact - .14f;
     private const float FinishTime = 1.23f;
     private Vector2 Mouth => new(-9 * _pixel, 0);
 

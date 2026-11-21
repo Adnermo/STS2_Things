@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
+using STS2_Things.Core.Models;
 
 namespace STS2_Things.Monsters;
 
@@ -18,7 +19,7 @@ namespace STS2_Things.Monsters;
 /// Shared native Corpse Slug move and animation contract used by the boss and
 /// its attendant variants.
 /// </summary>
-public abstract class GravetideSlugBase : MonsterModel
+public abstract class GravetideSlugBase : ThingsMonsterModel
 {
     private const string HeavyAttackTrigger = "HeavyAttackTrigger";
     private const string DoubleAttackTrigger = "DoubleAttackTrigger";

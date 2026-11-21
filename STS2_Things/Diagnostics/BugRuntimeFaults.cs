@@ -1,104 +1,197 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace STS2_Things.Diagnostics;
 
-/// <summary>Only structural error information crosses the report boundary; never raw log lines.</summary>
+/// <summary>
+/// Captures scrubbed runtime faults, nested inner exception chains, Harmony owner attribution,
+/// and deduplicated fault signatures across the current and previous game session.
+/// </summary>
 internal static class BugRuntimeFaults
 {
+    internal const int MaxRetainedRecords = 32;
+
     private static readonly ConcurrentQueue<JsonObject> Pending = new();
     private static readonly ConcurrentQueue<JsonObject> Recent = new();
     private static readonly object RecordsLock = new();
     private static readonly Dictionary<string, JsonObject> Repeated = new(StringComparer.Ordinal);
-    private static readonly Dictionary<JsonObject, string> RecordKeys = new();
+    private static readonly Dictionary<JsonObject, string> RecordKeys = new(ReferenceEqualityComparer.Instance);
     private static long _next;
     private static int _dropped;
     private static readonly string Session = Guid.NewGuid().ToString("N")[..8];
     private static readonly object DiskLock = new();
     private static string? _path;
     private static int _writer, _dirty;
-    internal static int Dropped => _dropped;
-    private static readonly Regex ExceptionName = new(@"(?:^|\n|--->\s*)([A-Za-z_][\w.+`]*Exception)\s*:", RegexOptions.CultureInvariant);
-    private static readonly Regex FrameName = new(@"^[\w.+<>`]+$", RegexOptions.CultureInvariant);
+
+    internal static int Dropped => Volatile.Read(ref _dropped);
+
+    /// <summary>
+    /// Optional hook wired by BugRunRecorder to attribute Harmony patch owners touching fault stack frames.
+    /// </summary>
+    internal static Func<IReadOnlyList<string>, IReadOnlyList<string>>? HarmonyOwnerResolver { get; set; }
 
     internal static void Capture(string text, int skipFrames, IEnumerable<string>? engineFunctions = null)
     {
+        if (string.IsNullOrWhiteSpace(text)) return;
         if (text.StartsWith("[Things BugReport]", StringComparison.Ordinal)) return;
-        text = text[..Math.Min(16000, text.Length)];
-        string[] functions = engineFunctions?.Take(20).ToArray() ?? [];
-        // Keep this private in-memory key bounded by the 32 retained records.
-        // It is never included in reports, disk snapshots or network payloads.
-        string key = text + "\n" + string.Join('\n', functions);
-        bool suppliedStack = functions.Length > 0 || text.Contains("\n", StringComparison.Ordinal);
-        if (suppliedStack)
-            lock (RecordsLock)
-                if (RecordRepeated(key)) return;
-        var frames = new List<string>();
-        foreach (string line in text.Split('\n'))
-        {
-            string frame = line.Trim();
-            if (frame.StartsWith("at ", StringComparison.Ordinal)) frame = frame[3..];
-            else if (frame.StartsWith("在 ", StringComparison.Ordinal)) frame = frame[2..];
-            else if (Regex.IsMatch(frame, @"^\[\d+\]\s", RegexOptions.CultureInvariant))
-                frame = Regex.Replace(frame, @"^\[\d+\]\s*", "", RegexOptions.CultureInvariant);
-            else continue;
-            int args = frame.IndexOf('(');
-            if (args >= 0) frame = frame[..args];
-            // Godot C# backtraces include the return type before the method.
-            if (frame.Contains(' ')) frame = frame[(frame.LastIndexOf(' ') + 1)..];
-            if (frame.Length <= 250 && FrameName.IsMatch(frame) && frames.Count < 20) frames.Add(frame);
-        }
-        foreach (string function in functions)
-        {
-            string frame = function.Split('(')[0].Trim();
-            if (frame.Contains(' ')) frame = frame[(frame.LastIndexOf(' ') + 1)..];
-            if (frame.Length is > 0 and <= 250 && FrameName.IsMatch(frame) && frames.Count < 20 && !frames.Contains(frame)) frames.Add(frame);
-        }
-        // Some game errors are logged as a sentence; their caller still identifies
-        // the failing component without uploading the sentence or any user data.
-        if (frames.Count == 0)
-            frames.AddRange(new StackTrace(Math.Clamp(skipFrames, 0, 28) + 2).GetFrames()?.Take(12).Select(f =>
-                f.GetMethod()?.DeclaringType?.FullName + "." + f.GetMethod()?.Name) ?? []);
-        if (!suppliedStack) key += "\n" + string.Join('\n', frames);
-        string type = ExceptionName.Match(text) is { Success: true } match ? match.Groups[1].Value : "LoggedError";
-        var detail = new JsonObject { ["type"] = type, ["frames"] = new JsonArray(frames.Select(f => (JsonNode?)JsonValue.Create(f)).ToArray()) };
-        var chain = ExceptionName.Matches(text).Select(m => m.Groups[1].Value).Distinct().Take(8).ToArray();
-        if (chain.Length > 1) detail["exception_types"] = new JsonArray(chain.Select(f => (JsonNode?)JsonValue.Create(f)).ToArray());
-        detail["code"] = text.Contains("Method not found", StringComparison.Ordinal) ? "missing_method"
-            : text.Contains("not in a scene tree", StringComparison.Ordinal) ? "node_outside_tree"
-            : text.Contains("out of bounds", StringComparison.Ordinal) ? "index_out_of_bounds"
-            : type.EndsWith("NullReferenceException", StringComparison.Ordinal) ? "null_reference" : "runtime_error";
-        // Preserve the missing API signature, never an arbitrary exception message.
-        var member = Regex.Match(text, @"Method not found:\s*'([A-Za-z0-9_.+<>`\[\], ()]{1,500})'", RegexOptions.CultureInvariant);
-        if (member.Success) detail["member"] = member.Groups[1].Value;
-        detail["fault_id"] = "fault-" + Session + "-" + Interlocked.Increment(ref _next);
-        detail["observed_at"] = DateTimeOffset.UtcNow.ToString("O");
+
+        var parsed = LogSanitizer.ParseLogText(text, skipFrames + 1, engineFunctions);
+        RecordParsedFault(parsed);
+    }
+
+    internal static void CaptureException(Exception exception, int skipFrames = 0)
+    {
+        if (exception is null) return;
+        var parsed = LogSanitizer.ParseException(exception, skipFrames + 1);
+        RecordParsedFault(parsed);
+    }
+
+    private static void RecordParsedFault(ParsedFaultInfo parsed)
+    {
+        string nowIso = DateTimeOffset.UtcNow.ToString("O");
         lock (RecordsLock)
         {
-            if (RecordRepeated(key)) return;
-            detail["occurrences"] = 1;
-            Repeated[key] = detail;
-            RecordKeys[detail] = key;
+            if (RecordRepeatedLocked(parsed.Signature, nowIso)) return;
+        }
+
+        var allFramesForAttribution = new List<string>(parsed.Frames);
+        foreach (var inner in parsed.InnerExceptions)
+        {
+            foreach (string frame in inner.Frames)
+            {
+                if (!allFramesForAttribution.Contains(frame)) allFramesForAttribution.Add(frame);
+            }
+        }
+
+        IReadOnlyList<string> harmonyOwners = [];
+        if (HarmonyOwnerResolver is { } resolver && allFramesForAttribution.Count > 0)
+        {
+            try
+            {
+                harmonyOwners = resolver(allFramesForAttribution);
+            }
+            catch (Exception)
+            {
+                // Harmony attribution must never fail fault capture.
+                harmonyOwners = [];
+            }
+        }
+
+        var detail = BuildFaultObject(parsed, harmonyOwners, nowIso);
+
+        lock (RecordsLock)
+        {
+            if (RecordRepeatedLocked(parsed.Signature, nowIso)) return;
+
+            Repeated[parsed.Signature] = detail;
+            RecordKeys[detail] = parsed.Signature;
             Pending.Enqueue(detail);
             Recent.Enqueue(detail);
-            while (Pending.Count > 32) Pending.TryDequeue(out _);
-            while (Recent.Count > 32)
+
+            while (Pending.Count > MaxRetainedRecords) Pending.TryDequeue(out _);
+            while (Recent.Count > MaxRetainedRecords)
+            {
                 if (Recent.TryDequeue(out JsonObject? old))
                 {
                     if (RecordKeys.Remove(old, out string? oldKey)) Repeated.Remove(oldKey);
                     Interlocked.Increment(ref _dropped);
                 }
+            }
         }
+
         SchedulePersist();
     }
 
-    private static bool RecordRepeated(string key)
+    private static JsonObject BuildFaultObject(ParsedFaultInfo parsed, IReadOnlyList<string> harmonyOwners, string nowIso)
     {
-        if (!Repeated.TryGetValue(key, out JsonObject? record)) return false;
-        record["occurrences"] = record["occurrences"]!.GetValue<int>() + 1;
-        record["last_observed_at"] = DateTimeOffset.UtcNow.ToString("O");
+        var frameNodes = parsed.Frames.Select(f => (JsonNode?)JsonValue.Create(f)).ToArray();
+        var stackNodes = parsed.Frames.Select(f => (JsonNode?)JsonValue.Create("at " + f)).ToArray();
+
+        var detail = new JsonObject
+        {
+            ["fault_id"] = "fault-" + Session + "-" + Interlocked.Increment(ref _next),
+            ["signature"] = parsed.Signature,
+            ["exception_type"] = parsed.ExceptionType,
+            ["type"] = parsed.ExceptionType,
+            ["message"] = parsed.Message,
+            ["top_frame"] = parsed.TopFrame,
+            ["frames"] = new JsonArray(frameNodes),
+            ["stack"] = new JsonArray(stackNodes),
+            ["code"] = parsed.Code,
+            ["count"] = 1,
+            ["occurrences"] = 1,
+            ["first_at"] = nowIso,
+            ["first_seen_utc"] = nowIso,
+            ["observed_at"] = nowIso,
+            ["last_at"] = nowIso,
+            ["last_seen_utc"] = nowIso,
+            ["last_observed_at"] = nowIso,
+            ["session"] = "current",
+        };
+
+        if (!string.IsNullOrEmpty(parsed.MissingMember))
+        {
+            detail["member"] = parsed.MissingMember;
+        }
+
+        if (harmonyOwners.Count > 0)
+        {
+            var ownerNodes = harmonyOwners
+                .Where(o => !string.IsNullOrWhiteSpace(o))
+                .Select(o => LogSanitizer.Cap(o.Trim(), 300))
+                .Distinct(StringComparer.Ordinal)
+                .Take(100)
+                .Select(o => (JsonNode?)JsonValue.Create(o))
+                .ToArray();
+            detail["harmony_owners"] = new JsonArray(ownerNodes);
+        }
+        else
+        {
+            detail["harmony_owners"] = new JsonArray();
+        }
+
+        if (parsed.InnerExceptions.Count > 0)
+        {
+            var innerObjects = new JsonArray();
+            foreach (var inner in parsed.InnerExceptions.Take(LogSanitizer.MaxInnerExceptions))
+            {
+                var innerFrames = inner.Frames.Select(f => (JsonNode?)JsonValue.Create(f)).ToArray();
+                innerObjects.Add(new JsonObject
+                {
+                    ["exception_type"] = inner.ExceptionType,
+                    ["type"] = inner.ExceptionType,
+                    ["message"] = inner.Message,
+                    ["frames"] = new JsonArray(innerFrames),
+                });
+            }
+            detail["inner_exceptions"] = innerObjects;
+
+            var distinctChain = new[] { parsed.ExceptionType }
+                .Concat(parsed.InnerExceptions.Select(i => i.ExceptionType))
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Distinct(StringComparer.Ordinal)
+                .Take(8)
+                .Select(t => (JsonNode?)JsonValue.Create(t))
+                .ToArray();
+            if (distinctChain.Length > 1)
+            {
+                detail["exception_types"] = new JsonArray(distinctChain);
+            }
+        }
+
+        return detail;
+    }
+
+    private static bool RecordRepeatedLocked(string signature, string nowIso)
+    {
+        if (!Repeated.TryGetValue(signature, out JsonObject? record)) return false;
+        int nextCount = (record["occurrences"]?.GetValue<int>() ?? record["count"]?.GetValue<int>() ?? 1) + 1;
+        record["occurrences"] = nextCount;
+        record["count"] = nextCount;
+        record["last_at"] = nowIso;
+        record["last_seen_utc"] = nowIso;
+        record["last_observed_at"] = nowIso;
         SchedulePersist();
         return true;
     }
@@ -112,6 +205,7 @@ internal static class BugRuntimeFaults
             return found;
         }
     }
+
     internal static JsonArray Snapshot()
     {
         lock (RecordsLock) return new(Recent.Select(e => e.DeepClone()).ToArray());
@@ -123,21 +217,36 @@ internal static class BugRuntimeFaults
         try
         {
             var prior = BugReportStore.ReadObject(path);
+            JsonArray? records = prior?["faults"] as JsonArray ?? prior?["errors"] as JsonArray;
             lock (RecordsLock)
-            if (prior?["errors"] is JsonArray records)
             {
-                foreach (var record in records.OfType<JsonObject>().TakeLast(32))
+                if (records is not null)
                 {
-                    var restored = (JsonObject)record.DeepClone();
-                    restored["from_previous_session"] = true;
-                    Recent.Enqueue(restored);
+                    foreach (var record in records.OfType<JsonObject>().TakeLast(MaxRetainedRecords))
+                    {
+                        var restored = (JsonObject)record.DeepClone();
+                        restored["from_previous_session"] = true;
+                        restored["session"] = "previous";
+                        Recent.Enqueue(restored);
+                    }
+                    while (Recent.Count > MaxRetainedRecords)
+                    {
+                        if (Recent.TryDequeue(out JsonObject? old) && RecordKeys.Remove(old, out string? oldKey))
+                        {
+                            Repeated.Remove(oldKey);
+                        }
+                    }
                 }
-                while (Recent.Count > 32)
-                    if (Recent.TryDequeue(out JsonObject? old) && RecordKeys.Remove(old, out string? oldKey)) Repeated.Remove(oldKey);
             }
         }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        catch (IOException)
+        {
+            // Startup fault restoration is best-effort when disk is locked.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Startup fault restoration is best-effort under restricted permissions.
+        }
     }
 
     private static void SchedulePersist()
@@ -170,24 +279,63 @@ internal static class BugRuntimeFaults
         Interlocked.Exchange(ref _dirty, 0);
         try
         {
+            var snapshot = Snapshot();
+            var errorsAlias = new JsonArray(snapshot.Select(n => n?.DeepClone()).ToArray());
             lock (DiskLock)
-                BugReportStore.WriteAtomic(path, new JsonObject { ["schema"] = 1, ["errors"] = Snapshot(), ["dropped"] = Dropped }.ToJsonString());
+            {
+                BugReportStore.WriteAtomic(
+                    path,
+                    new JsonObject
+                    {
+                        ["schema"] = BugReportSchemaV4.SchemaVersion,
+                        ["faults"] = snapshot,
+                        ["errors"] = errorsAlias,
+                        ["dropped"] = Dropped,
+                    }.ToJsonString());
+            }
         }
-        catch (Exception) { /* Persistence must not turn an existing failure into another fault. */ }
+        catch (Exception)
+        {
+            // Persistence must not turn an existing failure into another fault.
+        }
     }
 
     internal static void BackfillStartupLog(string path)
     {
         try
         {
+            if (!File.Exists(path)) return;
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             stream.Seek(Math.Max(0, stream.Length - 128_000), SeekOrigin.Begin);
             using var reader = new StreamReader(stream);
             string text = reader.ReadToEnd();
             var blocks = Regex.Matches(text, @"(?m)^(?:ERROR:|SCRIPT ERROR:|\[ERROR\])[^\n]*(?:\n(?!ERROR:|SCRIPT ERROR:|\[ERROR\]|\[INFO\]|\[WARN\])[^\n]*){0,35}");
-            foreach (Match block in blocks.Cast<Match>().TakeLast(24)) Capture(block.Value, 0);
+            foreach (Match block in blocks.Cast<Match>().TakeLast(24))
+            {
+                Capture(block.Value, 0);
+            }
         }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        catch (IOException)
+        {
+            // Missing or locked startup log is ignored safely.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Inaccessible startup log is ignored safely.
+        }
+    }
+
+    internal static void ResetForTests()
+    {
+        lock (RecordsLock)
+        {
+            while (Pending.TryDequeue(out _)) { }
+            while (Recent.TryDequeue(out _)) { }
+            Repeated.Clear();
+            RecordKeys.Clear();
+            Interlocked.Exchange(ref _dropped, 0);
+            Interlocked.Exchange(ref _next, 0);
+            _path = null;
+        }
     }
 }

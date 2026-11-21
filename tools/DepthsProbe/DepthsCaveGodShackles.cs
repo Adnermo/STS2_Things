@@ -15,7 +15,7 @@ public partial class DepthsProbeNode
         foreach (bool left in new[] { false, true })
         foreach (int strength in new[] { 0, 4, 12 })
         {
-            var b = await StrongBattle(ModelDb.Encounter<CaveGodBossEncounter>(), players);
+            var b = await StrongBattle(ModelDb.Encounter<ThingsCaveGodBossEncounter>(), players);
             ThingsCaveGodHand survivor = left ? b.Monster<ThingsCaveGodLeftHand>() : b.Monster<ThingsCaveGodRightHand>();
             ThingsCaveGodHand broken = left ? b.Monster<ThingsCaveGodRightHand>() : b.Monster<ThingsCaveGodLeftHand>();
             if (strength != 0) await PowerCmd.Apply<StrengthPower>(Choice, survivor.Creature, strength, survivor.Creature, null);
@@ -31,7 +31,7 @@ public partial class DepthsProbeNode
             Assert(survivor.Creature.CurrentHp == hp - 1, "Surviving arm actually receives attacks in the break turn");
             DeactivateSyntheticCombat();
 
-            b = await StrongBattle(ModelDb.Encounter<CaveGodBossEncounter>(), players);
+            b = await StrongBattle(ModelDb.Encounter<ThingsCaveGodBossEncounter>(), players);
             broken = left ? b.Monster<ThingsCaveGodLeftHand>() : b.Monster<ThingsCaveGodRightHand>();
             if (strength != 0) await PowerCmd.Apply<StrengthPower>(Choice, broken.Creature, strength, broken.Creature, null);
             await PowerCmd.Apply<DarkShacklesPower>(Choice, broken.Creature, 9, b.Players[0].Creature, null);

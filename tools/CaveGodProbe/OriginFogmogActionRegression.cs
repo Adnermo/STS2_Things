@@ -40,13 +40,13 @@ public partial class CaveGodProbeNode
     private static bool SkipFogmogUiNotification() => false;
     private static bool FogmogCreatureNode(Creature __instance, ref NCreature? __result)
     {
-        if (__instance.Monster is not OriginFogmog) return true;
+        if (__instance.Monster is not ThingsOriginFogmog) return true;
         __result = ActionRoom?.GetCreatureNode(__instance);
         return false;
     }
     private static void RecordFogmogAttack(AttackCommand __instance)
     {
-        if (__instance.Attacker?.Monster is not OriginFogmog) return;
+        if (__instance.Attacker?.Monster is not ThingsOriginFogmog) return;
         FogmogAttackCommands++;
         __instance.BeforeDamage(() =>
         {
@@ -60,20 +60,20 @@ public partial class CaveGodProbeNode
         });
     }
 
-    private static (CombatState state, OriginFogmog boss) FogmogScenario(int count)
+    private static (CombatState state, ThingsOriginFogmog boss) FogmogScenario(int count)
     {
         var players = Enumerable.Range(1,count).Select(i=>Player.CreateForNewRun<Ironclad>(UnlockState.all,(ulong)i)).ToArray();
         var run = RunState.CreateForTest(players, seed:"fogmog-actions");
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
         typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(0));
-        var room = new CombatRoom(ModelDb.Encounter<OriginFogmogBossEncounter>().ToMutable(),run);
+        var room = new CombatRoom(ModelDb.Encounter<ThingsOriginFogmogBossEncounter>().ToMutable(),run);
         run.PushRoom(room);
         foreach(var player in players)
         {
             player.ResetCombatState();room.CombatState.AddPlayer(player);
             player.Creature.SetMaxHpInternal(10000);player.Creature.SetCurrentHpInternal(10000);
         }
-        var boss=Add<OriginFogmog>(room.CombatState,"fogmog");
+        var boss=Add<ThingsOriginFogmog>(room.CombatState,"fogmog");
         ActivateSyntheticCombat(room.CombatState);
         return (room.CombatState,boss);
     }
@@ -126,7 +126,7 @@ public partial class CaveGodProbeNode
                     animator.SetTrigger("Idle");AdvanceAction(.3);
                     ActionClock=0;FogmogHits.Clear();FogmogHitTimes.Clear();FogmogHitClips.Clear();FogmogAttackCommands=0;
                     var health=state.PlayerCreatures.Select(c=>c.CurrentHp).ToArray();
-                    await (Task)typeof(OriginFogmog).GetMethod(method,BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(boss,[state.PlayerCreatures.ToArray()])!;
+                    await (Task)typeof(ThingsOriginFogmog).GetMethod(method,BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(boss,[state.PlayerCreatures.ToArray()])!;
                     Assert(FogmogAttackCommands==1,"Multi-hit must remain one native attack command");
                     Assert(FogmogHitTimes.Count==expected.Length,$"{method} wrong hit count");
                     for(int i=0;i<expected.Length;i++)

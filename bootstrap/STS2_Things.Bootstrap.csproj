@@ -4,12 +4,16 @@
     <LangVersion>13.0</LangVersion>
     <AssemblyName>STS2_Things.Bootstrap</AssemblyName>
     <RootNamespace>STS2_Things.Bootstrap</RootNamespace>
-    <Version>1.25.27</Version>
+    <Version>2.0.0</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <Deterministic>true</Deterministic>
+    <ImplementationV1111 Condition="'$(ImplementationV1111)' == '' and Exists('..\build\v111.1\STS2_Things.dll')">..\build\v111.1\STS2_Things.dll</ImplementationV1111>
+    <ImplementationV1111 Condition="'$(ImplementationV1111)' == ''">..\..\build\v111.1\STS2_Things.dll</ImplementationV1111>
+    <ImplementationV1131 Condition="'$(ImplementationV1131)' == '' and Exists('..\build\v113.1\STS2_Things.dll')">..\build\v113.1\STS2_Things.dll</ImplementationV1131>
+    <ImplementationV1131 Condition="'$(ImplementationV1131)' == ''">..\..\build\v113.1\STS2_Things.dll</ImplementationV1131>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,20 +26,20 @@
       <Private>false</Private>
     </Reference>
 
-    <EmbeddedResource Include="$(ImplementationV1071)"
-                      LogicalName="STS2_Things.Implementations.v107.1.dll" />
-    <EmbeddedResource Include="$(ImplementationV113)"
-                      LogicalName="STS2_Things.Implementations.v113.dll" />
+    <EmbeddedResource Include="$(ImplementationV1111)"
+                      LogicalName="STS2_Things.Implementations.v111.1.dll" />
+    <EmbeddedResource Include="$(ImplementationV1131)"
+                      LogicalName="STS2_Things.Implementations.v113.1.dll" />
   </ItemGroup>
 
-  <Target Name="ValidateUnifiedInputs" BeforeTargets="PrepareForBuild;ResolveReferences">
+  <Target Name="ValidateBootstrapInputs" BeforeTargets="PrepareForBuild;ResolveReferences">
     <Error Condition="!Exists('$(Sts2DataDir)\sts2.dll')"
-           Text="V107.1 sts2.dll was not found at '$(Sts2DataDir)\sts2.dll'." />
+           Text="STS2 sts2.dll was not found at '$(Sts2DataDir)\sts2.dll'." />
     <Error Condition="!Exists('$(Sts2DataDir)\0Harmony.dll')"
            Text="Harmony was not found at '$(Sts2DataDir)\0Harmony.dll'." />
-    <Error Condition="!Exists('$(ImplementationV1071)')"
-           Text="V107.1 implementation was not found at '$(ImplementationV1071)'." />
-    <Error Condition="!Exists('$(ImplementationV113)')"
-           Text="V113 implementation was not found at '$(ImplementationV113)'." />
+    <Error Condition="!Exists('$(ImplementationV1111)')"
+           Text="V111.1 implementation was not found at '$(ImplementationV1111)'." />
+    <Error Condition="!Exists('$(ImplementationV1131)')"
+           Text="V113.1 implementation was not found at '$(ImplementationV1131)'." />
   </Target>
 </Project>

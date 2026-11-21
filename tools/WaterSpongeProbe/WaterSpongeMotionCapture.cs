@@ -23,22 +23,22 @@ public partial class WaterSpongeProbeNode
         int count = 0;
         foreach (bool sponge in new[] { true, false })
         {
-            var focus = actors.Single(n => sponge ? n.Entity.Monster is WaterSponge : n.Entity.Monster is SanguineLeech);
+            var focus = actors.First(n => sponge ? n.Entity.Monster is ThingsWaterSponge : n.Entity.Monster is ThingsSanguineLeech);
             (string name, float length)[] motions = sponge
                 ? [("idle_loop", 4f), ("attack", 1.15f), ("cast", 1.5f), ("soak", 1.35f), ("hurt", .58f), ("power_up", 1.2f), ("die", 1.5f), ("revive", 1.4f), ("summon", 1.2f)]
                 : [("idle_loop", 4f), ("attack", 1.12f), ("cast", 1.45f), ("curl", 1.1f), ("feed", .85f), ("hurt", .6f), ("power_up", 1.3f), ("die", 1.5f), ("revive", 1.4f), ("summon", 1.2f)];
             foreach (var (name, length) in motions)
             {
                 string slug = (sponge ? "sponge_" : "leech_") + name;
-                if (sponge && name == "cast") await PowerCmd.Apply<SpongeReservoirPower>(Choice, scenario.Sponge.Creature, 3, scenario.Sponge.Creature, null);
+                if (sponge && name == "cast") await PowerCmd.Apply<ThingsSpongeReservoirPower>(Choice, scenario.Sponge.Creature, 3, scenario.Sponge.Creature, null);
                 int frameCount = (int)Math.Ceiling(length * fps) + 1;
                 bool drained = false;
                 for (int i = 0; i < frameCount; i++)
                 {
                     float time = Math.Min(i / (float)fps, length);
-                    if (sponge && name == "cast" && time >= WaterSponge.SprayContact && !drained)
+                    if (sponge && name == "cast" && time >= ThingsWaterSponge.SprayContact && !drained)
                     {
-                        await PowerCmd.Remove(scenario.Sponge.Creature.GetPower<SpongeReservoirPower>());
+                        await PowerCmd.Remove(scenario.Sponge.Creature.GetPower<ThingsSpongeReservoirPower>());
                         drained = true;
                     }
                     foreach (var node in actors)

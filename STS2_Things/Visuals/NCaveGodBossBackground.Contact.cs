@@ -5,7 +5,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
-using static STS2_Things.Compatibility.Sts2VersionCompatibility;
+using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Visuals;
 

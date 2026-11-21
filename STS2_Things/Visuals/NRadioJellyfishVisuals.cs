@@ -3,7 +3,7 @@ using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using STS2_Things.Monsters;
 using STS2_Things.Powers;
-using static STS2_Things.Compatibility.Sts2VersionCompatibility;
+using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Visuals;
 
@@ -42,8 +42,8 @@ public partial class NRadioJellyfishVisuals : NCreatureVisuals
         if (_host == null)
             for (Node? p = GetParent(); p != null; p = p.GetParent())
                 if (p is NCreature creature) { _host = creature; break; }
-        if (_host?.Entity.Monster is not RadioJellyfish jelly || _first == null || _second == null) return;
-        var receiver = _host.Entity.GetPower<RadioReceptionPower>();
+        if (_host?.Entity.Monster is not ThingsRadioJellyfish jelly || _first == null || _second == null) return;
+        var receiver = _host.Entity.GetPower<ThingsRadioReceptionPower>();
         if (receiver != null && receiver.Revision != _revision)
         {
             _capturePulse = _revision < 0 ? 0 : 1;

@@ -4,15 +4,17 @@ using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
+using STS2_Things.Core.Models;
 
 namespace STS2_Things.Cards;
 
-public sealed class ThingsSurrender : CardModel
+public sealed class ThingsSurrender : ThingsCardModel
 {
     public ThingsSurrender() : base(0, CardType.Skill, CardRarity.Ancient, TargetType.AnyEnemy)
     {
@@ -26,9 +28,11 @@ public sealed class ThingsSurrender : CardModel
         new HealVar(3),
         new PowerVar<WeakPower>(1m)
     ];
-    // 动态变量
 
-    // 卡牌的构造函数，指定卡牌的相关属性
+    protected override IEnumerable<IHoverTip> ExtraHoverTips =>
+    [
+        HoverTipFactory.FromPower<WeakPower>()
+    ];
 
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
@@ -38,20 +42,30 @@ public sealed class ThingsSurrender : CardModel
 
         var target = cardPlay.Target;
         var monster = target?.Monster;
-        var cardOwner = Owner; // 用闭包捕获
-        if (monster == null) return;
+        if (target == null || target.IsDead || monster == null) return;
+        if (monster.NextMove == null || !monster.NextMove.CanTransitionAway) return;
         var moveStateMachine = monster.MoveStateMachine;
         if (moveStateMachine == null) return;
         var stateLog = moveStateMachine.StateLog;
         if (stateLog.Count == 0) return;
         var originalStateId = stateLog.Last().Id;
+        var weakAmount = DynamicVars.Weak.BaseValue;
         var applyWeak = new MoveState(
             "DEBUFF_WEAK",
             async targets =>
             {
                 foreach (var t in targets)
-                    await PowerCmd.Apply<WeakPower>(new ThrowingPlayerChoiceContext(), t, DynamicVars.Weak.BaseValue,
-                        cardOwner.Creature, this);
+                {
+                    if (!t.IsDead)
+                    {
+                        await PowerCmd.Apply<WeakPower>(
+                            new ThrowingPlayerChoiceContext(),
+                            t,
+                            weakAmount,
+                            target,
+                            null);
+                    }
+                }
             },
             new DebuffIntent()
         )
@@ -59,7 +73,7 @@ public sealed class ThingsSurrender : CardModel
             FollowUpStateId = originalStateId,
             MustPerformOnceBeforeTransitioning = true
         };
-        monster.SetMoveImmediate(applyWeak, forceTransition: true);
+        monster.SetMoveImmediate(applyWeak, forceTransition: false);
     }
 
     protected override void OnUpgrade()

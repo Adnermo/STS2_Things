@@ -39,9 +39,7 @@ public partial class DepthsProbeNode : Node
     public override void _Ready()
     {
         AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency;
-#if !STS2_V107_1
         EnsureRuntimeDependency("Sentry");EnsureRuntimeDependency("Sentry.Godot");
-#endif
         _ = Run();
     }
     private async Task Run()
@@ -70,7 +68,7 @@ public partial class DepthsProbeNode : Node
                 LocalContext.NetId = party[0].NetId;
                 var old = ModelDb.Encounter<FakeMerchantEventEncounter>().ToMutable();old.GenerateMonstersWithSlots(run);
                 Assert(old.MonstersWithSlots.Count == 1, "Native Fake Merchant event remains single");
-                var pair = ModelDb.Encounter<RobberyFakeMerchantEncounter>().ToMutable();pair.GenerateMonstersWithSlots(run);
+                var pair = ModelDb.Encounter<ThingsRobberyFakeMerchantEncounter>().ToMutable();pair.GenerateMonstersWithSlots(run);
                 Assert(pair.MonstersWithSlots.Count == 2 && pair.MonstersWithSlots.All(p=>p.Item1 is FakeMerchantMonster), "Two native merchants");
                 Assert(!ReferenceEquals(pair.MonstersWithSlots[0].Item1,pair.MonstersWithSlots[1].Item1), "Separate mutable monsters");
                 Assert(pair.Slots.SequenceEqual(new[]{"merchant_left","merchant_right"}), "Distinct slots");
@@ -83,11 +81,11 @@ public partial class DepthsProbeNode : Node
                     model.SetUpForCombat();model.RollMove(party.Select(p=>p.Creature));
                 }
                 int[] original = room.CombatState.Enemies.Select(c=>c.MaxHp).ToArray();
-                var prepare = typeof(RobberyFakeMerchantEncounter).GetMethod("PrepareForFight",BindingFlags.Instance|BindingFlags.NonPublic)!;
+                var prepare = typeof(ThingsRobberyFakeMerchantEncounter).GetMethod("PrepareForFight",BindingFlags.Instance|BindingFlags.NonPublic)!;
                 for(int callback=0;callback<=players;callback++)await (Task)prepare.Invoke(pair,[room.CombatState])!;
                 Assert(room.CombatState.Enemies.Select(c=>c.MaxHp).SequenceEqual(original.Select(h=>Math.Max(1,h/3))), "Health cut to a third once despite all player callbacks");
                 Assert(room.CombatState.Enemies.All(c=>c.CurrentHp==c.MaxHp && c.Monster!.NextMove.Intents.Any()), "Both have correct HP and native move intents");
-                Assert(room.CombatState.Enemies.All(c=>c.Powers.OfType<ShiftyPartnersPower>().Count()==1 && !c.GetPower<ShiftyPartnersPower>()!.IsVisible
+                Assert(room.CombatState.Enemies.All(c=>c.Powers.OfType<ThingsShiftyPartnersPower>().Count()==1 && !c.GetPower<ThingsShiftyPartnersPower>()!.IsVisible
                     && c.GetPower<StrengthPower>()==null), "Each merchant gets one hidden damage reduction and no Strength despite all player callbacks");
                 Assert(room.CombatState.Enemies.All(c=>c.Monster!.NextMove.Intents.OfType<AttackIntent>().Single().GetTotalDamage(party.Select(p=>p.Creature),c)==(ascension==0?7:9)),
                     "Opening Swipe intent shows the reduced damage (13/15 x 0.6, rounded down)");
@@ -97,18 +95,18 @@ public partial class DepthsProbeNode : Node
                 Assert(bg != null, "Native shop background factory loads new event alias");bg!.Free();
                 foreach(string path in pair.GetAssetPaths(run))Assert(ResourceLoader.Exists(path), "Pair asset: "+path);
             }
-            Assert(ModelDb.Event<RobberyFakeMerchant>().IsShared && ModelDb.Event<RobberyFakeMerchant>().LayoutType==EventLayoutType.Combat,
+            Assert(ModelDb.Event<ThingsRobberyFakeMerchant>().IsShared && ModelDb.Event<ThingsRobberyFakeMerchant>().LayoutType==EventLayoutType.Combat,
                 "Native shared combat event layout retained");
-            Assert(ModelDb.Event<RobberyFakeMerchant>().CanonicalEncounter is RobberyFakeMerchantEncounter, "Event points to pair encounter");
+            Assert(ModelDb.Event<ThingsRobberyFakeMerchant>().CanonicalEncounter is ThingsRobberyFakeMerchantEncounter, "Event points to pair encounter");
             foreach(string lang in new[]{"zhs","eng"})
             {
                 SaveManager.Instance.SettingsSave.Language=lang;LocManager.Initialize();
-                var model=ModelDb.Event<RobberyFakeMerchant>();
+                var model=ModelDb.Event<ThingsRobberyFakeMerchant>();
                 Assert(model.InitialDescription.GetFormattedText().Contains(lang=="zhs"?"两名":"Two merchants"), "Pair introductory text");
-                var desc=new LocString("events","ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.BEGINFIGHT.description");
+                var desc=new LocString("events","THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.BEGINFIGHT.description");
                 model.DynamicVars.AddTo(desc);
                 Assert(desc.GetFormattedText().Contains(lang=="zhs"?"两名":"2 Fake Merchants"), "Battle option advertises both enemies");
-                var split=new LocString("events","CUTTING_IT_CLOSE.pages.IMPROVISE.selectionScreenPrompt").GetFormattedText();
+                var split=new LocString("events","THINGS_CUTTING_IT_CLOSE.pages.IMPROVISE.selectionScreenPrompt").GetFormattedText();
                 Assert(!split.Contains(lang=="zhs"?"技能":"Skill"), "Attack-only selection text");
             }
             var output=System.Environment.GetEnvironmentVariable("THINGS_PROBE_OUTPUT")!;

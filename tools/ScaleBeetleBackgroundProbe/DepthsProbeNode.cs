@@ -33,9 +33,7 @@ public partial class DepthsProbeNode : Node
     public override void _Ready()
     {
         AssemblyLoadContext.Default.Resolving+=ResolveRuntimeDependency;
-#if !STS2_V107_1
         EnsureRuntimeDependency("Sentry");EnsureRuntimeDependency("Sentry.Godot");
-#endif
         _=Run();
     }
     private async Task Run()
@@ -70,7 +68,7 @@ public partial class DepthsProbeNode : Node
                 typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
                 typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance,new NetSingleplayerGameService());
                 typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(0));
-                var encounter=ModelDb.Encounter<ScaleBeetleBossEncounter>().ToMutable();
+                var encounter=ModelDb.Encounter<ThingsScaleBeetleBossEncounter>().ToMutable();
                 var room=new CombatRoom(encounter,run);run.PushRoom(room);
                 foreach(var p in players){p.ResetCombatState();room.CombatState.AddPlayer(p);}
                 encounter.GenerateMonstersWithSlots(run);
@@ -78,7 +76,7 @@ public partial class DepthsProbeNode : Node
                 var entity=room.CombatState.CreateCreature(model,CombatSide.Enemy,"scale_beetle");
                 room.CombatState.AddCreature(entity);model.SetUpForCombat();model.RollMove(players.Select(p=>p.Creature));
                 ActivateSyntheticCombat(room.CombatState);
-                var assets=new BackgroundAssets("scale_beetle_boss_encounter",new Rng(139UL));
+                var assets=new BackgroundAssets("things_scale_beetle_boss_encounter",new Rng(139UL));
                 Assert(assets.BgLayers.Count==2 && assets.FgLayer!=null,"Native discovery sees backdrop/floor/foreground");
                 var world=new Control{Size=view.Size};
                 view.AddChild(world);

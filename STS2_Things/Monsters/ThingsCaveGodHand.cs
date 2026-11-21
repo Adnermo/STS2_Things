@@ -1,4 +1,3 @@
-using STS2_Things.Compatibility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,7 +11,6 @@ using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
@@ -28,10 +26,11 @@ using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Vfx.Utilities;
-using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Cards;
+using STS2_Things.Core.Models;
 using STS2_Things.Encounters;
+using STS2_Things.Platform;
 using STS2_Things.Powers;
 using STS2_Things.Visuals;
 
@@ -41,9 +40,22 @@ namespace STS2_Things.Monsters;
 /// A damageable arm and an intent/attack proxy for the body's single move cycle.
 /// Both concrete models keep their shipped IDs and visuals; lifecycle rules live here.
 /// </summary>
-public abstract class ThingsCaveGodHand : MonsterModel
+public abstract class ThingsCaveGodHand : ThingsMonsterModel
 {
-    public enum Action { Rest, Down, Sweep, Grab, Slam, WeakStun, WeakAttack, Recover, EscapeStun }
+    public enum Action
+    {
+        Rest,
+        Down,
+        Sweep,
+        CleaveSweep,
+        HeavyPunch,
+        Grab,
+        Slam,
+        WeakStun,
+        WeakAttack,
+        Recover,
+        EscapeStun
+    }
 
     /// <summary>
     /// Move-state id for an action. Ids double as localization keys
@@ -54,6 +66,8 @@ public abstract class ThingsCaveGodHand : MonsterModel
         Action.Rest => "REST",
         Action.Down => "DOWN_STATE",
         Action.Sweep => "FRONT_SWEEP",
+        Action.CleaveSweep => "CLEAVE_SWEEP",
+        Action.HeavyPunch => "HEAVY_PUNCH",
         Action.Grab => "GRAB_PLAYER",
         Action.Slam => "AIR_SLAM",
         Action.WeakStun => "WEAK_STUN",
@@ -67,8 +81,8 @@ public abstract class ThingsCaveGodHand : MonsterModel
     public bool IsDown { get; private set; }
     public bool IsStunned { get; private set; }
     public bool IsGrabbing { get; private set; }
-    private bool _needsRecovery;
     private bool _applyingGrowth;
+    private int _savedPositiveStrength;
     private List<CardModel> _stolenCards = [];
     public IReadOnlyList<CardModel> StolenCards => _stolenCards;
 
@@ -77,69 +91,89 @@ public abstract class ThingsCaveGodHand : MonsterModel
     protected override void DeepCloneFields()
     {
         base.DeepCloneFields();
-        _stolenCards = [];
+        _stolenCards = [.. _stolenCards];
+    }
+
+    protected override void AfterCloned()
+    {
+        base.AfterCloned();
+        IsDown = false;
+        IsStunned = false;
+        IsGrabbing = false;
+        _applyingGrowth = false;
+        _savedPositiveStrength = 0;
     }
 
     private static readonly Func<CardModel, bool>[] StealPriorities =
     [
-        c => c.Enchantment is not Imbued && c.Rarity == CardRarity.Uncommon,
-        c => c.Enchantment is not Imbued && c.Rarity is CardRarity.Common or CardRarity.Rare or CardRarity.Event,
-        c => c.Enchantment is not Imbued && c.Rarity is CardRarity.Basic or CardRarity.Quest,
-        c => c.Rarity == CardRarity.Ancient || c.Enchantment is Imbued
+        c => c.Rarity == CardRarity.Ancient,
+        c => c.Rarity == CardRarity.Rare,
+        c => c.Rarity == CardRarity.Uncommon,
+        c => c.Rarity == CardRarity.Event,
+        c => c.Rarity == CardRarity.Common,
+        c => c.Rarity is CardRarity.Basic or CardRarity.Quest,
+        c => c.Rarity == CardRarity.Token,
+        c => c.Rarity is CardRarity.Status or CardRarity.Curse or CardRarity.None
     ];
 
     public ThingsCaveGodBody? Body => CombatState?.Enemies.Select(c => c.Monster).OfType<ThingsCaveGodBody>().FirstOrDefault();
     private NCaveGodBossBackground? Background => Body?.Background;
-    private bool CanAct => !IsDown && !IsStunned && Body is { IsPhaseTransitionPending: false, IsDefeated: false };
-    private bool IsProtectedRecovery => IsDown || _needsRecovery ||
-        (IsStunned && NextMove?.Id == MoveId(Action.Recover));
+    private bool CanAct => !IsDown && !IsStunned && Body is { IsDefeated: false, IsEnrageLocked: false };
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 55, 50);
+    private bool IsPairedFirstHit =>
+        IsLeft &&
+        Body is { Phase: >= 2, IsWeakPhase: false, IsEnrageLocked: false } body &&
+        body.RightHand is { IsDown: false, IsStunned: false };
+
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 83, 75) + (Sts2VersionSeam.IsDread() ? 20 : 0);
     public override int MaxInitialHp => MinInitialHp;
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Stone;
-    public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_knockout";
+    public override string DeathSfx => "event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone";
     public override bool ShouldFadeAfterDeath => false;
     public override bool ShouldDisappearFromDoom => false;
     public override float DeathAnimLengthOverride => 0f;
-#if STS2_V113
-    public bool IsHealthBarVisible => !IsDown && !IsGrabbing;
-#else
-    public override bool IsHealthBarVisible => !IsDown && !IsGrabbing;
-#endif
-    public override bool ShouldAllowHitting(Creature creature) => creature != Creature || _applyingGrowth || (!IsProtectedRecovery && !IsGrabbing);
-    public override bool ShouldAllowTargeting(Creature target) => target != Creature || (!IsProtectedRecovery && !IsGrabbing);
+    protected override bool IsMonsterInteractable => !IsDown && !IsGrabbing;
+    public override bool ShouldAllowHitting(Creature creature) => creature != Creature || _applyingGrowth || (!IsDown && !IsGrabbing);
+    public override bool ShouldAllowTargeting(Creature target) => target != Creature || (!IsDown && !IsGrabbing);
 
-    // Direct poison/retaliation damage does not use target selection. A downed or
-    // recovering arm must also be protected on the actual damage path.
-#if STS2_V107_1
-    public override decimal ModifyDamageMultiplicative(Creature? target, decimal amount, ValueProp props,
-        Creature? dealer, CardModel? cardSource)
-#else
-    public override decimal ModifyDamageMultiplicative(Creature? target, decimal amount, ValueProp props,
-        Creature? dealer, CardModel? cardSource, CardPlay? cardPlay)
-#endif
-        => target == Creature && IsProtectedRecovery ? 0m : 1m;
+    // Direct poison/retaliation damage does not use target selection. A downed arm
+    // must also be protected on the actual damage path.
+    protected override decimal OnModifyDamageMultiplicative(
+        Creature? target,
+        decimal amount,
+        ValueProp props,
+        Creature? dealer,
+        CardModel? cardSource,
+        CardPlay? cardPlay)
+        => target == Creature && IsDown ? 0m : 1m;
 
-    private int SweepDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 15, 14);
-    private int GrabDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 8, 7);
-    private int SlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 26, 24);
-    private int WeakDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 20, 18);
+    private int Phase1SingleArmBonus => Body is { Phase: >= 2 } ? 0 : 3;
+    private int SweepDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9) + Phase1SingleArmBonus;
+    private int CleaveSweepDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10) + Phase1SingleArmBonus;
+    private int HeavyPunchDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12) + Phase1SingleArmBonus;
+    private int GrabDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 8, 7) + Phase1SingleArmBonus;
+    private int SlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 20, 18) + Phase1SingleArmBonus;
+    private int WeakDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 18, 16);
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
     {
         MoveState rest = new(MoveId(Action.Rest), Rest);
         MoveState down = new(MoveId(Action.Down), Rest);
-        MoveState sweep = new(MoveId(Action.Sweep), Sweep, new SingleAttackIntent(SweepDamage), new CardDebuffIntent());
-        MoveState grab = new(MoveId(Action.Grab), Grab, new SingleAttackIntent(GrabDamage), new DebuffIntent());
-        MoveState slam = new(MoveId(Action.Slam), Slam, new SingleAttackIntent(SlamDamage));
+        MoveState sweep = new(MoveId(Action.Sweep), Sweep, new SingleAttackIntent(() => SweepDamage), new CardDebuffIntent());
+        MoveState cleaveSweep = new(MoveId(Action.CleaveSweep), CleaveSweep, new SingleAttackIntent(() => CleaveSweepDamage), new DebuffIntent());
+        MoveState heavyPunch = new(MoveId(Action.HeavyPunch), HeavyPunch, new SingleAttackIntent(() => HeavyPunchDamage));
+        MoveState grab = new(MoveId(Action.Grab), Grab, new SingleAttackIntent(() => GrabDamage), new DebuffIntent());
+        MoveState slam = new(MoveId(Action.Slam), Slam, new SingleAttackIntent(() => SlamDamage));
         MoveState weakStun = new(MoveId(Action.WeakStun), Stun, new StunIntent());
-        MoveState weakAttack = new(MoveId(Action.WeakAttack), WeakAttack, new SingleAttackIntent(WeakDamage));
-        MoveState recover = new(MoveId(Action.Recover), Recover, new StunIntent(), new HealIntent());
+        MoveState weakAttack = new(MoveId(Action.WeakAttack), WeakAttack, new SingleAttackIntent(() => WeakDamage));
+        MoveState recover = new(MoveId(Action.Recover), Rest, new StunIntent(), new HealIntent());
         MoveState escapeStun = new(MoveId(Action.EscapeStun), Stun, new StunIntent());
 
         rest.FollowUpState = rest;
         down.FollowUpState = down;
         sweep.FollowUpState = rest;
+        cleaveSweep.FollowUpState = rest;
+        heavyPunch.FollowUpState = rest;
         grab.FollowUpState = rest;
         slam.FollowUpState = rest;
         weakStun.FollowUpState = weakAttack;
@@ -147,32 +181,28 @@ public abstract class ThingsCaveGodHand : MonsterModel
         recover.FollowUpState = weakAttack;
         escapeStun.FollowUpState = rest;
 
-        return new MonsterMoveStateMachine([rest, down, sweep, grab, slam, weakStun, weakAttack, recover, escapeStun], rest);
+        return new MonsterMoveStateMachine(
+            [rest, down, sweep, cleaveSweep, heavyPunch, grab, slam, weakStun, weakAttack, recover, escapeStun],
+            rest);
     }
 
     public void Plan(Action action)
     {
         // Preserve a native CreatureCmd.Stun until it has actually consumed its enemy action.
-        if (!IsDown && !_needsRecovery && NextMove.Id == "STUNNED" && !NextMove.CanTransitionAway)
+        if (!IsDown && NextMove?.Id == "STUNNED" && !NextMove.CanTransitionAway)
         {
             IsStunned = true;
             return;
         }
-        if (IsDown) action = Action.Down;
-        else if (_needsRecovery) action = Action.Recover;
+        if (IsDown && action != Action.Recover) action = Action.Down;
         IsStunned = action is Action.WeakStun or Action.Recover or Action.EscapeStun or Action.Down;
         string moveId = MoveId(action);
-        if (!MoveStateMachine!.States.TryGetValue(moveId, out MonsterState? state) || state is not MoveState move)
+        if (MoveStateMachine == null || !MoveStateMachine.States.TryGetValue(moveId, out MonsterState? state) || state is not MoveState move)
         {
-            // Another mod can replace the hand's move state machine after the
-            // encounter is built. Do not let one missing projection key abort
-            // AfterSideTurnStart and strand the player's card queue.
             Log.Warn($"STS2_Things: Cave God hand state '{moveId}' is unavailable; keeping the native hand state.");
             return;
         }
         SetMoveImmediate(move, forceTransition: true);
-        // NCreature couples this switch to HP-bar visibility. The model's targeting hook
-        // rejects stunned targets while still showing their health and healing intent.
         NCombatRoom.Instance?.GetCreatureNode(Creature)?.ToggleIsInteractable(IsHealthBarVisible);
         ConfigureCreatureNode();
     }
@@ -181,8 +211,9 @@ public abstract class ThingsCaveGodHand : MonsterModel
     {
         IsDown = true;
         IsGrabbing = false;
-        _needsRecovery = false;
-        Plan(Action.Down);
+        Plan(Body is { IsDefeated: false, NextMove.Id: ThingsCaveGodBody.RecoverId or ThingsCaveGodBody.EnrageRecoverId }
+            ? Action.Recover
+            : Action.Down);
     }
 
     internal async Task Restore()
@@ -190,9 +221,18 @@ public abstract class ThingsCaveGodHand : MonsterModel
         IsDown = false;
         IsStunned = false;
         IsGrabbing = false;
-        _needsRecovery = false;
         if (Creature.CurrentHp < Creature.MaxHp)
             await CreatureCmd.Heal(Creature, Creature.MaxHp - Creature.CurrentHp, playAnim: true);
+        await EnsureAgingPower();
+        if (Body is { } body)
+        {
+            int bodyStrength = Math.Max(0, body.Creature.GetPower<StrengthPower>()?.Amount ?? 0);
+            int targetStrength = Math.Max(_savedPositiveStrength, bodyStrength);
+            int currentStrength = Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            if (targetStrength > currentStrength)
+                await GainStrength(targetStrength - currentStrength, body.Creature);
+        }
+        _savedPositiveStrength = 0;
         Plan(Action.Rest);
         ConfigureCreatureNode();
     }
@@ -202,10 +242,10 @@ public abstract class ThingsCaveGodHand : MonsterModel
         NCreature? creatureNode = NCombatRoom.Instance?.GetCreatureNode(Creature);
         if (creatureNode != null && GodotObject.IsInstanceValid(creatureNode))
         {
-            creatureNode.ZIndex = 5;
+            creatureNode.ZIndex = NCaveGodHandCreatureVisuals.CreatureUiZIndex;
             creatureNode.ZAsRelative = false;
+            Background?.UpdateHandAnchors([creatureNode]);
 
-            // Elevate StateDisplay / HealthBar (health bar, power container, nameplate)
             Node? healthBar = creatureNode.GetNodeOrNull("%HealthBar")
                 ?? creatureNode.GetNodeOrNull("HealthBar")
                 ?? creatureNode.GetNodeOrNull("StateDisplay")
@@ -213,11 +253,10 @@ public abstract class ThingsCaveGodHand : MonsterModel
                 ?? creatureNode.FindChild("StateDisplay", recursive: true, owned: false);
             if (healthBar is CanvasItem hpCanvas)
             {
-                hpCanvas.ZIndex = 5;
+                hpCanvas.ZIndex = NCaveGodHandCreatureVisuals.CreatureUiZIndex;
                 hpCanvas.ZAsRelative = false;
             }
 
-            // Elevate Intents (node in NCreature is %Intents)
             Node? intents = creatureNode.GetNodeOrNull("%Intents")
                 ?? creatureNode.GetNodeOrNull("Intents")
                 ?? creatureNode.GetNodeOrNull("%IntentContainer")
@@ -226,7 +265,7 @@ public abstract class ThingsCaveGodHand : MonsterModel
                 ?? creatureNode.FindChild("IntentContainer", recursive: true, owned: false);
             if (intents is CanvasItem intentCanvas)
             {
-                intentCanvas.ZIndex = 5;
+                intentCanvas.ZIndex = NCaveGodHandCreatureVisuals.CreatureUiZIndex;
                 intentCanvas.ZAsRelative = false;
             }
         }
@@ -249,12 +288,11 @@ public abstract class ThingsCaveGodHand : MonsterModel
     {
         if (Creature != null && !Creature.HasPower<ThingsCaveGodAgingPower>())
         {
-            int remaining = Body?.AgingCountdown ?? ThingsCaveGodAgingPower.ResetAmount;
             _applyingGrowth = true;
             try
             {
-                await PowerCmd.Apply<ThingsCaveGodAgingPower>(new ThrowingPlayerChoiceContext(), Creature,
-                    remaining, Creature, null);
+                await PowerCmd.Apply<ThingsCaveGodAgingPower>(
+                    new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
             }
             finally { _applyingGrowth = false; }
         }
@@ -263,49 +301,57 @@ public abstract class ThingsCaveGodHand : MonsterModel
     public override bool ShouldDie(Creature creature) =>
         creature != Creature || Body is not { IsDefeated: false };
 
+    public override bool ShouldCreatureBeRemovedFromCombatAfterDeath(Creature creature) =>
+        creature != Creature || Body is not { IsDefeated: false };
+
     public override async Task AfterPreventingDeath(Creature creature)
     {
-        if (creature != Creature || Body is not { } body) return;
-        if (body.IsPhaseTransitionPending)
+        if (creature != Creature || Body is not { IsDefeated: false } body) return;
+        await HandleArmDefeatedAsync(body);
+    }
+
+    protected override async Task OnCreatureDeathAsync(
+        PlayerChoiceContext choiceContext,
+        Creature creature,
+        CardModel? source,
+        bool wasRemovalPrevented,
+        float deathAnimLength)
+    {
+        await BaseAfterDeathAsync(choiceContext, creature, source, wasRemovalPrevented, deathAnimLength);
+        if (creature != Creature) return;
+        await ReleaseStolenCards();
+        // Force-kill mods (e.g. CreatureCmd.Kill(arm, force: true)) bypass ShouldDie/AfterPreventingDeath;
+        // ShouldCreatureBeRemovedFromCombatAfterDeath keeps the arm in CombatState so we still expose the core.
+        if (!wasRemovalPrevented && Body is { IsDefeated: false } body)
+            await HandleArmDefeatedAsync(body);
+    }
+
+    private async Task HandleArmDefeatedAsync(ThingsCaveGodBody body)
+    {
+        if (IsDown)
         {
-            await CreatureCmd.Heal(Creature, 1m, playAnim: false);
-            await ClearDebuffs(Creature);
+            if (Creature.CurrentHp <= 0)
+                await CreatureCmd.Heal(Creature, 1m, playAnim: false);
+            await Sts2VersionSeam.DislodgeImpaledArrowsAsync(Creature);
             await ReleaseStolenCards();
             return;
         }
-        // Freeze the defeated arm before any awaited hooks; poison/Doom must not re-enter defeat.
-        bool wasExposed = body.IsWeakPhase;
-        if (wasExposed)
-        {
-            _needsRecovery = true;
-            Plan(Action.Recover);
-        }
-        else Disable();
-        await CreatureCmd.Heal(Creature, 1m, playAnim: false);
-        await ClearDebuffs(Creature);
-        if (Creature.GetPower<ThingsCaveGodAgingPower>() is { } aging)
-        {
-            await aging.OnArmDowned();
-        }
-        await ReleaseStolenCards();
-        if (!wasExposed) await body.ExposeCore(this);
-    }
 
-    public override async Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature,
-#if STS2_V113
-        MegaCrit.Sts2.Core.Models.CardModel? source,
-#endif
-        bool wasRemovalPrevented, float deathAnimLength)
-    {
-        await base.AfterDeath(choiceContext, creature,
-#if STS2_V113
-            source,
-#endif
-            wasRemovalPrevented, deathAnimLength);
-        if (creature == Creature)
-        {
-            await ReleaseStolenCards();
-        }
+        _savedPositiveStrength = Math.Max(_savedPositiveStrength, Creature.GetPower<StrengthPower>()?.Amount ?? 0);
+        bool wasExposed = body.IsWeakPhase;
+        await Sts2VersionSeam.DislodgeImpaledArrowsAsync(Creature);
+        Disable();
+        if (Creature.CurrentHp <= 0)
+            await CreatureCmd.Heal(Creature, 1m, playAnim: false);
+        await ClearDebuffs(Creature);
+        await EnsureAgingPower();
+        if (Creature.GetPower<ThingsCaveGodAgingPower>() is { } aging)
+            await aging.OnArmDowned();
+        await ReleaseStolenCards();
+        if (!wasExposed)
+            await body.ExposeCore(this);
+        else
+            body.RefreshHandIntents();
     }
 
     public override void BeforeRemovedFromRoom()
@@ -314,37 +360,10 @@ public abstract class ThingsCaveGodHand : MonsterModel
         ClearStolenCardVisual();
     }
 
-    internal static async Task ClearDebuffs(Creature creature)
-    {
-        // Temporary loss and its eventual refund are a pair. Undo the loss
-        // before deciding whether net Strength is a remaining debuff; this
-        // also preserves positive growth hidden underneath Dark Shackles.
-        foreach (TemporaryStrengthPower temporary in creature.Powers.OfType<TemporaryStrengthPower>()
-            .Where(p => p.TypeForCurrentAmount == PowerType.Debuff).ToList())
-        {
-            int refund = temporary.Amount;
-            temporary.SetAmount(0, silent: true); // queued callbacks must not refund twice
-            if (refund != 0 && creature.GetPower<StrengthPower>() is { } strength)
-                await PowerCmd.ModifyAmount(new ThrowingPlayerChoiceContext(), strength, refund,
-                    creature, null, silent: true);
-            await PowerCmd.Remove(temporary);
-        }
-        // StrengthPower.Type is Buff even at -5. Use the same effective classification as Artifact.
-        foreach (PowerModel power in creature.Powers.Where(p => p.TypeForCurrentAmount == PowerType.Debuff).ToList())
-        {
-            // Native turn hooks snapshot listeners before the first Doom kills
-            // and cleanses both arms. Removed Doom retains its old Amount, so
-            // the second queued listener can still consider its owner doomed
-            // and call First() on the now-empty list. Retire that instance too.
-            if (power is DoomPower) power.SetAmount(0, silent: true);
-            await PowerCmd.Remove(power);
-        }
-    }
+    internal static Task ClearDebuffs(Creature creature) => ClearDebuffsSafelyAsync(creature);
 
     internal async Task GainStrength(int amount, Creature source)
     {
-        // Native stuns may cover the cycle's growth turn. Receive the encounter's
-        // self-buff without reopening targeting or damage on the recovering arm.
         _applyingGrowth = true;
         try
         {
@@ -353,29 +372,10 @@ public abstract class ThingsCaveGodHand : MonsterModel
         finally { _applyingGrowth = false; }
     }
 
-    /// <summary>
-    /// Mirrors the body's Crystal Vein on this arm. The buried core hides its power row,
-    /// so the arms carry the visible countdown (cf. Kaiser Crab showing Crab Rage on both claws).
-    /// </summary>
-    internal async Task MirrorCrystalVein(int stacks, Creature source)
-    {
-        int delta = stacks - (Creature.GetPower<ThingsCaveGodCrystalVeinPower>()?.Amount ?? 0);
-        if (delta == 0) return;
-        _applyingGrowth = true;
-        try
-        {
-            if (stacks <= 0 && Creature.GetPower<ThingsCaveGodCrystalVeinPower>() is { } vein)
-                await PowerCmd.Remove(vein);
-            else
-                await PowerCmd.Apply<ThingsCaveGodCrystalVeinPower>(new ThrowingPlayerChoiceContext(), Creature, delta, source, null);
-        }
-        finally { _applyingGrowth = false; }
-    }
-
     public override Task AfterCurrentHpChanged(Creature creature, decimal delta)
     {
         if (creature == Creature && delta < 0 && Body?.IsDefeated != true)
-            Background?.PlayHurtAnim(forceGroan: true, hitPos: creature.GetCreatureNode()?.VfxSpawnPosition);
+            Background?.PlayHurtAnim(forceGroan: false, hitPos: creature.GetCreatureNode()?.VfxSpawnPosition);
         return Task.CompletedTask;
     }
 
@@ -383,20 +383,12 @@ public abstract class ThingsCaveGodHand : MonsterModel
     {
         IsGrabbing = false;
         if (stun && !IsDown) Plan(Action.EscapeStun);
+        NCombatRoom.Instance?.GetCreatureNode(Creature)?.ToggleIsInteractable(IsHealthBarVisible);
+        ConfigureCreatureNode();
     }
 
     private static Task Rest(IReadOnlyList<Creature> _) => Task.CompletedTask;
     private Task Stun(IReadOnlyList<Creature> _) => Task.CompletedTask;
-
-    private async Task Recover(IReadOnlyList<Creature> _)
-    {
-        if (!_needsRecovery || IsDown) return;
-        // A healing turn has native green healing feedback only, never hurt/rock-shatter feedback.
-        if (Creature.CurrentHp < Creature.MaxHp)
-            await CreatureCmd.Heal(Creature, Creature.MaxHp - Creature.CurrentHp, playAnim: true);
-        _needsRecovery = false;
-        // Keep the stun guard until the next player turn, after poison/other turn-end effects settle.
-    }
 
     private async Task Sweep(IReadOnlyList<Creature> targets)
     {
@@ -410,26 +402,91 @@ public abstract class ThingsCaveGodHand : MonsterModel
                 await Cmd.Wait(CaveGodAnimTiming.CardSnatchTouch);
             if (!CanAct || Body?.IsWeakPhase != false) return;
             await DamageCmd.Attack(SweepDamage).FromMonster(this)
-                .WithHitFx("vfx/vfx_attack_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_kick").Execute(null);
+                .SpawningHitVfxOnEachCreature()
+                .WithHitFx("vfx/vfx_attack_blunt", tmpSfx: "blunt_attack.mp3")
+                .Execute(null);
 
+            float closeDelta = CaveGodAnimTiming.CardSnatchClose - CaveGodAnimTiming.CardSnatchTouch;
             if (Background is { } closingBackground)
                 await closingBackground.WaitForAttackFrame("card_snatch", CaveGodAnimTiming.CardSnatchClose,
-                    CaveGodAnimTiming.CardSnatchClose - CaveGodAnimTiming.CardSnatchTouch);
+                    closeDelta, subtractPreviousDamageWait: true);
             else
-                await Cmd.Wait(CaveGodAnimTiming.CardSnatchClose - CaveGodAnimTiming.CardSnatchTouch);
+                await Cmd.CustomScaledWait(Math.Max(0f, closeDelta - 0.1f), Math.Max(0f, closeDelta - 0.2f));
 
-            // The palm touches first; cards enter the fist on the closing frame.
             if (CanAct && Body?.IsWeakPhase == false)
             {
                 await StealCards(targets);
             }
-            if (Background is { } recoveringBackground)
+
+            if (IsPairedFirstHit)
+            {
+                await Cmd.Wait(0.32f);
+            }
+            else if (Background is { } recoveringBackground)
+            {
                 await recoveringBackground.WaitForAttackFrame("card_snatch", CaveGodAnimTiming.CardSnatchLength,
                     CaveGodAnimTiming.CardSnatchLength - CaveGodAnimTiming.CardSnatchClose);
+            }
             else
+            {
                 await Cmd.Wait(CaveGodAnimTiming.CardSnatchLength - CaveGodAnimTiming.CardSnatchClose);
+            }
         }
         finally { Background?.ResetArmScale(); }
+    }
+
+    private async Task CleaveSweep(IReadOnlyList<Creature> targets)
+    {
+        if (!CanAct || Body?.IsWeakPhase != false) return;
+        Background?.StartAttackAnim("front_sweep", isFlipped: !IsLeft);
+        if (Background is { } background)
+            await background.WaitForAttackFrame("front_sweep", CaveGodAnimTiming.FrontSweepHit, CaveGodAnimTiming.FrontSweepHit);
+        else
+            await Cmd.Wait(CaveGodAnimTiming.FrontSweepHit);
+
+        if (!CanAct || Body?.IsWeakPhase != false) return;
+        await DamageCmd.Attack(CleaveSweepDamage).FromMonster(this)
+            .SpawningHitVfxOnEachCreature()
+            .WithHitFx("vfx/vfx_attack_blunt", tmpSfx: "blunt_attack.mp3")
+            .Execute(null);
+
+        if (CanAct && Body?.IsWeakPhase == false)
+        {
+            IReadOnlyList<Creature> playerTargets = targets != null && targets.Count > 0
+                ? targets.Where(c => c.IsAlive && c.Player != null).ToList()
+                : CombatState?.PlayerCreatures.Where(c => c.IsAlive).ToList() ?? [];
+            if (playerTargets.Count > 0)
+            {
+                await PowerCmd.Apply<FrailPower>(
+                    new ThrowingPlayerChoiceContext(), playerTargets, 1m, Creature, null);
+            }
+        }
+
+        float settle = IsPairedFirstHit ? 0.35f : (CaveGodAnimTiming.FrontSweepLength - CaveGodAnimTiming.FrontSweepHit);
+        await Cmd.Wait(settle);
+    }
+
+    private async Task HeavyPunch(IReadOnlyList<Creature> _)
+    {
+        if (!CanAct || Body?.IsWeakPhase != false) return;
+        string punchClip = IsLeft ? "leftpunch" : "rightpunch";
+        Background?.StartAttackAnim("leftpunch", isFlipped: !IsLeft);
+        if (Background is { } background)
+            await background.WaitForAttackFrame(punchClip, CaveGodAnimTiming.HeavyPunchHit, CaveGodAnimTiming.HeavyPunchHit);
+        else
+            await Cmd.Wait(CaveGodAnimTiming.HeavyPunchHit);
+
+        if (!CanAct || Body?.IsWeakPhase != false) return;
+        NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Short);
+        if (NCombatRoom.Instance != null && CombatState != null)
+            VfxCmd.PlayOnCreatureCenters(CombatState.PlayerCreatures.Where(c => c.IsAlive).ToList(), "vfx/vfx_rock_shatter");
+        await DamageCmd.Attack(HeavyPunchDamage).FromMonster(this)
+            .SpawningHitVfxOnEachCreature()
+            .WithHitFx("vfx/vfx_attack_blunt", tmpSfx: "heavy_attack.mp3")
+            .Execute(null);
+
+        float settle = IsPairedFirstHit ? 0.35f : (CaveGodAnimTiming.HeavyPunchLength - CaveGodAnimTiming.HeavyPunchHit);
+        await Cmd.Wait(settle);
     }
 
     private async Task StealCards(IReadOnlyList<Creature>? targets)
@@ -449,25 +506,21 @@ public abstract class ThingsCaveGodHand : MonsterModel
                 stolenInThisSweep.Add(card);
         }
         if (stolenInThisSweep.Count == 0) return;
-        // Remove the whole multiplayer selection together. Native removal updates
-        // every pile before its visual await, so cards enter the grip on one frame
-        // even when one player's hand needs a longer native removal animation.
+
         Task removal = CardPileCmd.RemoveFromCombat(stolenInThisSweep);
         if (removal.IsFaulted) await removal;
         _stolenCards.AddRange(stolenInThisSweep);
         foreach (CardModel card in stolenInThisSweep) AttachStolenCardVisual(card);
-        SfxCmd.Play("event:/sfx/enemy/enemy_attacks/thieving_hopper/thieving_hopper_steal");
+        SfxCmd.Play(FmodSfx.cardMovementIntoDeck);
         await removal;
     }
 
     internal CardModel? SelectCardToSteal(Player player)
     {
-        // 1. Search Draw and Discard with DeckVersion != null (identical to ThievingHopper)
         List<CardModel> list = CardPile.GetCards(player, PileType.Draw, PileType.Discard)
             .Where(c => c.DeckVersion != null)
             .ToList();
 
-        // 2. Fallback: Hand with DeckVersion != null (if Draw/Discard empty e.g. player hand full)
         if (list.Count == 0)
         {
             list = CardPile.GetCards(player, PileType.Hand)
@@ -475,7 +528,6 @@ public abstract class ThingsCaveGodHand : MonsterModel
                 .ToList();
         }
 
-        // 3. Fallback: Any combat cards in Draw, Discard, or Hand (for test environments without DeckVersion)
         if (list.Count == 0)
         {
             list = CardPile.GetCards(player, PileType.Draw, PileType.Discard, PileType.Hand)
@@ -550,53 +602,15 @@ public abstract class ThingsCaveGodHand : MonsterModel
             Marker2D? marker = creatureNode?.GetSpecialNode<Marker2D>("%StolenCardPos");
             if (marker != null && GodotObject.IsInstanceValid(marker))
             {
-                NCard? nCard = null;
-                bool wasTestMode = TestMode.IsOn;
-                if (wasTestMode) TestMode.IsOn = false;
-                try
-                {
-                    nCard = NCard.Create(card);
-                }
-                catch
-                {
-                    // Fall back
-                }
-                finally
-                {
-                    if (wasTestMode) TestMode.IsOn = true;
-                }
-
-                if (nCard == null)
-                {
-                    var cardScene = GD.Load<PackedScene>("res://scenes/cards/card.tscn");
-                    if (cardScene != null)
-                    {
-                        nCard = cardScene.Instantiate<NCard>();
-                    }
-                }
+                NCard? nCard = CardPreviewVisualFactory.TryAttachPreview(marker, card);
                 if (nCard != null)
                 {
-                    marker.AddChildSafely(nCard);
-                    try
-                    {
-                        nCard.Model = card;
-                    }
-                    catch
-                    {
-                    }
                     int childCount = marker.GetChildCount();
                     float xOffset = (childCount - 1) * 12f;
                     float yOffset = (childCount - 1) * 8f;
                     nCard.Position = new Vector2(xOffset, -yOffset);
-                    try
-                    {
-                        nCard.UpdateVisuals(PileType.Deck, CardPreviewMode.Normal);
-                    }
-                    catch
-                    {
-                    }
-                    marker.Visible = true;
                 }
+                marker.Visible = true;
             }
         }
     }
@@ -631,7 +645,9 @@ public abstract class ThingsCaveGodHand : MonsterModel
         else await Cmd.Wait(1.20f);
         if (!CanAct || Body?.IsWeakPhase != true) return;
         await DamageCmd.Attack(WeakDamage).FromMonster(this)
-            .WithHitFx("vfx/vfx_attack_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp").Execute(null);
+            .SpawningHitVfxOnEachCreature()
+            .WithHitFx("vfx/vfx_attack_blunt", tmpSfx: "heavy_attack.mp3")
+            .Execute(null);
         await Cmd.Wait(1.40f);
     }
 
@@ -641,29 +657,43 @@ public abstract class ThingsCaveGodHand : MonsterModel
         bool completed = false;
         try
         {
-            Background?.StartAttackAnim(IsLeft ? "grab_player" : "grab_player_right", isFlipped: !IsLeft);
+            Background?.StartAttackAnim("grab_player", isFlipped: !IsLeft);
             if (Background is { } background)
-                await background.WaitForAttackFrame("grab_player", 1.15f, 1.15f);
-            else await Cmd.Wait(1.15f);
+                await background.WaitForAttackFrame("grab_player", 1.10f, 1.10f);
+            else await Cmd.Wait(1.10f);
             await DamageCmd.Attack(GrabDamage).FromMonster(this)
-                .WithHitFx("vfx/vfx_attack_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_kick").Execute(null);
-            // Thorns/retaliation can break this arm during the grab's initial hit.
+                .SpawningHitVfxOnEachCreature()
+                .WithHitFx("vfx/vfx_attack_blunt", tmpSfx: "blunt_attack.mp3")
+                .Execute(null);
+            // Thorns/retaliation can break this arm or lock Body enrage during the grab's initial hit.
             if (!CanAct || body.IsWeakPhase) return;
             Creature[] captives = targets.Where(c => c.IsAlive && c.Player != null).ToArray();
             if (captives.Length == 0) return;
+            await Sts2VersionSeam.DislodgeImpaledArrowsAsync(Creature);
             IsGrabbing = true;
             NCombatRoom.Instance?.GetCreatureNode(Creature)?.ToggleIsInteractable(false);
             await PowerCmd.Apply<VulnerablePower>(new ThrowingPlayerChoiceContext(), captives, 1m, Creature, null);
             // Native Cmd waits determine gameplay timing equally on rendered/headless peers.
             Background?.StartGrabTracking(captives, isFlipped: !IsLeft);
-            await Cmd.Wait(0.70f);
+            await Cmd.Wait(0.75f);
             Background?.HoldGrabAnim();
-            await CreatureCmd.Add<ThingsCaveGodCaptiveClaw>(CombatState!, CaveGodBossEncounter.CaptiveHandSlot);
+            var claw = (ThingsCaveGodCaptiveClaw)ModelDb.Monster<ThingsCaveGodCaptiveClaw>().ToMutable();
+            claw.IsPhase2 = body.Phase >= 2;
+            claw.IsLeftSide = IsLeft;
+            string? validSlot = CombatState!.Encounter?.Slots.Contains(ThingsCaveGodBossEncounter.CaptiveHandSlot) == true
+                ? ThingsCaveGodBossEncounter.CaptiveHandSlot
+                : null;
+            await CreatureCmd.Add(claw, CombatState!, CombatSide.Enemy, validSlot);
             if (!CanAct || !IsGrabbing || body.IsWeakPhase) return;
-            // Queue one native state power on each captive. Their own turn-start
-            // hook presents the choice after the opening draw has completed.
-            await PowerCmd.Apply<CaveGodPendingTrialPower>(new ThrowingPlayerChoiceContext(),
-                captives.Where(c => c.IsAlive), 1m, Creature, null);
+            if (body.Phase >= 2)
+            {
+                await PowerCmd.Apply<ThingsCaveGodPendingTrialPower>(
+                    new ThrowingPlayerChoiceContext(),
+                    captives.Where(c => c.IsAlive),
+                    1m,
+                    Creature,
+                    null);
+            }
             completed = true;
         }
         finally
@@ -675,7 +705,11 @@ public abstract class ThingsCaveGodHand : MonsterModel
     internal async Task ChooseTrialAfterDraw(PlayerChoiceContext choiceContext, Creature target)
     {
         if (target.IsDead || target.Player == null || CombatState == null || !IsGrabbing ||
-            Body is not { IsWeakPhase: false, IsPhaseTransitionPending: false, IsDefeated: false }) return;
+            Body is not { Phase: >= 2, IsWeakPhase: false, IsEnrageLocked: false, IsDefeated: false })
+        {
+            return;
+        }
+
         // Remote choices use the native context but must not acquire or restore
         // the local overlay's Z order while the local player is still choosing.
         NOverlayStack? overlay = LocalContext.IsMe(target.Player) ? NOverlayStack.Instance : null;
@@ -683,16 +717,25 @@ public abstract class ThingsCaveGodHand : MonsterModel
         bool originalRelative = overlay?.ZAsRelative ?? true;
         try
         {
-            if (overlay != null) { overlay.ZAsRelative = false; overlay.ZIndex = 100; }
+            if (overlay != null)
+            {
+                overlay.ZAsRelative = false;
+                overlay.ZIndex = 100;
+            }
+
             List<CardModel> choices =
             [
-                CombatState.CreateCard(ModelDb.Card<CaveGodBrokenBladeTrial>(), target.Player),
-                CombatState.CreateCard(ModelDb.Card<CaveGodShatteredShieldTrial>(), target.Player)
+                CombatState.CreateCard(ModelDb.Card<ThingsCaveGodBrokenBladeTrial>(), target.Player),
+                CombatState.CreateCard(ModelDb.Card<ThingsCaveGodShatteredShieldTrial>(), target.Player)
             ];
             CardModel? chosen = await CardSelectCmd.FromChooseACardScreen(choiceContext, choices, target.Player, canSkip: false);
-            if (IsGrabbing && Body is { IsWeakPhase: false, IsPhaseTransitionPending: false, IsDefeated: false }
-                && target.IsAlive && chosen is KnowledgeDemon.IChoosable trial)
+            if (IsGrabbing &&
+                Body is { Phase: >= 2, IsWeakPhase: false, IsEnrageLocked: false, IsDefeated: false } &&
+                target.IsAlive &&
+                chosen is KnowledgeDemon.IChoosable trial)
+            {
                 await trial.OnChosen();
+            }
         }
         finally
         {
@@ -717,7 +760,9 @@ public abstract class ThingsCaveGodHand : MonsterModel
             if (!CanAct || !IsGrabbing || body.IsWeakPhase) return;
             NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Normal);
             await DamageCmd.Attack(SlamDamage).FromMonster(this)
-                .WithHitFx("vfx/vfx_attack_blunt", "event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp").Execute(null);
+                .SpawningHitVfxOnEachCreature()
+                .WithHitFx("vfx/vfx_attack_blunt", tmpSfx: "heavy_attack.mp3")
+                .Execute(null);
             impacted = !body.IsWeakPhase && !body.IsDefeated;
         }
         finally { await body.ReleaseCaptives(stun: false, slam: impacted); }

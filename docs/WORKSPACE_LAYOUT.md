@@ -17,7 +17,7 @@
 | `tools/OriginFogmogRig/legacy_v2/` | 旧雾菇生成源码，仅供历史编辑参考 |
 | `scripts/` | 构建、验证、资产处理及清理入口 |
 | `docs/`、`design/` | 架构、版本差异、设计与维护说明 |
-| `build/v107.1/`、`build/v111/`、`build/unified/` | 支持版本的诊断构件与统一发布包 |
+| `build/v111.1/`、`build/v113.1/`、`build/unified/` | 支持版本的诊断构件与统一发布包 |
 | `build/*backup*`、`build/**/before`、`build/**/original` 等 | 可能保存唯一源码的回滚材料，清理器保留 |
 | `.tmp/`、`tmp/`、`output/` | 本地工具、实验与中间产物；其中仍有独有脚本和候选原画，不能整体删除 |
 

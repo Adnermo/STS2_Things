@@ -6,7 +6,7 @@ using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
-using static STS2_Things.Compatibility.Sts2VersionCompatibility;
+using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Visuals;
 
@@ -20,6 +20,10 @@ public partial class NCaveGodBossBackground
     private string _armsMainAnimation = "idle_front";
     private MegaTrackEntry? _bodyMainEntry;
     private MegaTrackEntry? _armsMainEntry;
+    private Callable _bodyAnimStartedCallable;
+    private Callable _armsAnimStartedCallable;
+    private bool _bodyAnimStartedConnected;
+    private bool _armsAnimStartedConnected;
     private HashSet<string>? _bossAnimationNames;
 
     private bool HasBossAnimation(MegaSprite? sprite, string name)
@@ -35,8 +39,11 @@ public partial class NCaveGodBossBackground
             foreach (Variant animationRef in animations)
             {
                 using (animationRef)
-                using (GodotObject animation = animationRef.AsGodotObject())
-                    _bossAnimationNames.Add(animation.Call("get_name").AsString());
+                {
+                    GodotObject? animation = animationRef.AsGodotObject();
+                    if (animation != null)
+                        _bossAnimationNames.Add(animation.Call("get_name").AsString());
+                }
             }
             GC.KeepAlive(data);
         }
@@ -47,12 +54,14 @@ public partial class NCaveGodBossBackground
     {
         // The event's arguments are borrowed. Leaving them as Variants avoids
         // manufacturing an unused managed SpineTrackEntry for the third argument.
-        sprite.ConnectAnimationStarted(Callable.From<Variant, Variant, Variant>((_, _, _) =>
+        Callable callable = Callable.From<Variant, Variant, Variant>((_, _, _) =>
         {
-            if (_presentationEnded) return;
+            if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _presentationEnded) return;
+            if (!GodotObject.IsInstanceValid(sprite.BoundObject)) return;
             // Retain the owned wrapper itself, not a copy of its disposed native
             // object. One reference per animation avoids per-frame signal churn.
-            MegaTrackEntry? track = sprite.TryGetAnimationState()?.GetCurrent(MainTrack);
+            MegaAnimationState? animState = sprite.TryGetAnimationState();
+            MegaTrackEntry? track = animState?.GetCurrent(MainTrack);
             string name = track?.GetAnimationName() ?? "";
             if (foreground)
             {
@@ -62,7 +71,35 @@ public partial class NCaveGodBossBackground
             {
                 ReleaseMainEntry(_bodyMainEntry);_bodyMainEntry=track;_bodyMainAnimation=name;
             }
-        }));
+        });
+        sprite.ConnectAnimationStarted(callable);
+        if (foreground)
+        {
+            _armsAnimStartedCallable = callable;
+            _armsAnimStartedConnected = true;
+        }
+        else
+        {
+            _bodyAnimStartedCallable = callable;
+            _bodyAnimStartedConnected = true;
+        }
+    }
+
+    private void DisconnectMainAnimationObservers()
+    {
+        if (_bodyAnimStartedConnected && _bodyController != null && GodotObject.IsInstanceValid(_bodyController.BoundObject))
+        {
+            if (_bodyController.BoundObject.IsConnected("animation_started", _bodyAnimStartedCallable))
+                _bodyController.DisconnectAnimationStarted(_bodyAnimStartedCallable);
+        }
+        _bodyAnimStartedConnected = false;
+
+        if (_armsAnimStartedConnected && _armsController != null && GodotObject.IsInstanceValid(_armsController.BoundObject))
+        {
+            if (_armsController.BoundObject.IsConnected("animation_started", _armsAnimStartedCallable))
+                _armsController.DisconnectAnimationStarted(_armsAnimStartedCallable);
+        }
+        _armsAnimStartedConnected = false;
     }
 
     private static void ReleaseMainEntry(MegaTrackEntry? track)
@@ -109,8 +146,11 @@ public partial class NCaveGodBossBackground
         // starts its large lift. A long blend would change velocity mid-lift.
         foreach (var sprite in new[] { _bodyController, _armsController })
         {
-            using var scope = TrackEntryScope(sprite?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? track);
-            track?.SetMixDuration(0.12f);
+            MegaAnimationState? animState = sprite?.TryGetAnimationState();
+            using (TrackEntryScope(animState?.GetCurrent(MainTrack), out MegaTrackEntry? track))
+            {
+                track?.SetMixDuration(0.12f);
+            }
         }
     }
 
@@ -148,7 +188,8 @@ public partial class NCaveGodBossBackground
         foreach (bool left in new[] { true, false })
         {
             Marker2D? marker = GetStolenCardPos(left);
-            if (marker is not { Visible: true } || marker.GetChildCount() == 0) continue;
+            int heldCount = left ? _leftStolenCardCount : _rightStolenCardCount;
+            if (marker is not { Visible: true } || (heldCount <= 0 && marker.GetChildCount() == 0)) continue;
             // This hand can open to reach for another card or a player. Otherwise
             // retain the grip through idle and other attacks until its cards return.
             bool reaching = (snatching && right != left && time < CaveGodAnimTiming.CardSnatchClose) ||

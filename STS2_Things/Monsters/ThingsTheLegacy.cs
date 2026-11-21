@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Godot;
 using MegaCrit.Sts2.Core.Audio;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -18,7 +18,11 @@ using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Nodes.Audio;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Rooms;
+using MegaCrit.Sts2.Core.TestSupport;
 using STS2_Things.Audio;
+using STS2_Things.Platform;
 using STS2_Things.Powers;
 
 namespace STS2_Things.Monsters;
@@ -51,11 +55,25 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Magic;
     public override Vector2 ExtraDeathVfxPadding => new(1.4f, 1.7f);
 
-    private CancellationTokenSource? _heartbeatCts;
+    private static readonly string[] HeartbeatFiles =
+    [
+        "res://sfx/the_legacy/HeartBeat_1.ogg",
+        "res://sfx/the_legacy/HeartBeat_2.ogg"
+    ];
+
+    private Godot.Timer? _heartbeatTimer;
+    private int _heartbeatIndex;
+
+    protected override void AfterCloned()
+    {
+        base.AfterCloned();
+        _heartbeatTimer = null;
+        _heartbeatIndex = 0;
+    }
 
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat(
     [
-        ModelDb.Power<LegacyBeatOfDeathPower>().ResolvedBigIconPath,
+        ModelDb.Power<ThingsLegacyBeatOfDeathPower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsDazedPower>().ResolvedBigIconPath,
         ModelDb.Power<HardenedShellPower>().ResolvedBigIconPath,
         ModelDb.Power<ArtifactPower>().ResolvedBigIconPath,
@@ -63,12 +81,16 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
     ]).Distinct();
 
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 298, 285);
+        AscensionLevel.ToughEnemies, 298, 285) + (Sts2VersionSeam.IsDread() ? 40 : 0);
 
     public override int MaxInitialHp => MinInitialHp;
 
     private int EchoDamage => AscensionHelper.GetValueIfAscension(
         AscensionLevel.DeadlyEnemies, 13, 12);
+
+    private decimal OpeningBeatOfDeathAmount => 2m + (Sts2VersionSeam.IsDread() ? 1m : 0m);
+
+    private decimal StrengthenStrengthAmount => 2m + (Sts2VersionSeam.IsDread() ? 1m : 0m);
 
     // ========== 入场 ==========
     public override async Task AfterAddedToRoom()
@@ -76,13 +98,12 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
         await base.AfterAddedToRoom();
         // 初始化专属音乐参数（CustomBgm = act1_b_boss_waterfall_giant）
         STS2_Things.Audio.ModMusicPolicy.UpdateParameter(_trackName, 1f);
-        // 心跳循环：血量越低跳得越快
-        _heartbeatCts = new CancellationTokenSource();
-        _ = HeartbeatLoop(_heartbeatCts.Token);
+        // 心跳循环：挂在 Pausable 节点计时器上，游戏暂停或退场时自动停跳
+        StartHeartbeat();
         // 隐藏 Power 保存下一次强化阶段，使进度进入多人 checksum/full-state。
-        await PowerCmd.Apply<LegacyProgressPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
-        // 死亡律动: 玩家每出一张牌扣 2 血
-        await PowerCmd.Apply<LegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 2m, Creature, null);
+        await PowerCmd.Apply<ThingsLegacyProgressPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+        // 死亡律动: 玩家每出一张牌扣 2 血（恐惧模式下为 3 血）
+        await PowerCmd.Apply<ThingsLegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, OpeningBeatOfDeathAmount, Creature, null);
         // 硬化外壳: 层数 = 最大 HP / 3
         // 注意：HardenedShellPower 的 ShouldScaleInMultiplayer=true，PowerCmd.Apply 会自动缩放。
         // 必须用缩放前的原始 HP（MonsterMaxHpBeforeModification）计算，否则会双重缩放导致层数超过 MaxHp。
@@ -162,7 +183,7 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
         SfxCmd.Play(CastSfx);
         await CreatureCmd.TriggerAnim(Creature, "Cast", 0.5f);
 
-        var progress = Creature.GetPower<LegacyProgressPower>()
+        var progress = Creature.GetPower<ThingsLegacyProgressPower>()
             ?? throw new InvalidOperationException("Legacy progress power is missing.");
         int strengthenStage = progress.NextStage;
 
@@ -174,7 +195,7 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
                 break;
             case 2:
                 // 第2次强化：1层死亡律动 + 硬化外壳改成HP/4
-                await PowerCmd.Apply<LegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                await PowerCmd.Apply<ThingsLegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
                 await SetShellDivisor(4);
                 break;
             case 3:
@@ -183,17 +204,17 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
                 break;
             case 4:
                 // 第4次强化：2点力量 + 1层死亡律动
-                await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, 2m, Creature, null);
-                await PowerCmd.Apply<LegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, StrengthenStrengthAmount, Creature, null);
+                await PowerCmd.Apply<ThingsLegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
                 break;
             default:
                 // 之后循环：第1次循环=2层人工制品+HP/5, 第2次=3层+HP/6, ...
                 var n = strengthenStage - 4;
                 // 先施死亡律动再施人工制品，避免人工制品抵消死亡律动
-                await PowerCmd.Apply<LegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                await PowerCmd.Apply<ThingsLegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
                 await PowerCmd.Apply<ArtifactPower>(new ThrowingPlayerChoiceContext(), Creature, n + 1m, Creature, null);
                 await SetShellDivisor(n + 4);
-                await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, 2m, Creature, null);
+                await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, StrengthenStrengthAmount, Creature, null);
                 break;
         }
 
@@ -214,11 +235,12 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
     }
 
     // ========== 死亡升调 ==========
-    public override Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature,
-#if STS2_V113
-        MegaCrit.Sts2.Core.Models.CardModel? source,
-#endif
-        bool wasRemovalPrevented, float deathAnimLength)
+    protected override Task OnCreatureDeathAsync(
+        PlayerChoiceContext choiceContext,
+        Creature creature,
+        CardModel? source,
+        bool wasRemovalPrevented,
+        float deathAnimLength)
     {
         if (creature == Creature)
         {
@@ -229,50 +251,112 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
         return Task.CompletedTask;
     }
 
-    public override void BeforeRemovedFromRoom()
+    public override Task AfterCombatEnd(CombatRoom room)
     {
         StopHeartbeat();
+        return base.AfterCombatEnd(room);
+    }
+
+    public override void BeforeRemovedFromRoom()
+    {
+        base.BeforeRemovedFromRoom();
+        StopHeartbeat();
+    }
+
+    // ========== 心跳循环（半血后加速，Pausable Godot.Timer） ==========
+
+    private void StartHeartbeat()
+    {
+        StopHeartbeat();
+        if (TestMode.IsOn
+            || string.Equals(DisplayServer.GetName(), "headless", StringComparison.OrdinalIgnoreCase)
+            || !Creature.IsAlive
+            || CombatManager.Instance.IsOverOrEnding)
+            return;
+
+        Node? host = Sts2VersionSeam.GetCreatureNode(Creature) ?? (Node?)NCombatRoom.Instance;
+        if (host == null || !GodotObject.IsInstanceValid(host) || !host.IsInsideTree())
+            return;
+
+        _heartbeatIndex = 0;
+        if (host.GetTree() is { Paused: false })
+        {
+            PlayHeartbeatBeat();
+        }
+
+        double interval = GetHeartbeatIntervalSeconds();
+        var timer = new Godot.Timer
+        {
+            Name = "ThingsLegacyHeartbeatTimer",
+            ProcessMode = Node.ProcessModeEnum.Pausable,
+            OneShot = false,
+            Autostart = false,
+            WaitTime = interval,
+        };
+        timer.Timeout += OnHeartbeatTick;
+        timer.TreeExiting += OnHeartbeatTimerExiting;
+        host.AddChildSafely(timer);
+        timer.Start(interval);
+        _heartbeatTimer = timer;
     }
 
     private void StopHeartbeat()
     {
-        _heartbeatCts?.Cancel();
-        _heartbeatCts?.Dispose();
-        _heartbeatCts = null;
+        Godot.Timer? timer = _heartbeatTimer;
+        _heartbeatTimer = null;
+        if (timer == null || !GodotObject.IsInstanceValid(timer))
+            return;
+
+        timer.Timeout -= OnHeartbeatTick;
+        timer.TreeExiting -= OnHeartbeatTimerExiting;
+        timer.Stop();
+        timer.QueueFreeSafely();
     }
 
-    // ========== 心跳循环（半血后加速） ==========
-
-    private async Task HeartbeatLoop(CancellationToken ct)
+    private void OnHeartbeatTimerExiting()
     {
-        var files = new[]
+        if (_heartbeatTimer != null)
         {
-            "res://sfx/the_legacy/HeartBeat_1.ogg",
-            "res://sfx/the_legacy/HeartBeat_2.ogg"
-        };
-        var index = 0;
+            _heartbeatTimer.Timeout -= OnHeartbeatTick;
+            _heartbeatTimer.TreeExiting -= OnHeartbeatTimerExiting;
+            _heartbeatTimer = null;
+        }
+    }
 
-        try
+    private void OnHeartbeatTick()
+    {
+        if (!Creature.IsAlive || CombatManager.Instance.IsOverOrEnding)
         {
-            while (!ct.IsCancellationRequested)
+            StopHeartbeat();
+            return;
+        }
+
+        PlayHeartbeatBeat();
+
+        if (_heartbeatTimer != null && GodotObject.IsInstanceValid(_heartbeatTimer))
+        {
+            double nextInterval = GetHeartbeatIntervalSeconds();
+            if (Math.Abs(_heartbeatTimer.WaitTime - nextInterval) > 0.01)
             {
-                if (!Creature.IsAlive)
-                    break;
-
-                NativeSfxPlayer.Play(files[index], volumeDb: -10f);
-                index = (index + 1) % files.Length;
-                // 半血后心跳加速: 0.75s vs 正常 1.5s
-                float delay = Creature.CurrentHp <= Creature.MaxHp / 2 ? 0.75f : 1.5f;
-                await Task.Delay(TimeSpan.FromSeconds(delay), ct);
+                _heartbeatTimer.WaitTime = nextInterval;
+                _heartbeatTimer.Start(nextInterval);
             }
         }
-        catch (OperationCanceledException)
+    }
+
+    private void PlayHeartbeatBeat()
+    {
+        try
         {
-            // 正常取消，忽略
+            NativeSfxPlayer.Play(HeartbeatFiles[_heartbeatIndex], volumeDb: -10f);
+            _heartbeatIndex = (_heartbeatIndex + 1) % HeartbeatFiles.Length;
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Log.Error($"[ThingsTheLegacy] HeartbeatLoop 异常: {e}");
+            Log.Error($"[ThingsTheLegacy] Heartbeat playback error: {ex}");
         }
     }
+
+    private double GetHeartbeatIntervalSeconds() =>
+        Creature.CurrentHp <= Creature.MaxHp / 2 ? 0.75 : 1.5;
 }

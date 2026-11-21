@@ -47,6 +47,9 @@ public partial class CaveGodProbeNode
     {
         string root=Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"),"../.."));
         string output=Path.Combine(root,"build/crossroads-20261003");Directory.CreateDirectory(output);
+        Type? atlasType=typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Assets.AtlasResourceLoader");
+        ResourceFormatLoader? atlas=atlasType==null?null:(ResourceFormatLoader)Activator.CreateInstance(atlasType)!;
+        if(atlas!=null)ResourceLoader.AddResourceFormatLoader(atlas,true);
         SaveManager.Instance.InitPrefsDataForTest();SaveManager.Instance.SettingsSave.Language="zhs";LocManager.Initialize();
         var harmony=new Harmony("Things.Crossroads.UiProbe");
         foreach(var name in new[]{"CrossroadMapOwnerPatch","CrossroadMapDisplayPatch"})
@@ -108,8 +111,12 @@ public partial class CaveGodProbeNode
                 Vector2 expected=(nodes[candidate.A].GetGlobalRect().GetCenter()+nodes[candidate.B].GetGlobalRect().GetCenter())/2;
                 Assert(Button(candidate).GetGlobalRect().GetCenter().DistanceTo(expected)<0.5f,"Lock misses node centers after map scaling/scrolling");
             }
-            foreach(var dot in screen.GetNode<NCrossroadLayer>("TheMap/Points/ThingsCrossroads").GetChildren().OfType<TextureRect>().Where(dot=>dot.Visible))
+            var visibleDots=screen.GetNode<NCrossroadLayer>("TheMap/Points/ThingsCrossroads").GetChildren().OfType<TextureRect>().Where(dot=>dot.Visible).ToArray();
+            Assert(visibleDots.Length>0,"Crossroad layer must render visible path dots");
+            foreach(var dot in visibleDots)
             {
+                Assert(dot.Texture!=null&&!dot.Texture.ResourcePath.Contains("missing_",StringComparison.OrdinalIgnoreCase)&&dot.Texture.GetWidth()<=64,
+                    $"Crossroad dot loaded missing/fallback texture: {dot.Texture?.ResourcePath} ({dot.Texture?.GetWidth()}x{dot.Texture?.GetHeight()})");
                 Vector2 center=dot.GetGlobalTransform()*(dot.Size/2);
                 float distance=segments.Min(s=>Geometry2D.GetClosestPointToSegment(center,s.Start,s.End).DistanceTo(center));
                 Assert(distance<0.5f,"Path dots do not follow the line between node centers");
@@ -207,6 +214,7 @@ public partial class CaveGodProbeNode
         finally
         {
             viewport.QueueFree();await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+            if(atlas!=null)ResourceLoader.RemoveResourceFormatLoader(atlas);
             sync.Dispose();executor.Cancel();RoadHotkeys=null;harmony.UnpatchAll(harmony.Id);
         }
     }

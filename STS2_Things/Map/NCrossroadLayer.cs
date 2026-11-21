@@ -61,10 +61,46 @@ public partial class NCrossroadLayer : Node2D
         container.AddChild(layer);
     }
 
+    public static Texture2D? LoadNativeMapDotTexture(Node? mapRoot = null)
+    {
+        static bool IsValidDot(Texture2D? tex) =>
+            tex != null && !tex.ResourcePath.Contains("missing_", StringComparison.OrdinalIgnoreCase);
+
+        if (mapRoot?.GetNodeOrNull<Control>("TheMap/Paths") is { } paths)
+        {
+            foreach (Node child in paths.GetChildren())
+            {
+                if (child is TextureRect { Texture: { } liveDot } && IsValidDot(liveDot))
+                    return liveDot;
+            }
+        }
+
+        if (GD.Load<PackedScene>("res://scenes/ui/map_dot.tscn") is { } dotScene)
+        {
+            TextureRect sample = dotScene.Instantiate<TextureRect>();
+            Texture2D? sceneDot = sample.Texture;
+            sample.Free();
+            if (IsValidDot(sceneDot))
+                return sceneDot;
+        }
+
+        foreach (string candidate in new[]
+                 {
+                     "res://images/atlases/compressed_atlas.sprites/map_dot.tres",
+                     "res://images/atlases/compressed.sprites/map/map_dot.tres"
+                 })
+        {
+            if (ResourceLoader.Exists(candidate) && GD.Load<Texture2D>(candidate) is { } tex && IsValidDot(tex))
+                return tex;
+        }
+
+        return null;
+    }
+
     public override void _Ready()
     {
         Crossroads.Changed += OnChanged;
-        _roadDot = GD.Load<Texture2D>("res://images/atlases/compressed.sprites/map/map_dot.tres");
+        _roadDot = LoadNativeMapDotTexture(_screen);
         foreach (CrossroadRecord road in _plan.Roads)
         {
             if (!_points.TryGetValue(road.A, out var a) || !_points.TryGetValue(road.B, out var b)) continue;
@@ -234,7 +270,7 @@ public partial class NCrossroadLayer : Node2D
             await Task.WhenAny(answer, closed.Task);
             if (!canPay || !answer.IsCompletedSuccessfully || !answer.Result || !GodotObject.IsInstanceValid(this) ||
                 !GodotObject.IsInstanceValid(_screen) || !CanInteract(road) || _run.CurrentMapCoord != current) return;
-            RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(new UnlockCrossroadAction(payer, act, fingerprint,
+            RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(new ThingsUnlockCrossroadAction(payer, act, fingerprint,
                 current, target, CrossroadPlan.Price));
         }
         finally { _asking = false; _popup = null; }

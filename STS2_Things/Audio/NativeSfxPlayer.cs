@@ -7,6 +7,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
+using MegaCrit.Sts2.Core.Saves;
 using FileAccess = Godot.FileAccess;
 
 namespace STS2_Things.Audio;
@@ -77,13 +78,32 @@ public static class NativeSfxPlayer
         {
             var resolved = ResolveRandomVariant(resPath);
             if (resolved != null)
-                PlayExact(resolved, bus, volumeDb);
+                PlayExact(resolved, bus, volumeDb, allowCombatEnding);
             else
                 Log.Warn($"[NativeSfxPlayer] No variant found for: {resPath}");
             return;
         }
 
-        PlayExact(resPath, bus, volumeDb);
+        PlayExact(resPath, bus, volumeDb, allowCombatEnding);
+    }
+
+    internal static AudioStream? LoadLoopingMusicStream(string resPath)
+    {
+        var stream = LoadStream(resPath);
+        if (stream is AudioStreamWav wav)
+        {
+            var wavCopy = (AudioStreamWav)wav.Duplicate();
+            if (wavCopy.LoopEnd <= wavCopy.LoopBegin)
+            {
+                int totalSamples = (int)Math.Round(wavCopy.GetLength() * Math.Max(1, wavCopy.MixRate));
+                if (totalSamples > wavCopy.LoopBegin)
+                    wavCopy.LoopEnd = totalSamples;
+            }
+            if (wavCopy.LoopEnd > wavCopy.LoopBegin)
+                wavCopy.LoopMode = AudioStreamWav.LoopModeEnum.Forward;
+            return wavCopy;
+        }
+        return stream;
     }
 
     public static void PlayMusic(string resPath, string bus = "Master", float volumeDb = -6f)
@@ -91,15 +111,12 @@ public static class NativeSfxPlayer
         try
         {
             if (!CanPlayAudio()) return;
-            var stream = LoadStream(resPath);
+            var stream = LoadLoopingMusicStream(resPath);
             if (stream == null)
             {
                 Log.Warn($"[NativeSfxPlayer] PlayMusic: stream is null for {resPath}");
                 return;
             }
-
-            if (stream is AudioStreamWav wav)
-                wav.LoopMode = AudioStreamWav.LoopModeEnum.Forward;
 
             _musicPath = resPath;
 
@@ -107,6 +124,9 @@ public static class NativeSfxPlayer
             {
                 try
                 {
+                    if (_musicPath == null || !CanPlayAudio() || !string.Equals(_musicPath, resPath, StringComparison.Ordinal))
+                        return;
+
                     var tree = Engine.GetMainLoop() as SceneTree;
                     if (tree?.Root == null || !GodotObject.IsInstanceValid(tree.Root))
                     {
@@ -124,14 +144,23 @@ public static class NativeSfxPlayer
                         _musicPlayer = null;
                     }
 
-                    var player = new AudioStreamPlayer { Stream = stream, Bus = bus, VolumeDb = volumeDb };
+                    var player = new AudioStreamPlayer
+                    {
+                        Stream = stream,
+                        Bus = bus,
+                        VolumeDb = ResolveMusicVolumeDb(volumeDb)
+                    };
                     _musicPlayer = player;
 
                     tree.Root.AddChild(player);
                     player.Finished += () =>
                     {
-                        if (GodotObject.IsInstanceValid(player) && player.IsInsideTree())
+                        if (_musicPlayer == player && _musicPath != null &&
+                            GodotObject.IsInstanceValid(player) && player.IsInsideTree())
+                        {
+                            player.VolumeDb = ResolveMusicVolumeDb(volumeDb);
                             player.Play();
+                        }
                     };
                     player.Play();
                 }
@@ -256,6 +285,9 @@ public static class NativeSfxPlayer
             {
                 try
                 {
+                    if (_seqPaths == null || !CanPlayAudio())
+                        return;
+
                     var tree = Engine.GetMainLoop() as SceneTree;
                     if (tree?.Root == null || !GodotObject.IsInstanceValid(tree.Root)) return;
 
@@ -265,13 +297,17 @@ public static class NativeSfxPlayer
                         if (_seqLooper.IsInsideTree()) _seqLooper.QueueFree();
                     }
 
-                    var looper = new AudioStreamPlayer { Stream = stream, Bus = "Master", VolumeDb = _seqVolumeDb };
+                    float effectiveLoopDb = ResolveSfxVolumeDb(_seqVolumeDb) ?? -80f;
+                    var looper = new AudioStreamPlayer { Stream = stream, Bus = "Master", VolumeDb = effectiveLoopDb };
                     _seqLooper = looper;
                     tree.Root.AddChild(looper);
                     looper.Finished += () =>
                     {
-                        if (_seqLooper != null && GodotObject.IsInstanceValid(_seqLooper) && _seqLooper.IsInsideTree())
+                        if (_seqLooper == looper && _seqPaths != null &&
+                            GodotObject.IsInstanceValid(_seqLooper) && _seqLooper.IsInsideTree())
+                        {
                             PlayNextInSequence();
+                        }
                     };
                     looper.Play();
                 }
@@ -401,13 +437,41 @@ public static class NativeSfxPlayer
 
         if (dataBytes == null) return null;
         stream.Data = dataBytes;
+        int bytesPerSampleFrame = Math.Max(1, (stream.Stereo ? 2 : 1) * (stream.Format == AudioStreamWav.FormatEnum.Format8Bits ? 1 : 2));
+        stream.LoopBegin = 0;
+        stream.LoopEnd = dataBytes.Length / bytesPerSampleFrame;
         return stream;
     }
 
-    private static void PlayExact(string resPath, string bus, float volumeDb)
+    private static float ResolveMusicVolumeDb(float authoredVolumeDb)
+    {
+        if (SaveManager.Instance?.SettingsSave is not { } settings)
+            return authoredVolumeDb;
+        float gain = Math.Clamp(settings.VolumeMaster, 0f, 1f) * Math.Clamp(settings.VolumeBgm, 0f, 1f);
+        if (gain <= 0.0001f)
+            return -80f;
+        // SettingsSave defaults to 0.5 Master * 0.5 BGM = 0.25. Cap upward gain at 0 dBFS.
+        return Math.Min(0f, authoredVolumeDb + Mathf.LinearToDb(gain / 0.25f));
+    }
+
+    private static float? ResolveSfxVolumeDb(float baseVolumeDb)
+    {
+        if (SaveManager.Instance?.SettingsSave is not { } settings)
+            return baseVolumeDb;
+        float gain = Math.Clamp(settings.VolumeMaster, 0f, 1f) * Math.Clamp(settings.VolumeSfx, 0f, 1f);
+        if (gain <= 0.0001f)
+            return null;
+        // SettingsSave defaults to 0.5 Master * 0.5 SFX = 0.25 -> 0 dB offset; cap upward gain to prevent clipping.
+        return Math.Min(Math.Max(0f, baseVolumeDb), baseVolumeDb + Mathf.LinearToDb(gain / 0.25f));
+    }
+
+    private static void PlayExact(string resPath, string bus, float volumeDb, bool allowCombatEnding = false)
     {
         try
         {
+            if (ResolveSfxVolumeDb(volumeDb) == null)
+                return;
+
             var stream = LoadStream(resPath);
             if (stream == null) return;
 
@@ -415,10 +479,15 @@ public static class NativeSfxPlayer
             {
                 try
                 {
+                    if (!CanPlayAudio(allowCombatEnding))
+                        return;
+                    if (ResolveSfxVolumeDb(volumeDb) is not { } mainThreadVolumeDb)
+                        return;
+
                     var tree = Engine.GetMainLoop() as SceneTree;
                     if (tree?.Root == null || !GodotObject.IsInstanceValid(tree.Root)) return;
 
-                    var player = new AudioStreamPlayer { Stream = stream, Bus = bus, VolumeDb = volumeDb };
+                    var player = new AudioStreamPlayer { Stream = stream, Bus = bus, VolumeDb = mainThreadVolumeDb };
                     tree.Root.AddChild(player);
                     lock (_activePlayersLock)
                     {

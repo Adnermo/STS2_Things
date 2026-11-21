@@ -19,7 +19,7 @@ using MegaCrit.Sts2.Core.Nodes.Audio;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Powers;
 using STS2_Things.Visuals;
-using static STS2_Things.Compatibility.Sts2VersionCompatibility;
+using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Monsters;
 
@@ -31,8 +31,6 @@ namespace STS2_Things.Monsters;
 /// </summary>
 public sealed class ThingsScaleBeetle : ThingsSpineMonster
 {
-    // 对应CustomBgm "act1_boss_vantom" 的FMOD参数
-    private const string _trackName = "vantom_progress";
     private const int MoltBlock = 14;
     public const float BiteContact = 0.68f;
     public const float ReconstructRelease = 0.76f;
@@ -54,23 +52,8 @@ public sealed class ThingsScaleBeetle : ThingsSpineMonster
         animator.AddAnyState("Molt", new AnimState("molt") { NextState = idle });
     }
 
-    private async Task WaitForPose(string animation, float moment, float fallback)
-    {
-        var sprite = Creature.GetCreatureNode()?.Visuals?.SpineBody;
-        float wait = fallback;
-        using (TrackEntryScope(sprite?.TryGetAnimationState()?.GetCurrent(0), out MegaTrackEntry? track))
-            if (track != null && track.GetAnimationName() == animation)
-                wait = Math.Max(0, moment - track.GetTrackTime());
-        await Cmd.Wait(wait);
-        // Instant mode still commits the authored contact before damage or powers.
-        using var scope = TrackEntryScope(sprite?.TryGetAnimationState()?.GetCurrent(0), out MegaTrackEntry? current);
-        if (current != null && current.GetAnimationName() == animation && current.GetTrackTime() < moment)
-        {
-            current.SetMixDuration(0);
-            current.SetTrackTime(moment);
-            sprite!.BoundObject.Call("update_skeleton", 0f);
-        }
-    }
+    private Task WaitForPose(string animation, float moment, float fallback)
+        => WaitForSpineMomentAsync(animation, moment, fallback);
 
     private async Task BeginMotion(string trigger, string animation, float contact)
     {
@@ -100,28 +83,16 @@ public sealed class ThingsScaleBeetle : ThingsSpineMonster
     public override async Task AfterAddedToRoom()
     {
         await base.AfterAddedToRoom();
-        // 初始化专属音乐参数（CustomBgm = act1_boss_vantom）
-        STS2_Things.Audio.ModMusicPolicy.UpdateParameter(_trackName, 1f);
         // 常驻buff：对玩家造成未被抵挡伤害时施加缩小
         await PowerCmd.Apply<ThingsScaleBeetlePower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
-    }
-
-    public override Task AfterDeath(PlayerChoiceContext choiceContext, Creature creature,
-#if STS2_V113
-        MegaCrit.Sts2.Core.Models.CardModel? source,
-#endif
-        bool wasRemovalPrevented, float deathAnimLength)
-    {
-        if (creature == Creature)
+        if (IsDread())
         {
-            // 死亡升调（vantom_progress=5 触发FMOD升调自动化）
-            STS2_Things.Audio.ModMusicPolicy.UpdateParameter(_trackName, 5f);
+            await PowerCmd.Apply<ThingsScaleUpPower>(new ThrowingPlayerChoiceContext(), Creature, 10m, Creature, null);
         }
-        return Task.CompletedTask;
     }
 
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 210, 200);
+        AscensionLevel.ToughEnemies, 210, 200) + (IsDread() ? 25 : 0);
 
     public override int MaxInitialHp => MinInitialHp;
 
@@ -174,10 +145,11 @@ public sealed class ThingsScaleBeetle : ThingsSpineMonster
         SfxCmd.Play(CastSfx);
         await BeginMotion("Cast", "cast", ReconstructRelease);
 
+        decimal reconstructStacks = 15m + (IsDread() ? 2m : 0m);
         await PowerCmd.Apply<ThingsScaleDownPower>(new ThrowingPlayerChoiceContext(),
-            targets, 15m, Creature, null);
+            targets, reconstructStacks, Creature, null);
         await PowerCmd.Apply<ThingsScaleUpPower>(new ThrowingPlayerChoiceContext(),
-            Creature, 15m, Creature, null);
+            Creature, reconstructStacks, Creature, null);
         await FinishMotion("cast");
     }
 

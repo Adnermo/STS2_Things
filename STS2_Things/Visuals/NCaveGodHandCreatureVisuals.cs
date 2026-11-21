@@ -23,7 +23,9 @@ public partial class NCaveGodHandCreatureVisuals : NCreatureVisuals
 
     public void ElevateCreatureUi()
     {
-        if (GetParent() is CanvasItem parentItem)
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
+            return;
+        if (GetParent() is CanvasItem parentItem && GodotObject.IsInstanceValid(parentItem))
         {
             parentItem.ZIndex = CreatureUiZIndex;
             parentItem.ZAsRelative = false;

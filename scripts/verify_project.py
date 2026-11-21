@@ -135,7 +135,15 @@ def verify_config_contract(errors: list[str]) -> None:
 
     # 3) BaseLib 标签本地化：每个键与区段标题都必须在 settings_ui 表中给出
     #    STS2_THINGS-<SLUG>.title（eng 与 zhs）。
-    section_names = {"Audio", "Bosses", "Other Encounters", "Events", "Merchant Bargain", "Neow Starting Relics"}
+    section_names = {
+        "Audio",
+        "Bosses",
+        "Other Encounters",
+        "Events",
+        "Merchant Bargain",
+        "Neow Starting Relics",
+        "Stability",
+    }
     label_names = key_names | section_names
     label_keys = {"STS2_THINGS-" + slugify_class_name(name) + ".title" for name in label_names}
     label_keys.add("STS2_THINGS.mod_title")  # BaseLib 配置列表标题（GetModTitle）
@@ -191,12 +199,17 @@ def audit_model_id_namespace(errors: list[str], pck: Path | None) -> None:
             fail(errors, f"namespaced model source is missing: {relative}")
             continue
         text = path.read_text(encoding="utf-8")
-        # Native Spine monsters inherit MonsterModel through ThingsSpineMonster.
-        base_pattern = (
-            "(?:MonsterModel|ThingsSpineMonster)" if base_type == "MonsterModel" else base_type
-        )
+        # v2.0.0 content models inherit through Things*Model base classes or ThingsSpineMonster.
+        base_patterns = {
+            "CardModel": "(?:CardModel|ThingsCardModel)",
+            "EventModel": "(?:EventModel|ThingsEventModel)",
+            "RelicModel": "(?:RelicModel|ThingsRelicModel)",
+            "PowerModel": "(?:PowerModel|ThingsPowerModel)",
+            "MonsterModel": "(?:MonsterModel|ThingsMonsterModel|ThingsSpineMonster)",
+        }
+        base_pattern = base_patterns.get(base_type, re.escape(base_type))
         if re.search(
-            rf"public\s+sealed\s+class\s+{re.escape(type_name)}\s*:\s*{base_pattern}\b",
+            rf"public\s+sealed\s+(?:partial\s+)?class\s+{re.escape(type_name)}\s*:\s*{base_pattern}\b",
             text,
         ) is None:
             fail(errors, f"{relative} does not declare {type_name} : {base_type}")
@@ -303,6 +316,7 @@ CAVE_GOD_TIMING_EVENTS = {
     "CentralSlamHit": ("central_slam", "central_hit", 0),
     "DoubleFistCrushHit": ("double_fist_crush", "central_hit", 0),
     "FrontSweepHit": ("front_sweep", "central_hit", 0),
+    "HeavyPunchHit": ("leftpunch", "central_hit", 0),
     "CardSnatchTouch": ("card_snatch", "central_hit", 0),
     "CardSnatchClose": ("card_snatch", "card_snatch", 0),
 }
@@ -325,21 +339,26 @@ def _spine_clip_length(animation: dict) -> float:
 
 def verify_cave_god_contract(errors: list[str]) -> None:
     monsters = SOURCE / "Monsters"
-    body_text = (monsters / "ThingsCaveGodBody.cs").read_text(encoding="utf-8")
-    hand_text = (monsters / "ThingsCaveGodHand.cs").read_text(encoding="utf-8")
+    body_text = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(monsters.glob("ThingsCaveGodBody*.cs"))
+    )
+    hand_text = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(monsters.glob("ThingsCaveGodHand*.cs"))
+    )
 
     constants = dict(re.findall(r'\b(\w+Id)\s*=\s*"([A-Z0-9_]+)"', body_text))
     body_moves = {constants[name] for name in re.findall(r"\bnew\(\s*(\w+Id)\s*,", body_text) if name in constants}
     hand_moves = set(re.findall(r'Action\.\w+\s*=>\s*"([A-Z0-9_]+)"', hand_text))
-    if len(body_moves) < 14:
-        fail(errors, f"cave_god: parsed only {len(body_moves)} body move states: {sorted(body_moves)}")
-    if len(hand_moves) != 9:
-        fail(errors, f"cave_god: ThingsCaveGodHand.MoveId must map all 9 actions, parsed {sorted(hand_moves)}")
+    if len(body_moves) != 13:
+        fail(errors, f"cave_god: expected 13 body move states, parsed {len(body_moves)}: {sorted(body_moves)}")
+    if len(hand_moves) != 11:
+        fail(errors, f"cave_god: ThingsCaveGodHand.MoveId must map all 11 actions, parsed {sorted(hand_moves)}")
     if "nameof(Action." in hand_text or "action.ToString()" in hand_text:
         fail(errors, "cave_god: hand move ids must come from MoveId(), not enum names")
     # Native CreatureCmd.Stun inserts a STUNNED state into any monster.
     hand_moves.add("STUNNED")
     expected = {f"THINGS_CAVE_GOD_BODY.moves.{m}.title" for m in body_moves}
+    expected.add("THINGS_CAVE_GOD_BODY.moves.STUNNED.title")
     for part in ("LEFT_HAND", "RIGHT_HAND"):
         expected |= {f"THINGS_CAVE_GOD_{part}.moves.{m}.title" for m in hand_moves}
 
@@ -368,20 +387,32 @@ def verify_cave_god_contract(errors: list[str]) -> None:
             if table.get(key) != value:
                 fail(errors, f"cave_god: {lang} {key} must be {value!r}, got {table.get(key)!r}")
         encounters = json.loads((loc / "encounters.json").read_text(encoding="utf-8-sig"))
-        if encounters.get("CAVE_GOD_BOSS_ENCOUNTER.title") != encounter_titles[lang]:
+        if encounters.get("THINGS_CAVE_GOD_BOSS_ENCOUNTER.title") != encounter_titles[lang]:
             fail(errors, f"cave_god: {lang} encounter title must be {encounter_titles[lang]!r}")
         powers = json.loads((loc / "powers.json").read_text(encoding="utf-8-sig"))
-        cards = json.loads((loc / "cards.json").read_text(encoding="utf-8-sig"))
-        for power in ("THINGS_CAVE_GOD_CRYSTAL_VEIN_POWER", "THINGS_CAVE_GOD_FISSURE_POWER"):
+        for power in (
+            "THINGS_CAVE_GOD_ANCIENT_CORE_POWER",
+            "THINGS_CAVE_GOD_AGING_POWER",
+            "THINGS_CAVE_GOD_BROKEN_BLADE_POWER",
+            "THINGS_CAVE_GOD_SHATTERED_SHIELD_POWER",
+            "THINGS_CAVE_GOD_PENDING_TRIAL_POWER",
+        ):
             for suffix in ("title", "description", "smartDescription"):
                 if not powers.get(f"{power}.{suffix}"):
                     fail(errors, f"cave_god: {lang}/powers.json missing {power}.{suffix}")
-        for suffix in ("title", "description"):
-            if not cards.get(f"THINGS_CAVE_GOD_CRYSTAL_SHARD.{suffix}"):
-                fail(errors, f"cave_god: {lang}/cards.json missing THINGS_CAVE_GOD_CRYSTAL_SHARD.{suffix}")
+        cards = json.loads((loc / "cards.json").read_text(encoding="utf-8-sig"))
+        for trial_card in ("THINGS_CAVE_GOD_BROKEN_BLADE_TRIAL", "THINGS_CAVE_GOD_SHATTERED_SHIELD_TRIAL"):
+            for suffix in ("title", "description"):
+                if not cards.get(f"{trial_card}.{suffix}"):
+                    fail(errors, f"cave_god: {lang}/cards.json missing {trial_card}.{suffix}")
 
-    # New power icons: 256px source + 64px packed + atlas entry, all RGBA.
-    for power in ("things_cave_god_crystal_vein_power", "things_cave_god_fissure_power"):
+    # Core & trial power icons: 256px source + 64px packed + atlas entry, all RGBA.
+    for power in (
+        "things_cave_god_ancient_core_power",
+        "things_cave_god_aging_power",
+        "things_cave_god_broken_blade_power",
+        "things_cave_god_shattered_shield_power",
+    ):
         for suffix, size in (("", (256, 256)), ("_packed", (64, 64))):
             icon = ROOT / "images" / "powers" / f"{power}{suffix}.png"
             if not icon.is_file():
@@ -393,8 +424,6 @@ def verify_cave_god_contract(errors: list[str]) -> None:
         atlas = ROOT / "images" / "atlases" / "power_atlas.sprites" / f"{power}.tres"
         if not atlas.is_file() or f"res://images/powers/{power}_packed.png" not in atlas.read_text(encoding="utf-8"):
             fail(errors, f"cave_god: atlas entry {atlas.relative_to(ROOT)} missing or not pointing at the packed icon")
-    if "AddModelToPool<TokenCardPool, ThingsCaveGodCrystalShard>" not in (SOURCE / "STS2_ThingsInit.cs").read_text(encoding="utf-8"):
-        fail(errors, "cave_god: ThingsCaveGodCrystalShard is not registered in TokenCardPool")
 
     # Gameplay impact waits must match the Spine hit events they drive.
     timing_text = (SOURCE / "Visuals" / "CaveGodAnimTiming.cs").read_text(encoding="utf-8")
@@ -412,6 +441,9 @@ def verify_cave_god_contract(errors: list[str]) -> None:
     sweep_length = _spine_clip_length(animations.get("front_sweep", {}))
     if abs(timings.get("FrontSweepLength", -1.0) - sweep_length) > CAVE_GOD_TIMING_TOLERANCE:
         fail(errors, f"cave_god: FrontSweepLength must match front_sweep clip length {sweep_length:.2f}")
+    punch_length = _spine_clip_length(animations.get("leftpunch", {}))
+    if abs(timings.get("HeavyPunchLength", -1.0) - punch_length) > CAVE_GOD_TIMING_TOLERANCE:
+        fail(errors, f"cave_god: HeavyPunchLength must match leftpunch clip length {punch_length:.2f}")
     for clip in ("card_snatch", "card_snatch_angry", "card_snatch_right", "card_snatch_right_angry"):
         if abs(timings.get("CardSnatchLength", -1.0) - _spine_clip_length(animations.get(clip, {}))) > CAVE_GOD_TIMING_TOLERANCE:
             fail(errors, f"cave_god: {clip} must match CardSnatchLength")
@@ -426,7 +458,7 @@ def verify_cave_god_contract(errors: list[str]) -> None:
 
 
 def verify_origin_fogmog_motion(errors: list[str]) -> None:
-    model = (SOURCE / "Monsters/OriginFogmog.cs").read_text(encoding="utf-8")
+    model = (SOURCE / "Monsters/ThingsOriginFogmog.cs").read_text(encoding="utf-8")
     rig = json.loads((SOURCE / "animations/monsters/origin_fogmog/origin_fogmog.spjson").read_text(encoding="utf-8"))
     times = {name: float(value) for name, value in re.findall(r"const float (\w+) = ([0-9.]+)f;", model)}
     for constant, clip, event in (
@@ -441,6 +473,255 @@ def verify_origin_fogmog_motion(errors: list[str]) -> None:
     hits = [e["time"] for e in rig["animations"]["triple_attack"].get("events", []) if e["name"] == "attack_hit"]
     if triple != hits or len(hits) != 3:
         fail(errors, "Origin Fogmog triple attack contact frames disagree with gameplay")
+
+
+def verify_v2_architectural_invariants(errors: list[str]) -> None:
+    content_dirs = (
+        "Acts",
+        "Afflictions",
+        "Cards",
+        "Enchantments",
+        "Encounters",
+        "Events",
+        "Modifiers",
+        "Monsters",
+        "Powers",
+        "Relics",
+    )
+    for folder in content_dirs:
+        folder_path = SOURCE / folder
+        if not folder_path.is_dir():
+            continue
+        for cs_path in sorted(folder_path.rglob("*.cs")):
+            text = cs_path.read_text(encoding="utf-8")
+            if re.search(r"^\s*#if\b", text, re.MULTILINE):
+                fail(
+                    errors,
+                    f"v2 invariant: {cs_path.relative_to(ROOT)} embeds #if preprocessor directive in content layer",
+                )
+
+    for cs_path in sorted(SOURCE.rglob("*.cs")):
+        text = cs_path.read_text(encoding="utf-8")
+        if re.search(r"\bTestMode\.IsOn\s*=", text):
+            fail(
+                errors,
+                f"v2 invariant: {cs_path.relative_to(ROOT)} mutates global TestMode.IsOn",
+            )
+        stripped = re.sub(r'(?s)/\*.*?\*/|//[^\n]*|@"(?:""|[^"])*"|"(?:\\.|[^"\\])*"', "", text)
+        if re.search(r"\bcatch\s*\{", stripped):
+            fail(
+                errors,
+                f"v2 invariant: {cs_path.relative_to(ROOT)} contains bare catch {{}} without exception type",
+            )
+
+    for cs_path in sorted((SOURCE / "Monsters").rglob("*.cs")):
+        text = cs_path.read_text(encoding="utf-8")
+        if re.search(r"Cmd\.Wait\([^;\n]*GetTrackTime\s*\(", text):
+            fail(
+                errors,
+                f"v2 invariant: {cs_path.relative_to(ROOT)} passes non-deterministic GetTrackTime() into Cmd.Wait",
+            )
+
+    retired_paths = (
+        SOURCE / "Encounters" / "HumanFaceColumnWeak.cs",
+        SOURCE / "Encounters" / "ThingsHumanFaceColumnWeak.cs",
+        SOURCE / "Encounters" / "ThingsSpongeLeechWeak.cs",
+        SOURCE / "Encounters" / "ThingsSilkMothWeak.cs",
+        SOURCE / "Encounters" / "ThingsSilkMothEncounter.cs",
+        SOURCE / "Encounters" / "ThingsCaveMawEncounter.cs",
+        SOURCE / "Encounters" / "ThingsCaveMawSnailEncounter.cs",
+        SOURCE / "Encounters" / "ThingsSpongeSnailEncounter.cs",
+        SOURCE / "Encounters" / "ThingsLanternMothEncounter.cs",
+        SOURCE / "Cards" / "CaveGodMartialTrial.cs",
+        SOURCE / "Cards" / "CaveGodArcaneTrial.cs",
+        SOURCE / "Cards" / "ThingsCaveGodCrystalShard.cs",
+        SOURCE / "Powers" / "CaveGodMartialPower.cs",
+        SOURCE / "Powers" / "CaveGodArcanePower.cs",
+        SOURCE / "Powers" / "ThingsCaveGodCrystalVeinPower.cs",
+        SOURCE / "Powers" / "ThingsCaveGodFissurePower.cs",
+        SOURCE / "Visuals" / "NThingsCreatureVisuals.cs",
+        SOURCE / "Visuals" / "GeneratedCutoutRigData.cs",
+    )
+    for retired in retired_paths:
+        if retired.exists():
+            fail(errors, f"v2 invariant: retired file still exists: {retired.relative_to(ROOT)}")
+
+    migrator_path = SOURCE / "Platform" / "LegacyIdMigrator.cs"
+    if not migrator_path.is_file():
+        fail(errors, "v2 invariant: Platform/LegacyIdMigrator.cs is missing")
+    else:
+        migrator_text = migrator_path.read_text(encoding="utf-8")
+        entries = re.findall(
+            r'new\(\s*"[A-Z_]+"\s*,\s*"[A-Z0-9_]+"\s*,\s*"THINGS_[A-Z0-9_]+"\s*,\s*(?:true|false)\s*\)',
+            migrator_text,
+        )
+        if len(entries) != 136:
+            fail(
+                errors,
+                f"v2 invariant: LegacyIdMigrator declares {len(entries)} mappings, expected 136",
+            )
+
+
+def _parse_encounter_slots(
+    path: Path,
+    text: str,
+    str_consts: dict[tuple[str, str], str],
+    int_consts: dict[tuple[str, str], int],
+) -> list[str]:
+    match = re.search(
+        r"public\s+override\s+IReadOnlyList<string>\s+Slots\s*=>\s*(.*?);",
+        text,
+        re.DOTALL,
+    )
+    if match is None:
+        return []
+    expr = match.group(1)
+    helpers = {
+        hm.group(1): (hm.group(2), hm.group(3))
+        for hm in re.finditer(
+            r'string\s+(\w+)\(\s*int\s+(\w+)\s*\)\s*\{[^}]*return\s+\$"([^"]+)"\s*;',
+            text,
+            re.DOTALL,
+        )
+    }
+    token_re = re.compile(
+        r'Enumerable\.Range\(\s*(\w+)\s*,\s*(\w+)\s*\)\.Select\(\s*(?:(\w+)\s*=>\s*\$"([^"]+)"|(\w+))\s*\)'
+        r'|"([^"]+)"'
+        r"|\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b"
+        r"|\b([A-Za-z_]\w*)\b"
+    )
+
+    def resolve_int(tok: str) -> int:
+        return int(tok) if tok.isdigit() else int_consts[(path.name, tok)]
+
+    slots: list[str] = []
+    for tm in token_re.finditer(expr):
+        if tm.group(1) is not None:
+            start = resolve_int(tm.group(1))
+            count = resolve_int(tm.group(2))
+            if tm.group(3) is not None:
+                var_name, tpl = tm.group(3), tm.group(4)
+            else:
+                var_name, tpl = helpers[tm.group(5)]
+            for value in range(start, start + count):
+                slots.append(
+                    tpl.replace(f"{{{var_name}}}", str(value)).replace(
+                        f"{{{var_name} + 1}}", str(value + 1)
+                    )
+                )
+        elif tm.group(6) is not None:
+            slots.append(tm.group(6))
+        elif tm.group(7) is not None:
+            const_key = (tm.group(7), tm.group(8))
+            if const_key in str_consts:
+                slots.append(str_consts[const_key])
+        elif tm.group(9) is not None:
+            const_key = (path.name, tm.group(9))
+            if const_key in str_consts:
+                slots.append(str_consts[const_key])
+    return slots
+
+
+def verify_encounters_localization_and_scripts(errors: list[str]) -> None:
+    loc_root = SOURCE / "localization"
+    placeholder_re = re.compile(r"\{([A-Za-z0-9_]+)(?:[:}|])")
+    invalid_bbcode_n = re.compile(r"\[n\]", re.IGNORECASE)
+
+    # 1) Reject literal [n] invalid BBCode tags across localization/{eng,zhs}/*.json.
+    for lang in ("eng", "zhs"):
+        for json_path in sorted((loc_root / lang).glob("*.json")):
+            data = json.loads(json_path.read_text(encoding="utf-8-sig"))
+            for key, value in data.items():
+                if isinstance(value, str) and invalid_bbcode_n.search(value):
+                    fail(
+                        errors,
+                        f"{json_path.relative_to(ROOT)}:{key} contains invalid literal [n] BBCode tag",
+                    )
+
+    # 2) Every concrete EncounterModel has <ID>.loss in eng & zhs with matching {Placeholder} sets,
+    #    and every HasScene => true encounter has scenes/encounters/<slug>.tscn whose Marker2D child names match Slots.
+    eng_enc = json.loads((loc_root / "eng" / "encounters.json").read_text(encoding="utf-8-sig"))
+    zhs_enc = json.loads((loc_root / "zhs" / "encounters.json").read_text(encoding="utf-8-sig"))
+
+    str_consts: dict[tuple[str, str], str] = {}
+    int_consts: dict[tuple[str, str], int] = {}
+    for const_source in [
+        *sorted((SOURCE / "Encounters").glob("*.cs")),
+        *sorted((SOURCE / "Monsters").glob("*.cs")),
+    ]:
+        cs_text = const_source.read_text(encoding="utf-8")
+        cls_match = re.search(
+            r"(?:public|internal)\s+(?:sealed\s+|static\s+|abstract\s+)?(?:partial\s+)?class\s+(\w+)",
+            cs_text,
+        )
+        cls_prefix = cls_match.group(1) if cls_match else ""
+        for name, val in re.findall(r'\bconst\s+string\s+(\w+)\s*=\s*"([^"]+)"', cs_text):
+            str_consts[(const_source.name, name)] = val
+            if cls_prefix:
+                str_consts[(cls_prefix, name)] = val
+        for name, val in re.findall(r"\bconst\s+int\s+(\w+)\s*=\s*(\d+)", cs_text):
+            int_consts[(const_source.name, name)] = int(val)
+            if cls_prefix:
+                int_consts[(cls_prefix, name)] = int(val)
+
+    for enc_path in sorted((SOURCE / "Encounters").glob("*.cs")):
+        text = enc_path.read_text(encoding="utf-8")
+        cls_match = re.search(
+            r"public\s+(?!abstract\b)(?:sealed\s+)?(?:partial\s+)?class\s+(\w+)\s*:\s*(?:EncounterModel|ModBossEncounter)\b",
+            text,
+        )
+        if cls_match is None:
+            continue
+
+        class_name = cls_match.group(1)
+        encounter_id = slugify_class_name(class_name)
+        loss_key = f"{encounter_id}.loss"
+        eng_loss = eng_enc.get(loss_key)
+        zhs_loss = zhs_enc.get(loss_key)
+        if not isinstance(eng_loss, str) or not eng_loss.strip():
+            fail(errors, f"eng/encounters.json missing non-empty {loss_key} for {class_name}")
+        if not isinstance(zhs_loss, str) or not zhs_loss.strip():
+            fail(errors, f"zhs/encounters.json missing non-empty {loss_key} for {class_name}")
+        if isinstance(eng_loss, str) and isinstance(zhs_loss, str):
+            eng_vars = set(placeholder_re.findall(eng_loss))
+            zhs_vars = set(placeholder_re.findall(zhs_loss))
+            if eng_vars != zhs_vars:
+                fail(
+                    errors,
+                    f"encounters.json {loss_key} placeholder mismatch between eng {sorted(eng_vars)} and zhs {sorted(zhs_vars)}",
+                )
+
+        if re.search(r"\bHasScene\s*=>\s*true\b", text):
+            scene_path = ROOT / "scenes" / "encounters" / f"{encounter_id.lower()}.tscn"
+            if not scene_path.is_file():
+                fail(
+                    errors,
+                    f"{class_name} declares HasScene => true but {scene_path.relative_to(ROOT)} is missing",
+                )
+                continue
+            scene_text = scene_path.read_text(encoding="utf-8")
+            markers = re.findall(
+                r'\[node name="([^"]+)" type="Marker2D"\s+parent="\."\]',
+                scene_text,
+            )
+            slots = _parse_encounter_slots(enc_path, text, str_consts, int_consts)
+            if not slots:
+                fail(errors, f"{class_name} declares HasScene => true without resolvable Slots")
+            elif set(markers) != set(slots) or len(markers) != len(slots):
+                fail(
+                    errors,
+                    f"{scene_path.relative_to(ROOT)} Marker2D children {markers} do not match {class_name}.Slots {slots}",
+                )
+
+    # 3) Every .ps1 file under scripts/ and services/ containing non-ASCII bytes begins with UTF-8 BOM.
+    ps1_paths = sorted([*(ROOT / "scripts").rglob("*.ps1"), *(ROOT / "services").rglob("*.ps1")])
+    for ps1_path in ps1_paths:
+        raw = ps1_path.read_bytes()
+        if any(byte >= 0x80 for byte in raw) and not raw.startswith(b"\xef\xbb\xbf"):
+            fail(
+                errors,
+                f"{ps1_path.relative_to(ROOT)} contains non-ASCII bytes without UTF-8 BOM (EF BB BF)",
+            )
 
 
 def parse_args() -> argparse.Namespace:
@@ -461,6 +742,8 @@ def main() -> int:
     verify_config_contract(errors)
     verify_cave_god_contract(errors)
     verify_origin_fogmog_motion(errors)
+    verify_v2_architectural_invariants(errors)
+    verify_encounters_localization_and_scripts(errors)
 
     def source_text(relative: str) -> str:
         return (SOURCE / relative).read_text(encoding="utf-8")
@@ -473,8 +756,8 @@ def main() -> int:
 
     root_manifest = json.loads((ROOT / "STS2_Things.json").read_text(encoding="utf-8"))
     target_manifest_paths = {
-        "v107.1": ROOT / "manifests" / "v107.1" / "STS2_Things.json",
-        "v113": ROOT / "manifests" / "v113" / "STS2_Things.json",
+        "v111.1": ROOT / "manifests" / "v111.1" / "STS2_Things.json",
+        "v113.1": ROOT / "manifests" / "v113.1" / "STS2_Things.json",
     }
     target_manifests: dict[str, dict] = {}
     for target, path in target_manifest_paths.items():
@@ -493,7 +776,7 @@ def main() -> int:
     if not isinstance(release_version, str) or not re.fullmatch(r"\d+\.\d+\.\d+", release_version):
         fail(errors, "unified manifest version must be a three-part semantic version")
         release_version = ""
-    expected_min_versions = {"v107.1": "v0.107.1", "v113": "v0.113.0"}
+    expected_min_versions = {"v111.1": "v0.111.1", "v113.1": "v0.113.1"}
     if project_value("Version") != release_version:
         fail(errors, f"implementation version must be {release_version}")
     for target, manifest in target_manifests.items():
@@ -507,7 +790,7 @@ def main() -> int:
             fail(errors, f"{target} native build must not declare third-party dependencies")
     if root_manifest.get("version") != project_value("Version"):
         fail(errors, "unified manifest and implementation versions differ")
-    if root_manifest.get("min_game_version") != "v0.107.1":
+    if root_manifest.get("min_game_version") != "v0.111.1":
         fail(errors, "unified manifest must use the lowest supported game version")
     if root_manifest.get("affects_gameplay") is not True:
         fail(errors, "unified manifest must set affects_gameplay=true")
@@ -524,8 +807,8 @@ def main() -> int:
     project_text = (ROOT / "STS2_Things.csproj").read_text(encoding="utf-8")
     for required in (
         "Sts2TargetVersion",
-        "STS2_V107_1",
-        "STS2_V113",
+        "STS2_V111_1",
+        "STS2_V113_1",
         "<AssemblyName>STS2_Things</AssemblyName>",
         "Unsupported Sts2TargetVersion",
         '<Compile Remove="tools\\**\\*.cs" />',
@@ -566,6 +849,8 @@ def main() -> int:
         fail(errors, "published Things Collision card art is still excluded from the PCK")
     if "output/**" not in export_preset:
         fail(errors, "ImageGen working outputs must stay excluded from the shipping PCK")
+    if "**/shell-offset.json" not in export_preset:
+        fail(errors, "shell-offset.json authoring metadata must stay excluded from the shipping PCK")
     if not (ROOT / "output" / ".gdignore").is_file():
         fail(errors, "output/.gdignore must prevent Godot from importing ImageGen iterations")
     if not (ROOT / "source_assets" / ".gdignore").is_file():
@@ -612,10 +897,10 @@ def main() -> int:
             fail(errors, "bootstrap and implementation versions differ")
         bootstrap_project_text = bootstrap_project_path.read_text(encoding="utf-8")
         for required in (
-            "STS2_Things.Implementations.v107.1.dll",
-            "STS2_Things.Implementations.v113.dll",
-            "ImplementationV1071",
-            "ImplementationV113",
+            "STS2_Things.Implementations.v111.1.dll",
+            "STS2_Things.Implementations.v113.1.dll",
+            "ImplementationV1111",
+            "ImplementationV1131",
         ):
             if required not in bootstrap_project_text:
                 fail(errors, f"bootstrap embedding contract missing {required!r}")
@@ -624,51 +909,30 @@ def main() -> int:
     else:
         bootstrap_text = bootstrap_source_path.read_text(encoding="utf-8")
         for required in (
-            f"STS2_Things {release_version} supports",
-            "ModifyDamageMultiplicative",
-            "MegaCrit.Sts2.Core.Combat.CombatId",
+            "DetectTarget",
+            "STS2_Things.Implementations.",
             "AssociateAssemblyWithMod",
-            "AppendV1071ImplementationTypes",
-            "PromoteV1071ImplementationAssembly",
-            "InvokeImplementationInitializer",
+            "v111.1",
+            "v113.1",
         ):
             if required not in bootstrap_text:
                 fail(errors, f"bootstrap runtime contract missing {required!r}")
 
-    compatibility_text = source_text("Compatibility/Sts2VersionCompatibility.cs")
+    seam_text = source_text("Platform/Sts2VersionSeam.cs")
     for snippet in (
-        "#if STS2_V107_1",
-        "SavedPropertiesTypeCache.InjectTypeIntoCache(typeof(ThingsCurseRemover));",
-        "creature.GetCreatureNode()",
-        "creature.SetNodeVisible(visible);",
+        "TargetTag",
+        "v111.1",
+        "v113.1",
     ):
-        if snippet not in compatibility_text:
-            fail(errors, f"dual-version compatibility bridge missing {snippet!r}")
-    injection_sites: dict[str, set[str]] = {}
-    for path in SOURCE.rglob("*.cs"):
-        injected_types = set(
-            re.findall(
-                r"SavedPropertiesTypeCache\.InjectTypeIntoCache\(typeof\((\w+)\)\);",
-                path.read_text(encoding="utf-8"),
-            )
-        )
-        if injected_types:
-            injection_sites[path.relative_to(SOURCE).as_posix()] = injected_types
-    expected_injection_sites = {
-        "Compatibility/Sts2VersionCompatibility.cs": {
-            "ThingsCurseRemover", "ShadowClaimTicket", "BottledEcho",
-            "MycelialDeposit", "BorrowedEmber", "AnestheticChart",
-        },
-        "Enchantments/ThingsSplit.cs": {"ThingsSplit"},
-    }
-    if injection_sites != expected_injection_sites:
+        if snippet not in seam_text:
+            fail(errors, f"dual-version compatibility seam missing {snippet!r}")
+    if "#if STS2_V111_1" not in seam_text and "#if STS2_V113_1" not in seam_text:
         fail(
             errors,
-            "V107.1 SavedProperty injection sites differ: "
-            f"expected {expected_injection_sites}, got {injection_sites}",
+            "dual-version compatibility seam missing '#if STS2_V111_1' or '#if STS2_V113_1'",
         )
 
-    build_text = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
+    build_text = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8-sig")
     for required in (
         "build_quirky_hopper_texture.py",
         "build_static_monster_scenes.py",
@@ -682,12 +946,12 @@ def main() -> int:
         if required not in build_text:
             fail(errors, f"target-aware build script missing {required!r}")
 
-    build_all_text = (ROOT / "scripts" / "build-all.ps1").read_text(encoding="utf-8")
+    build_all_text = (ROOT / "scripts" / "build-all.ps1").read_text(encoding="utf-8-sig")
     for required in (
         "build-unified.ps1",
         "build\\unified",
-        "DataDirV1071",
-        "DataDirV113",
+        "DataDirV1111",
+        "DataDirV1131",
         "test-gravetide-slug.ps1",
         "test-merchant-bargain.ps1",
         "test-quirky-hopper.ps1",
@@ -697,12 +961,14 @@ def main() -> int:
     ):
         if required not in build_all_text:
             fail(errors, f"unified build orchestration missing {required!r}")
-    unified_build_text = (ROOT / "scripts" / "build-unified.ps1").read_text(encoding="utf-8")
+    unified_build_text = (ROOT / "scripts" / "build-unified.ps1").read_text(encoding="utf-8-sig")
     for required in (
         "STS2_Things.Bootstrap.csproj",
         "verify-unified-package.ps1",
-        "build\\v107.1\\STS2_Things.dll",
-        "build\\v113\\STS2_Things.dll",
+        "DataDirV1111",
+        "DataDirV1131",
+        "build\\v111.1\\STS2_Things.dll",
+        "build\\v113.1\\STS2_Things.dll",
         "build\\unified",
     ):
         if required not in unified_build_text:
@@ -725,13 +991,12 @@ def main() -> int:
     require_snippets(
         "Cards/ThingsCollision.cs",
         [
-            "public sealed class ThingsCollision : CardModel",
+            "public sealed class ThingsCollision : ThingsCardModel",
             "CardRarity.Uncommon",
             "CardKeyword.Exhaust",
             "new DamageVar(10m, ValueProp.Move)",
             "new DynamicVar(StrengthLossKey, 2m)",
-            "#if STS2_V107_1",
-            ".FromCard(this, cardPlay)",
+            "AttackFromCard(DynamicVars.Damage.BaseValue, cardPlay)",
             "Owner.Creature, -strengthLoss",
             "cardPlay.Target, -strengthLoss",
             "DynamicVars.Damage.UpgradeValueBy(4m)",
@@ -744,7 +1009,7 @@ def main() -> int:
         "Things Collision": ROOT / "images/packed/card_portraits/ironclad/things_collision.png",
         "ThingsPackUp": ROOT / "images/packed/card_portraits/silent/things_pack_up.png",
         "ThingsRecall": ROOT / "images/packed/card_portraits/silent/things_recall.png",
-        "Soulfysh Disease": ROOT / "images/packed/card_portraits/silent/soulfysh_disease.png",
+        "Soulfysh Disease": ROOT / "images/packed/card_portraits/silent/things_soulfysh_disease.png",
     }
     for card_name, portrait_path in card_portraits.items():
         if not portrait_path.is_file():
@@ -766,9 +1031,9 @@ def main() -> int:
                 fail(errors, f"{language}/cards.json missing {key}")
 
     require_snippets(
-        "Events/CuttingItClose.cs",
+        "Events/ThingsCuttingItClose.cs",
         [
-            "public sealed class CuttingItClose : EventModel",
+            "public sealed class ThingsCuttingItClose : ThingsEventModel",
             "public override bool IsAllowed(IRunState runState)",
             "runState.Players.All(player => player.Deck.Cards.Any(card => IsSplitCandidate(split, card)))",
             "ModelDb.Enchantment<ThingsSplit>()",
@@ -781,7 +1046,13 @@ def main() -> int:
             "await CardPileCmd.Add(copies, PileType.Deck);",
             "CardSelectCmd.FromDeckForRemoval(",
             "FinishWithoutCard();",
-            'L10NLookup("CUTTING_IT_CLOSE.pages.ABORTED.description")',
+            'L10NLookup("THINGS_CUTTING_IT_CLOSE.pages.ABORTED.description")',
+        ],
+        "native synchronized split/remove event flow",
+    )
+    require_snippets(
+        "Hooks/CuttingItCloseConsoleReentryPatch.cs",
+        [
             "RunManager.Instance.EventSynchronizer.Events",
             "mutableEvents.Any(mutableEvent =>",
             "ShouldPrepareScreens(",
@@ -789,9 +1060,9 @@ def main() -> int:
             "NCapstoneContainer.Instance?.Close();",
             "NMapScreen.Instance?.Close(animateOut: false);",
         ],
-        "native synchronized split/remove event flow and console screen cleanup",
+        "Cutting It Close console screen cleanup",
     )
-    cutting_source = source_text("Events/CuttingItClose.cs")
+    cutting_source = source_text("Events/ThingsCuttingItClose.cs")
     if cutting_source.count("if (selected is null)") != 2:
         fail(
             errors,
@@ -801,41 +1072,58 @@ def main() -> int:
         "Enchantments/ThingsSplit.cs",
         [
             "public sealed class ThingsSplit : EnchantmentModel",
-            "#if STS2_V107_1",
-            "SavedPropertiesTypeCache.InjectTypeIntoCache(typeof(ThingsSplit));",
             "[SavedProperty]",
             "public string SplitState",
-            "return base.CanEnchant(card) && HasFixedEnergyCost(card) && !card.HasStarCostX;",
-            'private const string SerializedStateVersion = "2";',
+            "SplitValueCalculator.HasFixedEnergyCost(card)",
+            "!card.HasStarCostX;",
             "private int? _unsplitStarCost;",
+            "state.UnsplitDynamicValues.GetValueOrDefault(",
+        ],
+        "split permanent-card mutation contract",
+    )
+    require_snippets(
+        "Enchantments/Split/SplitValueCalculator.cs",
+        [
+            "public static decimal SplitDynamicValue(decimal value)",
+            "return decimal.Ceiling(value / 2m);",
+            "public static int SplitEnergyCost(int value)",
+            "return value < 0 ? value : value / 2;",
+        ],
+        "split rounding math contract",
+    )
+    require_snippets(
+        "Enchantments/Split/SplitStateCodec.cs",
+        [
+            'public const string CurrentVersion = "2";',
+        ],
+        "split state codec version contract",
+    )
+    require_snippets(
+        "Hooks/ThingsSplitPatches.cs",
+        [
             "nameof(CardModel.BaseStarCost)",
             '[HarmonyPatch(typeof(CardModel), "UpgradeStarCostBy")]',
-            "private static decimal SplitDynamicValue(decimal value)",
-            "return decimal.Ceiling(value / 2m);",
-            "private static int SplitEnergyCost(int value)",
-            "return value < 0 ? value : value / 2;",
-            "state.UnsplitDynamicValues.GetValueOrDefault(",
             '[HarmonyPatch(typeof(TheScythe), "CurrentDamage", MethodType.Setter)]',
             "nameof(CardModel.ClearEnchantmentInternal)",
             "nameof(CardModel.FromSerializable)",
             "[HarmonyFinalizer]",
         ],
-        "split rounding and permanent-card mutation contract",
+        "split Harmony lifecycle hooks contract",
     )
 
-    init_text = source_text("STS2_ThingsInit.cs")
-    cutting_registration = "ModelDb.Event<CuttingItClose>()"
-    # 事件目录：Overgrowth/Underdocks 共用同一目录函数（两幕补丁各自追加），
+    event_catalog_text = source_text("Hooks/ActEventCatalogPatches.cs")
+    cutting_registration = "ModelDb.Event<ThingsCuttingItClose>()"
+    # 事件目录：Overgrowth/Underdocks 各自调用独立目录函数（内部复用共享一幕事件并追加本幕独占事件），
     # Hive 使用独立目录函数；确定性追加合同在目录内实现。
     for act_name, catalog_call in (
-        ("Overgrowth", "ThingsEventCatalog.AddOvergrowthAndUnderdocksEvents(__result)"),
-        ("Underdocks", "ThingsEventCatalog.AddOvergrowthAndUnderdocksEvents(__result)"),
+        ("Overgrowth", "ThingsEventCatalog.AddOvergrowthEvents(__result)"),
+        ("Underdocks", "ThingsEventCatalog.AddUnderdocksEvents(__result)"),
         ("Hive", "ThingsEventCatalog.AddHiveEvents(__result)"),
     ):
         event_patch = re.search(
             rf'\[HarmonyPatch\(typeof\({act_name}\), "get_AllEvents"\)\]'
             r"(?P<body>.*?)(?=\n\[HarmonyPatch|\Z)",
-            init_text,
+            event_catalog_text,
             re.DOTALL,
         )
         if event_patch is None:
@@ -846,9 +1134,9 @@ def main() -> int:
             fail(errors, f"{act_name} event patch must call {catalog_call}")
         if "HarmonyPriority(Priority.Last)" not in body:
             fail(errors, f"{act_name} event patch is missing HarmonyPriority(Priority.Last)")
-    if init_text.count(cutting_registration) != 1:
+    if event_catalog_text.count(cutting_registration) != 1:
         fail(errors, "Cutting It Close must be registered exactly once in the shared event catalog")
-    catalog_region = init_text[init_text.index("ThingsEventCatalog"):]
+    catalog_region = event_catalog_text[event_catalog_text.index("ThingsEventCatalog"):]
     for deterministic_contract in (
         "DeterministicContentOrder.SortBaseThenMods(",
         ".Distinct()",
@@ -860,17 +1148,17 @@ def main() -> int:
             )
 
     cutting_event_keys = {
-        "CUTTING_IT_CLOSE.title",
-        "CUTTING_IT_CLOSE.pages.INITIAL.description",
-        "CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.title",
-        "CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.description",
-        "CUTTING_IT_CLOSE.pages.INITIAL.options.THROW.title",
-        "CUTTING_IT_CLOSE.pages.INITIAL.options.THROW.description",
-        "CUTTING_IT_CLOSE.pages.IMPROVISE.selectionScreenPrompt",
-        "CUTTING_IT_CLOSE.pages.THROW.selectionScreenPrompt",
-        "CUTTING_IT_CLOSE.pages.ABORTED.description",
-        "CUTTING_IT_CLOSE.pages.IMPROVISE.description",
-        "CUTTING_IT_CLOSE.pages.THROW.description",
+        "THINGS_CUTTING_IT_CLOSE.title",
+        "THINGS_CUTTING_IT_CLOSE.pages.INITIAL.description",
+        "THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.title",
+        "THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.description",
+        "THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.THROW.title",
+        "THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.THROW.description",
+        "THINGS_CUTTING_IT_CLOSE.pages.IMPROVISE.selectionScreenPrompt",
+        "THINGS_CUTTING_IT_CLOSE.pages.THROW.selectionScreenPrompt",
+        "THINGS_CUTTING_IT_CLOSE.pages.ABORTED.description",
+        "THINGS_CUTTING_IT_CLOSE.pages.IMPROVISE.description",
+        "THINGS_CUTTING_IT_CLOSE.pages.THROW.description",
     }
     expected_event_titles = {"eng": "Cutting It Close", "zhs": "命悬一线"}
     split_localization_phrases = {
@@ -900,10 +1188,10 @@ def main() -> int:
                 f"{lang}/events.json has empty Cutting It Close values: "
                 f"{empty_event_keys}",
             )
-        if events_table.get("CUTTING_IT_CLOSE.title") != expected_event_titles[lang]:
+        if events_table.get("THINGS_CUTTING_IT_CLOSE.title") != expected_event_titles[lang]:
             fail(errors, f"{lang}/events.json has the wrong Cutting It Close title")
         improvise_description = events_table.get(
-            "CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.description", ""
+            "THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.description", ""
         )
         if (
             "{Enchantment}" not in improvise_description
@@ -911,7 +1199,7 @@ def main() -> int:
         ):
             fail(errors, f"{lang} improvise option must describe two Split-enchanted copies")
         selection_prompt = events_table.get(
-            "CUTTING_IT_CLOSE.pages.IMPROVISE.selectionScreenPrompt", ""
+            "THINGS_CUTTING_IT_CLOSE.pages.IMPROVISE.selectionScreenPrompt", ""
         )
         required_card_type_terms = {
             "eng": ("Attack",),
@@ -972,7 +1260,16 @@ def main() -> int:
     # full texture; its scene is a SpineSprite instead of a static Sprite2D.
     # Bowlbug Progenitor followed the same route (tools/BowlbugProgenitorRig),
     # and so did Origin Fogmog (tools/OriginFogmogRig).
-    native_spine_scene_keys = {"the_legacy", "bowlbug_progenitor", "origin_fogmog", "scale_beetle"}
+    native_spine_scene_keys = {
+        "the_legacy",
+        "bowlbug_progenitor",
+        "origin_fogmog",
+        "scale_beetle",
+        "soul_roe_1",
+        "soul_roe_2",
+        "soul_roe_3",
+        "soul_roes",
+    }
     for rig_key, (name, _part_count, _bone_count, _model, _death_time) in sorted(
         rig_specs.items()
     ):
@@ -1384,6 +1681,26 @@ def main() -> int:
         # vanilla eye_with_teeth scene
         extra_scene=("position = Vector2(6, -26)", "scale = Vector2(0.35, 0.35)"),
     )
+    for idx, scene_name in ((1, "soul_roe.tscn"), (2, "soul_roe_2.tscn"), (3, "soul_roe_3.tscn")):
+        key = f"soul_roe_{idx}"
+        check_native_spine_rig(
+            f"Soul Roe {idx}",
+            scene_name,
+            key,
+            required_spine_animations,
+            extra_scene=("position = Vector2(0, 0)", "scale = Vector2(0.46, 0.46)"),
+        )
+        if f'"{key}": "{key}"' in static_builder_text:
+            fail(errors, f"build_static_monster_scenes.py would overwrite {scene_name}")
+    check_native_spine_rig(
+        "Soul Roes",
+        "soul_roes.tscn",
+        "soul_roes",
+        (*required_spine_animations, "multi_bite_6", "multi_bite_4_intangible"),
+        extra_scene=("position = Vector2(0, 0)", "scale = Vector2(0.36, 0.36)"),
+    )
+    if '"soul_roes": "soul_roes"' in static_builder_text:
+        fail(errors, "build_static_monster_scenes.py would overwrite soul_roes.tscn")
 
     # Every self-owned shipping monster texture is an exact RGBA mirror of its
     # editable source.  No edge, grain, brightness, outline or palette pass may
@@ -2346,50 +2663,53 @@ def main() -> int:
         "eight-trigger native CreatureAnimator-to-Spine mapping contract",
     )
 
-    static_models = (
-        "SoulRoe",
-        "SoulRoes",
-    )
+    static_models: tuple[str, ...] = ()
+    for spine_roe_model in ("ThingsSoulRoe", "ThingsSoulRoes"):
+        if re.search(
+            rf"public sealed class\s+{spine_roe_model}\s*:\s*ThingsSpineMonster\b",
+            source_text(f"Monsters/{spine_roe_model}.cs"),
+        ) is None:
+            fail(errors, f"Monsters/{spine_roe_model}.cs must inherit ThingsSpineMonster")
     legacy_model_text = source_text("Monsters/ThingsTheLegacy.cs")
     if re.search(
         r"public sealed class\s+ThingsTheLegacy\s*:\s*ThingsSpineMonster\b",
         legacy_model_text,
     ) is None:
         fail(errors, "Monsters/ThingsTheLegacy.cs must inherit ThingsSpineMonster")
-    bowlbug_model_text = source_text("Monsters/BowlbugProgenitor.cs")
+    bowlbug_model_text = source_text("Monsters/ThingsBowlbugProgenitor.cs")
     if re.search(
-        r"public sealed class\s+BowlbugProgenitor\s*:\s*ThingsSpineMonster\b",
+        r"public sealed class\s+ThingsBowlbugProgenitor\s*:\s*ThingsSpineMonster\b",
         bowlbug_model_text,
     ) is None:
-        fail(errors, "Monsters/BowlbugProgenitor.cs must inherit ThingsSpineMonster")
+        fail(errors, "Monsters/ThingsBowlbugProgenitor.cs must inherit ThingsSpineMonster")
     if re.search(
-        r"public sealed class\s+OriginFogmog\s*:\s*ThingsSpineMonster\b",
-        source_text("Monsters/OriginFogmog.cs"),
+        r"public sealed class\s+ThingsOriginFogmog\s*:\s*ThingsSpineMonster\b",
+        source_text("Monsters/ThingsOriginFogmog.cs"),
     ) is None:
-        fail(errors, "Monsters/OriginFogmog.cs must inherit ThingsSpineMonster")
+        fail(errors, "Monsters/ThingsOriginFogmog.cs must inherit ThingsSpineMonster")
     if 'TriggerAnim(Creature, "Summon", 0.75f)' not in bowlbug_model_text:
-        fail(errors, "Monsters/BowlbugProgenitor.cs must play its Spine summon when laying eggs")
+        fail(errors, "Monsters/ThingsBowlbugProgenitor.cs must play its Spine summon when laying eggs")
     if "DeathAnimLengthOverride" in bowlbug_model_text:
-        fail(errors, "Monsters/BowlbugProgenitor.cs must not override the death animation length")
+        fail(errors, "Monsters/ThingsBowlbugProgenitor.cs must not override the death animation length")
     for model_name in static_models:
         relative = f"Monsters/{model_name}.cs"
         model_text = source_text(relative)
         if re.search(
-            rf"public sealed class\s+{re.escape(model_name)}\s*:\s*MonsterModel\b",
+            rf"public sealed class\s+{re.escape(model_name)}\s*:\s*(?:MonsterModel|ThingsMonsterModel)\b",
             model_text,
         ) is None:
-            fail(errors, f"{relative} does not inherit MonsterModel directly")
+            fail(errors, f"{relative} does not inherit ThingsMonsterModel directly")
         if "ThingsSpineMonster" in model_text:
             fail(errors, f"{relative} still references ThingsSpineMonster")
         if "DeathAnimLengthOverride" in model_text:
             fail(errors, f"{relative} still waits for a removed death animation")
 
     death_padding_contracts = {
-        "Monsters/OriginFogmog.cs": "new(1.45f, 1.75f)",
-        "Monsters/BowlbugProgenitor.cs": "new(1.35f, 1.8f)",
+        "Monsters/ThingsOriginFogmog.cs": "new(1.45f, 1.75f)",
+        "Monsters/ThingsBowlbugProgenitor.cs": "new(1.35f, 1.8f)",
         "Monsters/ThingsScaleBeetle.cs": "new(2.3f, 2.1f)",
-        "Monsters/SoulRoe.cs": "new(2.2f, 5.0f)",
-        "Monsters/SoulRoes.cs": "new(1.6f, 3.0f)",
+        "Monsters/ThingsSoulRoe.cs": "new(2.2f, 5.0f)",
+        "Monsters/ThingsSoulRoes.cs": "new(1.6f, 3.0f)",
         "Monsters/ThingsTheLegacy.cs": "new(1.4f, 1.7f)",
     }
     for relative, value in death_padding_contracts.items():
@@ -2442,7 +2762,7 @@ def main() -> int:
     # (tools/OriginEyeRig) so they read apart from the vanilla Fogmog's eyes;
     # the illusion lifecycle triggers are mapped to held die / revive.
     require_snippets(
-        "Monsters/OriginEyeWithTeeth.cs",
+        "Monsters/ThingsOriginEyeWithTeeth.cs",
         [
             'SceneHelper.GetScenePath("creature_visuals/origin_eye_with_teeth")',
             "visuals.Modulate = Colors.White;",
@@ -2455,19 +2775,27 @@ def main() -> int:
         ],
         "Origin Eye Spine material/animation contract",
     )
-    if "creature_visuals/eye_with_teeth\"" in source_text("Monsters/OriginEyeWithTeeth.cs"):
-        fail(errors, "OriginEyeWithTeeth still borrows the vanilla Eye With Teeth visuals")
+    if "creature_visuals/eye_with_teeth\"" in source_text("Monsters/ThingsOriginEyeWithTeeth.cs"):
+        fail(errors, "ThingsOriginEyeWithTeeth still borrows the vanilla Eye With Teeth visuals")
 
     # EncounterModel scene/slot contract. Exact equality catches both missing runtime markers and
     # stale markers that are not represented by EncounterModel.Slots.
     encounter_slots = {
-        "origin_fogmog_boss_encounter.tscn": {"fogmog", "illusion1", "illusion2"},
-        "soul_roes_encounter.tscn": {"soul_roes", *(f"soul_roe_{i}" for i in range(1, 9))},
-        "the_legacy_boss_encounter.tscn": {"the_legacy"},
-        "scale_beetle_boss_encounter.tscn": {"scale_beetle"},
-        "bowlbug_progenitor_boss_encounter.tscn": {
+        "things_origin_fogmog_boss_encounter.tscn": {"fogmog", "illusion1", "illusion2"},
+        "things_soul_roes_encounter.tscn": {"soul_roes", *(f"soul_roe_{i}" for i in range(1, 9))},
+        "things_the_legacy_boss_encounter.tscn": {"the_legacy"},
+        "things_scale_beetle_boss_encounter.tscn": {"scale_beetle"},
+        "things_bowlbug_progenitor_boss_encounter.tscn": {
             "bowlbug_progenitor",
             *(f"bowlbug_{i}" for i in range(1, 17)),
+        },
+        "things_human_face_tower_boss_encounter.tscn": {"wrath", "lament", "bastion", "mockery"},
+        "things_abyssal_inkmaw_boss_encounter.tscn": {
+            "outer_left_tentacle",
+            "left_tentacle",
+            "boss",
+            "right_tentacle",
+            "outer_right_tentacle",
         },
     }
     for name, expected in encounter_slots.items():
@@ -2494,11 +2822,11 @@ def main() -> int:
 
     # Native custom background contract used by EncounterModel.CreateBackground/BackgroundAssets.
     boss_backgrounds = {
-        "gravetide_slug_boss_encounter",
-        "origin_fogmog_boss_encounter",
-        "scale_beetle_boss_encounter",
-        "the_legacy_boss_encounter",
-        "bowlbug_progenitor_boss_encounter",
+        "things_gravetide_slug_boss_encounter",
+        "things_origin_fogmog_boss_encounter",
+        "things_scale_beetle_boss_encounter",
+        "things_the_legacy_boss_encounter",
+        "things_bowlbug_progenitor_boss_encounter",
     }
     for slug in sorted(boss_backgrounds):
         directory = ROOT / "scenes" / "backgrounds" / slug
@@ -2515,14 +2843,14 @@ def main() -> int:
         if not bg_layers:
             fail(errors, f"native background layers missing for {slug}")
 
-    gravetide_background = ROOT / "scenes/backgrounds/gravetide_slug_boss_encounter"
-    gravetide_main = gravetide_background / "gravetide_slug_boss_encounter_background.tscn"
+    gravetide_background = ROOT / "scenes/backgrounds/things_gravetide_slug_boss_encounter"
+    gravetide_main = gravetide_background / "things_gravetide_slug_boss_encounter_background.tscn"
     gravetide_expected_layers = {
-        "gravetide_slug_boss_encounter_bg_00_a.tscn",
-        "gravetide_slug_boss_encounter_bg_01_a.tscn",
-        "gravetide_slug_boss_encounter_bg_02_a.tscn",
-        "gravetide_slug_boss_encounter_bg_03_a.tscn",
-        "gravetide_slug_boss_encounter_fg_a.tscn",
+        "things_gravetide_slug_boss_encounter_bg_00_a.tscn",
+        "things_gravetide_slug_boss_encounter_bg_01_a.tscn",
+        "things_gravetide_slug_boss_encounter_bg_02_a.tscn",
+        "things_gravetide_slug_boss_encounter_bg_03_a.tscn",
+        "things_gravetide_slug_boss_encounter_fg_a.tscn",
     }
     gravetide_layer_dir = gravetide_background / "layers"
     if gravetide_layer_dir.is_dir():
@@ -2579,10 +2907,10 @@ def main() -> int:
     gravetide_ui_contract = {
         ROOT / "images/map/gravetide_slug_boss_icon.png": (352, 300),
         ROOT / "images/map/gravetide_slug_boss_icon_outline.png": (352, 300),
-        ROOT / "images/ui/run_history/gravetide_slug_boss_encounter.png": (88, 88),
-        ROOT / "images/ui/run_history/gravetide_slug_boss_encounter_outline.png": (88, 88),
-        ROOT / "images/powers/gravetide_digestion_power.png": (256, 256),
-        ROOT / "images/powers/gravetide_digestion_power_packed.png": (64, 64),
+        ROOT / "images/ui/run_history/things_gravetide_slug_boss_encounter.png": (88, 88),
+        ROOT / "images/ui/run_history/things_gravetide_slug_boss_encounter_outline.png": (88, 88),
+        ROOT / "images/powers/things_gravetide_digestion_power.png": (256, 256),
+        ROOT / "images/powers/things_gravetide_digestion_power_packed.png": (64, 64),
     }
     for ui_path, expected_size in gravetide_ui_contract.items():
         if not ui_path.is_file():
@@ -2597,15 +2925,16 @@ def main() -> int:
                 )
 
     # 全部 Boss 遭遇的 run-history 图标契约（88x88 RGBA；缺文件会在真实游戏里报
-    # “No loader found for resource: res://images/ui/run_history/<slug>_boss_encounter.png”）。
+    # “No loader found for resource: res://images/ui/run_history/things_<slug>_boss_encounter.png”）。
     boss_run_history_slugs = (
-        "bowlbug_progenitor",
-        "cave_god",
-        "gravetide_slug",
-        "living_rock",
-        "origin_fogmog",
-        "scale_beetle",
-        "the_legacy",
+        "things_abyssal_inkmaw",
+        "things_bowlbug_progenitor",
+        "things_cave_god",
+        "things_gravetide_slug",
+        "things_human_face_tower",
+        "things_origin_fogmog",
+        "things_scale_beetle",
+        "things_the_legacy",
     )
     for slug in boss_run_history_slugs:
         for variant in ("", "_outline"):
@@ -2630,16 +2959,50 @@ def main() -> int:
                     "Gravetide Spine atlas must be RGBA (3132, 608) after 4x supersampling, "
                     f"got {image.mode} {image.size}",
                 )
-    gravetide_power = ROOT / "images/powers/gravetide_digestion_power.png"
-    vanilla_power = ROOT.parent / "STS2-V113/images/powers/ravenous_power.png"
+    gravetide_power = ROOT / "images/powers/things_gravetide_digestion_power.png"
+    vanilla_source_root = ROOT.parent / "STS2-V113.1"
+    if not vanilla_source_root.exists():
+        vanilla_source_root = ROOT.parent / "STS2-V113"
+    vanilla_power = vanilla_source_root / "images/powers/ravenous_power.png"
+    for candidate_power in (
+        ROOT.parent / "STS2-V113/images/powers/ravenous_power.png",
+        ROOT.parent / "STS2-V111/images/powers/ravenous_power.png",
+    ):
+        if vanilla_power.is_file():
+            break
+        vanilla_power = candidate_power
     if gravetide_power.is_file() and vanilla_power.is_file():
         if hashlib.sha256(gravetide_power.read_bytes()).digest() == hashlib.sha256(vanilla_power.read_bytes()).digest():
             fail(errors, "Gravetide digestion Power icon still reuses the vanilla Ravenous texture")
 
     gravetide_music = ROOT / "music/gravetide_slug/gravetide_slug_boss_theme.wav"
+    tower_music = ROOT / "music/human_face_tower/human_face_tower_boss_theme.wav"
+    overgrowth_boss_music_files = (
+        ROOT / "music/origin_fogmog/origin_fogmog_boss_theme.wav",
+        ROOT / "music/scale_beetle/scale_beetle_boss_theme.wav",
+    )
+    act2_boss_music_files = (
+        ROOT / "music/cave_god/cave_god_boss_theme.wav",
+        ROOT / "music/bowlbug_progenitor/bowlbug_progenitor_boss_theme.wav",
+        ROOT / "music/abyssal_inkmaw/abyssal_inkmaw_boss_theme.wav",
+    )
+    depths_music_files = (
+        ROOT / "music/depths/depths_a1_combat.wav",
+        ROOT / "music/depths/depths_a1_explore.wav",
+        ROOT / "music/depths/depths_a2_combat.wav",
+        ROOT / "music/depths/depths_a2_explore.wav",
+    )
     gravetide_sfx = ROOT / "sfx/gravetide_slug"
     if not gravetide_music.is_file():
         fail(errors, "Gravetide dedicated boss theme is missing")
+    if not tower_music.is_file():
+        fail(errors, "Human Face Tower dedicated boss theme is missing")
+    for boss_wav in (*overgrowth_boss_music_files, *act2_boss_music_files):
+        if not boss_wav.is_file():
+            fail(errors, f"Dedicated Boss BGM asset is missing: {boss_wav.relative_to(ROOT).as_posix()}")
+    for depths_wav in depths_music_files:
+        if not depths_wav.is_file():
+            fail(errors, f"Depths Act BGM asset is missing: {depths_wav.relative_to(ROOT).as_posix()}")
     expected_sfx_prefixes = {
         "gravetide_slug_attack_light": 3,
         "gravetide_slug_attack": 2,
@@ -2659,7 +3022,7 @@ def main() -> int:
 
     # Wrapped backgrounds set ordering in _Ready. The Scale Beetle remake uses
     # NCombatBackground directly and declares its reviewed layer ordering here.
-    scale_beetle_main = ROOT / "scenes/backgrounds/scale_beetle_boss_encounter/scale_beetle_boss_encounter_background.tscn"
+    scale_beetle_main = ROOT / "scenes/backgrounds/things_scale_beetle_boss_encounter/things_scale_beetle_boss_encounter_background.tscn"
     for path in sorted((ROOT / "scenes" / "backgrounds").rglob("*.tscn")):
         if path == scale_beetle_main:
             text = path.read_text(encoding="utf-8")
@@ -2681,7 +3044,10 @@ def main() -> int:
     expected_move_keys: set[str] = set()
     for path in sorted((SOURCE / "Monsters").glob("*.cs")):
         text = path.read_text(encoding="utf-8")
-        class_match = re.search(r"public sealed class\s+(\w+)\s*:\s*MonsterModel", text)
+        class_match = re.search(
+            r"public sealed (?:partial )?class\s+(\w+)\s*:\s*(?:ThingsMonsterModel|ThingsSpineMonster|DepthsSnail|MycorrhizalTwin|GravetideSlugBase|ThingsHumanFaceTowerFace|MonsterModel)\b",
+            text,
+        )
         if not class_match:
             continue
         entry = re.sub(r"(?<!^)(?=[A-Z])", "_", class_match.group(1)).upper()
@@ -2691,11 +3057,26 @@ def main() -> int:
                 text,
             )
         )
-        state_args = re.findall(r'new MoveState\(\s*(?:"([A-Z0-9_]+)"|(\w+))', text)
-        for literal, identifier in state_args:
-            state_id = literal or string_constants.get(identifier)
-            if not state_id:
-                continue
+        state_machine_match = re.search(
+            r"MonsterMoveStateMachine\s+GenerateMoveStateMachine\s*\(\s*\)\s*\{(?P<body>.*?)\n    \}",
+            text,
+            re.DOTALL,
+        )
+        sm_body = state_machine_match.group("body") if state_machine_match else text
+        state_ids: set[str] = set()
+        for literal, identifier in re.findall(r'new MoveState\(\s*(?:"([A-Z0-9_]+)"|(\w+))', sm_body):
+            resolved = literal or string_constants.get(identifier)
+            if resolved:
+                state_ids.add(resolved)
+        for literal in re.findall(r'"([A-Z][A-Z0-9_]*_MOVE)"', sm_body):
+            if literal != "UNSET_MOVE":
+                state_ids.add(literal)
+        if 'REPLAY_{a}_{b}_MOVE' in sm_body:
+            for a in range(4):
+                for b in range(4):
+                    state_ids.add(f"REPLAY_{a}_{b}_MOVE")
+                    state_ids.add(f"REPLAY_SECOND_{a}_{b}_MOVE")
+        for state_id in state_ids:
             move_id = state_id[:-5] if state_id.endswith("_MOVE") else state_id
             expected_move_keys.add(f"{entry}.moves.{move_id}.title")
     for key in sorted(expected_move_keys):
@@ -2718,13 +3099,13 @@ def main() -> int:
     catalog = SOURCE / "Hooks" / "MonsterContentPatches.cs"
     catalog_text = catalog.read_text(encoding="utf-8") if catalog.is_file() else ""
     for encounter_type in (
-        "GravetideSlugBossEncounter",
-        "OriginFogmogBossEncounter",
-        "QuirkyHopperWeak",
-        "ScaleBeetleBossEncounter",
-        "SoulRoesEncounter",
-        "TheLegacyBossEncounter",
-        "BowlbugProgenitorBossEncounter",
+        "ThingsGravetideSlugBossEncounter",
+        "ThingsOriginFogmogBossEncounter",
+        "ThingsQuirkyHopperWeak",
+        "ThingsScaleBeetleBossEncounter",
+        "ThingsSoulRoesEncounter",
+        "ThingsTheLegacyBossEncounter",
+        "ThingsBowlbugProgenitorBossEncounter",
     ):
         if f"ModelDb.Encounter<{encounter_type}>()" not in catalog_text:
             fail(errors, f"Act encounter catalog is missing {encounter_type}")
@@ -2744,7 +3125,7 @@ def main() -> int:
         catalog_text,
         re.DOTALL,
     )
-    quirky_registration = "ModelDb.Encounter<QuirkyHopperWeak>()"
+    quirky_registration = "ModelDb.Encounter<ThingsQuirkyHopperWeak>()"
     if overgrowth_catalog and quirky_registration in overgrowth_catalog.group("body"):
         fail(errors, "Quirky Hopper is incorrectly registered in Act 1 Overgrowth")
     if underdocks_catalog and quirky_registration in underdocks_catalog.group("body"):
@@ -2764,7 +3145,7 @@ def main() -> int:
         if boss_catalog and quirky_registration in boss_catalog.group("body"):
             fail(errors, f"Quirky Hopper is incorrectly registered in {boss_catalog_name}")
     require_snippets(
-        "Encounters/QuirkyHopperWeak.cs",
+        "Encounters/ThingsQuirkyHopperWeak.cs",
         [
             "public override RoomType RoomType => RoomType.Monster;",
             "public override bool IsWeak => true;",
@@ -2772,7 +3153,7 @@ def main() -> int:
         "Act 2 weak hallway encounter classification",
     )
 
-    gravetide_registration = "ModelDb.Encounter<GravetideSlugBossEncounter>()"
+    gravetide_registration = "ModelDb.Encounter<ThingsGravetideSlugBossEncounter>()"
     if not underdocks_catalog or gravetide_registration not in underdocks_catalog.group("body"):
         fail(errors, "Gravetide Slug is not registered in the Underdocks encounter catalog")
     for wrong_catalog_name, wrong_catalog in (
@@ -2793,47 +3174,47 @@ def main() -> int:
         fail(errors, "Gravetide Slug is not registered in the Underdocks boss pool")
 
     require_snippets(
-        "Encounters/GravetideSlugBossEncounter.cs",
+        "Encounters/ThingsGravetideSlugBossEncounter.cs",
         [
             "public const int CorpseSlugSlotCount = 6;",
             "private static readonly int[] OpeningSlotIndices = [0, 5];",
             "GetVacantCorpseSlugSlots(ICombatState combatState)",
             "public override RoomType RoomType => RoomType.Boss;",
             "[BossSlot, .. Enumerable.Range(0, CorpseSlugSlotCount)",
-            "ModelDb.Monster<GravetideSlug>()",
-            "ModelDb.Monster<GravetideCorpseSlug>()",
-            "ModelDb.Monster<GravetideSlugCorpse>()",
+            "ModelDb.Monster<ThingsGravetideSlug>()",
+            "ModelDb.Monster<ThingsGravetideCorpseSlug>()",
+            "ModelDb.Monster<ThingsGravetideSlugCorpse>()",
         ],
         "one-boss/six-slot/two-attendant Gravetide encounter contract",
     )
     require_snippets(
-        "Monsters/GravetideCorpseSlug.cs",
+        "Monsters/ThingsGravetideCorpseSlug.cs",
         [
             "public override int MinInitialHp => 7;",
             "public override int MaxInitialHp => 12;",
-            "PowerCmd.Apply<GravetideMinionPower>",
+            "PowerCmd.Apply<ThingsGravetideMinionPower>",
             "PowerCmd.Apply<RavenousPower>",
-            "CreatureCmd.Add<GravetideSlugCorpse>",
+            "CreatureCmd.Add<ThingsGravetideSlugCorpse>",
             "CombatState, Creature.SlotName",
         ],
         "7-12-HP, same-slot corpse replacement contract",
     )
     require_snippets(
-        "Powers/GravetideRavenousPowerPatch.cs",
+        "Hooks/GravetideRavenousPowerPatch.cs",
         [
             "[HarmonyPatch(typeof(RavenousPower), nameof(RavenousPower.AfterDeath))]",
-            "__instance.Owner.Monster is not GravetideCorpseSlug",
+            "__instance.Owner.Monster is not ThingsGravetideCorpseSlug",
             "GravetideSlugBase.DevourStartTrigger",
             "PowerCmd.Apply<StrengthPower>",
         ],
         "native Ravenous compatibility contract",
     )
     require_snippets(
-        "Monsters/GravetideSlugCorpse.cs",
+        "Monsters/ThingsGravetideSlugCorpse.cs",
         [
             "public override int MinInitialHp => 6;",
             "public override int MaxInitialHp => 6;",
-            "PowerCmd.Apply<GravetideMinionPower>",
+            "PowerCmd.Apply<ThingsGravetideMinionPower>",
             "[SavedProperty]",
             "public bool DelayDigestionUntilNextEnemyTurn",
             'new AnimState("die")',
@@ -2841,15 +3222,15 @@ def main() -> int:
         "native-scaled 6-base-HP final-death-pose corpse contract",
     )
     require_snippets(
-        "Monsters/GravetideSlug.cs",
+        "Monsters/ThingsGravetideSlug.cs",
         [
             "decimal.Ceiling(Creature.MaxHp * 0.05m)",
-            "PowerCmd.Apply<GravetideDigestionPower>",
-            "ModelDb.Monster<GravetideCorpseSlug>().AssetPaths",
+            "PowerCmd.Apply<ThingsGravetideDigestionPower>",
+            "ModelDb.Monster<ThingsGravetideCorpseSlug>().AssetPaths",
             "GoopAndCreateCorpseMove",
             "DelayDigestionUntilNextEnemyTurn = true;",
             "CreatureCmd.Add(corpse, CombatState, slotName: slot)",
-            "CreatureCmd.Add<GravetideCorpseSlug>",
+            "CreatureCmd.Add<ThingsGravetideCorpseSlug>",
             "new MoveState(\n            \"GROW_MOVE\"",
             "new DefendIntent(), new BuffIntent()",
             "summon.FollowUpState = growth;",
@@ -2860,11 +3241,11 @@ def main() -> int:
         "Gravetide digestion, corpse, summon, and Growth contract",
     )
     require_snippets(
-        "Powers/GravetideDigestionPower.cs",
+        "Powers/ThingsGravetideDigestionPower.cs",
         [
             "public override PowerStackType StackType => PowerStackType.None;",
             "side != CombatSide.Enemy || Owner.IsDead",
-            "creature.IsAlive && creature.Monster is GravetideSlugCorpse",
+            "creature.IsAlive && creature.Monster is ThingsGravetideSlugCorpse",
             "DelayDigestionUntilNextEnemyTurn",
             "foreach (Creature deferredCorpse in allCorpses)",
             "CorpseGatherDuration = 0.45f",
@@ -2882,7 +3263,7 @@ def main() -> int:
         ],
         "stackless single-trigger clear-all/heal/Strength Digestion contract",
     )
-    digestion_source = source_text("Powers/GravetideDigestionPower.cs")
+    digestion_source = source_text("Powers/ThingsGravetideDigestionPower.cs")
     gather_call_index = digestion_source.index("GatherCorpseVisuals(corpses);")
     gather_wait_index = digestion_source.index(
         "await Cmd.CustomScaledWait(CorpseGatherDuration, CorpseGatherDuration);"
@@ -2896,7 +3277,7 @@ def main() -> int:
     if "corpse.SlotName =" in digestion_source:
         fail(errors, "Digestion corpse gather must not mutate encounter slot state")
     require_snippets(
-        "Powers/GravetideMinionPower.cs",
+        "Powers/ThingsGravetideMinionPower.cs",
         [
             "protected override bool IsVisibleInternal => false;",
             "public override bool OwnerIsSecondaryEnemy => true;",
@@ -2905,7 +3286,7 @@ def main() -> int:
         "non-blocking attendant/corpse combat-end contract",
     )
     require_snippets(
-        "Compatibility/Sts2VersionCompatibility.cs",
+        "Platform/Sts2VersionSeam.cs",
         [
             "RemoveCreatureWithoutDeathOrEscape(Creature creature)",
             "creature.RemoveAllPowersInternalExcept();",
@@ -2916,7 +3297,7 @@ def main() -> int:
     )
 
     require_snippets(
-        "Monsters/QuirkyHopper.cs",
+        "Monsters/ThingsQuirkyHopper.cs",
         [
             "await quirk.ResolveEscape();",
             "await CreatureCmd.Escape(Creature);",
@@ -2936,13 +3317,13 @@ def main() -> int:
 
     # Dynamic summons must preload every possible model through the summoner AssetPaths.
     dynamic_preload_contracts = {
-        "Monsters/GravetideSlug.cs": [
-            "ModelDb.Monster<GravetideCorpseSlug>().AssetPaths",
-            "ModelDb.Monster<GravetideSlugCorpse>().AssetPaths",
+        "Monsters/ThingsGravetideSlug.cs": [
+            "ModelDb.Monster<ThingsGravetideCorpseSlug>().AssetPaths",
+            "ModelDb.Monster<ThingsGravetideSlugCorpse>().AssetPaths",
         ],
-        "Monsters/OriginFogmog.cs": ["ModelDb.Monster<OriginEyeWithTeeth>().AssetPaths"],
-        "Monsters/SoulRoes.cs": ["ModelDb.Monster<SoulRoe>().AssetPaths"],
-        "Monsters/BowlbugProgenitor.cs": [
+        "Monsters/ThingsOriginFogmog.cs": ["ModelDb.Monster<ThingsOriginEyeWithTeeth>().AssetPaths"],
+        "Monsters/ThingsSoulRoes.cs": ["ModelDb.Monster<ThingsSoulRoe>().AssetPaths"],
+        "Monsters/ThingsBowlbugProgenitor.cs": [
             f"ModelDb.Monster<{name}>().AssetPaths"
             for name in ("BowlbugEgg", "BowlbugNectar", "BowlbugRock", "BowlbugSilk")
         ],
@@ -2957,25 +3338,42 @@ def main() -> int:
     # Mod textures are not part of the vanilla common set, so each owning monster
     # must contribute every visible custom power icon to the combat-room asset set.
     power_icon_preload_contracts = {
-        "Monsters/GravetideSlug.cs": [
-            "GravetideDigestionPower", "RavenousPower", "StrengthPower"
+        "Monsters/ThingsGravetideSlug.cs": [
+            "ThingsGravetideDigestionPower", "RavenousPower", "StrengthPower"
         ],
-        "Monsters/OriginFogmog.cs": [
-            "ThingsOriginPower", "OriginGainEnergyPower", "IllusionPower", "MinionPower", "StrengthPower"
+        "Monsters/ThingsOriginFogmog.cs": [
+            "ThingsOriginPower", "ThingsOriginGainEnergyPower", "IllusionPower", "MinionPower", "StrengthPower"
         ],
-        "Monsters/SoulRoes.cs": ["SoulRoesPower", "IntangiblePower", "StrengthPower"],
+        "Monsters/ThingsSoulRoes.cs": ["ThingsSoulRoesPower", "IntangiblePower", "StrengthPower"],
         "Monsters/ThingsScaleBeetle.cs": ["ThingsScaleBeetlePower", "ThingsScaleUpPower", "ThingsScaleDownPower"],
-        "Monsters/QuirkyHopper.cs": [
-            "ThingsQuirkPower", "QuirkyFlutterPower", "EscapeArtistPower"
+        "Monsters/ThingsQuirkyHopper.cs": [
+            "ThingsQuirkPower", "ThingsQuirkyFlutterPower", "EscapeArtistPower"
         ],
         "Monsters/ThingsTheLegacy.cs": [
-            "LegacyBeatOfDeathPower", "ThingsDazedPower", "HardenedShellPower",
+            "ThingsLegacyBeatOfDeathPower", "ThingsDazedPower", "HardenedShellPower",
             "ArtifactPower", "StrengthPower"
         ],
-        "Monsters/BowlbugProgenitor.cs": [
-            "BowlbugProgenitorPower", "ProtectTheMasterPower", "MinionPower",
-            "WeakPower", "StrengthPower"
+        "Monsters/ThingsBowlbugProgenitor.cs": [
+            "ThingsBowlbugProgenitorPower", "ThingsProtectTheMasterPower",
+            "ThingsBowlbugSiphonPower", "ThingsBowlbugVigorPower", "ThingsBowlbugCarapacePower",
+            "MinionPower", "WeakPower", "StrengthPower"
         ],
+        "Monsters/ThingsHumanFaceTowerFace.cs": [
+            "ThingsTowerPivotPower", "StrengthPower"
+        ],
+        "Monsters/ThingsHumanFaceTowerWrath.cs": ["ThingsWrathGlarePower"],
+        "Monsters/ThingsHumanFaceTowerLament.cs": ["ThingsLamentSighPower", "ThingsLamentSorrowPower", "WeakPower"],
+        "Monsters/ThingsHumanFaceTowerBastion.cs": ["ThingsBastionSealPower", "VulnerablePower"],
+        "Monsters/ThingsHumanFaceTowerMockery.cs": ["ThingsMockeryEchoPower", "VulnerablePower"],
+        "Monsters/ThingsAbyssalInkmaw.cs": [
+            "ThingsAbyssalCoverPower", "ThingsInkBlackoutPower", "ThingsAbyssalSurgePower",
+            "VulnerablePower", "WeakPower", "FrailPower", "StrengthPower"
+        ],
+        "Monsters/ThingsAbyssalCrushingTentacle.cs": ["MinionPower", "VulnerablePower", "ThingsInkBlackoutPower"],
+        "Monsters/ThingsAbyssalInkTentacle.cs": ["MinionPower", "StrengthPower", "VulnerablePower", "ThingsInkBlackoutPower"],
+        "Monsters/ThingsAbyssalSmallTentacleBase.cs": ["MinionPower"],
+        "Monsters/ThingsAbyssalSpikeTentacle.cs": ["ThingsInkBlackoutPower"],
+        "Monsters/ThingsAbyssalGlandTentacle.cs": ["StrengthPower"],
     }
     for relative, power_types in power_icon_preload_contracts.items():
         text = source_text(relative)
@@ -2985,13 +3383,13 @@ def main() -> int:
                 fail(errors, f"{relative} does not preload visible custom power icon: {power_type}")
 
     require_snippets(
-        "Monsters/QuirkyHopper.cs",
+        "Monsters/ThingsQuirkyHopper.cs",
         [
             'SceneHelper.GetScenePath("creature_visuals/quirky_hopper")',
             "AscensionLevel.ToughEnemies, 72, 68",
-            "AscensionLevel.DeadlyEnemies, 22, 20",
-            "AscensionLevel.DeadlyEnemies, 27, 25",
-            "AscensionLevel.DeadlyEnemies, 20, 18",
+            "AscensionLevel.DeadlyEnemies, 17, 15",
+            "AscensionLevel.DeadlyEnemies, 21, 19",
+            "AscensionLevel.DeadlyEnemies, 15, 13",
             "new CardDebuffIntent()",
             "card.Type == CardType.Curse",
             'entry.StartsWith("STRIKE_", StringComparison.Ordinal)',
@@ -3012,9 +3410,9 @@ def main() -> int:
         ],
         "Quirky Hopper priority theft/kill-return contract",
     )
-    quirky_hopper_text = source_text("Monsters/QuirkyHopper.cs")
+    quirky_hopper_text = source_text("Monsters/ThingsQuirkyHopper.cs")
     if not re.search(
-        r"PowerCmd\.Apply<QuirkyFlutterPower>\(\s*"
+        r"PowerCmd\.Apply<ThingsQuirkyFlutterPower>\(\s*"
         r"new ThrowingPlayerChoiceContext\(\),\s*Creature,\s*3m,",
         quirky_hopper_text,
     ):
@@ -3076,9 +3474,9 @@ def main() -> int:
             fail(errors, f"Quirk Power still contains obsolete return/reward behavior: {forbidden}")
 
     require_snippets(
-        "Modifiers/QuirkyHopperRewardPolicy.cs",
+        "Modifiers/ThingsQuirkyHopperRewardPolicy.cs",
         [
-            "class QuirkyHopperRewardPolicy : ModifierModel",
+            "class ThingsQuirkyHopperRewardPolicy : ThingsModifierModel",
             "public override bool TryModifyRewardsLate(",
             "combatRoom.ExtraRewards.TryGetValue(",
             "List<PotionReward> returnedPotionRewards",
@@ -3093,7 +3491,7 @@ def main() -> int:
         [
             "ModHelper.SubscribeForRunStateHooks(",
             '"Adnermo.STS2_Things.QuirkyHopperRewardPolicy"',
-            "static _ => [ModelDb.Modifier<QuirkyHopperRewardPolicy>()]",
+            "static _ => [ModelDb.Modifier<ThingsQuirkyHopperRewardPolicy>()]",
         ],
         "Quirky Hopper exact-return reward policy subscription",
     )
@@ -3130,10 +3528,10 @@ def main() -> int:
         fail(errors, "Quirk potion-state encoding exceeds PowerModel.Amount's clamp")
 
     require_snippets(
-        "Powers/QuirkyFlutterPower.cs",
+        "Powers/ThingsQuirkyFlutterPower.cs",
         [
-            "#if STS2_V107_1",
-            "public override decimal ModifyDamageMultiplicative(",
+            "public sealed class ThingsQuirkyFlutterPower : ThingsPowerModel",
+            "protected override decimal OnModifyDamageMultiplicative(",
             "await PowerCmd.Decrement(this);",
             "await CreatureCmd.Stun(Owner, StunnedMove, nextState);",
             "hopper.IsHovering = false;",
@@ -3144,9 +3542,9 @@ def main() -> int:
     # Stateful monster-chain regressions. These assertions intentionally pin the
     # V110 lifecycle details that previously produced lost summons or skipped phases.
     require_snippets(
-        "Powers/SoulRoesPower.cs",
+        "Powers/ThingsSoulRoesPower.cs",
         [
-            "i < SoulRoesEncounter.SoulRoeSlotCount && spawned < spawnCount",
+            "i < ThingsSoulRoesEncounter.SoulRoeSlotCount && spawned < spawnCount",
             "c.IsAlive && c.SlotName == slotName",
             "soulRoe.StartMovePhase = spawned % 3",
             "spawned++;",
@@ -3159,39 +3557,82 @@ def main() -> int:
         [
             "target != Owner || Owner.CurrentHp > Amount",
             "result.UnblockedDamage <= 0",
-            "origin.NextMove.StateId == OriginFogmog.IllusionMoveId",
+            "origin.NextMove.StateId == ThingsOriginFogmog.IllusionMoveId",
             "origin.PerformInterruptedOpeningIllusionMove",
-            "CreatureCmd.Stun(Owner, phaseSummon, OriginFogmog.SwipeMoveId)",
+            "CreatureCmd.Stun(Owner, phaseSummon, ThingsOriginFogmog.SwipeMoveId)",
             "origin.NextMove.StateId != MonsterModel.stunnedMoveId",
-            "origin.NextMove.FollowUpStateId != OriginFogmog.SwipeMoveId",
+            "origin.NextMove.FollowUpStateId != ThingsOriginFogmog.SwipeMoveId",
         ],
         "current-HP/interrupted-opening Origin phase threshold contract",
     )
-    origin_transition = source_text("Monsters/OriginEyeWithTeeth.cs")
+    origin_transition = (
+        source_text("Hooks/OriginFogmogStunTransitionPatch.cs")
+        if (SOURCE / "Hooks" / "OriginFogmogStunTransitionPatch.cs").is_file()
+        else source_text("Monsters/ThingsOriginEyeWithTeeth.cs")
+    )
     if not re.search(
-        r"__instance is OriginFogmog\s*"
+        r"__instance is ThingsOriginFogmog\s*"
         r"&& state\.StateId == MonsterModel\.stunnedMoveId\s*"
-        r"&& state\.FollowUpStateId == OriginFogmog\.SwipeMoveId\)\s*"
-        r"forceTransition = true;",
+        r"&& state\.FollowUpStateId == ThingsOriginFogmog\.SwipeMoveId\)\s*"
+        r"(?:\{\s*)?forceTransition = true;",
         origin_transition,
     ):
         fail(errors, "Origin Fogmog forced phase-two stun transition contract is missing")
     require_snippets(
-        "Monsters/OriginFogmog.cs",
+        "Monsters/ThingsOriginFogmog.cs",
         [
-            'private const string _trackName = "the_kin_progress";',
             "return SummonIllusions(2);",
             "combatState.Enemies.All(c => c.SlotName != s)",
         ],
-        "The Kin music, interrupted-opening double summon and revive-reserved slot contract",
+        "interrupted-opening double summon and revive-reserved slot contract",
     )
     require_snippets(
-        "Monsters/SoulRoes.cs",
+        "Encounters/ThingsOriginFogmogBossEncounter.cs",
+        [
+            'ConfiguredBgm("res://music/origin_fogmog/origin_fogmog_boss_theme.wav")',
+            '"res://music/origin_fogmog/origin_fogmog_boss_theme.wav"',
+        ],
+        "Origin Fogmog dedicated Boss BGM contract",
+    )
+    require_snippets(
+        "Encounters/ThingsScaleBeetleBossEncounter.cs",
+        [
+            'ConfiguredBgm("res://music/scale_beetle/scale_beetle_boss_theme.wav")',
+            '"res://music/scale_beetle/scale_beetle_boss_theme.wav"',
+        ],
+        "Scale Beetle dedicated Boss BGM contract",
+    )
+    require_snippets(
+        "Encounters/ThingsCaveGodBossEncounter.cs",
+        [
+            'ConfiguredBgm("res://music/cave_god/cave_god_boss_theme.wav")',
+            '"res://music/cave_god/cave_god_boss_theme.wav"',
+        ],
+        "Cave God dedicated Boss BGM contract",
+    )
+    require_snippets(
+        "Encounters/ThingsBowlbugProgenitorBossEncounter.cs",
+        [
+            'ConfiguredBgm("res://music/bowlbug_progenitor/bowlbug_progenitor_boss_theme.wav")',
+            '"res://music/bowlbug_progenitor/bowlbug_progenitor_boss_theme.wav"',
+        ],
+        "Bowlbug Progenitor dedicated Boss BGM contract",
+    )
+    require_snippets(
+        "Encounters/ThingsAbyssalInkmawBossEncounter.cs",
+        [
+            'ConfiguredBgm("res://music/abyssal_inkmaw/abyssal_inkmaw_boss_theme.wav")',
+            '"res://music/abyssal_inkmaw/abyssal_inkmaw_boss_theme.wav"',
+        ],
+        "Abyssal Inkmaw dedicated Boss BGM contract",
+    )
+    require_snippets(
+        "Monsters/ThingsSoulRoes.cs",
         ["CombatState.Enemies.Any(c => c.IsAlive && c.SlotName == slotName)"],
         "alive-only Soul Roe summon-slot contract",
     )
     require_snippets(
-        "Monsters/BowlbugProgenitor.cs",
+        "Monsters/ThingsBowlbugProgenitor.cs",
         ["enemy => !enemy.IsAlive || enemy.SlotName != candidate"],
         "alive-only Bowlbug summon-slot contract",
     )
@@ -3200,8 +3641,8 @@ def main() -> int:
     # already player-count-scaled amount would multiply it a second time, while
     # ValueProp.Unpowered would skip the native 3/4-player act scaling entirely.
     for relative in (
-        "Monsters/OriginFogmog.cs",
-        "Monsters/BowlbugProgenitor.cs",
+        "Monsters/ThingsOriginFogmog.cs",
+        "Monsters/ThingsBowlbugProgenitor.cs",
         "Monsters/ThingsScaleBeetle.cs",
     ):
         text = source_text(relative)
@@ -3211,7 +3652,7 @@ def main() -> int:
         ):
             fail(errors, f"{relative} pre-scales native enemy move block by player count")
     require_snippets(
-        "Monsters/BowlbugProgenitor.cs",
+        "Monsters/ThingsBowlbugProgenitor.cs",
         [
             "GainBlock(Creature, 20, ValueProp.Move",
             "GainBlock(Creature, 16, ValueProp.Move",
@@ -3258,10 +3699,10 @@ def main() -> int:
         [
             "StartAfterCombatSetup = true;",
             "nameof(NRunMusicController.UpdateTrack)",
-            "!CombatManager.Instance.IsInProgress",
-            'NativeSfxPlayer.PlayMusic(CustomMusicPlayPatch.GravetideTheme, "Master", -2f);',
+            "!CustomMusicPlayPatch.IsPendingForActiveCombat()",
+            'NativeSfxPlayer.PlayMusic(pendingTrack!, "Master", volumeDb);',
         ],
-        "Gravetide post-combat-setup music routing contract",
+        "Mod WAV post-combat-setup music routing contract",
     )
     if not re.search(
         r'if \(entry == "origin_fogmog" && '
@@ -3272,12 +3713,12 @@ def main() -> int:
         fail(errors, "Origin Fogmog hurt-SFX miss must fall back to its native material impact")
 
     verified_death_sfx = {
-        "Monsters/OriginFogmog.cs": "origin_fogmog/origin_fogmog_die",
-        "Monsters/SoulRoe.cs": "soul_fysh/soul_fysh_die",
-        "Monsters/SoulRoes.cs": "soul_fysh/soul_fysh_die",
+        "Monsters/ThingsOriginFogmog.cs": "origin_fogmog/origin_fogmog_die",
+        "Monsters/ThingsSoulRoe.cs": "soul_fysh/soul_fysh_die",
+        "Monsters/ThingsSoulRoes.cs": "soul_fysh/soul_fysh_die",
         "Monsters/ThingsTheLegacy.cs": "vantom/vantom_die",
         "Monsters/ThingsScaleBeetle.cs": "shrinker_beetle/shrinker_beetle_die",
-        "Monsters/BowlbugProgenitor.cs": "egg_layer/egg_layer_die",
+        "Monsters/ThingsBowlbugProgenitor.cs": "egg_layer/egg_layer_die",
     }
     for relative, event_suffix in verified_death_sfx.items():
         text = source_text(relative)
@@ -3293,7 +3734,7 @@ def main() -> int:
                 fail(errors, f"{path.relative_to(ROOT)} references nonexistent V110 event {invalid_event}")
 
     require_snippets(
-        "Monsters/BowlbugProgenitor.cs",
+        "Monsters/ThingsBowlbugProgenitor.cs",
         [
             "egg_layer/egg_layer_attack",
             "egg_layer/egg_layer_lay",
@@ -3310,19 +3751,19 @@ def main() -> int:
         ],
         "Scale Beetle vanilla beetle sound palette",
     )
-    if "soul_fysh/" in source_text("Monsters/BowlbugProgenitor.cs"):
+    if "soul_fysh/" in source_text("Monsters/ThingsBowlbugProgenitor.cs"):
         fail(errors, "Bowlbug Progenitor still reuses the spectral Soul Fysh sound palette")
     if "kaiser_crab/" in source_text("Monsters/ThingsScaleBeetle.cs"):
         fail(errors, "Scale Beetle still reuses the oversized Kaiser Crab sound palette")
 
     verified_damage_sfx = {
-        "Monsters/OriginFogmog.cs": "Plant",
-        "Monsters/OriginEyeWithTeeth.cs": "Magic",
-        "Monsters/SoulRoe.cs": "Magic",
-        "Monsters/SoulRoes.cs": "Magic",
+        "Monsters/ThingsOriginFogmog.cs": "Plant",
+        "Monsters/ThingsOriginEyeWithTeeth.cs": "Magic",
+        "Monsters/ThingsSoulRoe.cs": "Magic",
+        "Monsters/ThingsSoulRoes.cs": "Magic",
         "Monsters/ThingsTheLegacy.cs": "Magic",
         "Monsters/ThingsScaleBeetle.cs": "Insect",
-        "Monsters/BowlbugProgenitor.cs": "Insect",
+        "Monsters/ThingsBowlbugProgenitor.cs": "Insect",
     }
     for relative, damage_type in verified_damage_sfx.items():
         if not re.search(
@@ -3352,17 +3793,17 @@ def main() -> int:
                 fail(errors, f"{lang}/{name} has placeholder values: {placeholders}")
 
     required_assets = [
-        ROOT / "images/events/cutting_it_close.png",
+        ROOT / "images/events/things_cutting_it_close.png",
         ROOT / "images/enchantments/things_split.png",
         ROOT / "images/map/scale_beetle_boss_icon.png",
         ROOT / "images/map/scale_beetle_boss_icon_outline.png",
         ROOT / "images/atlases/relic_atlas.sprites/things_almond_water.tres",
         ROOT / "images/atlases/power_atlas.sprites/things_quirk_power.tres",
-        ROOT / "images/atlases/power_atlas.sprites/quirky_flutter_power.tres",
+        ROOT / "images/atlases/power_atlas.sprites/things_quirky_flutter_power.tres",
         ROOT / "images/powers/things_quirk_power.png",
         ROOT / "images/powers/things_quirk_power_packed.png",
-        ROOT / "images/powers/quirky_flutter_power.png",
-        ROOT / "images/powers/quirky_flutter_power_packed.png",
+        ROOT / "images/powers/things_quirky_flutter_power.png",
+        ROOT / "images/powers/things_quirky_flutter_power_packed.png",
         ROOT / "STS2_Things/animations/monsters/quirky_hopper/quirkyhopper.atlas",
         ROOT / "STS2_Things/animations/monsters/quirky_hopper/quirkyhopper.png",
         ROOT / "STS2_Things/animations/monsters/quirky_hopper/quirky_hopper_bow.png",
@@ -3382,7 +3823,7 @@ def main() -> int:
         if not path.is_file():
             fail(errors, f"required asset missing: {path.relative_to(ROOT)}")
 
-    cutting_event_art = ROOT / "images" / "events" / "cutting_it_close.png"
+    cutting_event_art = ROOT / "images" / "events" / "things_cutting_it_close.png"
     if cutting_event_art.is_file():
         with Image.open(cutting_event_art) as image:
             image.load()
@@ -3413,8 +3854,8 @@ def main() -> int:
     power_icon_sizes = {
         "things_quirk_power.png": (256, 256),
         "things_quirk_power_packed.png": (64, 64),
-        "quirky_flutter_power.png": (256, 256),
-        "quirky_flutter_power_packed.png": (64, 64),
+        "things_quirky_flutter_power.png": (256, 256),
+        "things_quirky_flutter_power_packed.png": (64, 64),
     }
     for name, expected_size in power_icon_sizes.items():
         path = ROOT / "images" / "powers" / name
@@ -3532,11 +3973,11 @@ def main() -> int:
         if quirky_skel.read_bytes() != quirky_spskel.read_bytes():
             fail(errors, "Quirky Hopper imported skeleton differs from its source skeleton")
     native_flutter_sha256 = "06335e7ae5f46500c6d6f5e4fa9ba8136b7d0cb0e263af22dee8f8a0a54265eb"
-    flutter_alias = ROOT / "images" / "powers" / "quirky_flutter_power.png"
+    flutter_alias = ROOT / "images" / "powers" / "things_quirky_flutter_power.png"
     if flutter_alias.is_file() and hashlib.sha256(flutter_alias.read_bytes()).hexdigest() != native_flutter_sha256:
         fail(errors, "Quirky Flutter big icon is not the byte-exact native Flutter icon")
 
-    for icon_name in ("origin_fogmog", "scale_beetle", "the_legacy", "bowlbug_progenitor"):
+    for icon_name in ("origin_fogmog", "scale_beetle", "the_legacy", "bowlbug_progenitor", "human_face_tower", "abyssal_inkmaw"):
         icon = ROOT / "images" / "map" / f"{icon_name}_boss_icon.png"
         outline = ROOT / "images" / "map" / f"{icon_name}_boss_icon_outline.png"
         if icon.is_file() and outline.is_file():

@@ -44,6 +44,7 @@ public static class RitsuLibInteropProvider
                 EventSection(),
                 MerchantSection(),
                 NeowRelicSection(),
+                StabilitySection(),
             },
         };
     }
@@ -77,7 +78,7 @@ public static class RitsuLibInteropProvider
     // ---- schema 构建 ----
 
     private static Dictionary<string, object?> AudioSection() => Section("audio", "Audio", "音频",
-        Entry("custom_bgm", ThingsModConfig.FeatureCustomBgmEnabled, "Mod boss music", "启用模组 Boss 音乐",
+        Entry("custom_bgm", ThingsModConfig.FeatureCustomBgmEnabled, "Mod custom music", "启用模组自定义音乐",
             "Disable to restore the game's original music. Sound effects remain enabled.",
             "关闭后恢复原版音乐，保留战斗音效。"));
 
@@ -105,7 +106,13 @@ public static class RitsuLibInteropProvider
             WeightEntry("bowlbug_progenitor_weight", ThingsModConfig.BossBowlbugProgenitorWeightPercent, "Bowlbug Progenitor", "盛碗虫族母"),
             BossEntry("cave_god_enabled", ThingsModConfig.BossCaveGodEnabled, "Living Megalith", "活体巨岩"),
             BossForceEntry("cave_god_forced", ThingsModConfig.BossCaveGodForced, "Living Megalith", "活体巨岩"),
-            WeightEntry("cave_god_weight", ThingsModConfig.BossCaveGodWeightPercent, "Living Megalith", "活体巨岩"));
+            WeightEntry("cave_god_weight", ThingsModConfig.BossCaveGodWeightPercent, "Living Megalith", "活体巨岩"),
+            BossEntry("human_face_tower_enabled", ThingsModConfig.BossHumanFaceTowerEnabled, "The Visage Tower", "人面塔"),
+            BossForceEntry("human_face_tower_forced", ThingsModConfig.BossHumanFaceTowerForced, "The Visage Tower", "人面塔"),
+            WeightEntry("human_face_tower_weight", ThingsModConfig.BossHumanFaceTowerWeightPercent, "The Visage Tower", "人面塔"),
+            BossEntry("abyssal_inkmaw_enabled", ThingsModConfig.BossAbyssalInkmawEnabled, "Abyssal Inkmaw", "渊墨巨蛸"),
+            BossForceEntry("abyssal_inkmaw_forced", ThingsModConfig.BossAbyssalInkmawForced, "Abyssal Inkmaw", "渊墨巨蛸"),
+            WeightEntry("abyssal_inkmaw_weight", ThingsModConfig.BossAbyssalInkmawWeightPercent, "Abyssal Inkmaw", "渊墨巨蛸"));
     }
 
     private static Dictionary<string, object?> EncounterSection()
@@ -147,7 +154,53 @@ public static class RitsuLibInteropProvider
             Entry("biting_chest_enabled", ThingsModConfig.EventBitingChestEnabled,
                 "Biting Chest", "会咬人的宝箱"),
             Entry("crowded_ward_enabled", ThingsModConfig.EventCrowdedWardEnabled,
-                "Crowded Ward", "满员的病房"));
+                "Crowded Ward", "满员的病房"),
+            Entry("returns_counter_enabled", ThingsModConfig.EventReturnsCounterEnabled,
+                "Returns Counter", "退货柜台"),
+            Entry("hot_wax_box_enabled", ThingsModConfig.EventHotWaxBoxEnabled,
+                "Hot Wax Box", "发烫的蜡封匣"),
+            Entry("warm_royal_cell_enabled", ThingsModConfig.EventWarmRoyalCellEnabled,
+                "Warm Royal Cell", "温热的育王巢房"),
+            Entry("splice_booth_enabled", ThingsModConfig.EventSpliceBoothEnabled,
+                "The Splice Booth", "过载接线亭"),
+            Entry("gilded_press_enabled", ThingsModConfig.EventGildedPressEnabled,
+                "The Gilded Press", "漏墨的镀金印台"),
+            Entry("crooked_counterweight_enabled", ThingsModConfig.EventCrookedCounterweightEnabled,
+                "Crooked Counterweight", "歪掉的砝码秤"),
+            Entry("ant_sorting_table_enabled", ThingsModConfig.EventAntSortingTableEnabled,
+                "Ant Sorting Table", "兵蚁分拣台"),
+            Entry("grudge_vending_machine_enabled", ThingsModConfig.EventGrudgeVendingMachineEnabled,
+                "Grudge Vending Machine", "记仇的贩卖机"),
+            Entry("blind_crab_inkwell_enabled", ThingsModConfig.EventBlindCrabInkwellEnabled,
+                "Blind Crab Inkwell", "打翻的盲蟹墨缸"),
+            Entry("chronometer_rig_enabled", ThingsModConfig.EventChronometerRigEnabled,
+                "Chronometer Rig", "发条调速仪"),
+            Entry("silvered_gallery_enabled", ThingsModConfig.EventSilveredGalleryEnabled,
+                "Silvered Gallery", "镀银试衣镜"),
+            Entry("cracked_brazier_enabled", ThingsModConfig.EventCrackedBrazierEnabled,
+                "Cracked Brazier", "裂纹琉璃火盆"),
+            Entry("silt_winch_enabled", ThingsModConfig.EventSiltWinchEnabled,
+                "Silt Winch", "淤泥绞盘台"),
+            Entry("bilge_mines_enabled", ThingsModConfig.EventBilgeMinesEnabled,
+                "Bilge Grate", "暗渠货栅"),
+            Entry("moss_rune_loom_enabled", ThingsModConfig.EventMossRuneLoomEnabled,
+                "Overgrown Rune Loom", "古藤刻痕盘"),
+            Entry("clam_claw_enabled", ThingsModConfig.EventClamClawEnabled,
+                "Clam Claw Crane", "蚌口夹珍"),
+            Entry("forest_plinko_enabled", ThingsModConfig.EventForestPlinkoEnabled,
+                "Overgrown Plinko", "古林落籽盘"),
+            Entry("bronze_cauldron_enabled", ThingsModConfig.EventBronzeCauldronEnabled,
+                "Bronze Tripod Scramble (Co-op)", "铜鼎争宝（多人）"),
+            Entry("lending_vine_enabled", ThingsModConfig.EventLendingVineEnabled,
+                "The Lending Vine", "借牌老藤"),
+            Entry("overstuffed_brood_enabled", ThingsModConfig.EventOverstuffedBroodEnabled,
+                "Overstuffed Brood", "过饱育婴室"),
+            Entry("scales_of_vanity_enabled", ThingsModConfig.EventScalesOfVanityEnabled,
+                "Scales of Vanity", "虚荣天平"),
+            Entry("wall_crack_ledger_enabled", ThingsModConfig.EventWallCrackLedgerEnabled,
+                "The Wall-Crack Ledger", "墙缝账房"),
+            Entry("spiked_door_enabled", ThingsModConfig.EventSpikedDoorEnabled,
+                "The Spiked Door (Co-op)", "谁去推门（多人）"));
     }
 
     private static Dictionary<string, object?> MerchantSection()
@@ -168,6 +221,15 @@ public static class RitsuLibInteropProvider
                 "White Flag (Neow)", "白旗（涅奥）"),
             Entry("neow_magic_glove_enabled", ThingsModConfig.NeowRelicMagicGloveEnabled,
                 "Severed Sleeve (Neow)", "断袖（涅奥）"));
+    }
+
+    private static Dictionary<string, object?> StabilitySection()
+    {
+        return Section("stability", "Engine Safety", "引擎防护",
+            Entry("defensive_engine_guards_enabled", ThingsModConfig.FeatureDefensiveEngineGuardsEnabled,
+                "Defensive UI & lifecycle crash guards", "防御性 UI 与生命周期防崩保护",
+                "Protects against hover-tip viewport clipping, pooled card texture leaks, and combat teardown race conditions without changing any vanilla gameplay rules.",
+                "防护悬停提示越界裁剪、对象池卡面贴图残留与战斗退出竞态异常，不改变任何原版玩法规则。"));
     }
 
     private static Dictionary<string, object?> Section(

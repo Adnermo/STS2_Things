@@ -58,19 +58,22 @@ fs.mkdirSync('build/cavegod_renew',{recursive:true});
 fs.writeFileSync('build/cavegod_renew/normalized-source.spjson',JSON.stringify(raw));
 data=load('build/cavegod_renew/normalized-source.spjson',atlas);
 const definitions={
- alternating_jabs:[[.32,.64,.72,1.0,'arm1_3'],[1.02,1.34,1.42,1.7,'arm2_3'],[1.9,2.32,2.42,3.35,'arm1_3']],
- central_slam:[[1.05,1.88,2.10,3.6,'arm1_3','arm2_3']],
- double_fist_crush:[[.65,1.25,1.53,3.18,'arm1_3','arm2_3']],
- front_sweep:[[.76,1.35,1.48,3.22,'arm1_3']],
- front_sweep_right:[[.76,1.35,1.48,3.22,'arm2_3']],
+ alternating_jabs:[[.32,.64,.76,1.0,'arm1_3'],[1.02,1.34,1.46,1.74,'arm2_3'],[1.9,2.32,2.5,3.36,'arm1_3']],
+ alternating_jabs_right:[[.32,.64,.76,1.0,'arm2_3'],[1.02,1.34,1.46,1.74,'arm1_3'],[1.9,2.32,2.5,3.36,'arm2_3']],
+ leftpunch:[[.82,1.18,1.36,2.82,'arm1_3']],
+ rightpunch:[[.82,1.18,1.36,2.82,'arm2_3']],
+ central_slam:[[1.28,1.88,2.10,3.52,'arm1_3','arm2_3']],
+ double_fist_crush:[[.78,1.25,1.62,3.16,'arm1_3','arm2_3']],
+ front_sweep:[[.76,1.35,1.52,3.16,'arm1_3']],
+ front_sweep_right:[[.76,1.35,1.52,3.16,'arm2_3']],
  card_snatch:[[1,1.36,1.68,3.08,'arm1_3']],
  card_snatch_right:[[1,1.36,1.68,3.08,'arm2_3']],
- weak_attack:[[.6,1.2,1.35,2.5,'arm2_3']],
- weak_attack_right:[[.6,1.2,1.35,2.5,'arm1_3']],
- grab_player:[[.65,1.1,1.28,2.2,'arm1_3']],
- grab_player_right:[[.65,1.1,1.28,2.2,'arm2_3']],
- grab_slam:[[.22,.75,.83,1.62,'arm1_3']],
- grab_slam_right:[[.22,.75,.83,1.62,'arm2_3']],
+ weak_attack:[[.66,1.2,1.38,2.42,'arm2_3']],
+ weak_attack_right:[[.66,1.2,1.38,2.42,'arm1_3']],
+ grab_player:[[.68,1.1,1.30,2.2,'arm1_3']],
+ grab_player_right:[[.68,1.1,1.30,2.2,'arm2_3']],
+ grab_slam:[[.32,.75,.90,1.62,'arm1_3']],
+ grab_slam_right:[[.32,.75,.90,1.62,'arm2_3']],
 };
 const profiles=[];
 for(const side of [1,2]){

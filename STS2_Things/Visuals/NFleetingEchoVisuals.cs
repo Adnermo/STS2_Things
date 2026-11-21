@@ -28,7 +28,7 @@ public partial class NFleetingEchoVisuals : NCreatureVisuals
             for (Node? p = GetParent(); p != null; p = p.GetParent())
                 if (p is NCreature creature) { _host = creature; break; }
         if (_host?.Entity is not { IsAlive: true } entity) return;
-        int remaining = entity.GetPower<FleetingFadePower>()?.Amount ?? FleetingEcho.Lifetime;
-        _material.SetShaderParameter("erosion", (FleetingEcho.Lifetime - remaining) * .055f);
+        int remaining = entity.GetPower<ThingsFleetingFadePower>()?.Amount ?? ThingsFleetingEcho.Lifetime;
+        _material.SetShaderParameter("erosion", (ThingsFleetingEcho.Lifetime - remaining) * .055f);
     }
 }

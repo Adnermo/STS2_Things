@@ -15,24 +15,15 @@ namespace STS2_Things.Hooks;
 [HarmonyPatch]
 internal static class BorrowedShadowPoisonPatch
 {
-    private static MethodBase TargetMethod() => AccessTools.AsyncMoveNext(AccessTools.DeclaredMethod(typeof(PoisonPower),
-#if STS2_V107_1
-        nameof(PoisonPower.AfterSideTurnStart)
-#else
-        nameof(PoisonPower.Trigger)
-#endif
-    ));
+    private static MethodBase TargetMethod() => AccessTools.AsyncMoveNext(
+        AccessTools.DeclaredMethod(typeof(PoisonPower), nameof(PoisonPower.Trigger)));
 
     private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
     {
         var code = instructions.ToList();
         var nativeDamage = AccessTools.DeclaredMethod(typeof(CreatureCmd), nameof(CreatureCmd.Damage),
             [typeof(PlayerChoiceContext), typeof(Creature), typeof(decimal), typeof(ValueProp),
-#if STS2_V107_1
-                typeof(Creature), typeof(CardModel)]);
-#else
                 typeof(CardModel), typeof(CardPlay)]);
-#endif
         var calls = code.Where(instruction => instruction.Calls(nativeDamage)).ToArray();
         if (calls.Length != 1)
         {
@@ -46,27 +37,19 @@ internal static class BorrowedShadowPoisonPatch
     // Poison intentionally has no dealer in the native damage pipeline. Keep that
     // intact (including damage modifiers and on-hit hooks), and convert only the
     // results of this exact Poison call rather than inferring from damage flags.
-    private static async Task<IEnumerable<DamageResult>> Damage(PlayerChoiceContext choiceContext, Creature target,
-        decimal amount, ValueProp props,
-#if STS2_V107_1
-        Creature? dealer, CardModel? cardSource)
-#else
-        CardModel? cardSource, CardPlay? cardPlay)
-#endif
+    private static async Task<IEnumerable<DamageResult>> Damage(
+        PlayerChoiceContext choiceContext,
+        Creature target,
+        decimal amount,
+        ValueProp props,
+        CardModel? cardSource,
+        CardPlay? cardPlay)
     {
-#if STS2_V107_1
-        bool hasSource = dealer != null || cardSource != null;
-#else
         bool hasSource = cardSource != null;
-#endif
-        var shadow = hasSource ? null : target.GetPower<BorrowedShadowPower>();
+        var shadow = hasSource ? null : target.GetPower<ThingsBorrowedShadowPower>();
         var poison = shadow != null ? target.GetPower<PoisonPower>() : null;
         var combat = target.CombatState;
-#if STS2_V107_1
-        var results = await CreatureCmd.Damage(choiceContext, target, amount, props, dealer, cardSource);
-#else
         var results = await CreatureCmd.Damage(choiceContext, target, amount, props, cardSource, cardPlay);
-#endif
         if (shadow != null && poison != null && combat != null)
             await shadow.AfterPoisonDamage(poison, results.Where(result => result.Receiver == target).Sum(result => result.UnblockedDamage), combat);
         return results;

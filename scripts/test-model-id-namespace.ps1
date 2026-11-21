@@ -1,33 +1,74 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [ValidateSet('v107.1', 'v113')]
-    [string]$TargetVersion,
+    [ValidateSet('v111.1', 'v113.1')]
+    [string]$TargetVersion = 'v113.1',
 
-    [Parameter(Mandatory = $true)]
-    [string]$DataDir,
+    [string]$DataDir = '',
 
-    [Parameter(Mandatory = $true)]
-    [string]$ImplementationDll,
+    [string]$ImplementationDll = '',
 
-    [Parameter(Mandatory = $true)]
-    [string]$RuntimeDependencyDir,
+    [string]$RuntimeDependencyDir = '',
 
-    [Parameter(Mandatory = $true)]
-    [string]$Pck,
+    [string]$Pck = '',
 
-    [string]$HoursmodDll,
+    [string]$HoursmodDll = '',
 
     [string]$GodotExe = $env:GODOT_4_5_1_MONO
 )
 
 $ErrorActionPreference = 'Stop'
-$Root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$ProbeRoot = Join-Path $Root 'tools\ThingsModelIdProbe'
+$taskRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$ProbeRoot = Join-Path $taskRoot 'tools\ThingsModelIdProbe'
 $ProbeProject = Join-Path $ProbeRoot 'ThingsModelIdProbe.csproj'
 
-if ([string]::IsNullOrWhiteSpace($GodotExe)) {
-    $GodotExe = 'D:\Download\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64_console.exe'
+if ([string]::IsNullOrWhiteSpace($DataDir)) {
+    if ($TargetVersion -eq 'v111.1') {
+        $DataDir = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v111.1\b0460083b012\game\data_sts2_windows_x86_64'
+    }
+    else {
+        $v1131Data = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v113.1\76cc75b6f097\game\data_sts2_windows_x86_64'
+        if (Test-Path -LiteralPath $v1131Data -PathType Container) {
+            $DataDir = $v1131Data
+        }
+        else {
+            $DataDir = 'D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64'
+        }
+    }
+}
+$DataDir = [IO.Path]::GetFullPath($DataDir)
+$candidateGamePck = Join-Path (Split-Path $DataDir -Parent) 'SlayTheSpire2.pck'
+if (Test-Path -LiteralPath $candidateGamePck) {
+    $env:THINGS_PROBE_GAME_PCK = $candidateGamePck
+}
+
+if ([string]::IsNullOrWhiteSpace($RuntimeDependencyDir)) {
+    $RuntimeDependencyDir = $DataDir
+}
+if ([string]::IsNullOrWhiteSpace($ImplementationDll)) {
+    $ImplementationDll = Join-Path $taskRoot "build\$TargetVersion\STS2_Things.dll"
+}
+if ([string]::IsNullOrWhiteSpace($Pck)) {
+    foreach ($candidateModPck in @(
+        (Join-Path $taskRoot "build\$TargetVersion\STS2_Things.pck"),
+        (Join-Path $taskRoot 'build\unified\STS2_Things.pck')
+    )) {
+        if (Test-Path -LiteralPath $candidateModPck -PathType Leaf) {
+            $Pck = $candidateModPck
+            break
+        }
+    }
+}
+if ($Pck -and -not $env:THINGS_PROBE_PCK) {
+    $env:THINGS_PROBE_PCK = [IO.Path]::GetFullPath($Pck)
+}
+
+if ([string]::IsNullOrWhiteSpace($GodotExe) -or -not (Test-Path -LiteralPath $GodotExe -PathType Leaf)) {
+    if (Test-Path -LiteralPath 'D:\Godot\Godot_v4.5.1-stable_mono_win64_console.exe' -PathType Leaf) {
+        $GodotExe = 'D:\Godot\Godot_v4.5.1-stable_mono_win64_console.exe'
+    }
+    else {
+        $GodotExe = 'D:\Download\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64_console.exe'
+    }
 }
 
 foreach ($requiredPath in @($ProbeProject, $ImplementationDll, $Pck, (Join-Path $DataDir 'sts2.dll'))) {
@@ -46,7 +87,6 @@ if (-not [string]::IsNullOrWhiteSpace($HoursmodDll) -and
     throw "Actual Hoursmod DLL was not found: $HoursmodDll"
 }
 
-$DataDir = [IO.Path]::GetFullPath($DataDir)
 $ImplementationDll = [IO.Path]::GetFullPath($ImplementationDll)
 $RuntimeDependencyDir = [IO.Path]::GetFullPath($RuntimeDependencyDir)
 $Pck = [IO.Path]::GetFullPath($Pck)
@@ -55,13 +95,8 @@ if (-not [string]::IsNullOrWhiteSpace($HoursmodDll)) {
     $HoursmodDll = [IO.Path]::GetFullPath($HoursmodDll)
 }
 
-$portableDotnet = Join-Path $Root '.tmp\dotnet9'
-if (Test-Path -LiteralPath (Join-Path $portableDotnet 'dotnet.exe') -PathType Leaf) {
-    $env:DOTNET_ROOT = $portableDotnet
-    $env:DOTNET_MULTILEVEL_LOOKUP = '0'
-    $env:DOTNET_ROLL_FORWARD = 'Major'
-}
-
+$env:PATH = 'C:\Program Files\dotnet;' + $env:PATH
+Remove-Item Env:DOTNET_ROOT, Env:DOTNET_MULTILEVEL_LOOKUP -ErrorAction SilentlyContinue
 Write-Host "Building ModelId namespace probe for $TargetVersion..."
 & dotnet build $ProbeProject -t:Rebuild -c Debug --nologo `
     "/p:Sts2DataDir=$DataDir" `
@@ -70,6 +105,13 @@ Write-Host "Building ModelId namespace probe for $TargetVersion..."
     "/p:ImplementationDll=$ImplementationDll"
 if ($LASTEXITCODE -ne 0) {
     throw "ModelId namespace probe build failed for $TargetVersion with exit code $LASTEXITCODE"
+}
+
+$portableDotnet = Join-Path $taskRoot '.tmp\dotnet9'
+if (Test-Path -LiteralPath (Join-Path $portableDotnet 'dotnet.exe') -PathType Leaf) {
+    $env:DOTNET_ROOT = $portableDotnet
+    $env:DOTNET_MULTILEVEL_LOOKUP = '0'
+    $env:DOTNET_ROLL_FORWARD = 'Major'
 }
 
 $logPath = Join-Path $ProbeRoot "probe-$TargetVersion.log"

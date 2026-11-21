@@ -8,11 +8,12 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Cards;
+using STS2_Things.Core.Models;
 using STS2_Things.Powers;
 
 namespace STS2_Things.Cards;
 
-public sealed class ThingsReuse : CardModel
+public sealed class ThingsReuse : ThingsCardModel
 {
     public ThingsReuse() : base(2, CardType.Power, CardRarity.Rare, TargetType.Self)
     {
@@ -21,7 +22,7 @@ public sealed class ThingsReuse : CardModel
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         HoverTipFactory.FromCardWithCardHoverTips<Fuel>()
             .Concat(HoverTipFactory.FromCardWithCardHoverTips<Soot>())
-            .Concat([HoverTipFactory.FromPower<ThingsReusePower>()]);
+            .Append(HoverTipFactory.Static(StaticHoverTip.Transform));
 
     protected override List<DynamicVar> CanonicalVars =>
     [

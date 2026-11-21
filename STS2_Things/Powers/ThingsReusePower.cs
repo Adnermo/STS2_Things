@@ -11,10 +11,11 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Cards;
 using STS2_Things.Cards;
+using STS2_Things.Core.Models;
 
 namespace STS2_Things.Powers;
 
-public sealed class ThingsReusePower : PowerModel
+public sealed class ThingsReusePower : ThingsPowerModel
 {
     public override PowerType Type => PowerType.Buff;
 

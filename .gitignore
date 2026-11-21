@@ -47,6 +47,7 @@ dist/
 *.tmp
 *~
 source_assets/**/*.import
+docs/**/*.import
 
 # Local scratch and generated intermediates (probe logs, imagegen candidates,
 # decompile dumps). These are regenerable and must never be committed.
@@ -77,7 +78,15 @@ tools/**/out/
 tools/**/prev/
 tools/**/review/
 tools/**/pkg/
+tools/**/extracted_check/
 tools/**/frames.pkl
-tools/**/labels.npy
+tools/**/*.npy
 source_assets/archive/
 source_assets/events/medusa_cutting_refresh_20261007/before/
+source_assets/**/previous_runtime_backup/
+source_assets/backgrounds/remake_backup_20261118/
+source_assets/**/ui_previews_1080p/
+source_assets/events_v4_remake_20261115/
+source_assets/events_no_pedestal_20261118/previews/
+source_assets/events_*_202611*/
+source_assets/music/

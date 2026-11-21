@@ -9,13 +9,14 @@ using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Powers;
+using STS2_Things.Core.Models;
 
 namespace STS2_Things.Powers;
 
 /// <summary>
 ///     放缩巨甲虫的常驻buff：每当它对玩家造成未被抵挡的伤害时，该玩家获得5层缩小。
 /// </summary>
-public sealed class ThingsScaleBeetlePower : PowerModel
+public sealed class ThingsScaleBeetlePower : ThingsPowerModel
 {
     public override PowerType Type => PowerType.Buff;
     public override PowerStackType StackType => PowerStackType.Single;
@@ -35,10 +36,14 @@ public sealed class ThingsScaleBeetlePower : PowerModel
     {
         if (dealer == Owner && result.UnblockedDamage > 0 && target.Side != Owner.Side)
         {
+            Creature recipient = target.PetOwner?.Creature ?? target;
+            if (!recipient.IsAlive)
+                return;
+
             Flash();
             await PowerCmd.Apply<ThingsScaleDownPower>(
                 choiceContext,
-                target,
+                recipient,
                 DynamicVars["ScaleDownAmount"].BaseValue,
                 Owner,
                 null

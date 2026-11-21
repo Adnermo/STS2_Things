@@ -1,5 +1,6 @@
 using Godot;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Helpers;
@@ -7,7 +8,8 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
-using static STS2_Things.Compatibility.Sts2VersionCompatibility;
+using MegaCrit.Sts2.Core.Rooms;
+using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Visuals;
 
@@ -25,8 +27,9 @@ public partial class NCaveMawMealVfx : Node2D
 
     public static Vector2 GetCardOrigin(CardModel card)
     {
-        if (NCard.FindOnTable(card) is { } node) return node.GlobalPosition;
-        if (NCombatRoom.Instance?.Ui is { } ui) return ui.DiscardPile.GetGlobalRect().GetCenter();
+        if (NCard.FindOnTable(card) is { } node && IsInstanceValid(node)) return node.GlobalPosition;
+        if (NCombatRoom.Instance is { } room && IsInstanceValid(room) && room.Ui is { } ui)
+            return ui.DiscardPile.GetGlobalRect().GetCenter();
         return card.Owner.Creature.GetCreatureNode()?.VfxSpawnPosition ?? Vector2.Zero;
     }
 
@@ -34,17 +37,18 @@ public partial class NCaveMawMealVfx : Node2D
     {
         var room = NCombatRoom.Instance;
         var creature = maw.GetCreatureNode();
-        var mouth = creature?.Visuals.GetNodeOrNull<Node2D>("Visuals/MouthSocket");
-        if (room == null || mouth == null) return;
-        var visual = NCard.Create(card);
+        var mouth = creature?.Visuals?.GetNodeOrNull<Node2D>("Visuals/MouthSocket");
+        if (room == null || !IsInstanceValid(room) || mouth == null || !IsInstanceValid(mouth)) return;
+        var visual = CardPreviewVisualFactory.TryCreate(card);
         if (visual == null) return;
         var effect = new NCaveMawMealVfx
         {
             ProcessPriority = 20,
             _card = visual, _mouth = mouth, _start = start, _delay = delay,
-            _spine = creature?.Visuals.SpineBody,
+            _spine = creature?.Visuals?.SpineBody,
         };
-        using (TrackEntryScope(effect._spine?.TryGetAnimationState()?.GetCurrent(0), out MegaTrackEntry? entry))
+        MegaAnimationState? animState = effect._spine?.TryGetAnimationState();
+        using (TrackEntryScope(animState?.GetCurrent(0), out MegaTrackEntry? entry))
         {
             effect._followsDevour = entry?.GetAnimationName() == "devour";
             effect._launchTime = entry?.GetTrackTime() ?? 0;
@@ -57,6 +61,12 @@ public partial class NCaveMawMealVfx : Node2D
         visual.Scale = Vector2.One * .32f;
     }
 
+    public override void _EnterTree()
+    {
+        base._EnterTree();
+        CombatManager.Instance.CombatEnded += OnCombatEnded;
+    }
+
     public override void _Process(double delta)
     {
         if (_card == null || !IsInstanceValid(_card) || _mouth == null || !IsInstanceValid(_mouth))
@@ -66,11 +76,14 @@ public partial class NCaveMawMealVfx : Node2D
         // clip still lets its visual finish, without holding gameplay on a tween.
         if (_followsDevour)
         {
-            using var scope = TrackEntryScope(_spine?.TryGetAnimationState()?.GetCurrent(0), out MegaTrackEntry? entry);
-            if (entry?.GetAnimationName() == "devour")
-                _age = Math.Max(_age, entry.GetTrackTime() - _launchTime);
-            else if (entry?.GetAnimationName() == "idle_loop")
-                _age = Math.Max(_age, .62f + _delay);
+            MegaAnimationState? animState = _spine?.TryGetAnimationState();
+            using (TrackEntryScope(animState?.GetCurrent(0), out MegaTrackEntry? entry))
+            {
+                if (entry?.GetAnimationName() == "devour")
+                    _age = Math.Max(_age, entry.GetTrackTime() - _launchTime);
+                else if (entry?.GetAnimationName() == "idle_loop")
+                    _age = Math.Max(_age, .62f + _delay);
+            }
         }
         float t = Mathf.Clamp((_age - _delay) / .62f, 0, 1);
         float travel = t * t * (3 - 2 * t);
@@ -81,16 +94,28 @@ public partial class NCaveMawMealVfx : Node2D
         if (t >= 1) Finish();
     }
 
+    private void OnCombatEnded(CombatRoom _)
+    {
+        if (IsInstanceValid(this) && IsInsideTree())
+            Finish();
+    }
+
     private void Finish()
     {
-        if (_card != null && IsInstanceValid(_card)) _card.QueueFreeSafely();
+        var card = _card;
         _card = null;
-        this.QueueFreeSafely();
+        if (card != null && IsInstanceValid(card))
+            card.QueueFreeSafely();
+        if (IsInstanceValid(this) && !IsQueuedForDeletion())
+            this.QueueFreeSafely();
     }
 
     public override void _ExitTree()
     {
-        if (_card != null && IsInstanceValid(_card)) _card.QueueFreeSafely();
+        CombatManager.Instance.CombatEnded -= OnCombatEnded;
+        var card = _card;
         _card = null;
+        if (card != null && IsInstanceValid(card))
+            CardPreviewVisualFactory.ReturnPreviewSafely(card, parentExitingTree: card.GetParent() == this);
     }
 }

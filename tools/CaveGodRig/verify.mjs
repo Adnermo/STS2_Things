@@ -58,15 +58,15 @@ function meshHealth(s) {
 }
 
 const report = {};
-const names = data.animations.map(a => a.name).filter(n => !/^(arrive|earthquake|main_01|main_happy|walk|leftpunch|rightpunch)/.test(n));
+const names = data.animations.map(a => a.name).filter(n => !/^(arrive|earthquake|main_01|main_happy|walk)/.test(n));
 for (const name of names) {
   const anim = data.findAnimation(name);
   const angry = name.endsWith('_angry') || name === 'main_angry';
-  const right = name.includes('_right');
+  const right = name.includes('_right') || name.startsWith('right');
   const idle = angry ? 'idle_front_angry' : 'idle_front';
   const weakIdle = 'weak_idle' + (right ? '_right' : '') + (angry ? '_angry' : '');
   const entry = {duration: anim.duration};
-  if (/^(idle_front|weak_idle|grab_hold)/.test(name)) entry.loop = gap(at(name, 0), at(name, anim.duration));
+  if (/^(idle_front|weak_idle|grab_hold|critical_tremor)/.test(name)) entry.loop = gap(at(name, 0), at(name, anim.duration));
   else if (/^weak_(enter|attack)/.test(name)) entry.end = gap(at(name, anim.duration), at(weakIdle, 0));
   else if (/^hit_recoil/.test(name)) entry.end = null;
   else if (/^hide/.test(name)) entry.end = null;
@@ -77,7 +77,7 @@ for (const name of names) {
     const grab = name.replace('grab_slam', 'grab_player'), hold = name.replace('grab_slam', 'grab_hold');
     entry.start = gap(at(name, 0), at(grab, 2.6));
     if (has(hold)) entry.hold = gap(at(hold, 0), at(grab, 2.6));
-  } else if (!/^(hit_recoil|weak_idle|idle_front|grab_hold)/.test(name)) entry.start = gap(at(name, 0), at(idle, 0));
+  } else if (!/^(hit_recoil|critical_tremor|weak_idle|idle_front|grab_hold)/.test(name)) entry.start = gap(at(name, 0), at(idle, 0));
   // Frame-to-frame continuity and mesh health.
   let prev, prevStep = {}, maxStep = 0, maxJerk = 0, jerkAt = 0, jerkBone = '', flips = 0, crushed = 0, meshAt = '';
   const steps = Math.ceil(anim.duration * HZ);

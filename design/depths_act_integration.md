@@ -1,6 +1,6 @@
 # 第二章「深处」接入
 
-> 1.25.10 更新：人面柱仅作为深处强池的独立遭遇，移出弱池，不再搭配随机同伴。当前 7 组弱战、12 组强战；下文首版记录保留作历史说明。
+> 当前状态更新：深处遭遇池已规整为 **6 组纯种弱战**（两灯笼鱼、两血蛭、单洞胃、单余影魔、三蜗牛、单掘岩虫）、**11 组强战**（6 组纯种：三灯笼鱼、三血蛭、血蛭之母、三织茧蛾、人面柱、异彩史莱姆；5 组 ≤2 物种互补搭配：浸水蛭群、潭边生灵〔双灯笼鱼＋吸水海绵〕、蛾与蜗牛、幽潭掠甲阵〔掘岩虫＋岩蜗牛＋黏液蜗牛〕、洞胃与灯鱼）、**3 组专属精英**（`THINGS_MYCORRHIZAL_TWINS_ELITE` 菌根双生子、`THINGS_REVERSE_SALAMANDER_ELITE` 逆流蝾螈、`THINGS_RADIO_JELLYFISH_ELITE` 收音水母）与 **2 组首领**（活体巨岩与人面塔，双双禁用时回退帝王蟹）。原 7 组退役遭遇（`THINGS_SPONGE_LEECH_WEAK`、`THINGS_SILK_MOTH_WEAK`、`THINGS_SILK_MOTH_ENCOUNTER`、`THINGS_CAVE_MAW_ENCOUNTER`、`THINGS_CAVE_MAW_SNAIL_ENCOUNTER`、`THINGS_SPONGE_SNAIL_ENCOUNTER`、`THINGS_LANTERN_MOTH_ENCOUNTER`）已由 `LegacyIdMigrator` 映射至现存遭遇以兼容旧存档。下文保留早期版本接入记录作历史说明。
 
 ## 当前内容（1.25.0）
 

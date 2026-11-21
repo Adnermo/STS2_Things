@@ -22,8 +22,8 @@ public partial class SilkMothProbeNode
         {
             var model=scenario.Room.CombatState.CreateCard<StrikeIronclad>(scenario.Player);
             if(i==0)await CardCmd.Afflict<Bound>(model,3);
-            else if(i==1)await CardCmd.Afflict<SilkLead>(model,1);
-            else await CardCmd.Afflict<SilkBound>(model,1);
+            else if(i==1)await CardCmd.Afflict<ThingsSilkLead>(model,1);
+            else await CardCmd.Afflict<ThingsSilkBound>(model,1);
             var card=GD.Load<PackedScene>("res://scenes/cards/card.tscn").Instantiate<NCard>();
             card.Model=model;card.Position=new Vector2(240+i*480,465);card.Scale=Vector2.One*1.20f;
             view.AddChild(card);card.UpdateVisuals(PileType.Hand,CardPreviewMode.Normal);cards.Add(card);

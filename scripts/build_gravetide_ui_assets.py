@@ -51,13 +51,13 @@ DIRECT_ASSETS = (
     ),
     DirectAsset(
         ROOT / "source_assets/ui/run_history/gravetide_slug_boss_encounter_imagegen.png",
-        ROOT / "images/ui/run_history/gravetide_slug_boss_encounter.png",
+        ROOT / "images/ui/run_history/things_gravetide_slug_boss_encounter.png",
         (88, 88),
         5,
     ),
     DirectAsset(
         ROOT / "source_assets/ui/run_history/gravetide_slug_boss_encounter_outline_imagegen.png",
-        ROOT / "images/ui/run_history/gravetide_slug_boss_encounter_outline.png",
+        ROOT / "images/ui/run_history/things_gravetide_slug_boss_encounter_outline.png",
         (88, 88),
         5,
     ),
@@ -130,8 +130,8 @@ def build_power() -> None:
         margin=10,
         crop_box=(350, 620, 1940, 2220),
     )
-    power_path = ROOT / "images/powers/gravetide_digestion_power.png"
-    packed_path = ROOT / "images/powers/gravetide_digestion_power_packed.png"
+    power_path = ROOT / "images/powers/things_gravetide_digestion_power.png"
+    packed_path = ROOT / "images/powers/things_gravetide_digestion_power_packed.png"
     save_png(power, power_path)
     save_png(power.resize((64, 64), Image.Resampling.LANCZOS), packed_path)
     validate_output(power_path, (256, 256))

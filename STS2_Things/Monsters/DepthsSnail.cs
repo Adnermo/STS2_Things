@@ -10,13 +10,13 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Powers;
 using STS2_Things.Visuals;
-using static STS2_Things.Compatibility.Sts2VersionCompatibility;
+using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Monsters;
 
 public abstract class DepthsSnail : ThingsSpineMonster
 {
-    public bool HasShell => Creature.HasPower<SnailShellPower>() && Creature.Block > 0;
+    public bool HasShell => Creature.HasPower<ThingsSnailShellPower>() && Creature.Block > 0;
     protected bool CanAct => Creature.IsAlive && !CombatManager.Instance.IsOverOrEnding;
     public override float HpBarSizeReduction => 115f;
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Insect;
@@ -24,7 +24,7 @@ public abstract class DepthsSnail : ThingsSpineMonster
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/workbug_goop/workbug_goop_spit";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/workbug_rock/workbug_rock_die";
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([
-        ModelDb.Power<SnailShellPower>().ResolvedBigIconPath]);
+        ModelDb.Power<ThingsSnailShellPower>().ResolvedBigIconPath]);
 
     protected override void AddExtraAnimationStates(CreatureAnimator animator, AnimState idle)
     {
@@ -34,9 +34,9 @@ public abstract class DepthsSnail : ThingsSpineMonster
 
     public async Task GrowShell(PlayerChoiceContext context, int amount, bool initial = false)
     {
-        if (!CanAct || (!initial && this is CrystalSnail && !HasShell)) return;
-        if (!Creature.HasPower<SnailShellPower>())
-            await PowerCmd.Apply<SnailShellPower>(context, Creature, 1, Creature, null);
+        if (!CanAct || (!initial && this is ThingsCrystalSnail && !HasShell)) return;
+        if (!Creature.HasPower<ThingsSnailShellPower>())
+            await PowerCmd.Apply<ThingsSnailShellPower>(context, Creature, 1, Creature, null);
         await CreatureCmd.GainBlock(Creature, amount, ValueProp.Move, null);
         NotifyMenders();
     }
@@ -46,15 +46,16 @@ public abstract class DepthsSnail : ThingsSpineMonster
     public void NotifyMenders()
     {
         if (CombatState?.CurrentSide != CombatSide.Player) return;
-        foreach (var mender in CombatState.Enemies.Select(c => c.Monster).OfType<SlimeSnail>())
+        foreach (var mender in CombatState.Enemies.Select(c => c.Monster).OfType<ThingsSlimeSnail>())
             mender.RefreshRepairIntent();
     }
 
-    public override Task AfterDeath(PlayerChoiceContext context, Creature creature,
-#if STS2_V113
-        MegaCrit.Sts2.Core.Models.CardModel? source,
-#endif
-        bool prevented, float deathAnimLength)
+    protected override Task OnCreatureDeathAsync(
+        PlayerChoiceContext context,
+        Creature creature,
+        CardModel? source,
+        bool prevented,
+        float deathAnimLength)
     {
         if (creature == Creature && !prevented) NotifyMenders();
         return Task.CompletedTask;
@@ -66,27 +67,14 @@ public abstract class DepthsSnail : ThingsSpineMonster
         await WaitForPose(animation, contact, contact);
     }
 
-    protected async Task WaitForPose(string animation, float moment, float fallback)
-    {
-        var sprite = Creature.GetCreatureNode()?.Visuals?.SpineBody;
-        float wait = fallback;
-        using (TrackEntryScope(sprite?.TryGetAnimationState()?.GetCurrent(0), out MegaTrackEntry? track))
-            if (track?.GetAnimationName() == animation) wait = Math.Max(0, moment - track.GetTrackTime());
-        await Cmd.Wait(wait);
-        using var scope = TrackEntryScope(sprite?.TryGetAnimationState()?.GetCurrent(0), out MegaTrackEntry? current);
-        if (current?.GetAnimationName() == animation && current.GetTrackTime() < moment)
-        {
-            current.SetMixDuration(0);
-            current.SetTrackTime(moment);
-            sprite!.BoundObject.Call("update_skeleton", 0f);
-        }
-    }
+    protected Task WaitForPose(string animation, float moment, float fallback)
+        => WaitForSpineMomentAsync(animation, moment, fallback);
 
     protected async Task Hit(int damage, float contact = .48f)
     {
         await DamageCmd.Attack(damage).FromMonster(this).WithNoAttackerAnim()
             .AfterAttackerAnim(() => BeginPose("Attack", "attack", contact))
             .WithAttackerFx(null, AttackSfx).WithHitFx("vfx/vfx_attack_blunt").Execute(null);
-        await WaitForPose("attack", 1.25f, 0);
+        await WaitForPose("attack", 1.25f, Math.Max(0f, 1.25f - contact));
     }
 }

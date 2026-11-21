@@ -9,10 +9,11 @@ using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Cards;
+using STS2_Things.Core.Models;
 
 namespace STS2_Things.Relics;
 
-public sealed class ThingsMedusaHair : RelicModel
+public sealed class ThingsMedusaHair : ThingsRelicModel
 {
     public override RelicRarity Rarity => RelicRarity.Event;
 
@@ -20,10 +21,11 @@ public sealed class ThingsMedusaHair : RelicModel
     {
         get
         {
-            foreach (var tip in HoverTipFactory.FromCardWithCardHoverTips<StoneArmor>())
+            foreach (var tip in HoverTipFactory.FromCardWithCardHoverTips<StoneArmor>(upgrade: true))
                 yield return tip;
-            foreach (var tip in HoverTipFactory.FromCardWithCardHoverTips<GiantRock>())
+            foreach (var tip in HoverTipFactory.FromCardWithCardHoverTips<GiantRock>(upgrade: true))
                 yield return tip;
+            yield return HoverTipFactory.FromKeyword(CardKeyword.Exhaust);
         }
     }
 

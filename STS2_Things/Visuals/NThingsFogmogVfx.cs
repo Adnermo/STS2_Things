@@ -17,6 +17,9 @@ public partial class NThingsFogmogVfx : Node
     private GpuParticles2D? _dustLeftParticles;
     private GpuParticles2D? _dustRightParticles;
     private MegaSprite? _megaSprite;
+    private Callable _animStartedCallable;
+    private Callable _animEventCallable;
+    private bool _signalsConnected;
 
     public override void _Ready()
     {
@@ -27,16 +30,37 @@ public partial class NThingsFogmogVfx : Node
         if (GetParent() is not Node2D spineSprite)
             return;
         _megaSprite = new MegaSprite(spineSprite);
-        _megaSprite.ConnectAnimationStarted(
-            Callable.From<GodotObject, GodotObject, GodotObject>((_, _, _) => StopAll()));
-        _megaSprite.ConnectAnimationEvent(
-            Callable.From<GodotObject, GodotObject, GodotObject, GodotObject>(OnAnimationEvent));
+        _animStartedCallable = Callable.From<Variant, Variant, Variant>((_, _, _) =>
+        {
+            if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
+                return;
+            StopAll();
+        });
+        _animEventCallable = Callable.From<Variant, Variant, Variant, Variant>(OnAnimationEvent);
+        _megaSprite.ConnectAnimationStarted(_animStartedCallable);
+        _megaSprite.ConnectAnimationEvent(_animEventCallable);
+        _signalsConnected = true;
     }
 
-    public override void _ExitTree() => StopAll();
-
-    private void OnAnimationEvent(GodotObject _, GodotObject __, GodotObject ___, GodotObject spineEvent)
+    public override void _ExitTree()
     {
+        if (_signalsConnected && _megaSprite != null && GodotObject.IsInstanceValid(_megaSprite.BoundObject))
+        {
+            if (_megaSprite.BoundObject.IsConnected("animation_started", _animStartedCallable))
+                _megaSprite.DisconnectAnimationStarted(_animStartedCallable);
+            if (_megaSprite.BoundObject.IsConnected("animation_event", _animEventCallable))
+                _megaSprite.DisconnectAnimationEvent(_animEventCallable);
+        }
+        _signalsConnected = false;
+        _megaSprite = null;
+        StopAll();
+    }
+
+    private void OnAnimationEvent(Variant _, Variant __, Variant ___, Variant spineEvent)
+    {
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || spineEvent.VariantType != Variant.Type.Object)
+            return;
+
         string eventName = new MegaEvent(spineEvent).GetData().GetEventName();
         switch (eventName)
         {

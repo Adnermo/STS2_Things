@@ -10,7 +10,7 @@ if (args.Length is < 4 or > 5)
 {
     Console.Error.WriteLine(
         "Usage: UnifiedPackageProbe <sts2-data-dir> <bootstrap-dll> " +
-        "<expected-target> <expected-implementation-dll> [dependency-data-dir]");
+        "<v111.1|v113.1> <expected-implementation-dll> [dependency-data-dir]");
     return 2;
 }
 
@@ -36,50 +36,54 @@ if (!File.Exists(gamePath) ||
     return 2;
 }
 
+if (expectedTarget is not ("v111.1" or "v113.1"))
+    throw new ArgumentOutOfRangeException(nameof(expectedTarget), expectedTarget, "Expected 'v111.1' or 'v113.1'.");
 var expectedResource = expectedTarget switch
 {
-    "v107.1" => "STS2_Things.Implementations.v107.1.dll",
-    "v113" => "STS2_Things.Implementations.v113.dll",
+    "v111.1" => "STS2_Things.Implementations.v111.1.dll",
+    "v113.1" => "STS2_Things.Implementations.v113.1.dll",
     _ => throw new ArgumentOutOfRangeException(nameof(expectedTarget), expectedTarget, null)
 };
 const string expectedAssemblyName = "STS2_Things";
-const int minimumReasonableModelCount = 50;
+const int minimumReasonableModelCount = 148;
 string[] requiredModelNames =
 [
-    "STS2_Things.Acts.Depths",
-    "STS2_Things.Encounters.LanternFishWeak",
-    "STS2_Things.Encounters.LanternFishEncounter",
-    "STS2_Things.Monsters.LanternFish",
-    "STS2_Things.Encounters.SanguineLeechWeak",
-    "STS2_Things.Encounters.SanguineLeechEncounter",
-    "STS2_Things.Monsters.SanguineLeech",
-    "STS2_Things.Monsters.SilkMoth",
-    "STS2_Things.Encounters.SilkMothWeak",
-    "STS2_Things.Encounters.SilkMothEncounter",
-    "STS2_Things.Powers.SilkThreadPower",
-    "STS2_Things.Afflictions.SilkLead",
-    "STS2_Things.Afflictions.SilkBound",
-    "STS2_Things.Cards.LeechParasite",
-    "STS2_Things.Powers.LanternBlindnessPower",
+    "STS2_Things.Acts.ThingsDepths",
+    "STS2_Things.Encounters.ThingsLanternFishWeak",
+    "STS2_Things.Encounters.ThingsLanternFishEncounter",
+    "STS2_Things.Monsters.ThingsLanternFish",
+    "STS2_Things.Encounters.ThingsSanguineLeechWeak",
+    "STS2_Things.Encounters.ThingsSanguineLeechEncounter",
+    "STS2_Things.Monsters.ThingsSanguineLeech",
+    "STS2_Things.Monsters.ThingsSilkMoth",
+    "STS2_Things.Encounters.ThingsSilkMothTrio",
+    "STS2_Things.Encounters.ThingsSilkSnailEncounter",
+    "STS2_Things.Powers.ThingsSilkThreadPower",
+    "STS2_Things.Afflictions.ThingsSilkLead",
+    "STS2_Things.Afflictions.ThingsSilkBound",
+    "STS2_Things.Cards.ThingsLeechParasite",
+    "STS2_Things.Powers.ThingsLanternBlindnessPower",
     "STS2_Things.Cards.ThingsCollision",
     "STS2_Things.Enchantments.ThingsDisperse",
     "STS2_Things.Enchantments.ThingsSplit",
     "STS2_Things.Events.ThingsBackrooms",
-    "STS2_Things.Events.CuttingItClose",
+    "STS2_Things.Events.ThingsCuttingItClose",
     "STS2_Things.Events.ThingsMedusa",
-    "STS2_Things.Events.RobberyFakeMerchant",
-    "STS2_Things.Encounters.GravetideSlugBossEncounter",
-    "STS2_Things.Encounters.OriginFogmogBossEncounter",
-    "STS2_Things.Encounters.QuirkyHopperWeak",
-    "STS2_Things.Modifiers.QuirkyHopperRewardPolicy",
-    "STS2_Things.Monsters.GravetideCorpseSlug",
-    "STS2_Things.Monsters.GravetideSlug",
-    "STS2_Things.Monsters.GravetideSlugCorpse",
-    "STS2_Things.Monsters.OriginFogmog",
-    "STS2_Things.Monsters.QuirkyHopper",
+    "STS2_Things.Events.ThingsRobberyFakeMerchant",
+    "STS2_Things.Encounters.ThingsGravetideSlugBossEncounter",
+    "STS2_Things.Encounters.ThingsOriginFogmogBossEncounter",
+    "STS2_Things.Encounters.ThingsQuirkyHopperWeak",
+    "STS2_Things.Modifiers.ThingsMerchantBargainPricePolicy",
+    "STS2_Things.Modifiers.ThingsQuirkyHopperRewardPolicy",
+    "STS2_Things.Modifiers.ThingsSpentEmberRestPolicy",
+    "STS2_Things.Monsters.ThingsGravetideCorpseSlug",
+    "STS2_Things.Monsters.ThingsGravetideSlug",
+    "STS2_Things.Monsters.ThingsGravetideSlugCorpse",
+    "STS2_Things.Monsters.ThingsOriginFogmog",
+    "STS2_Things.Monsters.ThingsQuirkyHopper",
     "STS2_Things.Monsters.ThingsTheLegacy",
-    "STS2_Things.Powers.GravetideDigestionPower",
-    "STS2_Things.Powers.GravetideMinionPower",
+    "STS2_Things.Powers.ThingsGravetideDigestionPower",
+    "STS2_Things.Powers.ThingsGravetideMinionPower",
     "STS2_Things.Powers.ThingsQuirkPower"
 ];
 
@@ -107,8 +111,8 @@ try
         .ToArray();
     var expectedResources = new[]
     {
-        "STS2_Things.Implementations.v107.1.dll",
-        "STS2_Things.Implementations.v113.dll"
+        "STS2_Things.Implementations.v111.1.dll",
+        "STS2_Things.Implementations.v113.1.dll"
     };
     if (!resources.SequenceEqual(expectedResources, StringComparer.Ordinal))
     {
@@ -137,6 +141,9 @@ try
     }
     if (implementationAssembly.GetName().Version != bootstrapAssembly.GetName().Version)
         throw new InvalidOperationException("Bootstrap and implementation versions differ.");
+    if (implementationAssembly.GetName().Version != new Version(2, 0, 0, 0))
+        throw new InvalidOperationException(
+            $"Expected STS2_Things assembly version 2.0.0.0, got {implementationAssembly.GetName().Version}.");
 
     var implementationTypes = GetLoadableTypes(implementationAssembly);
     var initializer = implementationAssembly.GetType(
@@ -187,55 +194,27 @@ try
             DescribeSetDifference(modelNames, embeddedModelNames[expectedResource]));
     }
 
-    var v1071Models = embeddedModelNames["STS2_Things.Implementations.v107.1.dll"];
-    var v113Models = embeddedModelNames["STS2_Things.Implementations.v113.dll"];
-    if (!v1071Models.SetEquals(v113Models))
+    var v1111Models = embeddedModelNames["STS2_Things.Implementations.v111.1.dll"];
+    var v1131Models = embeddedModelNames["STS2_Things.Implementations.v113.1.dll"];
+    var v1131SharedModels = v1131Models
+        .Where(name => !(name.StartsWith("STS2_Things.Platform.Dread.", StringComparison.Ordinal)
+            && name.EndsWith("Dominion", StringComparison.Ordinal)))
+        .ToHashSet(StringComparer.Ordinal);
+    if (!v1111Models.SetEquals(v1131SharedModels))
     {
         throw new InvalidOperationException(
-            "V107.1 and V113 implementation model sets differ: " +
-            DescribeSetDifference(v1071Models, v113Models));
+            "V111.1 and V113.1 shared implementation model sets differ: " +
+            DescribeSetDifference(v1111Models, v1131SharedModels));
+    }
+    var v1131Dominions = v1131Models.Except(v1131SharedModels, StringComparer.Ordinal).ToArray();
+    if (v1131Dominions.Length < 7)
+    {
+        throw new InvalidOperationException(
+            $"Expected at least 7 v113.1 Dread DominionModel subclasses, found {v1131Dominions.Length}.");
     }
 
-    var modManager = gameAssembly.GetType(
-        "MegaCrit.Sts2.Core.Modding.ModManager", throwOnError: true)!;
-    var savedPropertiesTypeCache = gameAssembly.GetType(
-        "MegaCrit.Sts2.Core.Saves.Runs.SavedPropertiesTypeCache");
-    if (expectedTarget == "v107.1")
-    {
-        if (savedPropertiesTypeCache is null)
-            throw new InvalidOperationException("V107.1 SavedPropertiesTypeCache is missing.");
-        foreach (var bridgeMethod in new[]
-                 {
-                     "AppendV1071ImplementationTypes",
-                     "PromoteV1071ImplementationAssembly"
-                 })
-        {
-            if (bootstrapType.GetMethod(
-                    bridgeMethod, BindingFlags.NonPublic | BindingFlags.Static) is null)
-                throw new MissingMethodException(bootstrapType.FullName, bridgeMethod);
-        }
-        VerifyLegacyRegistrationBridge(
-            gameAssembly,
-            bootstrapAssembly,
-            bootstrapType,
-            implementationAssembly,
-            implementationTypes);
-    }
-    else
-    {
-        if (savedPropertiesTypeCache is not null)
-            throw new InvalidOperationException("V113 still exposes SavedPropertiesTypeCache.");
-        if (modManager.GetMethod(
-                "AssociateAssemblyWithMod",
-                BindingFlags.Public | BindingFlags.Static,
-                binder: null,
-                types: [typeof(string), typeof(Assembly)],
-                modifiers: null) is null)
-        {
-            throw new MissingMethodException(
-                modManager.FullName, "AssociateAssemblyWithMod(string, Assembly)");
-        }
-    }
+    VerifyCurrentModAssociation(gameAssembly, implementationAssembly);
+    VerifySavedPropertiesRegistration(gameAssembly, implementationTypes, expectedTarget);
 
     Console.WriteLine(
         $"Unified package probe: PASS ({expectedTarget}, {expectedAssemblyName}, " +
@@ -339,6 +318,7 @@ static bool IsKnownModelBase(MetadataReader metadata, TypeReferenceHandle handle
         "ActModel" or
         "AfflictionModel" or
         "CardModel" or
+        "DominionModel" or
         "EncounterModel" or
         "EnchantmentModel" or
         "EventModel" or
@@ -359,68 +339,89 @@ static string DescribeSetDifference(
            $"only-right=[{string.Join(", ", onlyRight)}]";
 }
 
-static void VerifyLegacyRegistrationBridge(
-    Assembly gameAssembly,
-    Assembly bootstrapAssembly,
-    Type bootstrapType,
-    Assembly implementationAssembly,
-    Type[] implementationTypes)
+static void VerifyCurrentModAssociation(Assembly gameAssembly, Assembly implementationAssembly)
 {
-    bootstrapType.GetField(
-            "_gameAssembly", BindingFlags.NonPublic | BindingFlags.Static)!
-        .SetValue(null, gameAssembly);
-    bootstrapType.GetField(
-            "_implementationAssembly", BindingFlags.NonPublic | BindingFlags.Static)!
-        .SetValue(null, implementationAssembly);
-
-    var append = bootstrapType.GetMethod(
-        "AppendV1071ImplementationTypes", BindingFlags.NonPublic | BindingFlags.Static)!;
-    object?[] appendArguments = [Array.Empty<Type>()];
-    append.Invoke(null, appendArguments);
-    var appendedTypes = (Type[]?)appendArguments[0]
-        ?? throw new InvalidOperationException("Legacy type bridge returned null.");
-    if (!implementationTypes.All(appendedTypes.Contains))
-        throw new InvalidOperationException("Legacy type bridge omitted implementation types.");
-
+    _ = implementationAssembly;
     var modManager = gameAssembly.GetType(
         "MegaCrit.Sts2.Core.Modding.ModManager", throwOnError: true)!;
-    var mods = modManager.GetField(
-            "_mods", BindingFlags.NonPublic | BindingFlags.Static)?
-        .GetValue(null) as System.Collections.IList
-        ?? throw new InvalidOperationException("ModManager._mods is unavailable.");
-    mods.Clear();
+    if (modManager.GetMethod(
+            "AssociateAssemblyWithMod",
+            BindingFlags.Public | BindingFlags.Static,
+            binder: null,
+            types: [typeof(string), typeof(Assembly)],
+            modifiers: null) is null)
+    {
+        throw new MissingMethodException(
+            modManager.FullName, "AssociateAssemblyWithMod(string, Assembly)");
+    }
 
     var modType = gameAssembly.GetType(
         "MegaCrit.Sts2.Core.Modding.Mod", throwOnError: true)!;
-    var manifestType = gameAssembly.GetType(
-        "MegaCrit.Sts2.Core.Modding.ModManifest", throwOnError: true)!;
-    var stateType = gameAssembly.GetType(
-        "MegaCrit.Sts2.Core.Modding.ModLoadState", throwOnError: true)!;
-    var mod = Activator.CreateInstance(modType)
-        ?? throw new InvalidOperationException("Could not create synthetic Mod.");
-    var manifest = Activator.CreateInstance(manifestType)
-        ?? throw new InvalidOperationException("Could not create synthetic ModManifest.");
-    manifestType.GetField("id")!.SetValue(manifest, "STS2_Things");
-    modType.GetField("path")!.SetValue(mod, "probe://STS2_Things");
-    modType.GetField("manifest")!.SetValue(mod, manifest);
-    modType.GetField("state")!.SetValue(mod, Enum.Parse(stateType, "Loaded"));
-    var assemblyField = modType.GetField("assembly")
-        ?? throw new MissingFieldException(modType.FullName, "assembly");
-    assemblyField.SetValue(mod, bootstrapAssembly);
-    mods.Add(mod);
-
-    try
+    var assembliesField = modType.GetField("assemblies")
+        ?? throw new MissingFieldException(modType.FullName, "assemblies");
+    if (assembliesField.FieldType != typeof(List<Assembly>))
     {
-        bootstrapType.GetMethod(
-                "PromoteV1071ImplementationAssembly",
-                BindingFlags.NonPublic | BindingFlags.Static)!
-            .Invoke(null, null);
-        if (!ReferenceEquals(assemblyField.GetValue(mod), implementationAssembly))
-            throw new InvalidOperationException("Legacy Mod assembly promotion failed.");
+        throw new InvalidOperationException(
+            $"Expected Mod.assemblies to be List<Assembly>, got {assembliesField.FieldType}.");
     }
-    finally
+}
+
+static void VerifySavedPropertiesRegistration(
+    Assembly gameAssembly,
+    Type[] implementationTypes,
+    string expectedTarget)
+{
+    var savedPropertiesTypeCache = gameAssembly.GetType(
+        "MegaCrit.Sts2.Core.Saves.Runs.SavedPropertiesTypeCache");
+    if (savedPropertiesTypeCache is not null)
+        throw new InvalidOperationException($"{expectedTarget} still exposes SavedPropertiesTypeCache.");
+
+    var modelIdCache = gameAssembly.GetType(
+        "MegaCrit.Sts2.Core.Multiplayer.Serialization.ModelIdSerializationCache",
+        throwOnError: true)!;
+    foreach (var member in new[]
+             {
+                 "Init",
+                 "CacheSavedPropertiesForTypeDebug",
+                 "GetJsonPropertiesForType",
+                 "GetNetIdForPropertyName"
+             })
     {
-        mods.Clear();
+        if (modelIdCache.GetMethod(member, BindingFlags.Public | BindingFlags.Static) is null)
+            throw new MissingMethodException(modelIdCache.FullName, member);
+    }
+
+    modelIdCache.GetField("_initialized", BindingFlags.NonPublic | BindingFlags.Static)!
+        .SetValue(null, true);
+    var cacheDebug = modelIdCache.GetMethod(
+        "CacheSavedPropertiesForTypeDebug", BindingFlags.Public | BindingFlags.Static)!;
+    var getJsonProps = modelIdCache.GetMethod(
+        "GetJsonPropertiesForType", BindingFlags.Public | BindingFlags.Static)!;
+    var getNetId = modelIdCache.GetMethod(
+        "GetNetIdForPropertyName", BindingFlags.Public | BindingFlags.Static)!;
+
+    foreach (var type in implementationTypes)
+    {
+        var declaredSaved = type
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .Where(property => property.CustomAttributes.Any(attribute =>
+                attribute.AttributeType.FullName ==
+                "MegaCrit.Sts2.Core.Saves.Runs.SavedPropertyAttribute"))
+            .ToArray();
+        if (declaredSaved.Length == 0)
+            continue;
+
+        cacheDebug.Invoke(null, [type]);
+        var cachedProps = (IEnumerable<PropertyInfo>?)getJsonProps.Invoke(null, [type])
+            ?? throw new InvalidOperationException($"ModelIdSerializationCache returned null properties for {type.FullName}.");
+        var cachedNames = cachedProps.Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
+        foreach (var property in declaredSaved)
+        {
+            if (!cachedNames.Contains(property.Name))
+                throw new InvalidOperationException($"ModelIdSerializationCache omitted {type.FullName}.{property.Name}.");
+            if ((int)getNetId.Invoke(null, [property.Name])! < 0)
+                throw new InvalidOperationException($"ModelIdSerializationCache assigned invalid net ID to {property.Name}.");
+        }
     }
 }
 

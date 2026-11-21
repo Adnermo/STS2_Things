@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rooms;
 using STS2_Things.Config;
+using STS2_Things.Platform;
 
 namespace STS2_Things.Features.MerchantBargain;
 
@@ -39,12 +40,19 @@ internal static class MerchantBargainManager
         result = Task.FromResult(false);
         if (!ThingsModConfig.IsEnabled(ThingsModConfig.FeatureMerchantBargainEnabled) ||
             ignoreCost || inventory is null || entry is MerchantCardRemovalEntry ||
+#if STS2_V113_1
+            entry is BlitzMerchantEntry ||
+#endif
             TryGetPriceOverride(entry, out _))
         {
             return false;
         }
 
         Player player = inventory.Player;
+        if (player is null || Sts2VersionSeam.IsBlitz(player.RunState))
+        {
+            return false;
+        }
         NMerchantInventory? merchantUi = NMerchantRoom.Instance?.Inventory;
         if (player.RunState.CurrentRoom is not MerchantRoom ||
             merchantUi is null || !merchantUi.IsOpen || merchantUi.Inventory != inventory)
@@ -176,7 +184,7 @@ internal static class MerchantBargainManager
         bool success = false;
         try
         {
-            #if STS2_V113
+#if STS2_V113_1
             var synchronizer = MegaCrit.Sts2.Core.Runs.RunManager.Instance.MerchantSynchronizer;
             MerchantBargainSync.AnnouncePrice(synchronizer, entry, negotiatedPrice);
             success = await synchronizer.PurchaseLocalEntry(entry);
@@ -213,12 +221,6 @@ internal static class MerchantBargainManager
             player.PlayerRng.Seed ^
             ((floor + 1UL) * 0x9E3779B97F4A7C15UL) ^
             ((playerSlot + 1UL) * 0xBF58476D1CE4E5B9UL));
-#if STS2_V107_1
-        // The older RNG uses a 32-bit seed. Fold both halves so floor and player
-        // slot still select independent local shop streams, without touching Shops.
-        return new Rng(unchecked((uint)(seed ^ (seed >> 32))));
-#else
         return new Rng(seed, "sts2_things_merchant_bargain");
-#endif
     }
 }

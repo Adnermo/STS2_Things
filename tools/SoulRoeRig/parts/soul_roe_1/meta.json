@@ -1,0 +1,94 @@
+{
+  "shadow": {
+    "x": 101,
+    "y": 204,
+    "w": 138,
+    "h": 29
+  },
+  "rear_glow": {
+    "x": 94,
+    "y": 60,
+    "w": 152,
+    "h": 161
+  },
+  "body_trail": {
+    "x": 136,
+    "y": 73,
+    "w": 264,
+    "h": 134
+  },
+  "cytoplasm": {
+    "x": 99,
+    "y": 68,
+    "w": 143,
+    "h": 144
+  },
+  "nucleus": {
+    "x": 132,
+    "y": 101,
+    "w": 77,
+    "h": 79
+  },
+  "membrane_ring": {
+    "x": 95,
+    "y": 64,
+    "w": 151,
+    "h": 152
+  },
+  "veins_highlight": {
+    "x": 102,
+    "y": 70,
+    "w": 137,
+    "h": 141
+  },
+  "core_beckon_glow": {
+    "x": 77,
+    "y": 47,
+    "w": 187,
+    "h": 187
+  },
+  "beckon_halo_ring": {
+    "x": 61,
+    "y": 29,
+    "w": 222,
+    "h": 222
+  },
+  "core_intangible_glow": {
+    "x": 70,
+    "y": 40,
+    "w": 201,
+    "h": 201
+  },
+  "intangible_shimmer": {
+    "x": 56,
+    "y": 26,
+    "w": 229,
+    "h": 229
+  },
+  "impact_flare": {
+    "x": 24,
+    "y": 56,
+    "w": 132,
+    "h": 168
+  },
+  "_rig_info": {
+    "variant": 1,
+    "name": "soul_roe_1",
+    "canvas": [
+      340,
+      340
+    ],
+    "origin": [
+      170,
+      210
+    ],
+    "main_center": [
+      170,
+      140
+    ],
+    "impact_anchor": [
+      96,
+      140
+    ]
+  }
+}

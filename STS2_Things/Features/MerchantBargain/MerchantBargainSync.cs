@@ -1,4 +1,4 @@
-#if STS2_V113
+#if STS2_V113_1
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Logging;
@@ -8,6 +8,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Runs;
 using System.Runtime.CompilerServices;
+using STS2_Things.Platform;
 
 namespace STS2_Things.Features.MerchantBargain;
 
@@ -16,7 +17,7 @@ namespace STS2_Things.Features.MerchantBargain;
 /// The native location buffer preserves ordering when another peer is still loading.
 /// Inventory mutation, gold spending, restocking and purchase hooks stay native.
 /// </summary>
-public struct MerchantBargainPriceMessage : INetMessage, IRunLocationTargetedMessage
+public struct ThingsMerchantBargainPriceMessage : INetMessage, IRunLocationTargetedMessage
 {
     public RunLocation Location { get; set; }
     public uint EntryId;
@@ -49,14 +50,16 @@ internal static class MerchantBargainSync
         public readonly INetGameService Service = service;
         public readonly RunLocationTargetedMessageBuffer Buffer = buffer;
 
-        public void Receive(MerchantBargainPriceMessage message, ulong senderId)
+        public void Receive(ThingsMerchantBargainPriceMessage message, ulong senderId)
         {
+            if (Sts2VersionSeam.IsBlitz(runState))
+                return;
             var player = runState.Players.FirstOrDefault(p => p.NetId == senderId);
             if (player is null || runState.CurrentRoom is not MegaCrit.Sts2.Core.Rooms.MerchantRoom)
                 return;
             var entry = synchronizer.GetInventoryFor(player).AllEntries
                 .FirstOrDefault(e => e.Id == message.EntryId);
-            if (entry is null || !entry.IsStocked || message.Price < 0 ||
+            if (entry is null || entry is BlitzMerchantEntry || !entry.IsStocked || message.Price < 0 ||
                 message.Price > entry.Cost || message.Price > player.Gold)
                 return;
             MerchantBargainManager.SetPriceOverride(entry, message.Price);
@@ -70,13 +73,13 @@ internal static class MerchantBargainSync
     {
         var state = new State(synchronizer, service, runState, buffer);
         States.Add(synchronizer, state);
-        buffer.RegisterMessageHandler<MerchantBargainPriceMessage>(state.Receive);
+        buffer.RegisterMessageHandler<ThingsMerchantBargainPriceMessage>(state.Receive);
     }
 
     internal static void Unbind(MerchantSynchronizer synchronizer)
     {
         if (!States.TryGetValue(synchronizer, out var state)) return;
-        state.Buffer.UnregisterMessageHandler<MerchantBargainPriceMessage>(state.Receive);
+        state.Buffer.UnregisterMessageHandler<ThingsMerchantBargainPriceMessage>(state.Receive);
         States.Remove(synchronizer);
     }
 
@@ -84,7 +87,7 @@ internal static class MerchantBargainSync
     {
         if (!entry.Id.HasValue || !States.TryGetValue(synchronizer, out var state))
             throw new InvalidOperationException("Native merchant synchronization is not initialized.");
-        state.Service.SendMessage(new MerchantBargainPriceMessage
+        state.Service.SendMessage(new ThingsMerchantBargainPriceMessage
         {
             Location = state.Buffer.CurrentLocation,
             EntryId = entry.Id.Value,

@@ -10,7 +10,7 @@ namespace STS2_Things.Config;
 /// <summary>A bounded, host-only snapshot on the same reliable channel as run start.</summary>
 public struct ThingsConfigSnapshotMessage : INetMessage
 {
-    public const int Protocol = 1;
+    public const int Protocol = 2;
     public static readonly uint Schema = BinaryPrimitives.ReadUInt32LittleEndian(SHA256.HashData(
         Encoding.UTF8.GetBytes(string.Join("|", ThingsModConfig.Entries.Select(entry => $"{entry.Key}:{entry.Default.GetType().Name}")))));
 

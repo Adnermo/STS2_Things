@@ -1,10 +1,10 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
 
-    [ValidateSet('v107.1', 'v113')]
-    [string]$TargetVersion = 'v113',
+    [ValidateSet('v111.1', 'v113.1')]
+    [string]$TargetVersion = 'v113.1',
 
     [string]$PythonExe = $env:STS2_PYTHON,
 
@@ -127,11 +127,23 @@ if ([string]::IsNullOrWhiteSpace($GameDir)) {
 }
 $GameDir = [IO.Path]::GetFullPath($GameDir)
 if ([string]::IsNullOrWhiteSpace($DataDir)) {
-    if ($TargetVersion -eq 'v107.1') {
-        $DataDir = $env:STS2_DATA_DIR_V107_1
+    if ($TargetVersion -eq 'v111.1') {
+        $DataDir = $env:STS2_DATA_DIR_V111_1
+        if ([string]::IsNullOrWhiteSpace($DataDir)) {
+            $candidateDataDir = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v111.1\b0460083b012\game\data_sts2_windows_x86_64'
+            if (Test-Path -LiteralPath $candidateDataDir -PathType Container) {
+                $DataDir = $candidateDataDir
+            }
+        }
     }
     else {
-        $DataDir = $env:STS2_DATA_DIR_V113
+        $DataDir = $env:STS2_DATA_DIR_V113_1
+        if ([string]::IsNullOrWhiteSpace($DataDir)) {
+            $candidateDataDir = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v113.1\76cc75b6f097\game\data_sts2_windows_x86_64'
+            if (Test-Path -LiteralPath $candidateDataDir -PathType Container) {
+                $DataDir = $candidateDataDir
+            }
+        }
     }
 }
 if ([string]::IsNullOrWhiteSpace($DataDir)) {
@@ -140,13 +152,16 @@ if ([string]::IsNullOrWhiteSpace($DataDir)) {
 $DataDir = [IO.Path]::GetFullPath($DataDir)
 
 if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
-    if ($TargetVersion -eq 'v107.1') {
-        $SourceRoot = $env:STS2_SOURCE_ROOT_V107_1
+    if ($TargetVersion -eq 'v111.1') {
+        $SourceRoot = $env:STS2_SOURCE_ROOT_V111_1
+        if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
+            $SourceRoot = Join-Path (Split-Path $Root -Parent) 'STS2-V111.1'
+        }
     }
     else {
-        $SourceRoot = $env:STS2_SOURCE_ROOT_V113
+        $SourceRoot = $env:STS2_SOURCE_ROOT_V113_1
         if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
-            $SourceRoot = Join-Path (Split-Path $Root -Parent) 'STS2-V113'
+            $SourceRoot = Join-Path (Split-Path $Root -Parent) 'STS2-V113.1'
         }
     }
 }
@@ -168,15 +183,15 @@ $dataGameRoot = Split-Path $DataDir -Parent
 $releaseInfoPath = Join-Path $dataGameRoot 'release_info.json'
 if (Test-Path -LiteralPath $releaseInfoPath) {
     $releaseInfo = Get-Content -Raw -LiteralPath $releaseInfoPath | ConvertFrom-Json
-    $releaseMatchesTarget = if ($TargetVersion -eq 'v107.1') {
-        $releaseInfo.version -eq 'v0.107.1'
+    $releaseMatchesTarget = if ($TargetVersion -eq 'v111.1') {
+        $releaseInfo.version -match '^v0\.111\.\d+'
     }
     else {
-        $releaseInfo.version -match '^v0\.113\.\d+$'
+        $releaseInfo.version -match '^v0\.113\.\d+'
     }
     if (-not $releaseMatchesTarget) {
-        $expectedRelease = if ($TargetVersion -eq 'v107.1') { 'v0.107.1' } else { 'v0.113.x' }
-        throw "Target $TargetVersion expects $expectedRelease, but '$GameDir' contains $($releaseInfo.version). Pass the matching -DataDir."
+        $expectedRelease = if ($TargetVersion -eq 'v111.1') { 'v0.111.x' } else { 'v0.113.x' }
+        throw "Target $TargetVersion expects $expectedRelease, but '$dataGameRoot' contains $($releaseInfo.version). Pass the matching -DataDir."
     }
 }
 if ($Install -and $SkipPck) {
@@ -193,9 +208,14 @@ if (-not [string]::IsNullOrWhiteSpace($ReusePck)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($GodotExe)) {
-    $candidate = 'D:\Download\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64_console.exe'
-    if (Test-Path -LiteralPath $candidate) {
-        $GodotExe = $candidate
+    foreach ($candidate in @(
+        'D:\Godot\Godot_v4.5.1-stable_mono_win64_console.exe',
+        'D:\Download\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64_console.exe'
+    )) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            $GodotExe = $candidate
+            break
+        }
     }
 }
 
@@ -269,6 +289,46 @@ if ($LASTEXITCODE -ne 0) {
     throw "Gravetide audio asset build failed with exit code $LASTEXITCODE"
 }
 
+$towerMusicBuild = Join-Path $Root 'tools\HumanFaceTowerRig\prepare_music.py'
+if (-not (Test-Path -LiteralPath $towerMusicBuild -PathType Leaf)) {
+    throw "Human Face Tower music build script was not found: $towerMusicBuild"
+}
+Write-Host 'Preparing Human Face Tower dedicated boss BGM...'
+& $PythonExe -X utf8 $towerMusicBuild
+if ($LASTEXITCODE -ne 0) {
+    throw "Human Face Tower music build failed with exit code $LASTEXITCODE"
+}
+
+$depthsMusicBuild = Join-Path $Root 'tools\DepthsMusic\prepare_depths_music.py'
+if (-not (Test-Path -LiteralPath $depthsMusicBuild -PathType Leaf)) {
+    throw "Depths Act music build script was not found: $depthsMusicBuild"
+}
+Write-Host 'Preparing Depths multi-stage seamless Act BGM suites...'
+& $PythonExe -X utf8 $depthsMusicBuild
+if ($LASTEXITCODE -ne 0) {
+    throw "Depths Act music build failed with exit code $LASTEXITCODE"
+}
+
+$overgrowthBossMusicBuild = Join-Path $Root 'tools\BossMusic\prepare_overgrowth_boss_music.py'
+if (-not (Test-Path -LiteralPath $overgrowthBossMusicBuild -PathType Leaf)) {
+    throw "Overgrowth Boss music build script was not found: $overgrowthBossMusicBuild"
+}
+Write-Host 'Preparing Act 1 Overgrowth dedicated Boss BGM themes...'
+& $PythonExe -X utf8 $overgrowthBossMusicBuild
+if ($LASTEXITCODE -ne 0) {
+    throw "Overgrowth Boss music build failed with exit code $LASTEXITCODE"
+}
+
+$act2BossMusicBuild = Join-Path $Root 'tools\BossMusic\prepare_act2_boss_music.py'
+if (-not (Test-Path -LiteralPath $act2BossMusicBuild -PathType Leaf)) {
+    throw "Act 2 Boss music build script was not found: $act2BossMusicBuild"
+}
+Write-Host 'Preparing Act 2 / Depths dedicated Boss BGM themes (CaveGod & Bowlbug Progenitor)...'
+& $PythonExe -X utf8 $act2BossMusicBuild
+if ($LASTEXITCODE -ne 0) {
+    throw "Act 2 Boss music build failed with exit code $LASTEXITCODE"
+}
+
 $gravetideAudioAudit = Join-Path $PSScriptRoot 'audit_gravetide_audio_style.py'
 if (-not (Test-Path -LiteralPath $gravetideAudioAudit -PathType Leaf)) {
     throw "Gravetide audio audit script was not found: $gravetideAudioAudit"
@@ -316,6 +376,7 @@ elseif (Test-Path -LiteralPath $fmodAudit) {
 }
 
 Write-Host "Building STS2_Things ($Configuration, $TargetVersion) against $DataDir"
+Remove-Item Env:DOTNET_ROOT, Env:DOTNET_MULTILEVEL_LOOKUP -ErrorAction SilentlyContinue
 & dotnet build $Project -c $Configuration --nologo `
     "/p:Sts2TargetVersion=$TargetVersion" `
     "/p:Sts2DataDir=$DataDir" `
@@ -441,6 +502,7 @@ $bridgeOut = Join-Path $BuildDir 'STS2_Things.BaseLibBridge.dll'
 if (Test-Path -LiteralPath $bridgeProject) {
     if (Test-Path -LiteralPath $bridgeRef) {
         Write-Host 'Building the optional BaseLib config bridge...'
+        Remove-Item Env:DOTNET_ROOT, Env:DOTNET_MULTILEVEL_LOOKUP -ErrorAction SilentlyContinue
         & dotnet build $bridgeProject -c $Configuration --nologo `
             "/p:BaseLibRef=$bridgeRef" `
             "/p:Sts2DataDir=$DataDir"
@@ -461,7 +523,12 @@ if (Test-Path -LiteralPath $bridgeProject) {
 
 $harmonyProbe = Join-Path $PSScriptRoot 'verify-harmony-targets.ps1'
 if (Test-Path -LiteralPath $harmonyProbe -PathType Leaf) {
-    $dependencyDataDir = Join-Path $GameDir 'data_sts2_windows_x86_64'
+    $dependencyDataDir = if (Test-Path -LiteralPath (Join-Path $DataDir 'SmartFormat.dll')) {
+        $DataDir
+    }
+    else {
+        Join-Path $GameDir 'data_sts2_windows_x86_64'
+    }
     & $harmonyProbe `
         -DataDir $DataDir `
         -ModDll (Join-Path $BuildDir 'STS2_Things.dll') `

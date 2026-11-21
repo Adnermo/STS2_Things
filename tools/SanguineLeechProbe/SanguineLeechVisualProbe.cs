@@ -26,7 +26,7 @@ public partial class SanguineLeechProbeNode
         var ui=new Harmony("SanguineLeechProbe.VisualHost");
         ui.Patch(AccessTools.Method(typeof(CombatStateTracker),"NotifyCombatStateChanged"),prefix:new HarmonyMethod(typeof(SanguineLeechProbeNode),nameof(SkipUiGuard)));
         ScriptManagerBridge.LookupScriptsInAssembly(typeof(NCard).Assembly);
-        ScriptManagerBridge.LookupScriptsInAssembly(typeof(SanguineLeech).Assembly);
+        ScriptManagerBridge.LookupScriptsInAssembly(typeof(ThingsSanguineLeech).Assembly);
         var loaderType=typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Assets.AtlasResourceLoader");
         var loader=loaderType==null?null:(ResourceFormatLoader)Activator.CreateInstance(loaderType)!;
         if(loader!=null)ResourceLoader.AddResourceFormatLoader(loader,true);
@@ -100,7 +100,7 @@ public partial class SanguineLeechProbeNode
                 AddCard(parasite,new Vector2(375,919),.58f);
                 // The fixture deliberately bypasses the backend-only UI notification guard;
                 // refresh intentions explicitly so the preview shows native Strength scaling.
-                foreach(var creature in view.GetChildren().OfType<NCreature>().Where(n=>n.Entity.Monster is SanguineLeech))
+                foreach(var creature in view.GetChildren().OfType<NCreature>().Where(n=>n.Entity.Monster is ThingsSanguineLeech))
                 {
                     await creature.UpdateIntent([s.Player.Creature]);
                     creature.IntentContainer.Modulate=Colors.White;

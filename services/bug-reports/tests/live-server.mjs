@@ -17,7 +17,7 @@ const server=http.createServer(async(req,res)=>{
   const chunks=[];for await(const part of req)chunks.push(part);const body=Buffer.concat(chunks);
   if(req.url==="/__test/mode"&&req.method==="POST"){mode=JSON.parse(body.toString()).mode;res.end('{"ok":true}');return;}
   if(req.url==="/__test/reports"){const rows=await db.prepare("SELECT payload_json FROM reports").all();res.setHeader("content-type","application/json");res.end(JSON.stringify(rows.results.map(r=>JSON.parse(r.payload_json))));return;}
-  if(req.url==="/api/reports"&&mode==="fail"){res.writeHead(503,{"content-type":"application/json"});res.end('{"error":"fixture_offline"}');return;}
+  if((req.url==="/api/reports"||req.url==="/api/v1/reports")&&mode==="fail"){res.writeHead(503,{"content-type":"application/json"});res.end('{"error":"fixture_offline"}');return;}
   const headers={...req.headers,"cf-connecting-ip":"127.0.0.1"};delete headers.host;delete headers['content-length'];
   const result=await mf.dispatchFetch("http://127.0.0.1:21173"+req.url,{method:req.method,headers,...(req.method!=="GET"&&req.method!=="HEAD"?{body}: {})});
   res.writeHead(result.status,Object.fromEntries(result.headers));res.end(Buffer.from(await result.arrayBuffer()));

@@ -1,27 +1,49 @@
 # STS2_Things 统一订阅包
 
-1.25.27 支持 **v0.107.1 / v0.113.0 public-beta**。Steam 单条目仍使用同一套四文件，由引导按真实 API 选实现：
+当前统一包同时支持 **`v0.111.1`（Steam 正式版分支）** 与 **`v0.113.1`（Steam `public-beta` 测试分支）**。Steam 创意工坊单条目与 GitHub Release 共用同一套四文件，由统一引导按客户端真实运行时 API 自动选择对应实现：
 
 ```text
-STS2_Things.json               min_game_version=v0.107.1
-STS2_Things.dll                引导，内嵌 v107.1 与 v113 实现
-STS2_Things.pck                两版共用资源
-STS2_Things.BaseLibBridge.dll  可选设置库集成桥
+STS2_Things.json               统一清单（min_game_version=v0.111.1）
+STS2_Things.dll                统一引导（STS2_Things.Bootstrap），内嵌 v111.1 与 v113.1 实现
+STS2_Things.pck                两版共用 Godot 资源包
+STS2_Things.BaseLibBridge.dll  可选设置库集成桥（无 BaseLib 时不加载）
 ```
 
-## 启动
+嵌入资源契约：
+- `STS2_Things.Implementations.v111.1.dll`（编译常量 `STS2_V111_1`，对应 `v0.111.1`）
+- `STS2_Things.Implementations.v113.1.dll`（编译常量 `STS2_V113_1`，对应 `v0.113.1`）
 
-1. 原生 ModManager 加载统一 DLL/PCK。
-2. 五参数伤害 Hook 选择 v107.1；六参数伤害 Hook、CombatId、带 CardModel 来源的五参数死亡 Hook、NStandardMerchantRoom 同时成立时选择 v113。其他现代 ABI 返回明确的版本诊断。
-3. v113 使用官方 `AssociateAssemblyWithMod`；v107.1 保留类型追加及 assembly 提升桥。
-4. 调用所选实现的 initializer。未选实现不加载、不扫描模型、不安装补丁。
+## 启动流程
+
+1. 原生 `ModManager` 读取 `STS2_Things.json`，挂载共用 `STS2_Things.pck` 并加载引导程序集 `STS2_Things.dll`。
+2. `UnifiedBootstrap.DetectTarget` 依据已加载 `sts2.dll` 的真实方法与类型签名识别客户端目标：
+   - 满足带 `CardModel` 来源参数的五参数死亡 Hook 与 `NStandardMerchantRoom` 等 `v0.113.1` ABI 时选择 `v113.1`；
+   - 满足四参数死亡 Hook 与 `NMerchantRoom` 等 `v0.111.1` 正式版 ABI 时选择 `v111.1`；
+   - 其他不兼容游戏版本立即返回明确的版本诊断信息。
+3. 两版均直接调用官方 `ModManager.AssociateAssemblyWithMod` 将所选实现程序集关联至当前 Mod，并由原生 `ModelIdSerializationCache` 自动发现全部 `[SavedProperty]` 存档字段。
+4. 调用所选实现的初始化入口完成模型池注册与 Harmony 补丁安装；未选中的另一套实现不解包、不加载、不扫描模型、不安装任何补丁。
+
+## 构建与校验
+
+```powershell
+# 一键完成 v113.1（含共用 PCK）+ v111.1（复用 PCK）+ 双版本探针 + build\unified 组装校验
+.\scripts\build-all.ps1
+
+# 仅根据已构建的 build\v111.1 与 build\v113.1 重新打包并运行 UnifiedPackageProbe
+.\scripts\build-unified.ps1
+
+# 独立验证统一包资源完整性及两版原生启动探针
+.\scripts\verify-unified-package.ps1
+.\scripts\test-unified-startup.ps1 -TargetVersion v111.1
+.\scripts\test-unified-startup.ps1 -TargetVersion v113.1
+```
 
 ## 交付门禁
 
-- 两实现及引导版本一致，编译零警告零错误；分别验证 Harmony 和 SavedProperty 合同。
-- 固定的两个嵌入资源与独立 DLL 的 SHA256 一致，Mod 模型集合相同（本次各 160 个）。
-- 两版原生加载、深处事件、涅奥及章节推进检查；新版完整客户端烟雾验证。
-- 共用 PCK 挂载核验；ZIP CRC、四文件条目与 SHA256 一致。
-- 仅交付四运行文件，不含调试桥、原版客户端/依赖、原画、源码、日志或凭据。
+- `v111.1`、`v113.1` 两套实现与 `STS2_Things.Bootstrap` 版本号完全一致，开启 `Nullable=enable` 与 `TreatWarningsAsErrors=true` 零警告零错误编译。
+- 分别针对 `v0.111.1` 与 `v0.113.1` 真实运行库通过 Harmony 目标签名探针、`[SavedProperty]` 序列化契约与 `ModelId` 命名空间探针。
+- 引导 DLL 内嵌的两个资源流与 `build\v111.1\STS2_Things.dll`、`build\v113.1\STS2_Things.dll` 的 SHA256 逐字节一致，且两版导出的 Mod 模型集合完全相同。
+- 两版分别挂载各自匹配的原生 `SlayTheSpire2.pck` 与共用 `STS2_Things.pck` 通过原生启动、深处章节、事件与怪物行为回归。
+- 最终压缩包仅包含上述四运行文件，严禁混入调试桥、原版客户端/运行库、源美术资产、源码、临时探针或个人配置。
 
-1.25.27 的 Steam 与 GitHub 使用同一套已验证运行文件。所有联机玩家需同一游戏版本及统一包。详见 [双版本实现](DUAL_VERSION_SUPPORT.md) 和 [V113 迁移](MIGRATION_V113.md)。
+所有联机玩家须运行同一游戏版本并安装同一统一包。双版本编译常量与适配细节见 [双版本支持](DUAL_VERSION_SUPPORT.md)。

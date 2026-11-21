@@ -35,14 +35,30 @@ public partial class LanternFishProbeNode : Node
             ProjectSettings.LoadResourcePack(System.Environment.GetEnvironmentVariable("THINGS_PROBE_GAME_PCK")
                 ?? "D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck");
             if (OS.GetCmdlineUserArgs().Contains("--visual"))
-                ProjectSettings.LoadResourcePack(Path.Combine(root, "build/lantern_fish/v113/STS2_Things.pck"));
+            {
+#if STS2_V111_1
+                const string defaultTarget = "v111.1";
+#else
+                const string defaultTarget = "v113.1";
+#endif
+                string pack = System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")
+                    ?? new[]
+                    {
+                        Path.Combine(root, $"build/{defaultTarget}/STS2_Things.pck"),
+                        Path.Combine(root, "build/v113.1/STS2_Things.pck"),
+                        Path.Combine(root, "build/v111.1/STS2_Things.pck"),
+                        Path.Combine(root, "build/unified/STS2_Things.pck"),
+                    }.FirstOrDefault(File.Exists)
+                    ?? Path.Combine(root, $"build/{defaultTarget}/STS2_Things.pck");
+                ProjectSettings.LoadResourcePack(pack);
+            }
             SaveManager.Instance.InitSettingsDataForTest();
             SaveManager.Instance.SettingsSave.Language = "eng";
             MegaCrit.Sts2.Core.Localization.LocManager.Initialize();
             InitializeModelDb();
             SaveManager.Instance.InitPrefsDataForTest();
             var harmony = new Harmony("LanternFishProbe");
-            foreach (Type patch in typeof(LanternFish).Assembly.GetTypes().Where(t =>
+            foreach (Type patch in typeof(ThingsLanternFish).Assembly.GetTypes().Where(t =>
                          t.Name.StartsWith("LanternBlindness") && t.Name.EndsWith("Patch")))
                 harmony.CreateClassProcessor(patch).Patch();
             if (OS.GetCmdlineUserArgs().Contains("--visual"))
@@ -77,7 +93,7 @@ public partial class LanternFishProbeNode : Node
         var run = ProbeRuntimeApi.CreateForNewRun(party, ActModel.GetDefaultList().Select(a => a.ToMutable()).ToList(), [], GameMode.Standard, ascension, seed);
         typeof(RunManager).GetProperty("State", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(RunManager.Instance, run);
         typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, ProbeRuntimeApi.Ascension(ascension));
-        var encounter = (LanternFishEncounter)ModelDb.Encounter<LanternFishEncounter>().ToMutable();
+        var encounter = (ThingsLanternFishEncounter)ModelDb.Encounter<ThingsLanternFishEncounter>().ToMutable();
         run.AppendToMapPointHistory(MegaCrit.Sts2.Core.Map.MapPointType.Monster, RoomType.Monster, encounter.Id);
         var room = new CombatRoom(encounter, run); run.PushRoom(room);
         foreach (var player in party)
@@ -100,7 +116,7 @@ public partial class LanternFishProbeNode : Node
     {
         var s = Scenario();
         Assert(!s.Encounter.IsWeak, "Three fish belong to the strong hallway pool.");
-        var fish = s.Encounter.MonstersWithSlots.Select(x => (LanternFish)x.Item1).ToArray();
+        var fish = s.Encounter.MonstersWithSlots.Select(x => (ThingsLanternFish)x.Item1).ToArray();
         Assert(fish.Length == 3 && fish.Select(f => f.OpeningPhase).SequenceEqual([0,1,3]), "Three staggered fish.");
         Assert(fish.All(f => f.MinInitialHp == 42 && f.MaxInitialHp == 46), "A0 HP.");
         string[] cycle = ["BITE_MOVE", "FLASH_MOVE", "TAIL_MOVE", "GUARD_MOVE"];
@@ -116,16 +132,16 @@ public partial class LanternFishProbeNode : Node
             }
             Assert(flashes == (turn % 4 == 3 ? 0 : 1), "One flash or respite.");
         }
-        GD.Print($"Encounter ID: {s.Encounter.Id.Entry}; monster ID: {fish[0].Id.Entry}; power ID: {ModelDb.Power<LanternBlindnessPower>().Id.Entry}");
+        GD.Print($"Encounter ID: {s.Encounter.Id.Entry}; monster ID: {fish[0].Id.Entry}; power ID: {ModelDb.Power<ThingsLanternBlindnessPower>().Id.Entry}");
         DeactivateSyntheticCombat();
         var high = Scenario(ascension: 20);
         Assert(high.Encounter.MonstersWithSlots.All(x => x.Item1.MinInitialHp == 46 && x.Item1.MaxInitialHp == 50), "High ascension HP.");
         DeactivateSyntheticCombat();
     }
 
-    private static async Task<LanternBlindnessPower> Blind(Player player, int charges)
+    private static async Task<ThingsLanternBlindnessPower> Blind(Player player, int charges)
     {
-        return await PowerCmd.Apply<LanternBlindnessPower>(Choice, player.Creature, charges, null, null, silent: true)
+        return await PowerCmd.Apply<ThingsLanternBlindnessPower>(Choice, player.Creature, charges, null, null, silent: true)
             ?? throw new Exception("Power apply failed.");
     }
 
@@ -180,7 +196,7 @@ public partial class LanternFishProbeNode : Node
         await CardPileCmd.Draw(Choice, 3, player);
         Assert(first.EnergyCost.GetWithModifiers(CostModifiers.Local) == expected1, "Deterministic first cost.");
         Assert(second.EnergyCost.GetWithModifiers(CostModifiers.Local) == expected2, "Deterministic second cost.");
-        Assert(!player.Creature.HasPower<LanternBlindnessPower>(), "Charges deplete exactly.");
+        Assert(!player.Creature.HasPower<ThingsLanternBlindnessPower>(), "Charges deplete exactly.");
         Assert(LanternBlindness.IsBlinded(first) && LanternBlindness.IsBlinded(second) && !LanternBlindness.IsBlinded(third), "Marks survive counter depletion.");
         first.EnergyCost.AfterCardPlayedCleanup();
         Assert(first.EnergyCost.GetWithModifiers(CostModifiers.Local) == expected1 && LanternBlindness.IsBlinded(first), "Playing retains blindness this turn.");
@@ -238,8 +254,8 @@ public partial class LanternFishProbeNode : Node
     {
         var s = Scenario(players: 2); var player = s.Player;
         var artifact = await PowerCmd.Apply<ArtifactPower>(Choice, player.Creature, 1, null, null, silent: true);
-        await PowerCmd.Apply<LanternBlindnessPower>(Choice, player.Creature, 2, s.Encounter.MonstersWithSlots[0].Item1.Creature, null, silent: true);
-        Assert(!player.Creature.HasPower<LanternBlindnessPower>(), "Artifact prevents new blindness.");
+        await PowerCmd.Apply<ThingsLanternBlindnessPower>(Choice, player.Creature, 2, s.Encounter.MonstersWithSlots[0].Item1.Creature, null, silent: true);
+        Assert(!player.Creature.HasPower<ThingsLanternBlindnessPower>(), "Artifact prevents new blindness.");
         Assert(!player.Creature.HasPower<ArtifactPower>(), "Artifact charge consumed normally.");
         var template = ModelDb.AllCards.First(card => card.CanonicalStarCost > 0 && !card.EnergyCost.CostsX && card.EnergyCost.Canonical >= 0);
         var stars = s.Room.CombatState.CreateCard(template, player);
@@ -249,33 +265,37 @@ public partial class LanternFishProbeNode : Node
         Assert(stars.GetStarCostWithModifiers() == starCost, "Star cost unchanged.");
         Assert(stars.EnergyCost.GetWithModifiers(CostModifiers.Local) is >= 1 and <= 3, "Normal energy still randomized on star card.");
         player.PlayerCombatState.EndOfTurnCleanup();
-        var fish = (LanternFish)s.Encounter.MonstersWithSlots[0].Item1;
+        var fish = (ThingsLanternFish)s.Encounter.MonstersWithSlots[0].Item1;
         await ((MoveState)fish.MoveStateMachine!.States["FLASH_MOVE"]).PerformMove([s.Player.Creature]);
-        Assert(s.Players.All(p => p.Creature.GetPower<LanternBlindnessPower>()?.Amount == 2), "Flash affects every living player.");
+        Assert(s.Players.All(p => p.Creature.GetPower<ThingsLanternBlindnessPower>()?.Amount == 2), "Flash affects every living player.");
         DeactivateSyntheticCombat(); GD.Print("PASS Artifact, Star cost and multiplayer flash.");
     }
 
     private static async Task VerifyNativeMoves()
     {
-        var s = Scenario(); var fish = (LanternFish)s.Encounter.MonstersWithSlots[0].Item1;
-        var moves = fish.MoveStateMachine!.States;
-        await ((MoveState)moves["FLASH_MOVE"]).PerformMove([s.Player.Creature]);
-        Assert(s.Player.Creature.GetPower<LanternBlindnessPower>()?.Amount == 2, "Native flash applies two charges.");
-        await ((MoveState)moves["GUARD_MOVE"]).PerformMove([s.Player.Creature]);
-        Assert(fish.Creature.Block == 9, "Native guard grants nine block.");
-        int hp = s.Player.Creature.CurrentHp;
-        await ((MoveState)moves["BITE_MOVE"]).PerformMove([s.Player.Creature]);
-        Assert(s.Player.Creature.CurrentHp == hp - 10, "Native bite damage.");
-        hp = s.Player.Creature.CurrentHp;
-        await ((MoveState)moves["TAIL_MOVE"]).PerformMove([s.Player.Creature]);
-        Assert(s.Player.Creature.CurrentHp == hp - 10, "Native two-hit tail damage.");
-        DeactivateSyntheticCombat(); GD.Print("PASS native flash, guard, bite and double tail swipe commands.");
+        foreach (int ascension in new[] { 0, 20 })
+        {
+            var s = Scenario(ascension: ascension); var fish = (ThingsLanternFish)s.Encounter.MonstersWithSlots[0].Item1;
+            var moves = fish.MoveStateMachine!.States;
+            await ((MoveState)moves["FLASH_MOVE"]).PerformMove([s.Player.Creature]);
+            Assert(s.Player.Creature.GetPower<ThingsLanternBlindnessPower>()?.Amount == 2, "Native flash applies two charges.");
+            await ((MoveState)moves["GUARD_MOVE"]).PerformMove([s.Player.Creature]);
+            Assert(fish.Creature.Block == 9, "Native guard grants nine block.");
+            int hp = s.Player.Creature.CurrentHp;
+            await ((MoveState)moves["BITE_MOVE"]).PerformMove([s.Player.Creature]);
+            Assert(s.Player.Creature.CurrentHp == hp - (ascension == 0 ? 13 : 15), "Native bite damage (13 A0 / 15 A20).");
+            hp = s.Player.Creature.CurrentHp;
+            await ((MoveState)moves["TAIL_MOVE"]).PerformMove([s.Player.Creature]);
+            Assert(s.Player.Creature.CurrentHp == hp - (ascension == 0 ? 12 : 14), "Native two-hit tail damage (6x2 A0 / 7x2 A20).");
+            DeactivateSyntheticCombat();
+        }
+        GD.Print("PASS native flash, guard, bite (13/15) and double tail swipe (6x2/7x2) commands.");
     }
 
     private static void Assert(bool ok, string message) { if (!ok) throw new Exception(message); _assertions++; }
     private static int RngCounter(MegaCrit.Sts2.Core.Random.Rng rng) =>
         (int)(rng.GetType().GetProperty("Counter")?.GetValue(rng) ??
               rng.GetType().GetField("_counter", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(rng)!);
-    private sealed record Fixture(RunState Run, CombatRoom Room, List<Player> Players, LanternFishEncounter Encounter)
+    private sealed record Fixture(RunState Run, CombatRoom Room, List<Player> Players, ThingsLanternFishEncounter Encounter)
     { public Player Player => Players[0]; }
 }

@@ -15,12 +15,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import clips as C  # noqa: E402
-from motion import clamp, follow, pendulum, seg, shake, smoother, tremor, window  # noqa: E402
+from motion import clamp, follow, pendulum, seg, shake, shock, smoother, tremor, window  # noqa: E402
 from rig import ARMS, ROOT, ROT, SX, SY, X, Y, Rig, copy_pose, load_source, sample_timeline_start, unwrap  # noqa: E402
 
 DT = 1.0 / 240.0
 SCREEN_TOP = 565.0   # skeleton-space y of the top screen edge in the encounter framing
-OUT_HZ = 120  # matches the 120 Hz probes; 60 Hz linear keys doubled per-frame velocity jumps
+OUT_HZ = 120         # matches the 120 Hz probes; 60 Hz linear keys doubled per-frame velocity jumps
 ROOT_ORIGIN = (-0.65, 0.0)
 KEEP_BONES = ("root", "arm1_IK", "arm2_IK", "body1", "tail_IK", "body2", "body_bottom", "body3", "body_bottom2", "head",
               "shoulder1", "shoulder2", "arm1_1", "arm2_1", "beard", "horn1", "horn2", "arm1_2", "arm2_2", "arm1_2_side",
@@ -32,6 +32,25 @@ ATTACH = {1: {"open": "arm1_3_2", "fist": "arm1_3"}, 2: {"open": "arm2_3_2", "fi
 # without folding triangles (local sweep: arm1_3 -30..8, arm2_3 -45..43 around rests -27 / +28).
 BEND_BAND = (-8.0, 38.0)
 BEND_SIGN = {1: 1.0, 2: -1.0}
+
+JABS_RIGHT_EVENTS = [
+    {"time": 0.64, "name": "central_hit", "int": 1, "string": "jab_right"},
+    {"time": 1.34, "name": "central_hit", "int": 2, "string": "jab_left"},
+    {"time": 2.32, "name": "central_hit", "int": 3, "string": "jab_finisher"},
+    {"time": 3.45, "name": "attack_recover"},
+]
+PUNCH_EVENTS = [
+    {"time": 1.18, "name": "central_hit", "int": 1, "string": "punch"},
+    {"time": 2.85, "name": "attack_recover"},
+]
+EVENTS = {
+    "alternating_jabs_right": JABS_RIGHT_EVENTS,
+    "alternating_jabs_right_angry": JABS_RIGHT_EVENTS,
+    "leftpunch": PUNCH_EVENTS,
+    "leftpunch_angry": PUNCH_EVENTS,
+    "rightpunch": PUNCH_EVENTS,
+    "rightpunch_angry": PUNCH_EVENTS,
+}
 
 
 def soft_band(value: float, lo: float, hi: float) -> float:
@@ -46,21 +65,21 @@ def soft_band(value: float, lo: float, hi: float) -> float:
 
 # ---------------------------------------------------------------------------- variants
 
-def mirrored(clip: C.Clip) -> C.Clip:
+def mirrored(clip: C.Clip, name: str | None = None) -> C.Clip:
     flip = {"b1x", "b1r", "b2r", "b3r", "hy", "hr", "brd", "bb"}
     swap = {"s1x": "s2x", "s1o": "s2o", "s1r": "s2r", "f1": "f2", "s2x": "s1x", "s2o": "s1o", "s2r": "s1r", "f2": "f1"}
     ch = {}
-    for name, fn in clip.channels.items():
-        target = swap.get(name, name)
-        negate = name in flip or name in ("s1r", "s2r")
+    for ch_name, fn in clip.channels.items():
+        target = swap.get(ch_name, ch_name)
+        negate = ch_name in flip or ch_name in ("s1r", "s2r")
         ch[target] = (lambda f: (lambda t: -f(t)))(fn) if negate else fn
     arms = {}
     for side, a in clip.arms.items():
         # The wrist bend is defined inward for both arms, so it carries over unchanged.
         arms[3 - side] = C.Arm((lambda f, inv: (lambda t: C.mirror_point(f(t), inv)))(a.wrist, side == 2),
                                a.bend, a.scale, list(a.attach))
-    # grab(t, palm) works from the solved palm of whichever arm holds the captive.
-    return replace(clip, name=clip.name + "_right", channels=ch, arms=arms)
+    # grab(t, palm) works from the solved palm hollow of whichever arm holds the captive.
+    return replace(clip, name=name or (clip.name + "_right"), channels=ch, arms=arms)
 
 
 def mirror_channels(values: dict) -> dict:
@@ -82,7 +101,7 @@ def angry(clip: C.Clip) -> C.Clip:
 
 def all_clips() -> list[C.Clip]:
     always = lambda _t: 1.0  # noqa: E731
-    out = [C.idle(False), replace(C.idle(True), posture=always), C.hit_recoil(False), C.hit_recoil(True)]
+    out = [C.idle(False), replace(C.idle(True), posture=always), C.hit_recoil(False), C.hit_recoil(True), C.critical_tremor()]
     for build in C.ATTACK_BUILDERS:
         base = build()
         out += [base, angry(base)]
@@ -90,6 +109,9 @@ def all_clips() -> list[C.Clip]:
         base = build()
         right = mirrored(base)
         out += [base, angry(base), right, angry(right)]
+    lp = C.PUNCH_BUILDER()
+    rp = mirrored(lp, name="rightpunch")
+    out += [lp, angry(lp), rp, angry(rp)]
     for is_angry in (False, True):
         hold = C.grab_hold(is_angry)
         hold = replace(hold, posture=(lambda _t: 1.0) if is_angry else None)
@@ -131,7 +153,7 @@ class Baker:
         p["horn1"][SX] *= v["horn"]; p["horn2"][SX] *= v["horn"]
         p["shoulder1"][X] += v["s1x"]; p["shoulder1"][Y] += v["s1o"]; p["shoulder1"][ROT] += v["s1r"]
         p["shoulder2"][X] += v["s2x"]; p["shoulder2"][Y] -= v["s2o"]; p["shoulder2"][ROT] += v["s2r"]
-        p["fist1"][X] += v["f1"]; p["fist2"][X] += v["f2"]
+        p["fist1"][X] += clamp(v["f1"], -7.5, 8.0); p["fist2"][X] += clamp(v["f2"], -7.5, 8.0)
         p["body_bottom"][ROT] += v["bb"]
         # The hidden lower trunk anchor travels with the body so body_bottom never folds (deep sinks).
         p["tail_IK"][X] += v["b1x"]; p["tail_IK"][Y] += v["b1y"]
@@ -155,39 +177,36 @@ class Baker:
     def secondary(self, clip: C.Clip, times: list[float], vals: dict) -> dict[str, list[float]]:
         n = len(times)
         sec = {ch: [0.0] * n for ch in C.CHANNELS}
-        boost = 1.3 if clip.name.endswith("_angry") else 1.0
+        boost = 1.20 if clip.name.endswith("_angry") else 1.0
         for t0, s in clip.impacts:
             s *= boost
             for i, t in enumerate(times):
-                sec["b3r"][i] += shake(t, t0, 0.9 * s, 8.5, 6.5)
-                sec["b1y"][i] += shake(t, t0, 3.6 * s, 7.0, 7.5, 1.2)
-                sec["b2t"][i] += shake(t, t0, 2.0 * s, 9.5, 8.0, 0.4)
-                sec["hr"][i] += shake(t, t0, 1.5 * s, 6.0, 5.0, 2.0)
-                sec["hx"][i] += shake(t, t0, 3.0 * s, 5.5, 5.5, 0.6)
-                sec["s1x"][i] += shake(t, t0, 2.4 * s, 9.0, 7.0, 0.3)
-                sec["s2x"][i] += shake(t, t0, 2.4 * s, 9.0, 7.0, 1.1)
-                sec["horn"][i] += shake(t, t0, 0.010 * s, 12.0, 8.0, 0.8)
-        if clip.name.endswith("_angry") and not clip.loop and not clip.overlay:
-            # Enraged variants shiver with held fury in the half second before every blow.
-            for k, (t0, s) in enumerate(clip.impacts):
-                for i, t in enumerate(times):
-                    e = window(t, t0 - 0.62, t0 - 0.38, t0 - 0.08, t0 + 0.02) * min(1.0, s + 0.3)
-                    if e <= 0:
-                        continue
-                    for ch, amp, seed in (("b3r", 0.55, 1), ("hx", 1.8, 2), ("hr", 0.7, 3), ("b1x", 1.4, 4),
-                                          ("s1x", 1.3, 5), ("s2x", 1.3, 6)):
-                        sec[ch][i] += e * tremor(t, clip.duration, amp, seed + 7 * k)
-                    sec["horn"][i] += e * 0.012 * tremor(t, clip.duration, 1.0, 11 + k)
+                if t < t0:
+                    continue
+                if not clip.overlay:
+                    # Crisp 1-frame basalt compression crunch + rapid high-mass decay (zero rubbery ringing).
+                    sec["b1y"][i] += shock(t, t0, -4.2 * s, 0.016, 11.5) + shake(t, t0, 1.3 * s, 14.0, 13.0, 1.4)
+                    sec["b2t"][i] += shock(t, t0, -1.8 * s, 0.016, 12.0) + shake(t, t0, 0.8 * s, 15.0, 13.5, 0.4)
+                    sec["b3t"][i] += shock(t, t0, -1.1 * s, 0.018, 12.0)
+                    sec["hx"][i] += shock(t, t0 + 0.006, -3.2 * s, 0.018, 11.5) + shake(t, t0, 1.1 * s, 12.5, 12.5, 0.6)
+                    sec["s1x"][i] += shock(t, t0, -2.2 * s, 0.015, 12.0) + shake(t, t0, 0.9 * s, 14.5, 13.0, 0.3)
+                    sec["s2x"][i] += shock(t, t0, -2.2 * s, 0.015, 12.0) + shake(t, t0, 0.9 * s, 14.5, 13.0, 1.1)
+                else:
+                    sec["b1y"][i] += shake(t, t0, 1.4 * s, 13.5, 13.0, 1.2)
+                    sec["hx"][i] += shake(t, t0, 1.2 * s, 12.0, 12.5, 0.6)
+                sec["b3r"][i] += shake(t, t0, 0.45 * s, 13.5, 13.0)
+                sec["hr"][i] += shake(t, t0 + 0.006, 0.65 * s, 11.5, 12.5, 2.0)
+                sec["horn"][i] += shock(t, t0 + 0.008, 0.012 * s, 0.018, 12.0) + shake(t, t0, 0.005 * s, 16.0, 14.0, 0.8)
         if clip.secondary and not clip.loop:
             lean, x, y = vals["b1r"], vals["b1x"], vals["b1y"]
-            f2, f3 = follow(lean, DT, 3.0, 0.55), follow(lean, DT, 2.2, 0.5)
-            fx, fy = follow(x, DT, 2.4, 0.55), follow(y, DT, 3.2, 0.42)
+            f2, f3 = follow(lean, DT, 3.8, 0.90), follow(lean, DT, 3.3, 0.88)
+            fx, fy = follow(x, DT, 3.5, 0.90), follow(y, DT, 3.9, 0.88)
             for i in range(n):
-                sec["b2r"][i] += 0.35 * (f2[i] - lean[i]) - 0.03 * (fx[i] - x[i])
-                sec["b3r"][i] += 0.50 * (f3[i] - lean[i]) - 0.06 * (fx[i] - x[i])
-                sec["b2t"][i] += clamp(0.16 * (fy[i] - y[i]), -10, 10)
-                sec["b3t"][i] += clamp(0.12 * (fy[i] - y[i]), -8, 8)
-            # Head inertia: the face hangs from the crown and trails body moves.
+                sec["b2r"][i] += 0.28 * (f2[i] - lean[i]) - 0.022 * (fx[i] - x[i])
+                sec["b3r"][i] += 0.38 * (f3[i] - lean[i]) - 0.040 * (fx[i] - x[i])
+                sec["b2t"][i] += clamp(0.14 * (fy[i] - y[i]), -7, 7)
+                sec["b3t"][i] += clamp(0.10 * (fy[i] - y[i]), -6, 6)
+            # Head & crystal crown inertia: near-critically damped monolithic mass (zero loose neck wobble).
             pts, body_angles, head_angles = [], [], []
             for i in range(n):
                 pose = copy_pose(self.rest)
@@ -196,18 +215,19 @@ class Baker:
                 pts.append((w["head"][4], w["head"][5]))
                 body_angles.append(Rig.angle(w["body3"]))
                 head_angles.append(Rig.angle(w["head"]))
-            px = follow([p[0] for p in pts], DT, 2.8, 0.45)
-            py = follow([p[1] for p in pts], DT, 2.8, 0.45)
-            ha = follow(head_angles, DT, 2.4, 0.5)
+            px = follow([p[0] for p in pts], DT, 3.7, 0.90)
+            py = follow([p[1] for p in pts], DT, 3.7, 0.88)
+            ha = follow(head_angles, DT, 3.4, 0.90)
             for i in range(n):
                 a = math.radians(body_angles[i])
                 lx, ly = px[i] - pts[i][0], py[i] - pts[i][1]
                 along, side = lx * math.cos(a) + ly * math.sin(a), -lx * math.sin(a) + ly * math.cos(a)
-                sec["hx"][i] += clamp(0.55 * along, -18, 18)
-                sec["hy"][i] += clamp(0.55 * side, -18, 18)
-                sec["hr"][i] += clamp(0.6 * (ha[i] - head_angles[i]), -6, 6)
+                sec["hx"][i] += clamp(0.45 * along, -9, 9)
+                sec["hy"][i] += clamp(0.42 * side, -8, 8)
+                sec["hr"][i] += clamp(0.45 * (ha[i] - head_angles[i]), -4, 4)
+                sec["horn"][i] += clamp(-0.0012 * along, -0.025, 0.025)
         if clip.secondary:
-            # Beard: hanging pendulum driven by the moving chin.
+            # Beard: heavily damped stone jaw / crystal stalactite (zeta=0.80, tight ±8° rock joint).
             roots, rigid = [], []
             for i in range(n):
                 pose = copy_pose(self.rest)
@@ -226,9 +246,9 @@ class Baker:
             unwrapped = [rigid[0]]
             for value in rigid[1:]:
                 unwrapped.append(unwrap(value, unwrapped[-1]))
-            dev = pendulum(smoothed, unwrapped, DT, 1.7, 0.2, 170.0, 1.6)
+            dev = pendulum(smoothed, unwrapped, DT, 2.2, 0.80, 175.0, 1.05)
             for i in range(n):
-                sec["brd"][i] += clamp(dev[i], -24, 24)
+                sec["brd"][i] += clamp(dev[i], -8, 8)
         return sec
 
     def bake(self, clip: C.Clip) -> dict:
@@ -243,13 +263,14 @@ class Baker:
             for i, t in enumerate(times):
                 g = clip.gate(t) if clip.gate else 1.0
                 if not clip.loop:
-                    g *= 1 - smoother(seg(t, d - 0.34, d - 0.02))
+                    g *= smoother(seg(t, 0.0, 0.04)) * (1 - smoother(seg(t, d - 0.34, d - 0.02)))
                 out.append(vals[ch][i] + g * sec[ch][i])
             final[ch] = out
 
         attach_times = [t for a in clip.arms.values() for t, _ in a.attach]
+        event_times = [float(e["time"]) for e in EVENTS.get(clip.name, [])]
         sample = sorted({round(i / OUT_HZ, 6) for i in range(int(math.floor(d * OUT_HZ)) + 1)} | {d} |
-                        set(clip.exact) | set(attach_times))
+                        set(clip.exact) | set(attach_times) | set(event_times))
         sample = [t for t in sample if 0 <= t <= d + 1e-9]
         frames, misses = [], {1: 0.0, 2: 0.0}
         base_world = None
@@ -283,9 +304,11 @@ class Baker:
                     pose[target][X] = wrist[0] - ROOT_ORIGIN[0]
                     pose[target][Y] = wrist[1] - ROOT_ORIGIN[1]
                 if clip.grab:
-                    holder = ARMS[2 if "_right" in clip.name else 1]["hand"]
-                    # The fist mesh scales with the hand bone, so its centre is a fixed local point.
-                    gx, gy = clip.grab(t, Rig.point(self.rig.world(pose)[holder], C.PALM_REACH, 0.0))
+                    side_ = 2 if ("_right" in clip.name or clip.name.startswith("right")) else 1
+                    holder = ARMS[side_]["hand"]
+                    px, py = C.PALM_LOCAL[side_]
+                    # The fist mesh scales with the hand bone, so its grip hollow is a fixed local point per hand.
+                    gx, gy = clip.grab(t, Rig.point(self.rig.world(pose)[holder], px, py))
                     pose["player_grab"][X] = gx - ROOT_ORIGIN[0]
                     pose["player_grab"][Y] = gy - ROOT_ORIGIN[1]
             frames.append((t, pose))
@@ -308,7 +331,8 @@ class Baker:
 
     def timelines(self, clip: C.Clip, frames: list) -> dict:
         setup = self.rig.setup
-        keep = set(clip.exact) | {t for a in clip.arms.values() for t, _ in a.attach}
+        keep = (set(clip.exact) | {t for a in clip.arms.values() for t, _ in a.attach} |
+                {float(e["time"]) for e in EVENTS.get(clip.name, [])})
         bones = {}
         names = OVERLAY_BONES if clip.overlay else KEEP_BONES
         # Overlays store pure deltas from the rest pose (applied with MixBlend.add); clips store setup-relative values.
@@ -374,7 +398,7 @@ def r(v: float) -> float:
 
 def find_source(animations: dict, clip: C.Clip) -> dict:
     base = clip.source or clip.name
-    right = "_right" in clip.name
+    right = "_right" in clip.name or clip.name.startswith("right")
     is_angry = clip.name.endswith("_angry")
     candidates = [base + ("_right" if right else "") + ("_angry" if is_angry else ""), base + ("_angry" if is_angry else ""), base]
     for name in candidates:
@@ -403,7 +427,9 @@ def assemble(data: dict, baker: Baker, built: list[C.Clip]) -> dict:
                           "arm2_IK": [{"time": 0, "mix": 0, "bendPositive": True}]}
         if "drawOrder" in source and not clip.overlay:
             anim["drawOrder"] = copy.deepcopy(source["drawOrder"])
-        if "events" in source and clip.source and not clip.name.startswith("grab_hold"):
+        if clip.name in EVENTS:
+            anim["events"] = copy.deepcopy(EVENTS[clip.name])
+        elif "events" in source and clip.source and not clip.name.startswith("grab_hold"):
             anim["events"] = copy.deepcopy(source["events"])
         animations[clip.name] = anim
     return out

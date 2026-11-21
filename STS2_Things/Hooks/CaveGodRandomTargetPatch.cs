@@ -22,5 +22,5 @@ internal static class CaveGodRandomTargetPatch
     }
 
     private static bool IsProtectedPart(Creature creature) =>
-        (creature.Monster is ThingsCaveGodBody or ThingsCaveGodHand) && !creature.IsHittable;
+        (creature.Monster is ThingsCaveGodBody or ThingsCaveGodHand or ThingsHumanFaceTowerFace) && !creature.IsHittable;
 }

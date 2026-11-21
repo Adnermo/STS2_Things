@@ -11,7 +11,7 @@ public partial class DepthsProbeNode
     {
         foreach (var (path, size) in new[] {
             ("images/events/things_medusa.png", new Vector2I(3440,1616)),
-            ("images/events/cutting_it_close.png", new Vector2I(3440,1616)),
+            ("images/events/things_cutting_it_close.png", new Vector2I(3440,1616)),
             ("images/relics/things_medusa_hair.png", new Vector2I(256,256)),
             ("images/atlases/relic_outline_atlas.sprites/things_medusa_hair_outline.png", new Vector2I(85,85)),
             ("images/enchantments/things_split.png", new Vector2I(64,64)) })
@@ -33,7 +33,7 @@ public partial class DepthsProbeNode
         {
             SaveManager.Instance.SettingsSave.Language=lang; LocManager.Initialize();
             var run = CreateRun("event-refresh-"+lang,1,0);
-            foreach (var canonical in new EventModel[] {ModelDb.Event<ThingsMedusa>(),ModelDb.Event<CuttingItClose>()})
+            foreach (var canonical in new EventModel[] {ModelDb.Event<ThingsMedusa>(),ModelDb.Event<ThingsCuttingItClose>()})
             {
                 var model = canonical.ToMutable();
                 var begin = typeof(EventModel).GetMethods().Single(method => method.Name == "BeginEvent");
@@ -54,8 +54,8 @@ public partial class DepthsProbeNode
                 GD.Print($"EVENT TEXT {lang} {model.Id.Entry}: {model.CurrentOptions.Count} native options");
             }
             foreach(string key in new[] {"THINGS_MEDUSA.pages.RETURN_TO_OWNER.description","THINGS_MEDUSA.pages.OFFER_GOLD.description",
-                "THINGS_MEDUSA.pages.GREET.description","CUTTING_IT_CLOSE.pages.IMPROVISE.description",
-                "CUTTING_IT_CLOSE.pages.THROW.description","CUTTING_IT_CLOSE.pages.ABORTED.description"})
+                "THINGS_MEDUSA.pages.GREET.description","THINGS_CUTTING_IT_CLOSE.pages.IMPROVISE.description",
+                "THINGS_CUTTING_IT_CLOSE.pages.THROW.description","THINGS_CUTTING_IT_CLOSE.pages.ABORTED.description"})
                 Assert(!string.IsNullOrWhiteSpace(new LocString("events",key).GetFormattedText()), "Native outcome formats: "+key);
             string relic = new LocString("relics","THINGS_MEDUSA_HAIR.description").GetFormattedText();
             Assert(relic.Contains(lang=="zhs"?"巨石":"Giant Rock") && relic.Contains(lang=="zhs"?"消耗":"Exhaust"),

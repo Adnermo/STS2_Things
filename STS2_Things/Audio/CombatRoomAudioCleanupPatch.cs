@@ -14,6 +14,7 @@ internal static class CombatRoomAudioCleanupPatch
     [HarmonyPostfix]
     private static void Postfix()
     {
+        CustomMusicPlayPatch.StartAfterCombatSetup = false;
         bool restoreRunMusic = NativeSfxPlayer.HasActiveMusic;
         NativeSfxPlayer.StopSequentialLoop();
         NativeSfxPlayer.StopMusic();

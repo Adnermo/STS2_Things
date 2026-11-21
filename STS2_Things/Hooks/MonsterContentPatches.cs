@@ -1,7 +1,10 @@
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Acts;
+using MegaCrit.Sts2.Core.Nodes.Screens.Bestiary;
+using MegaCrit.Sts2.Core.Nodes.Screens.RunHistoryScreen;
 using MegaCrit.Sts2.Core.Rooms;
+using MegaCrit.Sts2.Core.Saves.Managers;
 using STS2_Things.Config;
 using STS2_Things.Encounters;
 
@@ -19,19 +22,33 @@ namespace STS2_Things.Hooks;
 /// </summary>
 internal static class MonsterEncounterCatalog
 {
+    [ThreadStatic]
+    private static int _unfilteredCatalogDepth;
+
+    internal static bool IsUnfilteredCatalogScope => _unfilteredCatalogDepth > 0;
+
+    internal static void EnterUnfilteredCatalogScope() => _unfilteredCatalogDepth++;
+
+    internal static void ExitUnfilteredCatalogScope()
+    {
+        _unfilteredCatalogDepth--;
+        if (_unfilteredCatalogDepth < 0)
+            _unfilteredCatalogDepth = 0;
+    }
+
     public static IEnumerable<EncounterModel> AddOvergrowthEncounters(IEnumerable<EncounterModel> source)
     {
         return FilterBossPool(Add(source,
-            (ThingsModConfig.BossOriginFogmogEnabled, ModelDb.Encounter<OriginFogmogBossEncounter>()),
-            (ThingsModConfig.BossScaleBeetleEnabled, ModelDb.Encounter<ScaleBeetleBossEncounter>())), ThingsModConfig.SlotOvergrowth);
+            (ThingsModConfig.BossOriginFogmogEnabled, ModelDb.Encounter<ThingsOriginFogmogBossEncounter>()),
+            (ThingsModConfig.BossScaleBeetleEnabled, ModelDb.Encounter<ThingsScaleBeetleBossEncounter>())), ThingsModConfig.SlotOvergrowth);
     }
 
     public static IEnumerable<EncounterModel> AddUnderdocksEncounters(IEnumerable<EncounterModel> source)
     {
         return FilterBossPool(Add(source,
-            (ThingsModConfig.BossGravetideSlugEnabled, ModelDb.Encounter<GravetideSlugBossEncounter>()),
-            (ThingsModConfig.EncounterSoulRoesEnabled, ModelDb.Encounter<SoulRoesEncounter>()),
-            (ThingsModConfig.BossTheLegacyEnabled, ModelDb.Encounter<TheLegacyBossEncounter>())), ThingsModConfig.SlotUnderdocks);
+            (ThingsModConfig.BossGravetideSlugEnabled, ModelDb.Encounter<ThingsGravetideSlugBossEncounter>()),
+            (ThingsModConfig.EncounterSoulRoesEnabled, ModelDb.Encounter<ThingsSoulRoesEncounter>()),
+            (ThingsModConfig.BossTheLegacyEnabled, ModelDb.Encounter<ThingsTheLegacyBossEncounter>())), ThingsModConfig.SlotUnderdocks);
     }
 
     public static IEnumerable<EncounterModel> AddHiveEncounters(IEnumerable<EncounterModel> source)
@@ -39,36 +56,38 @@ internal static class MonsterEncounterCatalog
         // Quirky Hopper 是 Act 2 走廊遭遇，位于原生 ThievingHopperWeak 旁。IsWeak
         // 控制早期走廊子集；它仍是 RoomType.Monster，不进入精英/Boss 目录。
         return FilterBossPool(Add(source,
-            (ThingsModConfig.EncounterQuirkyHopperEnabled, ModelDb.Encounter<QuirkyHopperWeak>()),
-            (ThingsModConfig.BossBowlbugProgenitorEnabled, ModelDb.Encounter<BowlbugProgenitorBossEncounter>()),
-            (ThingsModConfig.BossCaveGodEnabled, ModelDb.Encounter<CaveGodBossEncounter>())), ThingsModConfig.SlotHive);
+            (ThingsModConfig.EncounterQuirkyHopperEnabled, ModelDb.Encounter<ThingsQuirkyHopperWeak>()),
+            (ThingsModConfig.BossBowlbugProgenitorEnabled, ModelDb.Encounter<ThingsBowlbugProgenitorBossEncounter>()),
+            (ThingsModConfig.BossCaveGodEnabled, ModelDb.Encounter<ThingsCaveGodBossEncounter>())), ThingsModConfig.SlotHive);
     }
 
     public static IEnumerable<EncounterModel> AddOvergrowthBosses(IEnumerable<EncounterModel> source)
     {
         return AddBosses(source, ThingsModConfig.SlotOvergrowth,
             (ThingsModConfig.BossOriginFogmogEnabled, ThingsModConfig.BossOriginFogmogForced,
-                ModelDb.Encounter<OriginFogmogBossEncounter>()),
+                ModelDb.Encounter<ThingsOriginFogmogBossEncounter>()),
             (ThingsModConfig.BossScaleBeetleEnabled, ThingsModConfig.BossScaleBeetleForced,
-                ModelDb.Encounter<ScaleBeetleBossEncounter>()));
+                ModelDb.Encounter<ThingsScaleBeetleBossEncounter>()));
     }
 
     public static IEnumerable<EncounterModel> AddUnderdocksBosses(IEnumerable<EncounterModel> source)
     {
         return AddBosses(source, ThingsModConfig.SlotUnderdocks,
             (ThingsModConfig.BossGravetideSlugEnabled, ThingsModConfig.BossGravetideSlugForced,
-                ModelDb.Encounter<GravetideSlugBossEncounter>()),
+                ModelDb.Encounter<ThingsGravetideSlugBossEncounter>()),
             (ThingsModConfig.BossTheLegacyEnabled, ThingsModConfig.BossTheLegacyForced,
-                ModelDb.Encounter<TheLegacyBossEncounter>()));
+                ModelDb.Encounter<ThingsTheLegacyBossEncounter>()));
     }
 
     public static IEnumerable<EncounterModel> AddHiveBosses(IEnumerable<EncounterModel> source)
     {
+        // Cave God already owns Depths discovery; keep Hive tutorial discovery for Hive-only
+        // Bowlbug Progenitor unless Cave God is explicitly forced in Hive's slot.
+        if (ThingsModConfig.IsForced(ThingsModConfig.BossCaveGodForced))
+            return [ModelDb.Encounter<ThingsCaveGodBossEncounter>()];
         return AddBosses(source, ThingsModConfig.SlotHive,
             (ThingsModConfig.BossBowlbugProgenitorEnabled, ThingsModConfig.BossBowlbugProgenitorForced,
-                ModelDb.Encounter<BowlbugProgenitorBossEncounter>()),
-            (ThingsModConfig.BossCaveGodEnabled, ThingsModConfig.BossCaveGodForced,
-                ModelDb.Encounter<CaveGodBossEncounter>()));
+                ModelDb.Encounter<ThingsBowlbugProgenitorBossEncounter>()));
     }
 
     private static IEnumerable<EncounterModel> Add(
@@ -77,6 +96,14 @@ internal static class MonsterEncounterCatalog
     {
         // Keep this deferred: ActModel caches the enumerable before it generates
         // rooms (for asset discovery), but settings may change in the meantime.
+        if (IsUnfilteredCatalogScope)
+        {
+            foreach (EncounterModel encounter in DeterministicContentOrder.SortBaseThenMods(
+                source.Concat(candidates.Select(candidate => candidate.Encounter)).Distinct()))
+                yield return encounter;
+            yield break;
+        }
+
         foreach (EncounterModel encounter in DeterministicContentOrder.SortBaseThenMods(
             source.Where(EncounterSelectionPolicy.IsAvailable).Concat(candidates
                     .Where(candidate => ThingsModConfig.IsEnabled(candidate.EnabledKey))
@@ -88,6 +115,13 @@ internal static class MonsterEncounterCatalog
 
     private static IEnumerable<EncounterModel> FilterBossPool(IEnumerable<EncounterModel> source, string slot)
     {
+        if (IsUnfilteredCatalogScope)
+        {
+            foreach (EncounterModel encounter in source)
+                yield return encounter;
+            yield break;
+        }
+
         List<EncounterModel> all = source.ToList();
         string? forced = ThingsModConfig.GetForcedBossKeyForSlot(slot);
         List<EncounterModel> bosses = all.Where(encounter => encounter.RoomType == RoomType.Boss).ToList();
@@ -197,5 +231,54 @@ internal static class HiveBossDiscoveryPatch
     private static void Postfix(ref IEnumerable<EncounterModel> __result)
     {
         __result = MonsterEncounterCatalog.AddHiveBosses(__result);
+    }
+}
+
+[HarmonyPatch]
+internal static class UnfilteredEncounterCatalogScopePatches
+{
+    [HarmonyPatch(typeof(ProgressSaveManager), "CheckFifteenBossesDefeatedEpoch")]
+    [HarmonyPrefix]
+    private static void BeforeBossEpochCheck() => MonsterEncounterCatalog.EnterUnfilteredCatalogScope();
+
+    [HarmonyPatch(typeof(ProgressSaveManager), "CheckFifteenBossesDefeatedEpoch")]
+    [HarmonyFinalizer]
+    private static void AfterBossEpochCheck() => MonsterEncounterCatalog.ExitUnfilteredCatalogScope();
+
+    [HarmonyPatch(typeof(ProgressSaveManager), "GetEliteEncounters")]
+    [HarmonyPrefix]
+    private static void BeforeEliteCatalogCheck() => MonsterEncounterCatalog.EnterUnfilteredCatalogScope();
+
+    [HarmonyPatch(typeof(ProgressSaveManager), "GetEliteEncounters")]
+    [HarmonyFinalizer]
+    private static void AfterEliteCatalogCheck() => MonsterEncounterCatalog.ExitUnfilteredCatalogScope();
+
+    [HarmonyPatch(typeof(NBestiary), "CreateEntries")]
+    [HarmonyPrefix]
+    private static void BeforeBestiaryEntries() => MonsterEncounterCatalog.EnterUnfilteredCatalogScope();
+
+    [HarmonyPatch(typeof(NBestiary), "CreateEntries")]
+    [HarmonyFinalizer]
+    private static void AfterBestiaryEntries() => MonsterEncounterCatalog.ExitUnfilteredCatalogScope();
+
+    [HarmonyPatch(typeof(NMapPointHistoryEntry), nameof(NMapPointHistoryEntry.AssetPaths), MethodType.Getter)]
+    [HarmonyPostfix]
+    private static void WrapHistoryEntryAssetPaths(ref IEnumerable<string> __result)
+    {
+        __result = EnumerateUnfiltered(__result);
+    }
+
+    private static IEnumerable<string> EnumerateUnfiltered(IEnumerable<string> inner)
+    {
+        MonsterEncounterCatalog.EnterUnfilteredCatalogScope();
+        try
+        {
+            foreach (string path in inner)
+                yield return path;
+        }
+        finally
+        {
+            MonsterEncounterCatalog.ExitUnfilteredCatalogScope();
+        }
     }
 }

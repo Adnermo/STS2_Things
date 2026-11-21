@@ -12,7 +12,7 @@ using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Powers;
-using static STS2_Things.Compatibility.Sts2VersionCompatibility;
+using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Monsters;
 
@@ -20,8 +20,8 @@ namespace STS2_Things.Monsters;
 public abstract class MycorrhizalTwin : ThingsSpineMonster
 {
     public abstract bool IsVanguard { get; }
-    public bool IsFurious => Creature.GetPower<MycorrhizalFuryPower>() != null;
-    public bool IsRobust => IsFurious || Creature.GetPower<MycorrhizalBondPower>()?.IsRobust == true;
+    public bool IsFurious => Creature.GetPower<ThingsMycorrhizalFuryPower>() != null;
+    public bool IsRobust => IsFurious || Creature.GetPower<ThingsMycorrhizalBondPower>()?.IsRobust == true;
     public int StrengthGift => IsRobust ? 3 : 1;
     public int ArmorGift => IsRobust ? 3 : 2;
     public int ScaleProtection(int value) => (int)Math.Round(value * (IsRobust ? 1.25m : .75m), MidpointRounding.AwayFromZero);
@@ -36,12 +36,12 @@ public abstract class MycorrhizalTwin : ThingsSpineMonster
     public override string DeathSfx => ModelDb.Monster<Fogmog>().DeathSfx;
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Plant;
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([
-        ModelDb.Power<MycorrhizalBondPower>().ResolvedBigIconPath,
-        ModelDb.Power<MycorrhizalFuryPower>().ResolvedBigIconPath, Visuals.NMycorrhizalLink.TexturePath]);
+        ModelDb.Power<ThingsMycorrhizalBondPower>().ResolvedBigIconPath,
+        ModelDb.Power<ThingsMycorrhizalFuryPower>().ResolvedBigIconPath, Visuals.NMycorrhizalLink.TexturePath]);
 
     public override async Task BeforeCombatStart()
     {
-        await PowerCmd.Apply<MycorrhizalBondPower>(new ThrowingPlayerChoiceContext(), Creature, 1, Creature, null);
+        await PowerCmd.Apply<ThingsMycorrhizalBondPower>(new ThrowingPlayerChoiceContext(), Creature, 1, Creature, null);
     }
 
     protected override void AddExtraAnimationStates(CreatureAnimator animator, AnimState idle)
@@ -80,19 +80,8 @@ public abstract class MycorrhizalTwin : ThingsSpineMonster
         await FinishPose(animation,contact,contact);
     }
 
-    public async Task FinishPose(string animation,float moment,float fallback)
-    {
-        var sprite=Creature.GetCreatureNode()?.Visuals?.SpineBody;
-        float wait=fallback;
-        using(TrackEntryScope(sprite?.TryGetAnimationState()?.GetCurrent(0),out MegaTrackEntry? track))
-            if(track!=null&&track.GetAnimationName()==animation)wait=Math.Max(0,moment-track.GetTrackTime());
-        await Cmd.Wait(wait);
-        using var scope=TrackEntryScope(sprite?.TryGetAnimationState()?.GetCurrent(0),out MegaTrackEntry? current);
-        if(current!=null&&current.GetAnimationName()==animation&&current.GetTrackTime()<moment)
-        {
-            current.SetMixDuration(0);current.SetTrackTime(moment);sprite!.BoundObject.Call("update_skeleton",0f);
-        }
-    }
+    public Task FinishPose(string animation,float moment,float fallback)
+        => WaitForSpineMomentAsync(animation, moment, fallback);
 
     protected IEnumerable<Creature> LivingTwins => CombatState.Enemies
         .Where(c => c.IsAlive && (c == Creature || c.Monster == Partner)).ToArray();

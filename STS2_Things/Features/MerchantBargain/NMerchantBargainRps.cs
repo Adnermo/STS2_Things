@@ -1,7 +1,12 @@
+using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
+using HarmonyLib;
+using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.TreasureRelicPicking;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 
 namespace STS2_Things.Features.MerchantBargain;
@@ -144,14 +149,61 @@ internal partial class NMerchantBargainRps : Control
         await tween.AwaitFinished(this);
     }
 
+    private static readonly MethodInfo? ArmRockPathGetter =
+        AccessTools.PropertyGetter(typeof(CharacterModel), "ArmRockTexturePath");
+    private static readonly MethodInfo? ArmPaperPathGetter =
+        AccessTools.PropertyGetter(typeof(CharacterModel), "ArmPaperTexturePath");
+    private static readonly MethodInfo? ArmScissorsPathGetter =
+        AccessTools.PropertyGetter(typeof(CharacterModel), "ArmScissorsTexturePath");
+
     private void LoadTextures(Player player)
     {
-        _playerRock = player.Character.ArmRockTexture;
-        _playerPaper = player.Character.ArmPaperTexture;
-        _playerScissors = player.Character.ArmScissorsTexture;
+        (_playerRock, _playerPaper, _playerScissors) = ResolvePlayerHandTextures(player.Character);
         _merchantRock = LoadTexture(MerchantBargainAssets.MerchantRockPath);
         _merchantPaper = LoadTexture(MerchantBargainAssets.MerchantPaperPath);
         _merchantScissors = LoadTexture(MerchantBargainAssets.MerchantScissorsPath);
+    }
+
+    private static (Texture2D Rock, Texture2D Paper, Texture2D Scissors) ResolvePlayerHandTextures(CharacterModel character)
+    {
+        string entry = character.Id.Entry.ToLowerInvariant();
+        string rockPath = (ArmRockPathGetter?.Invoke(character, null) as string)
+            ?? $"res://images/ui/hands/multiplayer_hand_{entry}_rock.png";
+        string paperPath = (ArmPaperPathGetter?.Invoke(character, null) as string)
+            ?? $"res://images/ui/hands/multiplayer_hand_{entry}_paper.png";
+        string scissorsPath = (ArmScissorsPathGetter?.Invoke(character, null) as string)
+            ?? $"res://images/ui/hands/multiplayer_hand_{entry}_scissors.png";
+
+        if (ResourceLoader.Exists(rockPath) &&
+            ResourceLoader.Exists(paperPath) &&
+            ResourceLoader.Exists(scissorsPath))
+        {
+            Texture2D? rock = LoadOrGetCachedHandTexture(rockPath, () => character.ArmRockTexture);
+            Texture2D? paper = LoadOrGetCachedHandTexture(paperPath, () => character.ArmPaperTexture);
+            Texture2D? scissors = LoadOrGetCachedHandTexture(scissorsPath, () => character.ArmScissorsTexture);
+            if (rock is not null && paper is not null && scissors is not null)
+            {
+                return (rock, paper, scissors);
+            }
+        }
+
+        CharacterModel fallback = ModelDb.Character<Ironclad>();
+        const string fallbackRockPath = "res://images/ui/hands/multiplayer_hand_ironclad_rock.png";
+        const string fallbackPaperPath = "res://images/ui/hands/multiplayer_hand_ironclad_paper.png";
+        const string fallbackScissorsPath = "res://images/ui/hands/multiplayer_hand_ironclad_scissors.png";
+        return (
+            LoadOrGetCachedHandTexture(fallbackRockPath, () => fallback.ArmRockTexture) ?? LoadTexture(fallbackRockPath),
+            LoadOrGetCachedHandTexture(fallbackPaperPath, () => fallback.ArmPaperTexture) ?? LoadTexture(fallbackPaperPath),
+            LoadOrGetCachedHandTexture(fallbackScissorsPath, () => fallback.ArmScissorsTexture) ?? LoadTexture(fallbackScissorsPath));
+    }
+
+    private static Texture2D? LoadOrGetCachedHandTexture(string path, Func<Texture2D> cachedGetter)
+    {
+        if (PreloadManager.Cache.ContainsKey(path))
+        {
+            return cachedGetter();
+        }
+        return ResourceLoader.Load<Texture2D>(path, null, ResourceLoader.CacheMode.Reuse);
     }
 
     private void BuildVisuals(Vector2 viewportSize)

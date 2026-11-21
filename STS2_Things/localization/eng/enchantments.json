@@ -1,7 +1,11 @@
 {
   "THINGS_DISPERSE.title": "Disperse",
   "THINGS_DISPERSE.description": "This card gains [gold]Ethereal[/gold].",
-  "THINGS_DISPERSE.smartDescription": "This card gains [gold]Ethereal[/gold]."
-  ,"THINGS_SPLIT.title": "Split"
-  ,"THINGS_SPLIT.description": "This card's cost is halved and rounded down. All of its numeric values are halved and rounded up."
+  "THINGS_SPLIT.title": "Split",
+  "THINGS_SPLIT.description": "This card's cost is halved and rounded down. All of its numbers are halved and rounded up.",
+  "THINGS_OVERCLOCKED.title": "Overclocked",
+  "THINGS_OVERCLOCKED.description": "Reduce this card's cost by [blue]1[/blue]. Lose [blue]{HpLoss}[/blue] HP whenever you play it.",
+  "THINGS_OVERCLOCKED.extraCardText": "Lose {HpLoss} HP.",
+  "THINGS_WEIGHTED.title": "Weighted",
+  "THINGS_WEIGHTED.description": "Increase this card's cost by [blue]1[/blue]. This card's attack damage and [gold]Block[/gold] are doubled."
 }

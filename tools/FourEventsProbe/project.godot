@@ -1,0 +1,8 @@
+config_version=5
+[application]
+config/name="Four Events Probe"
+run/main_scene="res://Main.tscn"
+[dotnet]
+project/assembly_name="FourEventsProbe"
+[rendering]
+renderer/rendering_method="gl_compatibility"

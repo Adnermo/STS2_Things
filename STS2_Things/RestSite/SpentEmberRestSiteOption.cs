@@ -9,7 +9,7 @@ public sealed class SpentEmberRestSiteOption(Player owner) : RestSiteOption(owne
     public override string OptionId => "THINGS_SPENT_EMBER";
     public override Task<bool> OnSelect()
     {
-        Owner.GetRelic<BorrowedEmber>()?.FinishPassing();
+        Owner.GetRelic<ThingsBorrowedEmber>()?.FinishPassing();
         return Task.FromResult(true);
     }
 }

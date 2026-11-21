@@ -41,9 +41,7 @@ public partial class DepthsProbeNode : Node
     public override void _Ready()
     {
         AssemblyLoadContext.Default.Resolving+=ResolveRuntimeDependency;
-#if !STS2_V107_1
         EnsureRuntimeDependency("Sentry");EnsureRuntimeDependency("Sentry.Godot");
-#endif
         _=Run();
     }
 
@@ -56,8 +54,8 @@ public partial class DepthsProbeNode : Node
             Assert(ProjectSettings.LoadResourcePack("D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck"),"Native PCK mount");
             Assert(ProjectSettings.LoadResourcePack(System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")!),"Mod PCK mount");
             EnsureRuntimeDependency("System.IO.Hashing");
-            RegisterSyntheticMod(typeof(LanternFish).Assembly);
-            typeof(LanternFish).Assembly.GetTypes().Single(t=>t.Name=="STS2_ThingsInit")
+            RegisterSyntheticMod(typeof(ThingsLanternFish).Assembly);
+            typeof(ThingsLanternFish).Assembly.GetTypes().Single(t=>t.Name=="STS2_ThingsInit")
                 .GetMethod("Initialize",BindingFlags.Public|BindingFlags.Static)!.Invoke(null,null);
             InitializeModelDb();
             SaveManager.Instance.InitSettingsDataForTest();SaveManager.Instance.InitPrefsDataForTest();
@@ -121,7 +119,7 @@ public partial class DepthsProbeNode : Node
 
     private async Task VerifyEncounterMatrix()
     {
-        foreach(var canonical in ModelDb.Act<Depths>().AllEncounters.Where(e=>e.RoomType!=RoomType.Boss))
+        foreach(var canonical in ModelDb.Act<ThingsDepths>().AllEncounters.Where(e=>e.RoomType!=RoomType.Boss))
         {
             var b=await Battle(2,canonical);
             foreach(var p in b.Run.Players){p.Creature.SetMaxHpInternal(10000);p.Creature.SetCurrentHpInternal(10000);}

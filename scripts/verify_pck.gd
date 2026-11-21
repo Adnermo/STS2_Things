@@ -17,32 +17,36 @@ func _initialize() -> void:
 		return
 
 	var background_slugs := [
-		"gravetide_slug_boss_encounter",
-		"origin_fogmog_boss_encounter",
-		"scale_beetle_boss_encounter",
-		"the_legacy_boss_encounter",
-		"bowlbug_progenitor_boss_encounter",
-		"cave_god_boss_encounter",
+		"things_gravetide_slug_boss_encounter",
+		"things_origin_fogmog_boss_encounter",
+		"things_scale_beetle_boss_encounter",
+		"things_the_legacy_boss_encounter",
+		"things_bowlbug_progenitor_boss_encounter",
+		"things_cave_god_boss_encounter",
 	]
 	for slug in background_slugs:
-		_verify_background(slug)
+		_verify_background(slug, true)
+	# Depths layers reuse vanilla res://images/vfx/* particles mounted at game runtime.
+	_verify_background("things_depths", false)
 
 	_verify_texture("res://images/powers/things_quirk_power.png", Vector2i(256, 256))
 	_verify_texture("res://images/powers/things_quirk_power_packed.png", Vector2i(64, 64))
-	_verify_texture("res://images/powers/quirky_flutter_power.png", Vector2i(256, 256))
-	_verify_texture("res://images/powers/quirky_flutter_power_packed.png", Vector2i(64, 64))
-	for power in ["absorbent_sponge_power", "sponge_reservoir_power", "sponge_rinse_power", "lantern_blindness_power", "leech_infestation_power"]:
+	_verify_texture("res://images/powers/things_quirky_flutter_power.png", Vector2i(256, 256))
+	_verify_texture("res://images/powers/things_quirky_flutter_power_packed.png", Vector2i(64, 64))
+	for power in ["things_absorbent_sponge_power", "things_sponge_reservoir_power", "things_sponge_rinse_power", "things_lantern_blindness_power", "things_leech_infestation_power"]:
 		_verify_texture("res://images/powers/%s.png" % power, Vector2i(256, 256))
 		_verify_texture("res://images/powers/%s_packed.png" % power, Vector2i(64, 64))
 	_verify_absent("res://images/powers/sponge_rinse_intent.png")
 	_verify_absent("res://STS2_Things/Monsters/SpongeRinseIntent.cs")
 	_verify_absent("res://STS2_Things/Compatibility/SpongeIntentRegistration.cs")
+	_verify_absent("res://STS2_Things/Visuals/NThingsCreatureVisuals.cs")
+	_verify_absent("res://STS2_Things/Visuals/GeneratedCutoutRigData.cs")
 	var card_portraits := [
 		"res://images/packed/card_portraits/defect/things_reuse.png",
 		"res://images/packed/card_portraits/ironclad/things_collision.png",
 		"res://images/packed/card_portraits/silent/things_pack_up.png",
 		"res://images/packed/card_portraits/silent/things_recall.png",
-		"res://images/packed/card_portraits/silent/soulfysh_disease.png",
+		"res://images/packed/card_portraits/silent/things_soulfysh_disease.png",
 	]
 	for portrait_path in card_portraits:
 		_verify_texture(portrait_path, Vector2i(1000, 760))
@@ -62,7 +66,7 @@ func _initialize() -> void:
 		"res://images/atlases/relic_outline_atlas.sprites/energy_bottle.tres"
 	)
 	_verify_texture(
-		"res://images/events/cutting_it_close.png",
+		"res://images/events/things_cutting_it_close.png",
 		Vector2i(3440, 1616),
 	)
 	_verify_texture(
@@ -98,13 +102,26 @@ func _initialize() -> void:
 	_verify_file("res://scenes/creature_visuals/things_cave_god.tscn")
 	_verify_file("res://scenes/creature_visuals/things_cave_god_left_hand.tscn")
 	_verify_file("res://scenes/creature_visuals/things_cave_god_right_hand.tscn")
+	_verify_file("res://scenes/creature_visuals/things_the_legacy.tscn")
+	_verify_file("res://STS2_Things/animations/monsters/the_legacy/the_legacy_skel_data.tres")
+	_verify_wav_loop("res://music/gravetide_slug/gravetide_slug_boss_theme.wav", 4000000)
+	_verify_wav_loop("res://music/human_face_tower/human_face_tower_boss_theme.wav", 5500000)
+	_verify_wav_loop("res://music/cave_god/cave_god_boss_theme.wav", 5800000)
+	_verify_wav_loop("res://music/bowlbug_progenitor/bowlbug_progenitor_boss_theme.wav", 6000000)
+	_verify_wav_loop("res://music/abyssal_inkmaw/abyssal_inkmaw_boss_theme.wav", 5500000)
+	_verify_wav_loop("res://music/origin_fogmog/origin_fogmog_boss_theme.wav", 5000000)
+	_verify_wav_loop("res://music/scale_beetle/scale_beetle_boss_theme.wav", 4000000)
+	_verify_wav_loop("res://music/depths/depths_a1_combat.wav", 4500000)
+	_verify_wav_loop("res://music/depths/depths_a1_explore.wav", 2000000)
+	_verify_wav_loop("res://music/depths/depths_a2_combat.wav", 4000000)
+	_verify_wav_loop("res://music/depths/depths_a2_explore.wav", 1000000)
 	if _verify_csharp_placeholder_tree("res://STS2_Things") == 0:
 		_fail("PCK exposes no C# script placeholders under res://STS2_Things")
 
 	_finish()
 
 
-func _verify_background(slug: String) -> void:
+func _verify_background(slug: String, load_layers: bool = true) -> void:
 	var root := "res://scenes/backgrounds/%s" % slug
 	var main_scene := "%s/%s_background.tscn" % [root, slug]
 	if not FileAccess.file_exists(main_scene):
@@ -129,9 +146,12 @@ func _verify_background(slug: String) -> void:
 		else:
 			layer_count += 1
 			var scene_path := "%s/%s" % [layer_dir_path, entry]
-			var resource := ResourceLoader.load(scene_path, "PackedScene")
-			if not resource is PackedScene:
-				_fail("background layer is not loadable as PackedScene: %s" % scene_path)
+			if not FileAccess.file_exists(scene_path):
+				_fail("missing background layer scene in PCK: %s" % scene_path)
+			elif load_layers:
+				var resource := ResourceLoader.load(scene_path, "PackedScene")
+				if not resource is PackedScene:
+					_fail("background layer is not loadable as PackedScene: %s" % scene_path)
 		entry = layer_dir.get_next()
 	layer_dir.list_dir_end()
 
@@ -209,10 +229,10 @@ func _verify_event_localization(language: String) -> void:
 
 	var table := parsed as Dictionary
 	var expected_prefix_counts := {
-		"ROBBERY_FAKE_MERCHANT.": 13,
-		"THINGS_BACKROOMS.": 22,
-		"THINGS_MEDUSA.": 15,
-		"CUTTING_IT_CLOSE.": 11,
+		"THINGS_ROBBERY_FAKE_MERCHANT.": 13,
+		"THINGS_BACKROOMS.": 28,
+		"THINGS_MEDUSA.": 18,
+		"THINGS_CUTTING_IT_CLOSE.": 15,
 	}
 	for prefix in expected_prefix_counts:
 		var actual_count := 0
@@ -225,23 +245,23 @@ func _verify_event_localization(language: String) -> void:
 				% [prefix, path, actual_count]
 			)
 
-	if table.has("ROBBERY_FAKE_MERCHANT.pages.TAKERGOLDS.description"):
+	if table.has("THINGS_ROBBERY_FAKE_MERCHANT.pages.TAKERGOLDS.description"):
 		_fail("stale fake-merchant gold result key remains in %s" % path)
 
 	var required_fragments := {}
 	if language == "eng":
 		required_fragments = {
-			"ROBBERY_FAKE_MERCHANT.pages.INITIAL.description": "LOWEST PRICES IN THE SPIRE",
-			"ROBBERY_FAKE_MERCHANT.pages.TAKEGOLDS.description": "real gold",
+			"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.description": "Guaranteed genuine!",
+			"THINGS_ROBBERY_FAKE_MERCHANT.pages.TAKEGOLDS.description": "genuine gold",
 			"THINGS_BACKROOMS.pages.SEARCH_FAIL.description": "This place is learning you.",
-			"THINGS_MEDUSA.pages.GREET.description": "Courtesy repaid.",
+			"THINGS_MEDUSA.pages.GREET.description": "Keep it away from your teeth.",
 		}
 	else:
 		required_fragments = {
-			"ROBBERY_FAKE_MERCHANT.pages.INITIAL.description": "全塔最低价",
-			"ROBBERY_FAKE_MERCHANT.pages.TAKEGOLDS.description": "真金子",
+			"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.description": "如假包换！",
+			"THINGS_ROBBERY_FAKE_MERCHANT.pages.TAKEGOLDS.description": "真金子",
 			"THINGS_BACKROOMS.pages.SEARCH_FAIL.description": "这里正一点点记住你。",
-			"THINGS_MEDUSA.pages.GREET.description": "礼尚往来。",
+			"THINGS_MEDUSA.pages.GREET.description": "别往牙上磕。",
 		}
 	for key in required_fragments:
 		if not table.has(key) or not str(table[key]).contains(required_fragments[key]):
@@ -250,9 +270,9 @@ func _verify_event_localization(language: String) -> void:
 	_verify_event_narrative_wraps(table, path)
 
 	var required_placeholders := {
-		"ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.TAKERELICS.description": ["{FakeRelicsCount}"],
-		"ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.TAKEGOLDS.description": ["{GoldsCount}"],
-		"ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.BEGINFIGHT.description": ["{TrueRelicsCount}"],
+		"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.TAKERELICS.description": ["{FakeRelicsCount}"],
+		"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.TAKEGOLDS.description": ["{GoldsCount}"],
+		"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.BEGINFIGHT.description": ["{TrueRelicsCount}"],
 		"THINGS_BACKROOMS.pages.INITIAL.options.SEARCH_EXIT.description": ["{HpLoss}", "{SearchChance}"],
 		"THINGS_BACKROOMS.pages.INITIAL.options.REST.description": ["{MaxHpLoss}", "{Heal}"],
 		"THINGS_BACKROOMS.pages.SEARCH_FAIL.options.SEARCH_EXIT.description": ["{HpLoss}", "{SearchChance}"],
@@ -260,7 +280,6 @@ func _verify_event_localization(language: String) -> void:
 		"THINGS_BACKROOMS.pages.EXIT.options.ENCHANT_DISSOLVE.description": ["{Cards}"],
 		"THINGS_MEDUSA.pages.INITIAL.options.OFFER_GOLD.description": ["{Gold}"],
 		"THINGS_MEDUSA.pages.INITIAL.options.OFFER_GOLD_LOCKED.description": ["{Gold}"],
-		"THINGS_MEDUSA.pages.OFFER_GOLD.description": ["{Gold}"],
 	}
 	for key in required_placeholders:
 		if not table.has(key):
@@ -272,17 +291,19 @@ func _verify_event_localization(language: String) -> void:
 				_fail("missing placeholder %s in %s (%s)" % [placeholder, key, path])
 
 	var required_keys := [
-		"CUTTING_IT_CLOSE.title",
-		"CUTTING_IT_CLOSE.pages.INITIAL.description",
-		"CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.title",
-		"CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.description",
-		"CUTTING_IT_CLOSE.pages.INITIAL.options.THROW.title",
-		"CUTTING_IT_CLOSE.pages.INITIAL.options.THROW.description",
-		"CUTTING_IT_CLOSE.pages.IMPROVISE.selectionScreenPrompt",
-		"CUTTING_IT_CLOSE.pages.THROW.selectionScreenPrompt",
-		"CUTTING_IT_CLOSE.pages.ABORTED.description",
-		"CUTTING_IT_CLOSE.pages.IMPROVISE.description",
-		"CUTTING_IT_CLOSE.pages.THROW.description",
+		"THINGS_CUTTING_IT_CLOSE.title",
+		"THINGS_CUTTING_IT_CLOSE.pages.INITIAL.description",
+		"THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.title",
+		"THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.description",
+		"THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE_LOCKED.title",
+		"THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE_LOCKED.description",
+		"THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.THROW.title",
+		"THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.THROW.description",
+		"THINGS_CUTTING_IT_CLOSE.pages.IMPROVISE.selectionScreenPrompt",
+		"THINGS_CUTTING_IT_CLOSE.pages.THROW.selectionScreenPrompt",
+		"THINGS_CUTTING_IT_CLOSE.pages.ABORTED.description",
+		"THINGS_CUTTING_IT_CLOSE.pages.IMPROVISE.description",
+		"THINGS_CUTTING_IT_CLOSE.pages.THROW.description",
 	]
 	for key in required_keys:
 		if not table.has(key):
@@ -290,7 +311,7 @@ func _verify_event_localization(language: String) -> void:
 		elif not table[key] is String or (table[key] as String).strip_edges().is_empty():
 			_fail("empty localization key %s in %s" % [key, path])
 
-	var improvise_key := "CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.description"
+	var improvise_key := "THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE.description"
 	if table.has(improvise_key):
 		var description := str(table[improvise_key])
 		if not description.contains("{Enchantment}") or not description.contains("[blue]2[/blue]"):
@@ -302,9 +323,10 @@ func _verify_event_narrative_wraps(table: Dictionary, path: String) -> void:
 		var key_text := str(key)
 		if not key_text.ends_with(".description") or key_text.contains(".options."):
 			continue
-		if str(table[key]).contains("\n"):
+		var body := str(table[key])
+		if body.contains("\r") or body.contains("\t"):
 			_fail(
-				"event narrative retains explicit hard line breaks: %s in %s"
+				"event narrative contains CR or tab characters: %s in %s"
 				% [key_text, path]
 			)
 
@@ -312,6 +334,15 @@ func _verify_event_narrative_wraps(table: Dictionary, path: String) -> void:
 func _verify_file(path: String) -> void:
 	if not FileAccess.file_exists(path):
 		_fail("missing required file in PCK: %s" % path)
+
+
+func _verify_wav_loop(path: String, min_loop_end: int) -> void:
+	var stream := ResourceLoader.load(path, "AudioStreamWAV") as AudioStreamWAV
+	if stream == null:
+		_fail("AudioStreamWAV is not loadable from PCK: %s" % path)
+		return
+	if stream.loop_mode != AudioStreamWAV.LOOP_FORWARD or stream.loop_end < min_loop_end:
+		_fail("AudioStreamWAV loop contract failed (mode=%d, end=%d): %s" % [stream.loop_mode, stream.loop_end, path])
 
 
 func _verify_csharp_script_placeholder(path: String) -> void:

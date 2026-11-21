@@ -1,4 +1,4 @@
-#if STS2_V107_1
+#if STS2_V111_1
 using System.Collections;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -26,6 +26,8 @@ using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Unlocks;
 using STS2_Things.Config;
+using STS2_Things.Modifiers;
+using MegaCrit.Sts2.Core.Hooks;
 
 // Drives the native purchase wrapper and production bargain manager. Only the
 // graphical minigame is replaced: full animations are covered in real clients.
@@ -46,13 +48,14 @@ public static class MerchantMultiplayerRegression
         AssemblyLoadContext.Default.Resolving += ResolveDependency;
         TestMode.TurnOnInternal();
         InitializeModels();
+        ThingsMerchantBargainPricePolicy.EnsureSubscribed();
         SaveManager.Instance.InitSettingsDataForTest();
         SaveManager.Instance.InitPrefsDataForTest();
         MultiplayerConfig.Clear();
         ThingsModConfig.Load();
         ThingsModConfig.SetValue(ThingsModConfig.FeatureMerchantBargainEnabled, true);
         var harmony = new Harmony("MerchantBargainProbe.NativeMultiplayer");
-        foreach (string name in new[] {"MerchantEntryOnTryPurchaseWrapperPatch", "MerchantEntryCostPatch"})
+        foreach (string name in new[] {"MerchantEntryOnTryPurchaseWrapperPatch"})
             harmony.CreateClassProcessor(Mod.GetType("STS2_Things.Features.MerchantBargain." + name, true)!).Patch();
         harmony.Patch(AccessTools.PropertyGetter(typeof(NMerchantRoom), nameof(NMerchantRoom.Instance)),
             prefix: new HarmonyMethod(typeof(MerchantMultiplayerRegression), nameof(LocalRoom)));
@@ -110,6 +113,8 @@ public static class MerchantMultiplayerRegression
             .SetValue(RunManager.Instance, run);
         run.PushRoom(new MerchantRoom());
         run.AppendToMapPointHistory(MapPointType.Shop, RoomType.Shop, null);
+        Require(run.IterateHookListeners(null).OfType<ThingsMerchantBargainPricePolicy>().Any(),
+            "ThingsMerchantBargainPricePolicy must be subscribed in RunState hook listeners.");
         var inventories = players.Select(p => new MerchantInventory(p)).ToArray();
         var entries = players.Select(p => new MerchantRelicEntry(ModelDb.Relic<Anchor>().ToMutable(), p)).ToArray();
         for (int i = 0; i < count; i++)
@@ -118,6 +123,11 @@ public static class MerchantMultiplayerRegression
             typeof(Player).GetProperty(nameof(Player.Gold))!.SetValue(players[i], 110);
             inventories[i].AddRelicEntry(entries[i]);
         }
+        Manager.GetMethod("SetPriceOverride", PrivateStatic)!.Invoke(null, [entries[0], 95]);
+        Require(Hook.ModifyMerchantPrice(run, players[0], entries[0], 120m) == 95m && entries[0].Cost == 95,
+            "ThingsMerchantBargainPricePolicy did not modify MerchantEntry.Cost via Hook.ModifyMerchantPrice.");
+        Manager.GetMethod("ClearPriceOverride", PrivateStatic)!.Invoke(null, [entries[0]]);
+        Require(entries[0].Cost == 120, "Clearing price override did not restore original MerchantEntry.Cost.");
         _win = true;
         int fightStart = _fights;
         for (int local = 0; local < count; local++)
@@ -200,18 +210,20 @@ public static class MerchantMultiplayerRegression
 
     private static string RngState(Rng rng)
     {
-#if STS2_V107_1
-        return rng.Counter.ToString(System.Globalization.CultureInfo.InvariantCulture);
-#else
         return System.Text.Json.JsonSerializer.Serialize(rng.ToSerializable(),
             new System.Text.Json.JsonSerializerOptions { IncludeFields = true });
-#endif
     }
 
     private static Assembly? ResolveDependency(AssemblyLoadContext context, AssemblyName name)
     {
-        string file = Path.Combine(Path.GetDirectoryName(typeof(MerchantBargainProbeNode).Assembly.Location)!, name.Name + ".dll");
-        return File.Exists(file) ? context.LoadFromAssemblyPath(file) : null;
+        string? asmDir = Path.GetDirectoryName(typeof(MerchantBargainProbeNode).Assembly.Location);
+        foreach (string? dir in new[] { asmDir, AppContext.BaseDirectory, Godot.ProjectSettings.GlobalizePath("res://.godot/mono/temp/bin/Debug") })
+        {
+            if (string.IsNullOrWhiteSpace(dir)) continue;
+            string file = Path.Combine(dir, name.Name + ".dll");
+            if (File.Exists(file)) return context.LoadFromAssemblyPath(file);
+        }
+        return null;
     }
     private static void InitializeModels()
     {

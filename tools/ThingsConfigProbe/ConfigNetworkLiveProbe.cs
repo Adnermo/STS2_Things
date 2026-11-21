@@ -39,8 +39,13 @@ public partial class ConfigNetworkLiveProbe : Node
 
     private static PeerVersionInfo Version => new()
     {
-        version = "v0.113.0", idDatabaseHash = ModelIdSerializationCache.Hash,
-        gameplayAffectingMods = ["STS2_Things-1.11.0", "ConfigNetworkProbe"], otherMods = [],
+#if STS2_V111_1
+        version = "v0.111.1",
+#else
+        version = "v0.113.1",
+#endif
+        idDatabaseHash = ModelIdSerializationCache.Hash,
+        gameplayAffectingMods = ["STS2_Things-2.0.0", "ConfigNetworkProbe"], otherMods = [],
     };
 
     public override void _Ready()

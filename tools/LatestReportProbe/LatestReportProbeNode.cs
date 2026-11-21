@@ -27,7 +27,7 @@ public partial class LatestReportProbeNode : Node
             implementation.GetType("STS2_Things.Compatibility.ModCompatibility", true)!.GetMethod("Initialize")!.Invoke(null, null);
             if (!args.Contains("--music-only"))
             {
-                foreach (string encounter in new[] { "origin_fogmog", "bowlbug_progenitor", "the_legacy", "gravetide_slug" })
+                foreach (string encounter in new[] { "things_origin_fogmog", "things_bowlbug_progenitor", "things_the_legacy", "things_gravetide_slug" })
                 {
                     string path = $"res://scenes/backgrounds/{encounter}_boss_encounter/{encounter}_boss_encounter_background.tscn";
                     Control node = GD.Load<PackedScene>(path).Instantiate<Control>();

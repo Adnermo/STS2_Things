@@ -66,10 +66,18 @@ public partial class BaseLibBridgeProbeNode : Node
             Type thingsConfig = implementation.GetType("STS2_Things.Config.ThingsModConfig", true)!;
             string sharedPath = (string)thingsConfig.GetProperty("ConfigPath")!.GetValue(null)!;
             Directory.CreateDirectory(Path.GetDirectoryName(sharedPath)!);
-            // Simulate an older config containing JSON primitives. Main startup
-            // must migrate it before BaseLib's Dictionary<string,string> reader.
-            File.WriteAllText(sharedPath, """{"FeatureCustomBgmEnabled":false,"BossScaleBeetleWeightPercent":240}""");
+            // Simulate an older v1 config containing legacy alias keys and JSON primitives.
+            // Main startup must migrate it to SchemaVersion=3 before BaseLib's Dictionary<string,string> reader.
+            File.WriteAllText(sharedPath, """{"SchemaVersion":"1","CustomBgmEnabled":"False","MerchantBargainEnabled":"False","BossScaleBeetleWeightPercent":240}""");
             thingsConfig.GetMethod("Load")!.Invoke(null, null);
+            using (JsonDocument migratedDoc = JsonDocument.Parse(File.ReadAllText(sharedPath)))
+            {
+                Assert(migratedDoc.RootElement.GetProperty("SchemaVersion").GetString() == "3",
+                    "ThingsModConfig.Load did not migrate SchemaVersion to 3.");
+                Assert(migratedDoc.RootElement.GetProperty("FeatureCustomBgmEnabled").GetString() == "False" &&
+                       migratedDoc.RootElement.GetProperty("FeatureMerchantBargainEnabled").GetString() == "False",
+                    "ThingsModConfig.Load did not migrate legacy alias keys to canonical keys.");
+            }
             string modDir = Path.GetDirectoryName(implementationPath)!;
             string stagedBridgePath = Path.Combine(modDir, "STS2_Things.BaseLibBridge.dll");
             if (!string.Equals(stagedBridgePath, bridgePath, StringComparison.OrdinalIgnoreCase))
@@ -113,9 +121,13 @@ public partial class BaseLibBridgeProbeNode : Node
                 "Bridge BossOriginFogmogEnabled default is false.");
             Assert(!GetBridgeBool(bridge, "BossOriginFogmogForced"),
                 "Bridge BossOriginFogmogForced default is true.");
+            Assert(GetBridgeBool(bridge, "FeatureDefensiveEngineGuardsEnabled"),
+                "Bridge FeatureDefensiveEngineGuardsEnabled default is false.");
             Assert(!GetBridgeBool(bridge, "FeatureCustomBgmEnabled") &&
+                   !GetBridgeBool(bridge, "FeatureMerchantBargainEnabled") &&
                    (int)GetBridgeValue(bridge, "BossScaleBeetleWeightPercent") == 240,
                 "BaseLib lost migrated boolean/numeric preferences during construction.");
+            SetBridgeBool(bridge, "FeatureMerchantBargainEnabled", true);
             Assert((int)config!.GetType().GetMethod("GetDefaultValue")!.MakeGenericMethod(typeof(int))
                        .Invoke(config, ["BossScaleBeetleWeightPercent"])! == 100,
                 "BaseLib captured the persisted weight as its reset default.");
@@ -193,9 +205,11 @@ public partial class BaseLibBridgeProbeNode : Node
             values[Array.FindIndex(settings, entry => Key(entry) == "BossScaleBeetleWeightPercent")] = 900;
             values[Array.FindIndex(settings, entry => Key(entry) == "FeatureCustomBgmEnabled")] = 0;
             Type messageType = implementation.GetType("STS2_Things.Config.ThingsConfigSnapshotMessage", true)!;
+            int protocolVersion = (int)messageType.GetField("Protocol")!.GetValue(null)!;
+            Assert(protocolVersion == 2, $"Expected ThingsConfigSnapshotMessage.Protocol=2, got {protocolVersion}.");
             object snapshot = Activator.CreateInstance(messageType)!;
             foreach (var pair in new Dictionary<string, object>
-                     { ["Version"] = 1, ["SchemaHash"] = messageType.GetField("Schema")!.GetValue(null)!,
+                     { ["Version"] = protocolVersion, ["SchemaHash"] = messageType.GetField("Schema")!.GetValue(null)!,
                        ["Revision"] = 1u, ["Locked"] = true, ["Values"] = values })
                 messageType.GetField(pair.Key)!.SetValue(snapshot, pair.Value);
             wire.Deliver((INetMessage)snapshot);

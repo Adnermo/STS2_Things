@@ -12,8 +12,8 @@ namespace STS2_Things.Config;
 ///   - BaseLib：加载同目录可选桥程序集 <c>STS2_Things.BaseLibBridge.dll</c> 并调用其注册入口。
 ///
 /// 加载时序：模组不声明对两库的依赖，两库可能在本模组之后才加载。因此在
-/// ModManager.State 变为 Initialized（v113 全部模组加载完成）时经 Harmony 补丁重试一次；
-/// 找不到该成员（如 v107.1）则跳过重试，仅依赖初始化时的检测。
+/// ModManager.State 变为 Initialized（全部模组加载完成）或 TryLoadMod 完成后
+/// 经 Harmony 补丁重试接入，兼容 v107.1 与 v113。
 /// </summary>
 internal static class LibraryIntegration
 {
@@ -27,6 +27,10 @@ internal static class LibraryIntegration
     private const string HarmonyId = "Adnermo.STS2_Things.LibraryIntegration";
 
     private static readonly object Gate = new();
+    private static readonly HashSet<AssemblyLoadContext> RegisteredContexts = [];
+    private static bool _domainResolverInstalled;
+    private static Assembly? _resolvedBaseLib;
+    private static bool _loggedBrokenBaseLib;
     private static bool _baseLibDone;
     private static bool _ritsuDone;
     private static Harmony? _retryHarmony;
@@ -58,8 +62,7 @@ internal static class LibraryIntegration
             return;
         try
         {
-            // BaseLib 尚未加载（本模组先于它初始化）时跳过；ModManager.State 变为
-            // Initialized 后的重试钩子会再次尝试。
+            // BaseLib 尚未加载（本模组先于它初始化）时跳过；ModManager 重试钩子会再次尝试。
             Assembly? baseLibAssembly = null;
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -70,6 +73,11 @@ internal static class LibraryIntegration
                 }
             }
             if (baseLibAssembly is null)
+                return;
+
+            // 若 ModManager 登记了 BaseLib 但尚未完成加载或初始化失败（例如玩家在 v113 中残留了
+            // 旧版 v107.1 的 BaseLib，DLL 已进入内存但 GetTypes 抛异常标记为 Failed），跳过桥接。
+            if (!IsModHealthyOrStandalone(BaseLibAssemblyName, ref _loggedBrokenBaseLib))
                 return;
 
             string? directory = FindModDirectory();
@@ -89,13 +97,11 @@ internal static class LibraryIntegration
                 return;
             }
 
-            // 桥必须载入与 BaseLib 相同的 ALC。官方加载器把全部模组 DLL 装入游戏程序集
-            // 上下文（ModManager 用 AssemblyLoadContext.GetLoadContext(Assembly
-            // .GetExecutingAssembly()).LoadFromAssemblyPath），而 Assembly.LoadFrom 会落入
-            // 默认上下文，桥便解析不到 BaseLib（FileNotFoundException，真实游戏日志已确认）。
-            // 这里显式使用 BaseLib 所在上下文加载，与探针验证过的模式一致。
+            // 桥必须载入与 BaseLib 相同的 ALC，并把低版本/跨小版本的 BaseLib 引用（如桥按 3.4.8 编译、
+            // v107.1 运行时加载 3.4.7）重定向到内存中的 BaseLib 实例。
             AssemblyLoadContext loadContext =
                 AssemblyLoadContext.GetLoadContext(baseLibAssembly) ?? AssemblyLoadContext.Default;
+            EnsureBridgeAssemblyResolver(loadContext, baseLibAssembly);
             Assembly bridge = loadContext.LoadFromAssemblyPath(bridgePath);
             Type? entry = bridge.GetType(BridgeEntryTypeName, throwOnError: false);
             MethodInfo? register = entry?.GetMethod(
@@ -155,8 +161,8 @@ internal static class LibraryIntegration
     }
 
     /// <summary>
-    /// 全部模组加载完成后（ModManager.State -> Initialized）重试一次接入，
-    /// 覆盖两库在本模组之后才加载的情况。v107.1 无 State 成员则静默跳过。
+    /// 全部模组加载完成后（ModManager.State -> Initialized，或无 State 成员时每次 TryLoadMod 完成后）
+    /// 重试接入，覆盖两库在本模组之后才加载的情况。
     /// </summary>
     private static void InstallRetryHook()
     {
@@ -164,17 +170,29 @@ internal static class LibraryIntegration
             return;
         try
         {
-            Type? modManager = typeof(MegaCrit.Sts2.Core.Modding.ModManager);
+            Type modManager = typeof(MegaCrit.Sts2.Core.Modding.ModManager);
             MethodInfo? stateSetter = AccessTools.PropertySetter(modManager, "State");
-            if (stateSetter is null)
+            if (stateSetter is not null)
+            {
+                _retryHarmony = new Harmony(HarmonyId);
+                _retryHarmony.Patch(
+                    stateSetter,
+                    postfix: new HarmonyMethod(typeof(LibraryIntegration).GetMethod(
+                        nameof(OnModManagerStateChanged),
+                        BindingFlags.NonPublic | BindingFlags.Static)!));
                 return;
+            }
 
-            _retryHarmony = new Harmony(HarmonyId);
-            _retryHarmony.Patch(
-                stateSetter,
-                postfix: new HarmonyMethod(typeof(LibraryIntegration).GetMethod(
-                    nameof(OnModManagerStateChanged),
-                    BindingFlags.NonPublic | BindingFlags.Static)!));
+            MethodInfo? tryLoadMod = AccessTools.Method(modManager, "TryLoadMod");
+            if (tryLoadMod is not null)
+            {
+                _retryHarmony = new Harmony(HarmonyId);
+                _retryHarmony.Patch(
+                    tryLoadMod,
+                    postfix: new HarmonyMethod(typeof(LibraryIntegration).GetMethod(
+                        nameof(OnModLoadedRetry),
+                        BindingFlags.NonPublic | BindingFlags.Static)!));
+            }
         }
         catch (Exception exception)
         {
@@ -189,6 +207,119 @@ internal static class LibraryIntegration
             return;
         lock (Gate)
             TryIntegrate();
+    }
+
+    private static void OnModLoadedRetry()
+    {
+        if (_baseLibDone && _ritsuDone)
+            return;
+        lock (Gate)
+            TryIntegrate();
+    }
+
+    private static void EnsureBridgeAssemblyResolver(AssemblyLoadContext loadContext, Assembly baseLibAssembly)
+    {
+        _resolvedBaseLib = baseLibAssembly;
+        if (RegisteredContexts.Add(loadContext))
+            loadContext.Resolving += ResolveBridgeAssembly;
+        if (!_domainResolverInstalled)
+        {
+            AppDomain.CurrentDomain.AssemblyResolve += ResolveBridgeAssemblyOnDomain;
+            _domainResolverInstalled = true;
+        }
+    }
+
+    private static Assembly? ResolveBridgeAssembly(AssemblyLoadContext _, AssemblyName name) =>
+        ResolveBridgeAssemblyCore(name.Name);
+
+    private static Assembly? ResolveBridgeAssemblyOnDomain(object? _, ResolveEventArgs args)
+    {
+        try
+        {
+            return ResolveBridgeAssemblyCore(new AssemblyName(args.Name).Name);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static Assembly? ResolveBridgeAssemblyCore(string? simpleName)
+    {
+        if (string.Equals(simpleName, BaseLibAssemblyName, StringComparison.Ordinal))
+            return _resolvedBaseLib;
+        if (string.Equals(simpleName, "STS2_Things", StringComparison.Ordinal))
+            return typeof(LibraryIntegration).Assembly;
+        return null;
+    }
+
+    private static bool IsModHealthyOrStandalone(string modId, ref bool loggedBroken)
+    {
+        try
+        {
+            Type modManager = typeof(MegaCrit.Sts2.Core.Modding.ModManager);
+            if (modManager.GetProperty("Mods", BindingFlags.Public | BindingFlags.Static)?.GetValue(null)
+                is not System.Collections.IEnumerable allMods)
+            {
+                return true;
+            }
+
+            object? trackedMod = null;
+            foreach (object? mod in allMods)
+            {
+                if (mod is null)
+                    continue;
+                string? id = GetManifestId(mod);
+                if (string.Equals(id, modId, StringComparison.OrdinalIgnoreCase))
+                {
+                    trackedMod = mod;
+                    break;
+                }
+            }
+
+            // 独立探针未通过 ModManager 注册外部模组清单时直接放行。
+            if (trackedMod is null)
+                return true;
+
+            if (modManager.GetMethod("GetLoadedMods", BindingFlags.Public | BindingFlags.Static)?.Invoke(null, null)
+                is System.Collections.IEnumerable loadedMods)
+            {
+                foreach (object? loaded in loadedMods)
+                {
+                    if (loaded is not null &&
+                        string.Equals(GetManifestId(loaded), modId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            string? loadState = trackedMod.GetType()
+                .GetField("state", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                ?.GetValue(trackedMod)
+                ?.ToString();
+            if (string.Equals(loadState, "Failed", StringComparison.OrdinalIgnoreCase) && !loggedBroken)
+            {
+                loggedBroken = true;
+                MegaCrit.Sts2.Core.Logging.Log.Info(
+                    $"STS2_Things: {modId} failed ModManager initialization; skipping optional config integration.");
+            }
+            return false;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
+    }
+
+    private static string? GetManifestId(object mod)
+    {
+        object? manifest = mod.GetType()
+            .GetField("manifest", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            ?.GetValue(mod);
+        return manifest?.GetType()
+            .GetField("id", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            ?.GetValue(manifest) as string;
     }
 
     /// <summary>模组目录：实现程序集从流加载时 Location 为空，退回引导程序集的目录。</summary>

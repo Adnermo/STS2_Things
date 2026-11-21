@@ -1,6 +1,7 @@
 using MegaCrit.Sts2.Core.Animation;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Models;
+using STS2_Things.Core.Models;
 using STS2_Things.Hooks;
 
 namespace STS2_Things.Monsters;
@@ -10,7 +11,7 @@ namespace STS2_Things.Monsters;
 /// The visual assets expose semantic one-shot animations in addition to the
 /// five states supplied by <see cref="MonsterModel"/>.
 /// </summary>
-public abstract class ThingsSpineMonster : MonsterModel
+public abstract class ThingsSpineMonster : ThingsMonsterModel
 {
     public override IEnumerable<string> AssetPaths => base.AssetPaths
         .Concat(SfxHooks.GetMonsterSoundAssetPaths(Id.Entry.ToLowerInvariant()));

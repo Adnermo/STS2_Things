@@ -67,7 +67,7 @@ func run_preview() -> void:
 	# EXPAND_IGNORE_SIZE + KEEP_ASPECT_CENTERED. These are texture layout checks,
 	# independent of a player save or the rest of NMapScreen's input services.
 	for part in ["top", "middle", "bottom"]:
-		var relative: String = "images/packed/map/map_bgs/depths/map_" + part + "_depths.png"
+		var relative: String = "images/packed/map/map_bgs/things_depths/map_" + part + "_things_depths.png"
 		var tex: Texture2D = texture(workspace.path_join(relative)) if package.is_empty() else load("res://" + relative)
 		require(tex != null, "Load map texture " + relative)
 		require(tex.get_width() == 2036 and tex.get_height() == 1440, "Native dimensions")

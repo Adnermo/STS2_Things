@@ -35,7 +35,7 @@ public partial class DepthsProbeNode : Node
     {
         AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency;
         EnsureRuntimeDependency("System.IO.Hashing");
-        Type[] modTypes = typeof(LanternFish).Assembly.GetTypes();
+        Type[] modTypes = typeof(ThingsLanternFish).Assembly.GetTypes();
         Type[] modelTypes = AbstractModelSubtypes.All
             .Concat(modTypes.Where(type => !type.IsAbstract && typeof(AbstractModel).IsAssignableFrom(type)))
             .Distinct()
@@ -45,7 +45,7 @@ public partial class DepthsProbeNode : Node
         // the exact post-initialization state that the real loader provides.
         typeof(ReflectionHelper).GetField("_modTypes", BindingFlags.NonPublic | BindingFlags.Static)!
             .SetValue(null, modTypes);
-        RegisterSyntheticMod(typeof(LanternFish).Assembly);
+        RegisterSyntheticMod(typeof(ThingsLanternFish).Assembly);
         // V113 exposes ModManager.State/ModManagerState, while V107.1 does not.
         // Seed it when present without creating a compile-time dependency on the
         // newer API so this same probe source validates both shipped targets.

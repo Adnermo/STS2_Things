@@ -6,10 +6,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v107.1'">$(DefineConstants);STS2_V107_1</DefineConstants>
+    <Sts2TargetVersion Condition="'$(Sts2TargetVersion)' == ''">v113.1</Sts2TargetVersion>
+    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v111.1'">$(DefineConstants);STS2_V111_1</DefineConstants>
+    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v113.1'">$(DefineConstants);STS2_V113_1</DefineConstants>
     <Sts2DataDir Condition="'$(Sts2DataDir)' == ''">D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64</Sts2DataDir>
     <RuntimeDependencyDir Condition="'$(RuntimeDependencyDir)' == ''">$(Sts2DataDir)</RuntimeDependencyDir>
-    <ImplementationDll Condition="'$(ImplementationDll)' == ''">$(MSBuildProjectDirectory)\..\..\.godot\mono\temp\bin\Debug\STS2_Things.dll</ImplementationDll>
+    <ImplementationDll Condition="'$(ImplementationDll)' == ''">$(MSBuildProjectDirectory)\..\..\build\$(Sts2TargetVersion)\STS2_Things.dll</ImplementationDll>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
@@ -17,12 +18,13 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Vfx.Utilities;
-using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Rooms;
+using MegaCrit.Sts2.Core.Saves;
+using MegaCrit.Sts2.Core.Settings;
 using STS2_Things.Audio;
-using STS2_Things.Compatibility;
 using STS2_Things.Monsters;
-using static STS2_Things.Compatibility.Sts2VersionCompatibility;
+using STS2_Things.Platform;
+using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Visuals;
 
@@ -39,13 +41,14 @@ public partial class NCaveGodBossBackground : Node2D
 {
     private const int MainTrack = 0;
     private const int ReactionTrack = 1;
+    private const int TremorTrack = 2;
 
     private ulong _lastHurtAnimTicks;
-    private const ulong HurtAnimCooldownMs = 150;
+    private const ulong HurtAnimCooldownMs = 450;
 
     private ulong _lastGroanTicks;
-    private const ulong GroanCooldownMs = 450;
-    private const float GroanChance = 0.70f;
+    private const ulong GroanCooldownMs = 1800;
+    private const float GroanChance = 0.25f;
 
     private static readonly string[] ArmForegroundSlotNames =
     [
@@ -105,11 +108,15 @@ public partial class NCaveGodBossBackground : Node2D
     private MegaSprite? _armsController;
     private Node2D? _bodyNode;
     private Node2D? _armsNode;
+
+    internal Node2D? BodySpineNode => _bodyNode ?? GetNodeOrNull<Node2D>("%CaveGodBody") ?? GetNodeOrNull<Node2D>("CaveGodBody");
+    internal MegaSprite? BodySpineController => _bodyController;
+    internal Node2D? ArmsSpineNode => _armsNode ?? GetNodeOrNull<Node2D>("%CaveGodArms") ?? GetParent()?.GetNodeOrNull<Node2D>("%CaveGodArms") ?? GetParent()?.GetNodeOrNull<Node2D>("CaveGodArms");
+    internal MegaSprite? ArmsSpineController => _armsController;
     private Tween? _weakHurtTween;
     private Tween? _weakFlashTween;
     private TextureRect? _cachedRedBgNode;
     private Tween? _bgTransitionTween;
-    private Tween? _crystalTween;
     private Tween? _releaseTween;
     private bool _presentationEnded;
 
@@ -118,8 +125,14 @@ public partial class NCaveGodBossBackground : Node2D
     private const int BackgroundZIndex = -20;
     private const int ArmsZIndex = 2;
     private const int StolenCardZIndex = BackgroundZIndex + 1;
-    private static readonly Color CrystalCharge = new(0.80f, 1.15f, 1.45f, 1f);
-    private static readonly Color CrystalChargeAngry = new(1.45f, 0.95f, 0.70f, 1f);
+    private const int CapturedPlayerZIndex = BackgroundZIndex + 3;
+    private const int FrontFistOverlayZIndex = BackgroundZIndex + 4;
+
+    private Polygon2D? _frontFistOverlay;
+    private FistBoneRig? _armsFistRig;
+    private Vector2[]? _leftFistBuffer;
+    private Vector2[]? _rightFistBuffer;
+    private int _activeFistOverlaySide;
 
     private readonly List<GodotObject> _bodyMaskArmSlots = new();
     private readonly List<GodotObject> _bodyRedSlots = new();
@@ -128,6 +141,12 @@ public partial class NCaveGodBossBackground : Node2D
     private readonly List<GodotObject> _armsMaskBodySlots = new();
     private readonly List<GodotObject> _armsRedSlots = new();
     private readonly List<GodotObject> _armsBlueSlots = new();
+
+    private Callable _bodyBeforeTransformsCallable;
+    private Callable _armsBeforeTransformsCallable;
+    private Callable _armsWorldTransformsCallable;
+    private bool _bodyTransformsConnected;
+    private bool _armsTransformsConnected;
 
     private readonly List<(NCreature node, Vector2 origPos, float origRot, Vector2 origScale)> _capturedPlayers = new();
     private bool _isGrabTracking;
@@ -140,12 +159,14 @@ public partial class NCaveGodBossBackground : Node2D
     /// </summary>
     private bool _isSlamDescending;
     private bool _isAngry;
+    private bool _isCriticalTremor;
     private bool _isTransforming;
     private bool _isWeakIdle;
     private bool _isRetreating;
     private CancellationTokenSource? _cts;
 
     public bool IsAngry => _isAngry;
+    public bool IsCriticalTremor => _isCriticalTremor;
     public bool IsWeakIdle => _isWeakIdle;
     public bool IsRetreating => _isRetreating;
     public bool HasCapturedPlayers => _capturedPlayers.Count > 0;
@@ -157,7 +178,7 @@ public partial class NCaveGodBossBackground : Node2D
     /// The Bounds / CenterPos markers in things_cave_god_captive_claw.tscn are pre-offset by the
     /// same amount so the hitbox and hit-VFX anchor stay locked to the fist itself.
     /// </summary>
-    private const float CaptiveClawNodeOffsetY = 50f;
+    private const float CaptiveClawNodeOffsetY = 64f;
 
     /// <summary>How long the crushed impact pose is held before the recovery bounce begins.</summary>
     private const float SlamImpactHoldDuration = 0.08f;
@@ -167,6 +188,8 @@ public partial class NCaveGodBossBackground : Node2D
 
     private Marker2D? _stolenCardPosLeft;
     private Marker2D? _stolenCardPosRight;
+    private int _leftStolenCardCount;
+    private int _rightStolenCardCount;
 
     private NCreature? _cachedClawNode;
 
@@ -191,7 +214,7 @@ public partial class NCaveGodBossBackground : Node2D
         {
             if (enemyNode != null && GodotObject.IsInstanceValid(enemyNode) && enemyNode.Entity?.IsEnemy == true)
             {
-                if (enemyNode.Entity.Monster is ThingsCaveGodLeftHand or ThingsCaveGodRightHand or ThingsCaveGodCaptiveClaw)
+                if (enemyNode.Entity.Monster is ThingsCaveGodBody or ThingsCaveGodLeftHand or ThingsCaveGodRightHand or ThingsCaveGodCaptiveClaw)
                 {
                     enemyNode.ZAsRelative = false;
                     enemyNode.ZIndex = NCaveGodHandCreatureVisuals.CreatureUiZIndex;
@@ -207,7 +230,7 @@ public partial class NCaveGodBossBackground : Node2D
         {
             if (enemyNode != null && GodotObject.IsInstanceValid(enemyNode) && enemyNode.Entity?.IsEnemy == true)
             {
-                if (enemyNode.Entity.Monster is ThingsCaveGodLeftHand or ThingsCaveGodRightHand or ThingsCaveGodCaptiveClaw)
+                if (enemyNode.Entity.Monster is ThingsCaveGodBody or ThingsCaveGodLeftHand or ThingsCaveGodRightHand or ThingsCaveGodCaptiveClaw)
                 {
                     enemyNode.ZAsRelative = false;
                     enemyNode.ZIndex = NCaveGodHandCreatureVisuals.CreatureUiZIndex;
@@ -219,6 +242,7 @@ public partial class NCaveGodBossBackground : Node2D
     public void ResetVisualState()
     {
         ResetHandsUi(NCombatRoom.Instance);
+        HideFrontFistOverlay();
 
         if (_isRetreating)
         {
@@ -231,8 +255,6 @@ public partial class NCaveGodBossBackground : Node2D
         _weakFlashTween = null;
         _bgTransitionTween?.Kill();
         _bgTransitionTween = null;
-        _crystalTween?.Kill();
-        _crystalTween = null;
         UpdateBackgroundPhaseImmediate(_isAngry);
 
         if (_bodyNode != null)
@@ -337,8 +359,8 @@ public partial class NCaveGodBossBackground : Node2D
                     node.GlobalPosition = grabWorldPos + clusterOffset;
                     node.Rotation = GetClusterTilt(i, _capturedPlayers.Count);
 
-                    // Grip pose: captives are held slightly shrunk inside the fist.
-                    Vector2 gripScale = origScale * 0.88f;
+                    // Grip pose: captives are held slightly shrunk inside the fist pocket.
+                    Vector2 gripScale = origScale * 0.85f;
                     if (_isSlamDescending)
                     {
                         // Plunge pose: narrow + tall stretch, and the cluster tilt is damped so the
@@ -363,14 +385,14 @@ public partial class NCaveGodBossBackground : Node2D
                 clawNode.GlobalPosition = new Vector2(grabWorldPos.X, grabWorldPos.Y + CaptiveClawNodeOffsetY);
             }
 
-            // Ensure idle hand creature nodes remain elevated above CaveGodArms (ZIndex = 5)
+            // Ensure boss & hand creature UI nodes remain elevated above world layers
             if (NCombatRoom.Instance != null)
             {
                 foreach (NCreature enemyNode in NCombatRoom.Instance.CreatureNodes)
                 {
                     if (enemyNode != null && GodotObject.IsInstanceValid(enemyNode) && enemyNode.Entity?.IsEnemy == true)
                     {
-                        if (enemyNode.Entity.Monster is ThingsCaveGodLeftHand or ThingsCaveGodRightHand)
+                        if (enemyNode.Entity.Monster is ThingsCaveGodBody or ThingsCaveGodLeftHand or ThingsCaveGodRightHand)
                         {
                             if (enemyNode.ZIndex != NCaveGodHandCreatureVisuals.CreatureUiZIndex || enemyNode.ZAsRelative)
                             {
@@ -383,6 +405,7 @@ public partial class NCaveGodBossBackground : Node2D
             }
         }
 
+        UpdateFrontFistOverlay();
         UpdateStolenCardPositions();
     }
 
@@ -406,6 +429,14 @@ public partial class NCaveGodBossBackground : Node2D
     {
         CombatManager.Instance.CombatEnded -= OnCombatEnded;
         _presentationEnded = true;
+        _isCriticalTremor = false;
+        DisconnectSpineSignals();
+        _armsFistRig = null;
+        _bodySnatchRig = null;
+        _armsSnatchRig = null;
+        _bodyContactRig = null;
+        _armsContactRig = null;
+        HideFrontFistOverlay();
         ClearMainEntries();
         ClearAllStolenCards();
         RestoreCapturedPlayersInstantly();
@@ -413,6 +444,27 @@ public partial class NCaveGodBossBackground : Node2D
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;
+    }
+
+    private void DisconnectSpineSignals()
+    {
+        DisconnectMainAnimationObservers();
+
+        if (_bodyTransformsConnected && _bodyController != null && GodotObject.IsInstanceValid(_bodyController.BoundObject))
+        {
+            if (_bodyController.BoundObject.IsConnected("before_world_transforms_change", _bodyBeforeTransformsCallable))
+                _bodyController.DisconnectBeforeWorldTransformsChange(_bodyBeforeTransformsCallable);
+        }
+        _bodyTransformsConnected = false;
+
+        if (_armsTransformsConnected && _armsController != null && GodotObject.IsInstanceValid(_armsController.BoundObject))
+        {
+            if (_armsController.BoundObject.IsConnected("before_world_transforms_change", _armsBeforeTransformsCallable))
+                _armsController.DisconnectBeforeWorldTransformsChange(_armsBeforeTransformsCallable);
+            if (_armsController.BoundObject.IsConnected("world_transforms_changed", _armsWorldTransformsCallable))
+                _armsController.DisconnectWorldTransformsChanged(_armsWorldTransformsCallable);
+        }
+        _armsTransformsConnected = false;
     }
 
     public override void _Ready()
@@ -433,6 +485,17 @@ public partial class NCaveGodBossBackground : Node2D
             Log.Error($"[CaveGodBackground] Setup failed: bodyNode={(_bodyNode != null)}, armsNode={(_armsNode != null)}");
             return;
         }
+
+        _frontFistOverlay = new Polygon2D
+        {
+            Name = "FrontFistOverlay",
+            ZAsRelative = false,
+            ZIndex = FrontFistOverlayZIndex,
+            Visible = false,
+            TextureFilter = TextureFilterEnum.Linear,
+            TextureRepeat = TextureRepeatEnum.Disabled
+        };
+        AddChild(_frontFistOverlay);
 
         ResetVisualState();
 
@@ -457,26 +520,29 @@ public partial class NCaveGodBossBackground : Node2D
 
         Callable.From(AlignStageAndPlayers).CallDeferred();
 
-        // Preload Living Megalith hurt audio variants for zero-latency combat feedback
+        // Preload Living Megalith audio variants for zero-latency combat feedback
         for (int i = 1; i <= 5; i++)
         {
             NativeSfxPlayer.Preload($"res://sfx/cave_god/cave_god_hurt-{i:D2}.wav");
         }
+        NativeSfxPlayer.Preload("res://sfx/cave_god/anger_roar.mp3");
+        NativeSfxPlayer.Preload("res://sfx/cave_god/rock_death.mp3");
 
         Log.Info("[CaveGodBackground] Dual-pass CaveGod Spine controllers initialized.");
     }
 
     private void OnCombatEnded(CombatRoom room)
     {
-        if (room.Encounter is not STS2_Things.Encounters.CaveGodBossEncounter) return;
+        if (room.Encounter is not STS2_Things.Encounters.ThingsCaveGodBossEncounter) return;
+        SetCriticalTremor(false);
         _presentationEnded = true;
+        HideFrontFistOverlay();
         ClearMainEntries();
         _cts?.Cancel();
         RestoreCapturedPlayersInstantly();
         ClearAllStolenCards();
         _weakHurtTween?.Kill();
         _weakFlashTween?.Kill();
-        _crystalTween?.Kill();
     }
 
     /// <summary>
@@ -485,8 +551,10 @@ public partial class NCaveGodBossBackground : Node2D
     /// </summary>
     public void AlignStageAndPlayers()
     {
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _presentationEnded)
+            return;
         Control? allyContainer = NCombatRoom.Instance?.GetNodeOrNull<Control>("%AllyContainer");
-        if (allyContainer != null && !allyContainer.HasMeta("CaveGodStageAligned"))
+        if (allyContainer != null && GodotObject.IsInstanceValid(allyContainer) && !allyContainer.HasMeta("CaveGodStageAligned"))
         {
             allyContainer.SetMeta("CaveGodStageAligned", true);
             allyContainer.Position += Vector2.Down * PlayerStageOffsetY;
@@ -498,14 +566,22 @@ public partial class NCaveGodBossBackground : Node2D
     {
         this.RunWhenSpineReady(sprite, state =>
         {
+            if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _presentationEnded ||
+                !GodotObject.IsInstanceValid(sprite.BoundObject))
+            {
+                return;
+            }
+
             ObserveMainAnimation(sprite, foreground: false);
             state.SetAnimation("idle_front", loop: true, MainTrack);
+            if (_isCriticalTremor)
+                ApplyCriticalTremorToSprite(sprite, true);
             MegaSkeleton? skel = sprite.GetSkeleton();
             if (skel != null)
             {
                 foreach (string name in ArmForegroundSlotNames)
                 {
-                    Variant slotVar = skel.BoundObject.Call("find_slot", name);
+                    using Variant slotVar = skel.BoundObject.Call("find_slot", name);
                     if (slotVar.AsGodotObject() is GodotObject slotObj)
                     {
                         _bodyMaskArmSlots.Add(slotObj);
@@ -513,7 +589,7 @@ public partial class NCaveGodBossBackground : Node2D
                 }
                 foreach (string name in BodyRedSlotNames)
                 {
-                    Variant slotVar = skel.BoundObject.Call("find_slot", name);
+                    using Variant slotVar = skel.BoundObject.Call("find_slot", name);
                     if (slotVar.AsGodotObject() is GodotObject slotObj)
                     {
                         _bodyRedSlots.Add(slotObj);
@@ -521,7 +597,7 @@ public partial class NCaveGodBossBackground : Node2D
                 }
                 foreach (string name in BodyBlueSlotNames)
                 {
-                    Variant slotVar = skel.BoundObject.Call("find_slot", name);
+                    using Variant slotVar = skel.BoundObject.Call("find_slot", name);
                     if (slotVar.AsGodotObject() is GodotObject slotObj)
                     {
                         _bodyBlueSlots.Add(slotObj);
@@ -529,8 +605,10 @@ public partial class NCaveGodBossBackground : Node2D
                 }
             }
 
-            sprite.ConnectBeforeWorldTransformsChange(Callable.From((Variant _) =>
+            _bodyBeforeTransformsCallable = Callable.From((Variant _) =>
             {
+                if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _presentationEnded)
+                    return;
                 ApplyAnimatedHandPose(sprite, foreground: false);
                 // 1. Permanently mask ALL arm/hand/shoulder slots on background body pass
                 // Under NO circumstances should _bodyNode EVER render any arm geometry!
@@ -560,7 +638,9 @@ public partial class NCaveGodBossBackground : Node2D
                         }
                     }
                 }
-            }));
+            });
+            sprite.ConnectBeforeWorldTransformsChange(_bodyBeforeTransformsCallable);
+            _bodyTransformsConnected = true;
             Log.Info($"[CaveGodBackground] Body skeleton initialized: {_bodyMaskArmSlots.Count} arm slots masked transparent, {_bodyRedSlots.Count} red slots tracked.");
         });
     }
@@ -569,14 +649,22 @@ public partial class NCaveGodBossBackground : Node2D
     {
         this.RunWhenSpineReady(sprite, state =>
         {
+            if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _presentationEnded ||
+                !GodotObject.IsInstanceValid(sprite.BoundObject))
+            {
+                return;
+            }
+
             ObserveMainAnimation(sprite, foreground: true);
             state.SetAnimation("idle_front", loop: true, MainTrack);
+            if (_isCriticalTremor)
+                ApplyCriticalTremorToSprite(sprite, true);
             MegaSkeleton? skel = sprite.GetSkeleton();
             if (skel != null)
             {
                 foreach (string name in BodySlotNames)
                 {
-                    Variant slotVar = skel.BoundObject.Call("find_slot", name);
+                    using Variant slotVar = skel.BoundObject.Call("find_slot", name);
                     if (slotVar.AsGodotObject() is GodotObject slotObj)
                     {
                         _armsMaskBodySlots.Add(slotObj);
@@ -584,7 +672,7 @@ public partial class NCaveGodBossBackground : Node2D
                 }
                 foreach (string name in ArmRedSlotNames)
                 {
-                    Variant slotVar = skel.BoundObject.Call("find_slot", name);
+                    using Variant slotVar = skel.BoundObject.Call("find_slot", name);
                     if (slotVar.AsGodotObject() is GodotObject slotObj)
                     {
                         _armsRedSlots.Add(slotObj);
@@ -592,7 +680,7 @@ public partial class NCaveGodBossBackground : Node2D
                 }
                 foreach (string name in ArmBlueSlotNames)
                 {
-                    Variant slotVar = skel.BoundObject.Call("find_slot", name);
+                    using Variant slotVar = skel.BoundObject.Call("find_slot", name);
                     if (slotVar.AsGodotObject() is GodotObject slotObj)
                     {
                         _armsBlueSlots.Add(slotObj);
@@ -600,40 +688,54 @@ public partial class NCaveGodBossBackground : Node2D
                 }
             }
 
-            sprite.ConnectBeforeWorldTransformsChange(Callable.From((Variant _) =>
+            _armsBeforeTransformsCallable = Callable.From((Variant _) =>
             {
+                if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _presentationEnded)
+                    return;
                 ApplyAnimatedHandPose(sprite, foreground: true);
                 // 1. Permanently mask ALL body/head/neck/horns/chest slots on foreground arms pass
                 // Under NO circumstances should _armsNode EVER render any body geometry!
                 for (int i = 0; i < _armsMaskBodySlots.Count; i++)
                 {
-                    _armsMaskBodySlots[i].Call("set_attachment", default(Variant));
-                    _armsMaskBodySlots[i].Call("set_color", TransparentColor);
-                }
+                        _armsMaskBodySlots[i].Call("set_attachment", default(Variant));
+                        _armsMaskBodySlots[i].Call("set_color", TransparentColor);
+                    }
 
-                // 2. Strict phase slot isolation (when not dynamically cross-fading during transformation)
-                if (!_isTransforming)
+                    // 2. Strict phase slot isolation (when not dynamically cross-fading during transformation)
+                    if (!_isTransforming)
+                    {
+                        if (_isAngry)
+                        {
+                            for (int i = 0; i < _armsBlueSlots.Count; i++)
+                            {
+                                _armsBlueSlots[i].Call("set_attachment", default(Variant));
+                                _armsBlueSlots[i].Call("set_color", TransparentColor);
+                            }
+                        }
+                        else
+                        {
+                            for (int i = 0; i < _armsRedSlots.Count; i++)
+                            {
+                                _armsRedSlots[i].Call("set_attachment", default(Variant));
+                                _armsRedSlots[i].Call("set_color", TransparentColor);
+                            }
+                        }
+                    }
+                });
+                _armsWorldTransformsCallable = Callable.From((Variant _) =>
                 {
-                    if (_isAngry)
-                    {
-                        for (int i = 0; i < _armsBlueSlots.Count; i++)
-                        {
-                            _armsBlueSlots[i].Call("set_attachment", default(Variant));
-                            _armsBlueSlots[i].Call("set_color", TransparentColor);
-                        }
-                    }
-                    else
-                    {
-                        for (int i = 0; i < _armsRedSlots.Count; i++)
-                        {
-                            _armsRedSlots[i].Call("set_attachment", default(Variant));
-                            _armsRedSlots[i].Call("set_color", TransparentColor);
-                        }
-                    }
-                }
-            }));
-            sprite.ConnectWorldTransformsChanged(Callable.From((Variant _) => UpdateStolenCardPositions()));
-            Log.Info($"[CaveGodBackground] Arms skeleton initialized: {_armsMaskBodySlots.Count} body slots masked transparent, {_armsRedSlots.Count} red slots tracked, {_armsBlueSlots.Count} blue slots tracked.");
+                    if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _presentationEnded)
+                        return;
+                    UpdateFrontFistOverlay();
+                    UpdateStolenCardPositions();
+                });
+                sprite.ConnectBeforeWorldTransformsChange(_armsBeforeTransformsCallable);
+                sprite.ConnectWorldTransformsChanged(_armsWorldTransformsCallable);
+                _armsTransformsConnected = true;
+                sprite.BoundObject.Call("update_skeleton", 0f);
+                if (NCombatRoom.Instance is { } room && GodotObject.IsInstanceValid(room))
+                    UpdateHandAnchors(room.CreatureNodes);
+                Log.Info($"[CaveGodBackground] Arms skeleton initialized: {_armsMaskBodySlots.Count} body slots masked transparent, {_armsRedSlots.Count} red slots tracked, {_armsBlueSlots.Count} blue slots tracked.");
         });
     }
 
@@ -680,11 +782,48 @@ public partial class NCaveGodBossBackground : Node2D
             return;
 
         _isAngry = angry;
+        if (!angry && _isCriticalTremor)
+            SetCriticalTremor(false);
         string targetIdle = _isAngry ? "idle_front_angry" : "idle_front";
 
         SetTrackAnimationBoth(targetIdle, loop: true, MainTrack);
         UpdateBackgroundPhaseImmediate(angry);
         Log.Info($"[CaveGodBackground] CaveGod transitioned to {(angry ? "ANGRY" : "NORMAL")} idle ({targetIdle}).");
+    }
+
+    public void SetCriticalTremor(bool active)
+    {
+        if (_presentationEnded || _isRetreating || !_isAngry)
+            active = false;
+        if (_isCriticalTremor == active)
+            return;
+
+        _isCriticalTremor = active;
+        ApplyCriticalTremorToSprite(_bodyController, active);
+        ApplyCriticalTremorToSprite(_armsController, active);
+    }
+
+    private void ApplyCriticalTremorToSprite(MegaSprite? sprite, bool active)
+    {
+        MegaAnimationState? state = sprite?.TryGetAnimationState();
+        if (state == null) return;
+        if (active && HasBossAnimation(sprite, "critical_tremor"))
+        {
+            state.SetAnimation("critical_tremor", true, TremorTrack);
+            using var scope = TrackEntryScope(state.GetCurrent(TremorTrack), out MegaTrackEntry? track);
+            if (track != null)
+            {
+                track.BoundObject.Call("set_mix_blend", SpineMixBlendAdd);
+                track.BoundObject.Call("set_alpha", 1f);
+                track.SetMixDuration(0.25f);
+            }
+        }
+        else
+        {
+            using (state.BoundObject.Call("set_empty_animation", TremorTrack, 0.2f))
+            {
+            }
+        }
     }
 
     /// <summary>
@@ -723,19 +862,19 @@ public partial class NCaveGodBossBackground : Node2D
             Log.Info($"[CaveGodBackground] Started authentic transformation animation 'main_angry' (speed={AnimSpeed}x, duration={11.2f / AnimSpeed:F2}s).");
 
             // Segment 1 (0.0s -> 3.07s real time): Boss shifts and channels magma core
-            SfxCmd.Play("event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp");
+            SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
             NGame.Instance?.ScreenShake(ShakeStrength.Weak, ShakeDuration.Long);
             await Cmd.Wait(4.60f / AnimSpeed, _cts.Token);
 
             // Segment 2 (t = 4.60s Spine = 3.07s real): Eyes ignite with blazing molten glow
             // Start background crossfade from icy blue to fiery red over 2.0s
             StartBackgroundCrossfade(durationSeconds: 2.0f);
-            SfxCmd.Play("event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_kick");
+            SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
             NGame.Instance?.ScreenShake(ShakeStrength.Medium, ShakeDuration.Short);
             await Cmd.Wait((5.33f - 4.60f) / AnimSpeed, _cts.Token);
 
             // Segment 3 (t = 5.33s Spine = 3.55s real): Colossal roar upwards! Magma veins burst forth!
-            SfxCmd.Play("event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_eruption");
+            NativeSfxPlayer.Play("res://sfx/cave_god/anger_roar.mp3", volumeDb: 2f);
             NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Long);
             Control? vfxContainer = NCombatRoom.Instance?.CombatVfxContainer;
             if (vfxContainer != null)
@@ -745,7 +884,8 @@ public partial class NCaveGodBossBackground : Node2D
             await Cmd.Wait((7.00f - 5.33f) / AnimSpeed, _cts.Token);
 
             // Segment 4 (t = 7.00s Spine = 4.67s real): Brutal body slam / shockwave thrashes across basalt floor
-            SfxCmd.Play("event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp");
+            NativeSfxPlayer.Play("res://sfx/cave_god/rock_punch.mp3", volumeDb: 2f);
+            SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
             NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Normal);
             await Cmd.Wait((11.20f - 7.00f) / AnimSpeed, _cts.Token);
 
@@ -770,8 +910,8 @@ public partial class NCaveGodBossBackground : Node2D
 
     private void SetTimeScaleBoth(float scale)
     {
-        _bodyController?.GetAnimationState()?.SetTimeScale(scale);
-        _armsController?.GetAnimationState()?.SetTimeScale(scale);
+        _bodyController?.TryGetAnimationState()?.SetTimeScale(scale);
+        _armsController?.TryGetAnimationState()?.SetTimeScale(scale);
     }
 
     /// <summary>
@@ -795,24 +935,34 @@ public partial class NCaveGodBossBackground : Node2D
             _armsNode.Scale = new Vector2(1.3f, 1.3f);
         }
 
-        if (animBase.StartsWith("grab_player") || animBase.StartsWith("grab_slam"))
+        if (animBase.StartsWith("grab_player", StringComparison.Ordinal) ||
+            animBase.StartsWith("grab_slam", StringComparison.Ordinal))
         {
-            _isRightGrab = isFlipped || animBase.Contains("right");
+            _isRightGrab = isFlipped || animBase.Contains("right", StringComparison.Ordinal);
         }
 
         if (isFlipped)
         {
-            if (animBase == "front_sweep") animBase = "front_sweep_right";
-            else if (animBase == "front_sweep_angry") animBase = "front_sweep_right_angry";
-            else if (animBase == "grab_player") animBase = "grab_player_right";
-            else if (animBase == "grab_player_angry") animBase = "grab_player_right_angry";
-            else if (animBase == "grab_slam") animBase = "grab_slam_right";
-            else if (animBase == "grab_slam_angry") animBase = "grab_slam_right_angry";
-            else if (animBase == "leftpunch") animBase = "rightpunch";
-            else if (animBase == "weak_attack") animBase = "weak_attack_right";
-            else if (animBase == "weak_enter") animBase = "weak_enter_right";
-            else if (animBase == "weak_idle") animBase = "weak_idle_right";
-            else if (animBase == "weak_recover") animBase = "weak_recover_right";
+            animBase = animBase switch
+            {
+                "alternating_jabs" => "alternating_jabs_right",
+                "alternating_jabs_angry" => "alternating_jabs_right_angry",
+                "card_snatch" => "card_snatch_right",
+                "card_snatch_angry" => "card_snatch_right_angry",
+                "front_sweep" => "front_sweep_right",
+                "front_sweep_angry" => "front_sweep_right_angry",
+                "grab_player" => "grab_player_right",
+                "grab_player_angry" => "grab_player_right_angry",
+                "grab_slam" => "grab_slam_right",
+                "grab_slam_angry" => "grab_slam_right_angry",
+                "leftpunch" => "rightpunch",
+                "leftpunch_angry" => "rightpunch_angry",
+                "weak_attack" => "weak_attack_right",
+                "weak_enter" => "weak_enter_right",
+                "weak_idle" => "weak_idle_right",
+                "weak_recover" => "weak_recover_right",
+                _ => animBase
+            };
         }
 
         string anim = animBase;
@@ -855,29 +1005,85 @@ public partial class NCaveGodBossBackground : Node2D
         }
     }
 
-    /// <summary>Wait for an absolute animation frame, including time spent inside native damage commands.</summary>
-    public async Task WaitForAttackFrame(string animBase, float frameTime, float fallbackDelay)
+    /// <summary>Wait deterministically for a combat attack beat, then commit the authored contact pose locally.</summary>
+    public async Task WaitForAttackFrame(string animBase, float frameTime, float fallbackDelay, bool subtractPreviousDamageWait = false)
     {
-        float remaining = fallbackDelay;
-        using (TrackEntryScope(_armsController?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? current))
+        bool liveSpineClock = IsInsideTree() &&
+                              IsProcessing() &&
+                              !NonInteractiveMode.IsActive &&
+                              !CombatManager.Instance.IsEnding &&
+                              SaveManager.Instance?.PrefsSave?.FastMode != FastModeType.Instant;
+
+        if (liveSpineClock)
         {
-            if (current != null && current.GetAnimationName().StartsWith(animBase, StringComparison.Ordinal))
-                remaining = Math.Max(0f, frameTime - current.GetTrackTime());
+            float currentTrackTime = -1f;
+            using (TrackEntryScope((_armsController ?? _bodyController)?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? liveEntry))
+            {
+                if (liveEntry != null)
+                {
+                    string currentAnim = liveEntry.GetAnimationName();
+                    if (currentAnim.StartsWith(animBase, StringComparison.Ordinal) ||
+                        (animBase == "leftpunch" && currentAnim.StartsWith("rightpunch", StringComparison.Ordinal)))
+                    {
+                        currentTrackTime = liveEntry.GetTrackTime();
+                    }
+                }
+            }
+
+            if (currentTrackTime >= 0f)
+            {
+                float remaining = frameTime - currentTrackTime;
+                if (remaining > 0.012f)
+                    await Cmd.Wait(remaining - 0.008f);
+                int guardFrames = 0;
+                while (IsInsideTree() && IsProcessing() && !_presentationEnded && !CombatManager.Instance.IsEnding && guardFrames++ < 24)
+                {
+                    using var checkScope = TrackEntryScope((_armsController ?? _bodyController)?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? checkEntry);
+                    if (checkEntry == null) break;
+                    string currentAnim = checkEntry.GetAnimationName();
+                    bool matches = currentAnim.StartsWith(animBase, StringComparison.Ordinal) ||
+                                   (animBase == "leftpunch" && currentAnim.StartsWith("rightpunch", StringComparison.Ordinal));
+                    if (!matches || checkEntry.GetTrackTime() >= frameTime - 0.004f)
+                        break;
+                    await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                }
+            }
+            else if (subtractPreviousDamageWait)
+            {
+                await Cmd.CustomScaledWait(Math.Max(0f, fallbackDelay - 0.1f), Math.Max(0f, fallbackDelay - 0.2f));
+            }
+            else
+            {
+                await Cmd.Wait(Math.Max(0f, fallbackDelay));
+            }
         }
-        await Cmd.Wait(remaining);
+        else if (subtractPreviousDamageWait)
+        {
+            await Cmd.CustomScaledWait(Math.Max(0f, fallbackDelay - 0.1f), Math.Max(0f, fallbackDelay - 0.2f));
+        }
+        else
+        {
+            await Cmd.Wait(Math.Max(0f, fallbackDelay));
+        }
+
         // Instant/skip-wait modes may resolve without advancing the rendered
         // timeline. Show the contact pose before spawning that hit's effects.
         foreach (var (sprite, controller) in new[] { (_bodyNode, _bodyController), (_armsNode, _armsController) })
         {
             using var scope = TrackEntryScope(controller?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? entry);
-            if (sprite != null && entry != null && entry.GetAnimationName().StartsWith(animBase, StringComparison.Ordinal) &&
-                entry.GetTrackTime() < frameTime)
+            if (sprite != null && entry != null)
             {
-                // A seek without elapsed time also has to finish the incoming
-                // blend; otherwise instant mode keeps the previous idle pose.
-                entry.SetMixDuration(0f);
-                entry.SetTrackTime(frameTime);
-                sprite.Call("update_skeleton", 0f);
+                string currentAnim = entry.GetAnimationName();
+                bool matchesAnim = currentAnim.StartsWith(animBase, StringComparison.Ordinal) ||
+                                   (animBase == "leftpunch" && currentAnim.StartsWith("rightpunch", StringComparison.Ordinal));
+                if (matchesAnim && entry.GetTrackTime() < frameTime)
+                {
+                    // A seek without elapsed time also has to finish the incoming
+                    // blend; otherwise instant mode keeps the previous idle pose.
+                    entry.SetMixDuration(0f);
+                    entry.SetTrackTime(frameTime);
+                    sprite.Call("update_skeleton", 0f);
+                }
             }
         }
     }
@@ -905,7 +1111,7 @@ public partial class NCaveGodBossBackground : Node2D
         AddTrackAnimationBoth(idleAnim, delay: 0f, loop: true, MainTrack);
         _isWeakIdle = true;
 
-        SfxCmd.Play("event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp");
+        SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
         NGame.Instance?.ScreenShake(ShakeStrength.Weak, ShakeDuration.Short);
 
         try
@@ -913,7 +1119,7 @@ public partial class NCaveGodBossBackground : Node2D
             // 0.85s: ground thud impact
             await Cmd.Wait(0.85f, _cts.Token);
             NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Short);
-            SfxCmd.Play("event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_eruption");
+            NativeSfxPlayer.Play("res://sfx/cave_god/toss_impact.mp3", volumeDb: 2f);
 
             // Remaining enter settle time: 2.20s - 0.85s = 1.35s
             await Cmd.Wait(1.35f, _cts.Token);
@@ -968,7 +1174,7 @@ public partial class NCaveGodBossBackground : Node2D
         {
             // 0.45s: push ground
             await Cmd.Wait(0.45f, _cts.Token);
-            SfxCmd.Play("event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp");
+            SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
 
             // 1.20s: apex rise (0.75s later)
             await Cmd.Wait(0.75f, _cts.Token);
@@ -984,7 +1190,7 @@ public partial class NCaveGodBossBackground : Node2D
         }
     }
 
-    public void PlayHurtAnim(bool forceGroan = false, Vector2? hitPos = null)
+    public void PlayHurtAnim(bool forceGroan = false, Vector2? hitPos = null, bool allowGroan = true)
     {
         if (_isRetreating)
         {
@@ -1003,8 +1209,8 @@ public partial class NCaveGodBossBackground : Node2D
             // During grab tracking, DO NOT play hit_recoil on Track 1!
             // hit_recoil overwrites arm bones and the player_grab bone, causing violent twitching/spasms
             // while the giant stone hand is holding the player in mid-air.
-            // Instead, play stone flash, rock debris VFX, stone impact sound, and screen shake!
-            PlayGrabHurtFeedback(hitPos, forceGroan);
+            // Instead, play stone flash, rock debris VFX, and subtle shake!
+            PlayGrabHurtFeedback(hitPos, forceGroan, allowGroan);
             return;
         }
 
@@ -1012,15 +1218,16 @@ public partial class NCaveGodBossBackground : Node2D
         {
             string hurtAnim = _isAngry ? "hit_recoil_angry" : "hit_recoil";
             SetHurtTrackAnimationBoth(hurtAnim);
-            PlayHurtGroan(forceGroan);
+            if (allowGroan)
+                PlayHurtGroan(forceGroan);
         }
         else
         {
-            PlayWeakHurtAnim(hitPos, forceGroan);
+            PlayWeakHurtAnim(hitPos, forceGroan, allowGroan);
         }
     }
 
-    public void PlayGrabHurtFeedback(Vector2? hitPos = null, bool forceGroan = false)
+    public void PlayGrabHurtFeedback(Vector2? hitPos = null, bool forceGroan = false, bool allowGroan = true)
     {
         // 1. Rock Shatter Particle VFX at hit position
         Control? vfxContainer = NCombatRoom.Instance?.CombatVfxContainer;
@@ -1048,78 +1255,21 @@ public partial class NCaveGodBossBackground : Node2D
             _weakFlashTween.TweenProperty(_armsNode, "modulate", Colors.White, 0.12f);
         }
 
-        // 3. Audio & Shake
-        SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
+        // 3. Shake & optional groan (native TakeDamageSfxType => DamageSfxType.Stone already plays impact SFX)
         NGame.Instance?.ScreenShake(ShakeStrength.Weak, ShakeDuration.Short);
-        PlayHurtGroan(forceGroan);
-    }
-
-    /// <summary>
-    /// 晶簇崩发 wind-up. Reuses the central_slam body motion (it has an _angry palette twin)
-    /// and charges both rigs toward a crystal glow that peaks on the impact frame.
-    /// </summary>
-    public void StartCrystalBurstAnim()
-    {
-        StartAttackAnim("central_slam");
-        if (_isRetreating || _bodyNode == null || _armsNode == null) return;
-        Color charge = _isAngry ? CrystalChargeAngry : CrystalCharge;
-        _crystalTween?.Kill();
-        _crystalTween = CreateTween().SetParallel().SetEase(Tween.EaseType.In).SetTrans(Tween.TransitionType.Sine);
-        _crystalTween.TweenProperty(_bodyNode, "modulate", charge, CaveGodAnimTiming.CentralSlamHit);
-        _crystalTween.TweenProperty(_armsNode, "modulate", charge, CaveGodAnimTiming.CentralSlamHit);
-        NGame.Instance?.ScreenShake(ShakeStrength.Weak, ShakeDuration.Long);
-    }
-
-    /// <summary>Impact frame of 晶簇崩发: crystal debris erupts across the whole stage.</summary>
-    public void PlayCrystalBurstImpact()
-    {
-        NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Normal);
-        Control? vfxContainer = NCombatRoom.Instance?.CombatVfxContainer;
-        if (vfxContainer != null)
-        {
-            foreach (Vector2 pos in new[] { new Vector2(640f, 640f), new Vector2(983f, 600f), new Vector2(1320f, 640f) })
-                VfxCmd.PlayVfx(pos, VfxCmd.rockShatterPath, vfxContainer);
-        }
-        FadeCrystalGlow(0.45f);
-    }
-
-    /// <summary>崩落裂痕 paid off: the exposed core cracks open with a hot flash.</summary>
-    public void PlayFissureBreak()
-    {
-        if (_isRetreating) return;
-        SfxCmd.Play("event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_eruption");
-        NGame.Instance?.ScreenShake(ShakeStrength.Medium, ShakeDuration.Short);
-        Control? vfxContainer = NCombatRoom.Instance?.CombatVfxContainer;
-        if (vfxContainer != null)
-        {
-            foreach (Vector2 pos in new[] { new Vector2(900f, 600f), new Vector2(983f, 560f), new Vector2(1066f, 600f) })
-                VfxCmd.PlayVfx(pos, VfxCmd.rockShatterPath, vfxContainer);
-        }
-        if (_bodyNode != null)
-        {
-            _bodyNode.Modulate = new Color(1.8f, 1.2f, 0.8f, 1f);
-            FadeCrystalGlow(0.35f);
-        }
-    }
-
-    private void FadeCrystalGlow(float seconds)
-    {
-        if (_bodyNode == null || _armsNode == null) return;
-        _crystalTween?.Kill();
-        _crystalTween = CreateTween().SetParallel().SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Quad);
-        _crystalTween.TweenProperty(_bodyNode, "modulate", Colors.White, seconds);
-        _crystalTween.TweenProperty(_armsNode, "modulate", Colors.White, seconds);
+        if (allowGroan)
+            PlayHurtGroan(forceGroan);
     }
 
     /// <summary>
     /// Plays the authentic Living Megalith prone hurt feedback:
     /// 1. Rock shatter particle VFX (vfx_rock_shatter) bursting with stone debris & dust;
     /// 2. Heavy body stone flash (magma red/gold if angry, pale granite white if normal);
-    /// 3. Crisp ground thud impulse tween (Y-axis downward stomp 7px + spring-back in 0.15s);
-    /// 4. Heavy stone impact sound + low guttural hurt groan.
+    /// 3. Grounded thud impulse tween (Y-axis downward compression 5px + monotonic settle in 0.14s, zero upward bounce);
+    /// 4. Optional low guttural hurt groan.
     /// Does NOT mix upright hit_recoil animation, completely preventing prone posture twisting.
     /// </summary>
-    public void PlayWeakHurtAnim(Vector2? hitPos = null, bool forceGroan = false)
+    public void PlayWeakHurtAnim(Vector2? hitPos = null, bool forceGroan = false, bool allowGroan = true)
     {
         if (_isRetreating)
         {
@@ -1150,29 +1300,25 @@ public partial class NCaveGodBossBackground : Node2D
             _weakFlashTween.TweenProperty(_armsNode, "modulate", Colors.White, 0.14f);
         }
 
-        // 3. Ground Thud Impulse (Downward stomp & spring rebound on stone floor)
+        // 3. Ground Thud Impulse (heavy downward crush & monotonic settle on stone floor — zero elastic upward bounce)
         if (_bodyNode != null && _armsNode != null)
         {
             _weakHurtTween?.Kill();
             _weakHurtTween = CreateTween().SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Quad);
 
-            // 0.04s: Heavy impact crushes body down 7px
-            _weakHurtTween.TweenProperty(_bodyNode, "position:y", 22f, 0.04f);
-            _weakHurtTween.Parallel().TweenProperty(_armsNode, "position:y", 22f, 0.04f);
+            // 0.04s: Heavy impact crushes body down 5px
+            _weakHurtTween.TweenProperty(_bodyNode, "position:y", 20f, 0.04f);
+            _weakHurtTween.Parallel().TweenProperty(_armsNode, "position:y", 20f, 0.04f);
 
-            // 0.06s: Elastic rebound rises slightly above resting baseline
-            _weakHurtTween.Chain().TweenProperty(_bodyNode, "position:y", 13f, 0.06f);
-            _weakHurtTween.Parallel().TweenProperty(_armsNode, "position:y", 13f, 0.06f);
-
-            // 0.05s: Smoothly settles back to resting baseline (15f)
-            _weakHurtTween.Chain().TweenProperty(_bodyNode, "position:y", 15f, 0.05f);
-            _weakHurtTween.Parallel().TweenProperty(_armsNode, "position:y", 15f, 0.05f);
+            // 0.10s: Settles monotonically back to resting baseline (15f)
+            _weakHurtTween.Chain().TweenProperty(_bodyNode, "position:y", 15f, 0.10f);
+            _weakHurtTween.Parallel().TweenProperty(_armsNode, "position:y", 15f, 0.10f);
         }
 
-        // 4. SFX & Screen Shake
-        SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
+        // 4. Screen Shake & optional groan (native TakeDamageSfxType => DamageSfxType.Stone already plays impact SFX)
         NGame.Instance?.ScreenShake(ShakeStrength.Weak, ShakeDuration.Short);
-        PlayHurtGroan(forceGroan);
+        if (allowGroan)
+            PlayHurtGroan(forceGroan);
     }
 
     /// <summary>Spine MixBlend.add: hit_recoil stores pure flinch deltas from the rest pose.</summary>
@@ -1203,18 +1349,18 @@ public partial class NCaveGodBossBackground : Node2D
     public void PlayHurtGroan(bool force = false)
     {
         ulong now = Time.GetTicksMsec();
-        if (!force && now - _lastGroanTicks < GroanCooldownMs)
+        if (!force && (now - _lastGroanTicks < GroanCooldownMs || !NativeSfxPlayer.RollChance(GroanChance)))
         {
             return;
         }
 
         _lastGroanTicks = now;
-        int variant = (int)(now % 5) + 1;
-        NativeSfxPlayer.Play($"res://sfx/cave_god/cave_god_hurt-{variant:D2}.wav", volumeDb: 6f);
+        NativeSfxPlayer.Play("res://sfx/cave_god/cave_god_hurt", volumeDb: 2f);
     }
 
     public void PlayBodyDeathAnim()
     {
+        SetCriticalTremor(false);
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
@@ -1223,6 +1369,7 @@ public partial class NCaveGodBossBackground : Node2D
         {
             RestoreCapturedPlayersInstantly();
         }
+        HideFrontFistOverlay();
 
         _isRetreating = true;
         _weakHurtTween?.Kill();
@@ -1292,13 +1439,14 @@ public partial class NCaveGodBossBackground : Node2D
         }
 
         NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Normal);
-        SfxCmd.Play("event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_knockout");
+        NativeSfxPlayer.Play("res://sfx/cave_god/rock_death.mp3", volumeDb: 2f, allowCombatEnding: true);
 
         Log.Info($"[CaveGodBackground] Playing authentic retreat death animation '{hideAnim}' (speed={Speed}x, duration={7.2f / Speed:F2}s, ZIndex=-1 behind floor).");
     }
 
     private void SetTrackAnimationBoth(string animName, bool loop, int track)
     {
+        float mixDuration = loop ? 0.30f : 0.12f;
         MegaAnimationState? bodyState = _bodyController?.TryGetAnimationState();
         MegaAnimationState? armsState = _armsController?.TryGetAnimationState();
 
@@ -1307,7 +1455,7 @@ public partial class NCaveGodBossBackground : Node2D
             bodyState.SetAnimation(animName, loop, track);
             using (TrackEntryScope(bodyState.GetCurrent(track), out MegaTrackEntry? entry))
             {
-                entry?.SetMixDuration(0.3f);
+                entry?.SetMixDuration(mixDuration);
             }
         }
         if (armsState != null && HasBossAnimation(_armsController, animName))
@@ -1315,7 +1463,7 @@ public partial class NCaveGodBossBackground : Node2D
             armsState.SetAnimation(animName, loop, track);
             using (TrackEntryScope(armsState.GetCurrent(track), out MegaTrackEntry? entry))
             {
-                entry?.SetMixDuration(0.3f);
+                entry?.SetMixDuration(mixDuration);
             }
         }
     }
@@ -1343,13 +1491,15 @@ public partial class NCaveGodBossBackground : Node2D
 
     /// <summary>
     /// Starts real-time bone tracking for grabbed players.
-    /// Captures players, elevates CaveGodArms ZIndex above player stage, and locks player
-    /// positions frame-by-frame to the 'player_grab' bone as it lifts from ground to sky.
+    /// Uses a 2.5D sandwich occlusion stack:
+    /// - CaveGodArms remains at relative ZIndex 2 (global -18, behind captives so forearm &amp; back-of-hand stay behind);
+    /// - Captured players render at global ZIndex -17 (emerging out the top of the clenched fist pocket);
+    /// - FrontFistOverlay renders the Spine-weighted curled fingers &amp; thumb at global ZIndex -16 in front of captives.
     /// </summary>
     public void StartGrabTracking(IReadOnlyList<Creature> targets, bool isFlipped = false)
     {
         if (_presentationEnded) return;
-        _isRightGrab = _isRightGrab || isFlipped;
+        _isRightGrab = isFlipped;
         _capturedPlayers.Clear();
         NCombatRoom? combatRoom = NCombatRoom.Instance;
         if (combatRoom == null) return;
@@ -1358,7 +1508,7 @@ public partial class NCaveGodBossBackground : Node2D
         if (armsNode != null)
         {
             armsNode.ZAsRelative = true;
-            armsNode.ZIndex = 5;
+            armsNode.ZIndex = ArmsZIndex;
             armsNode.Scale = new Vector2(1.3f, 1.3f);
         }
 
@@ -1369,7 +1519,7 @@ public partial class NCaveGodBossBackground : Node2D
             {
                 _capturedPlayers.Add((node, node.Position, node.Rotation, node.Scale));
                 node.ZAsRelative = false;
-                node.ZIndex = BackgroundZIndex + 3;
+                node.ZIndex = CapturedPlayerZIndex;
                 if (node.Entity.IsAlive) node.SetAnimationTrigger("Hit");
             }
         }
@@ -1377,7 +1527,8 @@ public partial class NCaveGodBossBackground : Node2D
         ElevateHandsUi(combatRoom);
 
         _isGrabTracking = true;
-        Log.Info($"[CaveGodBackground] Started real-time bone grab tracking for {_capturedPlayers.Count} players (isFlipped={isFlipped}).");
+        UpdateFrontFistOverlay();
+        Log.Info($"[CaveGodBackground] Started real-time 2.5D sandwich grab tracking for {_capturedPlayers.Count} players (isFlipped={isFlipped}).");
     }
 
     /// <summary>
@@ -1403,6 +1554,7 @@ public partial class NCaveGodBossBackground : Node2D
     {
         _isGrabTracking = false;
         _isSlamDescending = false;
+        HideFrontFistOverlay();
 
         if (_capturedPlayers.Count == 0) return;
         NCombatRoom? combatRoom = NCombatRoom.Instance;
@@ -1444,7 +1596,7 @@ public partial class NCaveGodBossBackground : Node2D
                 }
             }
 
-            SfxCmd.Play("event:/sfx/enemy/enemy_attacks/waterfall_giant/waterfall_giant_attack_stomp");
+            SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
             NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Long);
 
             // Hit-stop: hold the crushed pose so the impact registers before recovery starts.
@@ -1523,6 +1675,7 @@ public partial class NCaveGodBossBackground : Node2D
         _isGrabTracking = false;
         _isSlamDescending = false;
         _isRightGrab = false;
+        HideFrontFistOverlay();
         ResetHandsUi(NCombatRoom.Instance);
         if (!_isRetreating)
         {
@@ -1598,23 +1751,23 @@ public partial class NCaveGodBossBackground : Node2D
         if (total <= 1) return Vector2.Zero;
         if (total == 2)
         {
-            return index == 0 ? new Vector2(-40f, -10f) : new Vector2(40f, 10f);
+            return index == 0 ? new Vector2(-16f, -6f) : new Vector2(16f, 6f);
         }
         if (total == 3)
         {
             return index switch
             {
-                0 => new Vector2(0f, -35f),
-                1 => new Vector2(-45f, 15f),
-                _ => new Vector2(45f, 15f)
+                0 => new Vector2(0f, -20f),
+                1 => new Vector2(-20f, 10f),
+                _ => new Vector2(20f, 10f)
             };
         }
         return index switch
         {
-            0 => new Vector2(-35f, -30f),
-            1 => new Vector2(35f, -30f),
-            2 => new Vector2(-50f, 20f),
-            _ => new Vector2(50f, 20f)
+            0 => new Vector2(-18f, -18f),
+            1 => new Vector2(18f, -18f),
+            2 => new Vector2(-22f, 10f),
+            _ => new Vector2(22f, 10f)
         };
     }
 
@@ -1687,6 +1840,11 @@ public partial class NCaveGodBossBackground : Node2D
     public void AttachStolenCard(bool isLeft, CardModel card)
     {
         if (_presentationEnded) return;
+        if (isLeft)
+            _leftStolenCardCount++;
+        else
+            _rightStolenCardCount++;
+
         Marker2D? target = GetStolenCardPos(isLeft);
         if (target == null)
         {
@@ -1701,48 +1859,9 @@ public partial class NCaveGodBossBackground : Node2D
 
         if (target != null && GodotObject.IsInstanceValid(target))
         {
-            NCard? nCard = null;
-            bool wasTestMode = TestMode.IsOn;
-            if (wasTestMode)
-            {
-                TestMode.IsOn = false;
-            }
-            try
-            {
-                nCard = NCard.Create(card);
-            }
-            catch (Exception ex)
-            {
-                Log.Warn($"[CaveGodBackground] NCard.Create failed ({ex.Message}), falling back to direct instantiation.");
-            }
-            finally
-            {
-                if (wasTestMode)
-                {
-                    TestMode.IsOn = true;
-                }
-            }
-
-            if (nCard == null)
-            {
-                var cardScene = GD.Load<PackedScene>("res://scenes/cards/card.tscn");
-                if (cardScene != null)
-                {
-                    nCard = cardScene.Instantiate<NCard>();
-                }
-            }
-
+            NCard? nCard = CardPreviewVisualFactory.TryAttachPreview(target, card);
             if (nCard != null)
             {
-                target.AddChildSafely(nCard);
-                try
-                {
-                    nCard.Model = card;
-                }
-                catch (Exception ex)
-                {
-                    Log.Warn($"[CaveGodBackground] Setting NCard.Model threw {ex.Message}");
-                }
                 var heldCards = target.GetChildren().OfType<NCard>().ToArray();
                 for (int i = 0; i < heldCards.Length; i++)
                 {
@@ -1750,23 +1869,11 @@ public partial class NCaveGodBossBackground : Node2D
                     heldCards[i].Position = new Vector2(spread * 22f, Math.Abs(spread) * 5f);
                     heldCards[i].Rotation = spread * 0.07f;
                 }
-                try
-                {
-                    nCard.UpdateVisuals(PileType.Deck, CardPreviewMode.Normal);
-                }
-                catch (Exception ex)
-                {
-                    Log.Warn($"[CaveGodBackground] NCard.UpdateVisuals threw {ex.Message}");
-                }
-                target.Visible = true;
-                nCard.MouseFilter = Control.MouseFilterEnum.Ignore;
-                UpdateStolenCardPositions();
                 Log.Info($"[CaveGodBackground] Attached stolen card visual '{card.Id}' to {(isLeft ? "Left" : "Right")} hand.");
             }
-            else
-            {
-                Log.Warn($"[CaveGodBackground] Failed to instantiate NCard for stolen card '{card.Id}'.");
-            }
+
+            target.Visible = true;
+            UpdateStolenCardPositions();
         }
         else
         {
@@ -1776,27 +1883,34 @@ public partial class NCaveGodBossBackground : Node2D
 
     public void ClearStolenCard(bool isLeft)
     {
+        if (isLeft)
+            _leftStolenCardCount = 0;
+        else
+            _rightStolenCardCount = 0;
+
+        bool exiting = !GodotObject.IsInstanceValid(this) || !IsInsideTree();
         Marker2D? target = GetStolenCardPos(isLeft);
         if (target != null && GodotObject.IsInstanceValid(target))
         {
             foreach (Node child in target.GetChildren())
             {
-                child.QueueFreeSafely();
+                CardPreviewVisualFactory.ReturnPreviewSafely(child, parentExitingTree: exiting);
             }
             target.Visible = false;
         }
 
         NCombatRoom? room = NCombatRoom.Instance;
-        if (room != null)
+        if (room != null && GodotObject.IsInstanceValid(room))
         {
             NCreature? creature = room.CreatureNodes.FirstOrDefault(c =>
-                isLeft ? c.Entity?.Monster is ThingsCaveGodLeftHand : c.Entity?.Monster is ThingsCaveGodRightHand);
+                c != null && GodotObject.IsInstanceValid(c) &&
+                (isLeft ? c.Entity?.Monster is ThingsCaveGodLeftHand : c.Entity?.Monster is ThingsCaveGodRightHand));
             Marker2D? creatureMarker = creature?.GetSpecialNode<Marker2D>("%StolenCardPos");
             if (creatureMarker != null && GodotObject.IsInstanceValid(creatureMarker) && creatureMarker != target)
             {
                 foreach (Node child in creatureMarker.GetChildren())
                 {
-                    child.QueueFreeSafely();
+                    CardPreviewVisualFactory.ReturnPreviewSafely(child, parentExitingTree: exiting);
                 }
                 creatureMarker.Visible = false;
             }
@@ -1813,7 +1927,11 @@ public partial class NCaveGodBossBackground : Node2D
 
     private void UpdateStolenCardPositions()
     {
-        if (_armsController == null) return;
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _presentationEnded ||
+            _armsController == null || !GodotObject.IsInstanceValid(_armsController.BoundObject))
+        {
+            return;
+        }
 
         // 1. Left hand: bone "arm1_3" (with fallback to "fist1")
         Transform2D? leftHand = _armsController.GetGlobalBoneTransform("arm1_3")
@@ -1825,7 +1943,7 @@ public partial class NCaveGodBossBackground : Node2D
             Vector2 pos = leftHand.Value * new Vector2(160f, -5f);
             float rot = leftHand.Value.X.Angle() + MathF.PI / 2 - 0.12f;
             Marker2D? leftMarker = GetStolenCardPos(true);
-            if (leftMarker != null && GodotObject.IsInstanceValid(leftMarker))
+            if (leftMarker != null && GodotObject.IsInstanceValid(leftMarker) && leftMarker.IsInsideTree())
             {
                 leftMarker.GlobalPosition = pos;
                 leftMarker.GlobalRotation = rot;
@@ -1835,11 +1953,12 @@ public partial class NCaveGodBossBackground : Node2D
             }
 
             NCombatRoom? room = NCombatRoom.Instance;
-            if (room != null)
+            if (room != null && GodotObject.IsInstanceValid(room))
             {
-                NCreature? leftCreature = room.CreatureNodes.FirstOrDefault(c => c.Entity?.Monster is ThingsCaveGodLeftHand);
+                NCreature? leftCreature = room.CreatureNodes.FirstOrDefault(c =>
+                    c != null && GodotObject.IsInstanceValid(c) && c.Entity?.Monster is ThingsCaveGodLeftHand);
                 Marker2D? creatureMarker = leftCreature?.GetSpecialNode<Marker2D>("%StolenCardPos");
-                if (creatureMarker != null && GodotObject.IsInstanceValid(creatureMarker))
+                if (creatureMarker != null && GodotObject.IsInstanceValid(creatureMarker) && creatureMarker.IsInsideTree())
                 {
                     creatureMarker.GlobalPosition = pos;
                     creatureMarker.GlobalRotation = rot;
@@ -1859,7 +1978,7 @@ public partial class NCaveGodBossBackground : Node2D
             Vector2 pos = rightHand.Value * new Vector2(160f, 5f);
             float rot = rightHand.Value.X.Angle() + MathF.PI / 2 + 0.12f;
             Marker2D? rightMarker = GetStolenCardPos(false);
-            if (rightMarker != null && GodotObject.IsInstanceValid(rightMarker))
+            if (rightMarker != null && GodotObject.IsInstanceValid(rightMarker) && rightMarker.IsInsideTree())
             {
                 rightMarker.GlobalPosition = pos;
                 rightMarker.GlobalRotation = rot;
@@ -1869,11 +1988,12 @@ public partial class NCaveGodBossBackground : Node2D
             }
 
             NCombatRoom? room = NCombatRoom.Instance;
-            if (room != null)
+            if (room != null && GodotObject.IsInstanceValid(room))
             {
-                NCreature? rightCreature = room.CreatureNodes.FirstOrDefault(c => c.Entity?.Monster is ThingsCaveGodRightHand);
+                NCreature? rightCreature = room.CreatureNodes.FirstOrDefault(c =>
+                    c != null && GodotObject.IsInstanceValid(c) && c.Entity?.Monster is ThingsCaveGodRightHand);
                 Marker2D? creatureMarker = rightCreature?.GetSpecialNode<Marker2D>("%StolenCardPos");
-                if (creatureMarker != null && GodotObject.IsInstanceValid(creatureMarker))
+                if (creatureMarker != null && GodotObject.IsInstanceValid(creatureMarker) && creatureMarker.IsInsideTree())
                 {
                     creatureMarker.GlobalPosition = pos;
                     creatureMarker.GlobalRotation = rot;
@@ -1883,5 +2003,345 @@ public partial class NCaveGodBossBackground : Node2D
                 }
             }
         }
+    }
+
+    private readonly record struct FistVertexWeight(int LocalBone, float Vx, float Vy, float Weight);
+    private readonly record struct BoneWorldMatrix(float A, float B, float C, float D, float WorldX, float WorldY);
+    private sealed record FistBoneRig(
+        GodotObject Arm1_2,
+        GodotObject Arm1_3,
+        GodotObject Fist1,
+        GodotObject Arm2_2,
+        GodotObject Arm2_3,
+        GodotObject Fist2);
+    private sealed record FistMesh(Vector2[] Uvs, Godot.Collections.Array Polygons, FistVertexWeight[][] Weights);
+    private sealed record FistOverlayAssets(
+        FistMesh LeftMesh,
+        FistMesh RightMesh,
+        ImageTexture LeftTexture,
+        ImageTexture RightTexture);
+
+    private static FistOverlayAssets? _fistOverlayAssets;
+    private static bool _fistOverlayAssetsAttempted;
+
+    private void HideFrontFistOverlay()
+    {
+        if (_frontFistOverlay != null && GodotObject.IsInstanceValid(_frontFistOverlay))
+        {
+            _frontFistOverlay.Visible = false;
+        }
+    }
+
+    private void UpdateFrontFistOverlay()
+    {
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
+            return;
+        if (_frontFistOverlay == null || !GodotObject.IsInstanceValid(_frontFistOverlay))
+            return;
+
+        if (_presentationEnded || _isRetreating || !_isGrabTracking || _capturedPlayers.Count == 0 ||
+            _armsNode == null || _armsController == null)
+        {
+            HideFrontFistOverlay();
+            return;
+        }
+
+        string clip = _armsMainAnimation;
+        float trackTime = 0f;
+        if (_armsMainEntry != null && !string.IsNullOrEmpty(clip))
+        {
+            trackTime = _armsMainEntry.GetTrackTime();
+        }
+        else
+        {
+            using var scope = TrackEntryScope(_armsController.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? entry);
+            if (entry != null)
+            {
+                clip = entry.GetAnimationName();
+                trackTime = entry.GetTrackTime();
+            }
+        }
+
+        if (!clip.StartsWith("grab_", StringComparison.Ordinal) ||
+            (clip.StartsWith("grab_player", StringComparison.Ordinal) && (trackTime < 1.08f || trackTime >= 3.60f)) ||
+            (clip.StartsWith("grab_slam", StringComparison.Ordinal) && trackTime >= 0.92f))
+        {
+            HideFrontFistOverlay();
+            return;
+        }
+
+        FistOverlayAssets? assets = EnsureFistOverlayAssets();
+        FistBoneRig? rig = EnsureArmsFistRig();
+        if (assets == null || rig == null)
+        {
+            HideFrontFistOverlay();
+            return;
+        }
+
+        bool right = _isRightGrab;
+        FistMesh mesh = right ? assets.RightMesh : assets.LeftMesh;
+        BoneWorldMatrix m0 = ReadBoneWorldMatrix(right ? rig.Arm2_2 : rig.Arm1_2);
+        BoneWorldMatrix m1 = ReadBoneWorldMatrix(right ? rig.Arm2_3 : rig.Arm1_3);
+        BoneWorldMatrix m2 = ReadBoneWorldMatrix(right ? rig.Fist2 : rig.Fist1);
+
+        int vertexCount = mesh.Weights.Length;
+        Vector2[] buffer;
+        if (right)
+        {
+            if (_rightFistBuffer == null || _rightFistBuffer.Length != vertexCount)
+                _rightFistBuffer = new Vector2[vertexCount];
+            buffer = _rightFistBuffer;
+        }
+        else
+        {
+            if (_leftFistBuffer == null || _leftFistBuffer.Length != vertexCount)
+                _leftFistBuffer = new Vector2[vertexCount];
+            buffer = _leftFistBuffer;
+        }
+
+        for (int v = 0; v < vertexCount; v++)
+        {
+            float wx = 0f;
+            float wy = 0f;
+            FistVertexWeight[] vw = mesh.Weights[v];
+            for (int k = 0; k < vw.Length; k++)
+            {
+                FistVertexWeight w = vw[k];
+                BoneWorldMatrix bm = w.LocalBone switch
+                {
+                    0 => m0,
+                    1 => m1,
+                    _ => m2
+                };
+                wx += (w.Vx * bm.A + w.Vy * bm.B + bm.WorldX) * w.Weight;
+                wy += (w.Vx * bm.C + w.Vy * bm.D + bm.WorldY) * w.Weight;
+            }
+            buffer[v] = ToLocal(_armsNode.ToGlobal(new Vector2(wx, wy)));
+        }
+
+        int desiredSide = right ? 2 : 1;
+        if (_activeFistOverlaySide != desiredSide)
+        {
+            _activeFistOverlaySide = desiredSide;
+            _frontFistOverlay.Texture = right ? assets.RightTexture : assets.LeftTexture;
+            _frontFistOverlay.UV = mesh.Uvs;
+            _frontFistOverlay.Polygons = mesh.Polygons;
+        }
+
+        _frontFistOverlay.Polygon = buffer;
+        _frontFistOverlay.Modulate = _armsNode.Modulate;
+        _frontFistOverlay.ZAsRelative = false;
+        _frontFistOverlay.ZIndex = FrontFistOverlayZIndex;
+        _frontFistOverlay.Visible = true;
+    }
+
+    private static BoneWorldMatrix ReadBoneWorldMatrix(GodotObject bone) => new(
+        bone.Call("get_a").AsSingle(),
+        bone.Call("get_b").AsSingle(),
+        bone.Call("get_c").AsSingle(),
+        bone.Call("get_d").AsSingle(),
+        bone.Call("get_world_x").AsSingle(),
+        bone.Call("get_world_y").AsSingle());
+
+    private FistBoneRig? EnsureArmsFistRig()
+    {
+        if (_armsFistRig != null)
+            return _armsFistRig;
+
+        GodotObject? skel = _armsController?.GetSkeleton()?.BoundObject;
+        if (skel == null)
+            return null;
+
+        GodotObject? arm1_2 = skel.Call("find_bone", "arm1_2").AsGodotObject();
+        GodotObject? arm1_3 = skel.Call("find_bone", "arm1_3").AsGodotObject();
+        GodotObject? fist1 = skel.Call("find_bone", "fist1").AsGodotObject();
+        GodotObject? arm2_2 = skel.Call("find_bone", "arm2_2").AsGodotObject();
+        GodotObject? arm2_3 = skel.Call("find_bone", "arm2_3").AsGodotObject();
+        GodotObject? fist2 = skel.Call("find_bone", "fist2").AsGodotObject();
+        if (arm1_2 == null || arm1_3 == null || fist1 == null ||
+            arm2_2 == null || arm2_3 == null || fist2 == null)
+        {
+            return null;
+        }
+
+        _armsFistRig = new FistBoneRig(arm1_2, arm1_3, fist1, arm2_2, arm2_3, fist2);
+        return _armsFistRig;
+    }
+
+    private static FistOverlayAssets? EnsureFistOverlayAssets()
+    {
+        if (_fistOverlayAssets != null)
+            return _fistOverlayAssets;
+        if (_fistOverlayAssetsAttempted)
+            return null;
+        _fistOverlayAssetsAttempted = true;
+
+        try
+        {
+            string spjson = Godot.FileAccess.GetFileAsString("res://animations/monsters/cave_god/cave_god.spjson");
+            if (string.IsNullOrEmpty(spjson))
+            {
+                Log.Error("[CaveGodBackground] Could not read cave_god.spjson for front fist overlay.");
+                return null;
+            }
+
+            using JsonDocument doc = JsonDocument.Parse(spjson);
+            JsonElement root = doc.RootElement;
+            JsonElement bonesElement = root.GetProperty("bones");
+            string[] boneNames = new string[bonesElement.GetArrayLength()];
+            int bi = 0;
+            foreach (JsonElement boneEl in bonesElement.EnumerateArray())
+            {
+                boneNames[bi++] = boneEl.GetProperty("name").GetString() ?? "";
+            }
+
+            JsonElement skinsElement = root.GetProperty("skins");
+            JsonElement attachmentsElement = skinsElement.ValueKind == JsonValueKind.Array
+                ? skinsElement[0].GetProperty("attachments")
+                : skinsElement.GetProperty("default");
+
+            FistMesh leftMesh = ParseFistMesh(
+                attachmentsElement.GetProperty("arm1_3").GetProperty("arm1_3"),
+                boneNames,
+                "arm1_2",
+                "arm1_3",
+                "fist1",
+                origWidth: 196f,
+                origHeight: 183f);
+            FistMesh rightMesh = ParseFistMesh(
+                attachmentsElement.GetProperty("arm2_3").GetProperty("arm2_3"),
+                boneNames,
+                "arm2_2",
+                "arm2_3",
+                "fist2",
+                origWidth: 200f,
+                origHeight: 182f);
+
+            Texture2D? atlasTex = GD.Load<Texture2D>("res://animations/monsters/cave_god/cave_god.png");
+            Image? atlasImg = atlasTex?.GetImage();
+            if (atlasImg == null)
+            {
+                Log.Error("[CaveGodBackground] Could not load cave_god.png image for front fist overlay.");
+                return null;
+            }
+
+            if (atlasImg.IsCompressed())
+                atlasImg.Decompress();
+            if (atlasImg.GetFormat() != Image.Format.Rgba8)
+                atlasImg.Convert(Image.Format.Rgba8);
+
+            ImageTexture leftTex = BuildFistOverlayTexture(
+                atlasImg,
+                srcRect: new Rect2I(1732, 695, 196, 182),
+                dstOffset: new Vector2I(0, 1),
+                origWidth: 196,
+                origHeight: 183);
+            ImageTexture rightTex = BuildFistOverlayTexture(
+                atlasImg,
+                srcRect: new Rect2I(822, 2, 200, 175),
+                dstOffset: new Vector2I(0, 6),
+                origWidth: 200,
+                origHeight: 182);
+
+            _fistOverlayAssets = new FistOverlayAssets(leftMesh, rightMesh, leftTex, rightTex);
+            return _fistOverlayAssets;
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[CaveGodBackground] Failed to build front fist overlay assets: {ex}");
+            return null;
+        }
+    }
+
+    private static FistMesh ParseFistMesh(
+        JsonElement meshEl,
+        string[] boneNames,
+        string bone0,
+        string bone1,
+        string bone2,
+        float origWidth,
+        float origHeight)
+    {
+        JsonElement uvsEl = meshEl.GetProperty("uvs");
+        int uvLen = uvsEl.GetArrayLength();
+        int vertexCount = uvLen / 2;
+        Vector2[] uvs = new Vector2[vertexCount];
+        int ui = 0;
+        float prevU = 0f;
+        foreach (JsonElement val in uvsEl.EnumerateArray())
+        {
+            float f = val.GetSingle();
+            if ((ui & 1) == 0)
+                prevU = f;
+            else
+                uvs[ui / 2] = new Vector2(prevU * origWidth, f * origHeight);
+            ui++;
+        }
+
+        JsonElement trisEl = meshEl.GetProperty("triangles");
+        int[] tris = new int[trisEl.GetArrayLength()];
+        int ti = 0;
+        foreach (JsonElement val in trisEl.EnumerateArray())
+        {
+            tris[ti++] = val.GetInt32();
+        }
+        var polygons = new Godot.Collections.Array();
+        for (int t = 0; t + 2 < tris.Length; t += 3)
+        {
+            polygons.Add(Variant.From(new int[] { tris[t], tris[t + 1], tris[t + 2] }));
+        }
+
+        JsonElement vertsEl = meshEl.GetProperty("vertices");
+        float[] raw = new float[vertsEl.GetArrayLength()];
+        int vi = 0;
+        foreach (JsonElement val in vertsEl.EnumerateArray())
+        {
+            raw[vi++] = val.GetSingle();
+        }
+
+        FistVertexWeight[][] weights = new FistVertexWeight[vertexCount][];
+        if (raw.Length == uvLen)
+        {
+            for (int v = 0; v < vertexCount; v++)
+            {
+                weights[v] = [new FistVertexWeight(1, raw[v * 2], raw[v * 2 + 1], 1f)];
+            }
+        }
+        else
+        {
+            int cursor = 0;
+            for (int v = 0; v < vertexCount; v++)
+            {
+                int boneCount = (int)MathF.Round(raw[cursor++]);
+                FistVertexWeight[] vw = new FistVertexWeight[boneCount];
+                for (int b = 0; b < boneCount; b++)
+                {
+                    int spineBoneIdx = (int)MathF.Round(raw[cursor]);
+                    float vx = raw[cursor + 1];
+                    float vy = raw[cursor + 2];
+                    float w = raw[cursor + 3];
+                    cursor += 4;
+
+                    string bName = (uint)spineBoneIdx < (uint)boneNames.Length ? boneNames[spineBoneIdx] : bone1;
+                    int localSlot = bName == bone0 ? 0 : (bName == bone2 ? 2 : 1);
+                    vw[b] = new FistVertexWeight(localSlot, vx, vy, w);
+                }
+                weights[v] = vw;
+            }
+        }
+
+        return new FistMesh(uvs, polygons, weights);
+    }
+
+    private static ImageTexture BuildFistOverlayTexture(
+        Image atlasImg,
+        Rect2I srcRect,
+        Vector2I dstOffset,
+        int origWidth,
+        int origHeight)
+    {
+        Image img = Image.CreateEmpty(origWidth, origHeight, false, Image.Format.Rgba8);
+        img.BlitRect(atlasImg, srcRect, dstOffset);
+        return ImageTexture.CreateFromImage(img);
     }
 }

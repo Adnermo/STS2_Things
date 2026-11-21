@@ -1,5 +1,9 @@
-using System.Text.Json;
+using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
 using Godot;
 
 namespace STS2_Things.Config;
@@ -7,16 +11,6 @@ namespace STS2_Things.Config;
 /// <summary>
 /// 单一配置源。文件为 <c>user://mod_configs/STS2_Things.cfg</c>（JSON），与 BaseLib 桥
 /// 写入的路径、文件名与键名完全一致；RitsuLib 互操作提供器也读写同一文件。
-///
-/// 可配置范围（由设计决定）：
-///   - 遭遇战：全部 Boss（启用 + 强制）与非 Boss 遭遇（启用）
-///   - 事件（启用）
-///   - 商人猜拳（启用）
-///   - 涅奥起始遗物（启用）
-/// 卡牌、事件遗物与附魔不是可配置项——它们是事件/遗物/附魔内容的一部分。
-///
-/// 冲突规则：同一 ACT 的同一 Boss 槽位最多一个强制 Boss；加载与每次写入后校验，
-/// 按规范顺序"先到先得"，其余强制项自动降级并记录警告。强制启用隐含启用。
 /// </summary>
 public static class ThingsModConfig
 {
@@ -28,12 +22,16 @@ public static class ThingsModConfig
         Feature,
         NeowRelic,
         Audio,
+        Stability,
     }
+
+    public const string CurrentSchemaVersion = "3";
 
     /// <summary>Boss 槽位（冲突分组）。同一槽位只能有一个强制 Boss。</summary>
     public const string SlotOvergrowth = "overgrowth";
     public const string SlotUnderdocks = "underdocks";
     public const string SlotHive = "hive";
+    public const string SlotDepths = "depths";
 
     public sealed record Entry(
         string Key,
@@ -46,6 +44,7 @@ public static class ThingsModConfig
     // ===== 键常量（单一来源：BaseLib 桥属性名、RitsuLib schema 与门控代码都引用这里）=====
     public const string SchemaVersion = "SchemaVersion";
     public const string FeatureCustomBgmEnabled = "FeatureCustomBgmEnabled";
+    public const string FeatureDefensiveEngineGuardsEnabled = "FeatureDefensiveEngineGuardsEnabled";
     public const string BossOnlyModBosses = "BossOnlyModBosses";
     public const string BossOriginFogmogWeightPercent = "BossOriginFogmogWeightPercent";
     public const string BossScaleBeetleWeightPercent = "BossScaleBeetleWeightPercent";
@@ -53,6 +52,8 @@ public static class ThingsModConfig
     public const string BossTheLegacyWeightPercent = "BossTheLegacyWeightPercent";
     public const string BossBowlbugProgenitorWeightPercent = "BossBowlbugProgenitorWeightPercent";
     public const string BossCaveGodWeightPercent = "BossCaveGodWeightPercent";
+    public const string BossHumanFaceTowerWeightPercent = "BossHumanFaceTowerWeightPercent";
+    public const string BossAbyssalInkmawWeightPercent = "BossAbyssalInkmawWeightPercent";
     public const string EncounterSoulRoesWeightPercent = "EncounterSoulRoesWeightPercent";
 
     // ---- 遭遇战：Boss ----
@@ -68,6 +69,10 @@ public static class ThingsModConfig
     public const string BossBowlbugProgenitorForced = "BossBowlbugProgenitorForced";
     public const string BossCaveGodEnabled = "BossCaveGodEnabled";
     public const string BossCaveGodForced = "BossCaveGodForced";
+    public const string BossHumanFaceTowerEnabled = "BossHumanFaceTowerEnabled";
+    public const string BossHumanFaceTowerForced = "BossHumanFaceTowerForced";
+    public const string BossAbyssalInkmawEnabled = "BossAbyssalInkmawEnabled";
+    public const string BossAbyssalInkmawForced = "BossAbyssalInkmawForced";
 
     // ---- 遭遇战：非 Boss ----
     public const string EncounterSoulRoesEnabled = "EncounterSoulRoesEnabled";
@@ -89,6 +94,29 @@ public static class ThingsModConfig
     public const string EventNarrowGateEnabled = "EventNarrowGateEnabled";
     public const string EventBitingChestEnabled = "EventBitingChestEnabled";
     public const string EventCrowdedWardEnabled = "EventCrowdedWardEnabled";
+    public const string EventReturnsCounterEnabled = "EventReturnsCounterEnabled";
+    public const string EventHotWaxBoxEnabled = "EventHotWaxBoxEnabled";
+    public const string EventWarmRoyalCellEnabled = "EventWarmRoyalCellEnabled";
+    public const string EventSpliceBoothEnabled = "EventSpliceBoothEnabled";
+    public const string EventGildedPressEnabled = "EventGildedPressEnabled";
+    public const string EventCrookedCounterweightEnabled = "EventCrookedCounterweightEnabled";
+    public const string EventAntSortingTableEnabled = "EventAntSortingTableEnabled";
+    public const string EventGrudgeVendingMachineEnabled = "EventGrudgeVendingMachineEnabled";
+    public const string EventBlindCrabInkwellEnabled = "EventBlindCrabInkwellEnabled";
+    public const string EventChronometerRigEnabled = "EventChronometerRigEnabled";
+    public const string EventSilveredGalleryEnabled = "EventSilveredGalleryEnabled";
+    public const string EventCrackedBrazierEnabled = "EventCrackedBrazierEnabled";
+    public const string EventSiltWinchEnabled = "EventSiltWinchEnabled";
+    public const string EventBilgeMinesEnabled = "EventBilgeMinesEnabled";
+    public const string EventMossRuneLoomEnabled = "EventMossRuneLoomEnabled";
+    public const string EventClamClawEnabled = "EventClamClawEnabled";
+    public const string EventForestPlinkoEnabled = "EventForestPlinkoEnabled";
+    public const string EventBronzeCauldronEnabled = "EventBronzeCauldronEnabled";
+    public const string EventLendingVineEnabled = "EventLendingVineEnabled";
+    public const string EventOverstuffedBroodEnabled = "EventOverstuffedBroodEnabled";
+    public const string EventScalesOfVanityEnabled = "EventScalesOfVanityEnabled";
+    public const string EventWallCrackLedgerEnabled = "EventWallCrackLedgerEnabled";
+    public const string EventSpikedDoorEnabled = "EventSpikedDoorEnabled";
 
     // ---- 商人猜拳 ----
     public const string FeatureMerchantBargainEnabled = "FeatureMerchantBargainEnabled";
@@ -97,6 +125,15 @@ public static class ThingsModConfig
     public const string NeowRelicCurseRemoverEnabled = "NeowRelicCurseRemoverEnabled";
     public const string NeowRelicWhiteFlagEnabled = "NeowRelicWhiteFlagEnabled";
     public const string NeowRelicMagicGloveEnabled = "NeowRelicMagicGloveEnabled";
+
+    // Legacy v1.x key aliases supported during one-time migration to SchemaVersion 3.
+    private static readonly IReadOnlyDictionary<string, string[]> LegacyKeyAliases =
+        new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            [FeatureCustomBgmEnabled] = ["CustomBgmEnabled", "EnableCustomBgm"],
+            [FeatureMerchantBargainEnabled] = ["MerchantBargainEnabled", "EnableMerchantBargain"],
+            [FeatureDefensiveEngineGuardsEnabled] = ["DefensiveEngineGuardsEnabled"],
+        };
 
     /// <summary>规范顺序即冲突裁决顺序：同槽位第一个强制项生效。</summary>
     public static readonly IReadOnlyList<Entry> Entries =
@@ -121,6 +158,12 @@ public static class ThingsModConfig
         new(BossCaveGodEnabled, Category.Boss, Default: true, Slot: SlotHive),
         new(BossCaveGodForced, Category.Boss, Default: false, Slot: SlotHive),
         new(BossCaveGodWeightPercent, Category.Boss, Default: 100, Slot: SlotHive),
+        new(BossHumanFaceTowerEnabled, Category.Boss, Default: true, Slot: SlotDepths),
+        new(BossHumanFaceTowerForced, Category.Boss, Default: false, Slot: SlotDepths),
+        new(BossHumanFaceTowerWeightPercent, Category.Boss, Default: 100, Slot: SlotDepths),
+        new(BossAbyssalInkmawEnabled, Category.Boss, Default: true, Slot: SlotDepths),
+        new(BossAbyssalInkmawForced, Category.Boss, Default: false, Slot: SlotDepths),
+        new(BossAbyssalInkmawWeightPercent, Category.Boss, Default: 100, Slot: SlotDepths),
         new(EncounterSoulRoesEnabled, Category.Encounter, Default: true),
         new(EncounterSoulRoesWeightPercent, Category.Encounter, Default: 100),
         new(EncounterQuirkyHopperEnabled, Category.Encounter, Default: true),
@@ -129,10 +172,6 @@ public static class ThingsModConfig
         new(EventMedusaEnabled, Category.Event, Default: true),
         new(EventCuttingItCloseEnabled, Category.Event, Default: true),
         new(EventRealityAlignedHousesEnabled, Category.Event, Default: true),
-        new(FeatureMerchantBargainEnabled, Category.Feature, Default: true),
-        new(NeowRelicCurseRemoverEnabled, Category.NeowRelic, Default: true),
-        new(NeowRelicWhiteFlagEnabled, Category.NeowRelic, Default: true),
-        new(NeowRelicMagicGloveEnabled, Category.NeowRelic, Default: true),
         new(EventShadowCloakroomEnabled, Category.Event, Default: true),
         new(EventEchoingWellEnabled, Category.Event, Default: true),
         new(EventPoliteMawEnabled, Category.Event, Default: true),
@@ -143,6 +182,34 @@ public static class ThingsModConfig
         new(EventNarrowGateEnabled, Category.Event, Default: true),
         new(EventBitingChestEnabled, Category.Event, Default: true),
         new(EventCrowdedWardEnabled, Category.Event, Default: true),
+        new(EventReturnsCounterEnabled, Category.Event, Default: true),
+        new(EventHotWaxBoxEnabled, Category.Event, Default: true),
+        new(EventWarmRoyalCellEnabled, Category.Event, Default: true),
+        new(EventSpliceBoothEnabled, Category.Event, Default: true),
+        new(EventGildedPressEnabled, Category.Event, Default: true),
+        new(EventCrookedCounterweightEnabled, Category.Event, Default: true),
+        new(EventAntSortingTableEnabled, Category.Event, Default: true),
+        new(EventGrudgeVendingMachineEnabled, Category.Event, Default: true),
+        new(EventBlindCrabInkwellEnabled, Category.Event, Default: true),
+        new(EventChronometerRigEnabled, Category.Event, Default: true),
+        new(EventSilveredGalleryEnabled, Category.Event, Default: true),
+        new(EventCrackedBrazierEnabled, Category.Event, Default: true),
+        new(EventSiltWinchEnabled, Category.Event, Default: true),
+        new(EventBilgeMinesEnabled, Category.Event, Default: true),
+        new(EventMossRuneLoomEnabled, Category.Event, Default: true),
+        new(EventClamClawEnabled, Category.Event, Default: true),
+        new(EventForestPlinkoEnabled, Category.Event, Default: true),
+        new(EventBronzeCauldronEnabled, Category.Event, Default: true),
+        new(EventLendingVineEnabled, Category.Event, Default: true),
+        new(EventOverstuffedBroodEnabled, Category.Event, Default: true),
+        new(EventScalesOfVanityEnabled, Category.Event, Default: true),
+        new(EventWallCrackLedgerEnabled, Category.Event, Default: true),
+        new(EventSpikedDoorEnabled, Category.Event, Default: true),
+        new(FeatureMerchantBargainEnabled, Category.Feature, Default: true),
+        new(NeowRelicCurseRemoverEnabled, Category.NeowRelic, Default: true),
+        new(NeowRelicWhiteFlagEnabled, Category.NeowRelic, Default: true),
+        new(NeowRelicMagicGloveEnabled, Category.NeowRelic, Default: true),
+        new(FeatureDefensiveEngineGuardsEnabled, Category.Stability, Default: true),
     ];
 
     private static readonly Dictionary<string, object> Values =
@@ -166,21 +233,12 @@ public static class ThingsModConfig
     public static string ConfigPath =>
         Path.Combine(OS.GetUserDataDir(), "mod_configs", "STS2_Things.cfg");
 
-    public static bool IsEnabled(string key)
-    {
-        return GetBool(key);
-    }
+    public static bool IsEnabled(string key) => GetBool(key);
 
-    public static bool IsForced(string key)
-    {
-        return GetBool(key);
-    }
+    public static bool IsForced(string key) => GetBool(key);
 
     /// <summary>读取任意布尔键（含 Forced 键）。</summary>
-    public static bool GetBool(string key)
-    {
-        return GetValue(key) is true;
-    }
+    public static bool GetBool(string key) => GetValue(key) is true;
 
     public static int GetInt(string key) =>
         GetValue(key) is int integer ? integer : 0;
@@ -188,10 +246,6 @@ public static class ThingsModConfig
     public static bool HasBossWeightOverrides(string slot) =>
         Entries.Any(entry => entry.Slot == slot && entry.Default is int && GetInt(entry.Key) != (int)entry.Default);
 
-    /// <summary>
-    /// 返回指定槽位当前的强制 Boss 键（如 <see cref="BossOriginFogmogEnabled"/>），没有则为 null。
-    /// UI 条件可见与门控代码共用此方法，保证同一裁决结果。
-    /// </summary>
     public static string? GetForcedBossKeyForSlot(string slot)
     {
         foreach (Entry entry in Entries)
@@ -205,7 +259,6 @@ public static class ThingsModConfig
         return null;
     }
 
-    /// <summary>该强制键是否可开启：同槽位尚无其他强制 Boss，或强制者正是本键。</summary>
     public static bool CanForce(string forcedKey)
     {
         Entry? entry = Entries.FirstOrDefault(candidate => candidate.Key == forcedKey);
@@ -231,18 +284,27 @@ public static class ThingsModConfig
                 using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
                 if (document.RootElement.ValueKind != JsonValueKind.Object)
                     throw new JsonException("Configuration root must be an object.");
-                // BaseLib deserializes Dictionary<string, string>. Migrate legacy
-                // bool/number JSON before its optional page loads the shared file.
+
                 needsSave |= document.RootElement.EnumerateObject().Any(property => property.Value.ValueKind != JsonValueKind.String);
+                if (!document.RootElement.TryGetProperty(SchemaVersion, out JsonElement schemaElem) ||
+                    schemaElem.ValueKind != JsonValueKind.String ||
+                    schemaElem.GetString() != CurrentSchemaVersion)
+                {
+                    needsSave = true;
+                }
+
                 foreach (Entry entry in Entries)
                 {
-                    if (document.RootElement.TryGetProperty(entry.Key, out JsonElement element) &&
+                    if (TryReadEntryElement(document.RootElement, entry.Key, out JsonElement element, out bool usedAlias) &&
                         TryNormalize(entry, element, out object normalized))
                     {
                         Values[entry.Key] = normalized;
+                        needsSave |= usedAlias;
                     }
                     else
+                    {
                         needsSave = true;
+                    }
                 }
             }
             catch (Exception exception)
@@ -256,9 +318,9 @@ public static class ThingsModConfig
                 {
                     File.Copy(path, path + ".corrupt-" + DateTime.Now.ToString("yyyyMMddHHmmss"), overwrite: true);
                 }
-                catch
+                catch (IOException copyEx)
                 {
-                    // 备份失败不影响回退默认值。
+                    MegaCrit.Sts2.Core.Logging.Log.Debug($"STS2_Things corrupt config backup skipped: {copyEx.Message}");
                 }
             }
         }
@@ -278,9 +340,15 @@ public static class ThingsModConfig
         {
             string directory = Path.GetDirectoryName(ConfigPath)!;
             Directory.CreateDirectory(directory);
-            Dictionary<string, string> payload = Values.ToDictionary(pair => pair.Key,
-                pair => Convert.ToString(pair.Value, CultureInfo.InvariantCulture)!);
-            payload[SchemaVersion] = "2";
+            var payload = new Dictionary<string, string>(Entries.Count + 1, StringComparer.Ordinal)
+            {
+                [SchemaVersion] = CurrentSchemaVersion,
+            };
+            foreach (Entry entry in Entries)
+            {
+                object val = Values.TryGetValue(entry.Key, out object? current) ? current : entry.Default;
+                payload[entry.Key] = Convert.ToString(val, CultureInfo.InvariantCulture)!;
+            }
             string temporary = ConfigPath + ".things-new";
             File.WriteAllText(temporary, JsonSerializer.Serialize(payload, JsonOptions));
             File.Move(temporary, ConfigPath, overwrite: true);
@@ -292,19 +360,16 @@ public static class ThingsModConfig
         }
     }
 
-    /// <summary>读取一个键（RitsuLib 互操作访问器用；缺失返回 null）。</summary>
     public static object? GetValue(string key)
     {
         return MultiplayerConfig.GetOverride(key) ?? GetLocalValue(key);
     }
 
-    /// <summary>写入一个键并执行冲突裁决（RitsuLib 互操作访问器与测试用）。</summary>
     public static void SetValue(string key, object? value)
     {
         SetValues(new Dictionary<string, object?> { [key] = value });
     }
 
-    /// <summary>UI adapters apply a complete edit atomically before conflict resolution.</summary>
     public static void SetValues(IDictionary<string, object?> changes)
     {
         bool changed = false;
@@ -321,6 +386,30 @@ public static class ThingsModConfig
         ResolveConflicts(logWarnings: true);
         LocalChanged?.Invoke();
         Changed?.Invoke();
+    }
+
+    private static bool TryReadEntryElement(
+        JsonElement root,
+        string canonicalKey,
+        out JsonElement element,
+        out bool usedAlias)
+    {
+        usedAlias = false;
+        if (root.TryGetProperty(canonicalKey, out element))
+            return true;
+        if (LegacyKeyAliases.TryGetValue(canonicalKey, out string[]? aliases))
+        {
+            foreach (string alias in aliases)
+            {
+                if (root.TryGetProperty(alias, out element))
+                {
+                    usedAlias = true;
+                    return true;
+                }
+            }
+        }
+        element = default;
+        return false;
     }
 
     private static bool TryNormalize(Entry entry, object? value, out object normalized)
@@ -356,10 +445,6 @@ public static class ThingsModConfig
         return true;
     }
 
-    /// <summary>
-    /// 强制启用隐含启用；同一 Boss 槽位最多一个强制项（规范顺序先到先得，其余降级）。
-    /// 返回是否发生过任何改动。
-    /// </summary>
     private static bool ResolveConflicts(bool logWarnings)
     {
         bool changed = false;
@@ -373,7 +458,7 @@ public static class ThingsModConfig
             }
         }
 
-        foreach (string slot in new[] { SlotOvergrowth, SlotUnderdocks, SlotHive })
+        foreach (string slot in new[] { SlotOvergrowth, SlotUnderdocks, SlotHive, SlotDepths })
         {
             string? first = null;
             foreach (Entry entry in Entries)
@@ -404,6 +489,7 @@ public static class ThingsModConfig
 
     private static string ForcedKeyFor(string slot, string enabledKey)
     {
+        _ = slot;
         string prefix = enabledKey[..^"Enabled".Length];
         return prefix + "Forced";
     }

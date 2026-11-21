@@ -37,7 +37,7 @@ public partial class DepthsProbeNode
                     snapshot.Acts[1] = ModelDb.Act<Hive>().ToMutable().ToSave();
                 snapshot.Ascension = ascension;
                 Assert(snapshot.Acts.Count == 3 && snapshot.Acts[2].Id == ModelDb.Act<Glory>().Id
-                    && snapshot.Acts[1].Id == (act == "depths" ? ModelDb.Act<STS2_Things.Acts.Depths>().Id : ModelDb.Act<Hive>().Id),
+                    && snapshot.Acts[1].Id == (act == "depths" ? ModelDb.Act<STS2_Things.Acts.ThingsDepths>().Id : ModelDb.Act<Hive>().Id),
                     "Real run serialization keeps the alternate act in slot 2 and Glory in slot 3.");
                 snapshot.GameMode = mode;
                 typeof(SerializableRun).GetProperty("IsCustomGame")?.SetValue(snapshot, isCustom);

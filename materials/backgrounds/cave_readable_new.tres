@@ -4,5 +4,5 @@
 
 [resource]
 shader = ExtResource("1_readability")
-shader_parameter/midtone_gamma = 0.96
-shader_parameter/exposure = 1.0
+shader_parameter/midtone_gamma = 1.03
+shader_parameter/exposure = 0.96

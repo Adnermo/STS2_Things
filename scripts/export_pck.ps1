@@ -1,8 +1,13 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
-$GodotExe = 'D:\Download\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64_console.exe'
-$Root = 'D:\Things\Things-Workspace\STS2_Things'
-$PckBuild = 'D:\Things\Things-Workspace\STS2_Things\build\v113\STS2_Things.pck'
+$GodotExe = if (Test-Path -LiteralPath 'D:\Godot\Godot_v4.5.1-stable_mono_win64_console.exe' -PathType Leaf) {
+    'D:\Godot\Godot_v4.5.1-stable_mono_win64_console.exe'
+}
+else {
+    'D:\Download\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64_console.exe'
+}
+$Root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$PckBuild = Join-Path $Root 'build\v113.1\STS2_Things.pck'
 $ModDir = 'D:\Steam\steamapps\common\Slay the Spire 2\mods\STS2_Things'
 
 Write-Host "1. Re-importing Godot assets in $Root..."

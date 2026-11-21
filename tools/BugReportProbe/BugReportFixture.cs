@@ -23,10 +23,7 @@ using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Unlocks;
-using STS2_Things.Encounters;
-using STS2_Things.Modifiers;
-using STS2_Things.Monsters;
-using STS2_Things.Powers;
+using STS2_Things.Diagnostics;
 
 
 public partial class BugReportProbeNode : Node
@@ -35,7 +32,7 @@ public partial class BugReportProbeNode : Node
     {
         AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency;
         EnsureRuntimeDependency("System.IO.Hashing");
-        Type[] modTypes = typeof(SanguineLeech).Assembly.GetTypes().Concat(LoadPerformanceHexTypes()).ToArray();
+        Type[] modTypes = typeof(NThingsStartupNotice).Assembly.GetTypes().Concat(LoadPerformanceHexTypes()).ToArray();
         Type[] modelTypes = AbstractModelSubtypes.All
             .Concat(modTypes.Where(type => !type.IsAbstract && typeof(AbstractModel).IsAssignableFrom(type)))
             .Distinct()
@@ -45,7 +42,7 @@ public partial class BugReportProbeNode : Node
         // the exact post-initialization state that the real loader provides.
         typeof(ReflectionHelper).GetField("_modTypes", BindingFlags.NonPublic | BindingFlags.Static)!
             .SetValue(null, modTypes);
-        RegisterSyntheticMod(typeof(SanguineLeech).Assembly);
+        RegisterSyntheticMod(typeof(NThingsStartupNotice).Assembly);
         if (_performanceHex is not null) RegisterSyntheticMod(_performanceHex, "HextechRunes");
         // V113 exposes ModManager.State/ModManagerState, while V107.1 does not.
         // Seed it when present without creating a compile-time dependency on the

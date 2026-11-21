@@ -1,18 +1,22 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://STS2_Things/Visuals/NThingsStaticCreatureVisuals.cs" id="1_script"]
-[ext_resource type="Texture2D" path="res://images/monsters/soul_roe_3.png" id="2_texture"]
+[ext_resource type="SpineSkeletonDataResource" path="res://STS2_Things/animations/monsters/soul_roe_3/soul_roe_3_skel_data.tres" id="2_skeleton"]
 
 [node name="SoulRoe3" type="Node2D"]
 script = ExtResource("1_script")
 metadata/_edit_group_ = true
 metadata/_edit_lock_ = true
 
-[node name="Visuals" type="Sprite2D" parent="."]
-texture = ExtResource("2_texture")
+[node name="Visuals" type="SpineSprite" parent="."]
+skeleton_data_res = ExtResource("2_skeleton")
+preview_skin = "default"
+preview_animation = "idle_loop"
+preview_frame = false
+preview_time = 0.0
 unique_name_in_owner = true
-position = Vector2(0, -27.04)
-scale = Vector2(0.52, 0.52)
+position = Vector2(0, 0)
+scale = Vector2(0.46, 0.46)
 metadata/_edit_lock_ = true
 
 [node name="Bounds" type="Control" parent="."]
@@ -27,8 +31,8 @@ mouse_filter = 2
 
 [node name="CenterPos" type="Marker2D" parent="."]
 unique_name_in_owner = true
-position = Vector2(0, -27.04)
+position = Vector2(0, -29.4)
 
 [node name="IntentPos" type="Marker2D" parent="."]
 unique_name_in_owner = true
-position = Vector2(0, -64.08)
+position = Vector2(0, -68)

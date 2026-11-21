@@ -39,7 +39,20 @@ public partial class MycorrhizalTwinsProbeNode : Node
             _root=Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"),"../.."));
             TestMode.TurnOnInternal();
             ProjectSettings.LoadResourcePack("D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck");
-            string pack=System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")??Path.Combine(_root,"build/v113/STS2_Things.pck");
+#if STS2_V111_1
+            const string defaultTarget = "v111.1";
+#else
+            const string defaultTarget = "v113.1";
+#endif
+            string pack = System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")
+                ?? new[]
+                {
+                    Path.Combine(_root, $"build/{defaultTarget}/STS2_Things.pck"),
+                    Path.Combine(_root, "build/v113.1/STS2_Things.pck"),
+                    Path.Combine(_root, "build/v111.1/STS2_Things.pck"),
+                    Path.Combine(_root, "build/unified/STS2_Things.pck"),
+                }.FirstOrDefault(File.Exists)
+                ?? Path.Combine(_root, $"build/{defaultTarget}/STS2_Things.pck");
             Assert(ProjectSettings.LoadResourcePack(pack),"Shipping PCK mounts.");
             SaveManager.Instance.InitSettingsDataForTest();SaveManager.Instance.InitPrefsDataForTest();
             SaveManager.Instance.SettingsSave.Language="eng";LocManager.Initialize();InitializeModelDb();LocManager.Initialize();
@@ -57,7 +70,7 @@ public partial class MycorrhizalTwinsProbeNode : Node
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
         typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(ascension));
         typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance,new NetSingleplayerGameService());
-        EncounterModel encounter=ModelDb.Encounter<MycorrhizalTwinsElite>().ToMutable();
+        EncounterModel encounter=ModelDb.Encounter<ThingsMycorrhizalTwinsElite>().ToMutable();
         run.AppendToMapPointHistory(MapPointType.Elite,RoomType.Elite,encounter.Id);var room=new CombatRoom(encounter,run);run.PushRoom(room);
         foreach(var p in party){p.ResetCombatState();room.CombatState.AddPlayer(p);p.PopulateCombatState(run.Rng.Shuffle,room.CombatState);}
         encounter.GenerateMonstersWithSlots(run);
@@ -67,17 +80,13 @@ public partial class MycorrhizalTwinsProbeNode : Node
     }
     private static async Task EndRound(Fixture s)
     {
-#if STS2_V107_1
-        foreach(var power in s.State.Enemies.SelectMany(c=>c.Powers).ToArray())await power.AfterSideTurnEnd(Choice,CombatSide.Enemy,s.State.Enemies.ToArray());
-#else
         await Hook.AfterSideTurnEnd(s.State,CombatSide.Enemy,s.State.Enemies.ToArray());
-#endif
     }
     private static async Task CheckPoolsAndScaling()
     {
-        var act=ModelDb.Act<Depths>();
-        Assert(act.AllEliteEncounters.Count(e=>e is MycorrhizalTwinsElite)==1,"Depths native elite pool has exactly one twin encounter.");
-        Assert(!act.AllWeakEncounters.Any(e=>e is MycorrhizalTwinsElite)&&!act.AllRegularEncounters.Any(e=>e is MycorrhizalTwinsElite),"Never selected as normal fight.");
+        var act=ModelDb.Act<ThingsDepths>();
+        Assert(act.AllEliteEncounters.Count(e=>e is ThingsMycorrhizalTwinsElite)==1,"Depths native elite pool has exactly one twin encounter.");
+        Assert(!act.AllWeakEncounters.Any(e=>e is ThingsMycorrhizalTwinsElite)&&!act.AllRegularEncounters.Any(e=>e is ThingsMycorrhizalTwinsElite),"Never selected as normal fight.");
         foreach(int count in new[]{1,2,4})foreach(int asc in new[]{0,20})
         {
             var s=await Scenario(count,asc);
@@ -96,7 +105,7 @@ public partial class MycorrhizalTwinsProbeNode : Node
         var s=await Scenario();await CreatureCmd.SetCurrentHp(s.Tall.Creature,21);await CreatureCmd.SetCurrentHp(s.Short.Creature,67);
         await CreatureCmd.GainBlock(s.Tall.Creature,9,ValueProp.Unpowered,null);
         await PowerCmd.Apply<StrengthPower>(Choice,s.Tall.Creature,2,s.Tall.Creature,null);
-        await s.Tall.Creature.GetPower<MycorrhizalBondPower>()!.AfterSideTurnEnd(Choice,CombatSide.Player,s.Players.Select(p=>p.Creature));
+        await s.Tall.Creature.GetPower<ThingsMycorrhizalBondPower>()!.AfterSideTurnEnd(Choice,CombatSide.Player,s.Players.Select(p=>p.Creature));
         Assert(s.Tall.Creature.CurrentHp==21,"Player-side end never swaps HP.");
         await EndRound(s);
         Assert(s.Tall.Creature.CurrentHp==67&&s.Short.Creature.CurrentHp==21,"One atomic snapshot swaps the exact pools.");
@@ -134,7 +143,7 @@ public partial class MycorrhizalTwinsProbeNode : Node
             var s=await Scenario();MycorrhizalTwin dead=killTall?s.Tall:s.Short,alive=killTall?s.Short:s.Tall;
             string announced=alive.NextMove.Id;await CreatureCmd.Damage(Choice,dead.Creature,9999,ValueProp.Unpowered,s.Player.Creature);
             Assert(alive.IsFurious&&alive.IsRobust,"Survivor becomes robust and furious.");
-            Assert(alive.Creature.GetPower<StrengthPower>()?.Amount==4&&alive.Creature.GetPower<MycorrhizalBondPower>()==null,"Death grants 4 Strength exactly once and severs bond.");
+            Assert(alive.Creature.GetPower<StrengthPower>()?.Amount==4&&alive.Creature.GetPower<ThingsMycorrhizalBondPower>()==null,"Death grants 4 Strength exactly once and severs bond.");
             Assert(alive.NextMove.Id==announced,"Already announced move is preserved.");
             await alive.PerformMove();alive.RollMove(s.Players.Select(p=>p.Creature));
             Assert(alive.NextMove.Id==(killTall?"RAMPART_MOVE":"FURY_LASH_MOVE"),"Correct specialization's fury cycle.");
@@ -155,7 +164,7 @@ public partial class MycorrhizalTwinsProbeNode : Node
     private sealed record Fixture(RunState Run,CombatRoom Room,List<Player> Players,EncounterModel Encounter)
     {
         public Player Player=>Players[0];public CombatState State=>Room.CombatState;
-        public MycorrhizalVanguard Tall=>Encounter.MonstersWithSlots.Select(x=>x.Item1).OfType<MycorrhizalVanguard>().Single();
-        public MycorrhizalBulwark Short=>Encounter.MonstersWithSlots.Select(x=>x.Item1).OfType<MycorrhizalBulwark>().Single();
+        public ThingsMycorrhizalVanguard Tall=>Encounter.MonstersWithSlots.Select(x=>x.Item1).OfType<ThingsMycorrhizalVanguard>().Single();
+        public ThingsMycorrhizalBulwark Short=>Encounter.MonstersWithSlots.Select(x=>x.Item1).OfType<ThingsMycorrhizalBulwark>().Single();
     }
 }

@@ -74,9 +74,9 @@ public partial class PortraitCompatibilityProbeNode : Node
                 await NativeCards(implementation!, foreign);
                 throw new Exception("Baseline unexpectedly survived native pooled-card reuse after resource unloading.");
             }
-            ExpiredDefault("DefaultPortraitStates", "STS2_Things.Cards.LeechParasite");
+            ExpiredDefault("DefaultPortraitStates", "STS2_Things.Cards.ThingsLeechParasite");
             if (baseline) throw new Exception("Baseline unexpectedly survived the reported expired-texture path.");
-            ExpiredDefault("DefaultAncientPortraitStates", "STS2_Things.Cards.LeechParasite");
+            ExpiredDefault("DefaultAncientPortraitStates", "STS2_Things.Cards.ThingsLeechParasite");
             ValidDefault();
             DeadRect();
             NullDefault();
@@ -87,8 +87,8 @@ public partial class PortraitCompatibilityProbeNode : Node
                 foreach (Assembly extra in new[] { _secondForeign, _thirdForeign }.OfType<Assembly>())
                 {
                     BindForeign(extra);
-                    ExpiredDefault("DefaultPortraitStates", "STS2_Things.Cards.LeechParasite");
-                    ExpiredDefault("DefaultAncientPortraitStates", "STS2_Things.Cards.LeechParasite");
+                    ExpiredDefault("DefaultPortraitStates", "STS2_Things.Cards.ThingsLeechParasite");
+                    ExpiredDefault("DefaultAncientPortraitStates", "STS2_Things.Cards.ThingsLeechParasite");
                     ValidDefault();
                 }
                 BindForeign(foreign);
@@ -222,7 +222,7 @@ public partial class PortraitCompatibilityProbeNode : Node
         var pool = NodePool.Init<NCard>("res://scenes/cards/card.tscn", 0);
         CardModel Card(Type type) => ((CardModel)typeof(ModelDb).GetMethod("Card")!
             .MakeGenericMethod(type).Invoke(null, null)!).ToMutable();
-        Type parasite = implementation.GetType("STS2_Things.Cards.LeechParasite", true)!;
+        Type parasite = implementation.GetType("STS2_Things.Cards.ThingsLeechParasite", true)!;
         var caches = new[] { "DefaultPortraitStates", "DefaultAncientPortraitStates" }
             .Select(f => (IDictionary)_portrait.GetField(f, PrivateStatic)!.GetValue(null)!).ToArray();
         foreach (IDictionary cache in caches) cache.Clear();
@@ -336,14 +336,9 @@ public partial class PortraitCompatibilityProbeNode : Node
 
     private static string GetForeignNamespace(Assembly foreign)
     {
-        string name = foreign.GetName().Name!;
-        string typeNamespace = name switch
-        {
-            "cutenecrobinderv0.7" => "cutenecrobinderv0_7",
-            "com.demo.midori_black_card" => "com_demo_midori_black_card",
-            _ => name
-        };
-        return foreign.GetType(typeNamespace + ".PortraitPatch", throwOnError: true, ignoreCase: true)!.Namespace!;
+        return foreign.GetTypes()
+            .First(t => string.Equals(t.Name, "PortraitPatch", StringComparison.OrdinalIgnoreCase))
+            .Namespace!;
     }
 
     private static void RegisterProbeMod(Assembly implementation)

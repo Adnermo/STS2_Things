@@ -36,6 +36,14 @@ public sealed class ThingsCrossroads : ModifierModel
     public override LocString Description => new("settings_ui", "THINGS_CROSSROADS_DESCRIPTION");
     protected override string IconPath => "res://images/packed/common_ui/locked_model.png";
 
+    protected override void AfterCloned()
+    {
+        base.AfterCloned();
+        _ledger = null;
+        _owner = null;
+        _invalid = false;
+    }
+
     public void Bind(RunState owner) => _owner = owner;
 
     public override Task AfterMapGenerated(ActMap map, int actIndex)

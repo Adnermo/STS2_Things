@@ -2,12 +2,14 @@
 
 同时支持以下 Slay the Spire 2 分支的原生 Mod 工程：
 
-- 兼容正式版：`v0.107.1`
-- 当前 Beta：`v0.113.0`（Steam public-beta）
+- 兼容正式版：`v0.111.1`
+- 当前 Beta：`v0.113.1`（Steam public-beta）
 
-当前版本：`1.25.27`。统一包运行时按真实游戏 API 选择 V107.1 或 V113 实现。[新版差异与适配](docs/MIGRATION_V113.md) · [双版本合同](docs/DUAL_VERSION_SUPPORT.md)。
+当前版本：`2.0.0`。统一包运行时按真实游戏 API 选择 V111.1 或 V113.1 实现。[双版本合同](docs/DUAL_VERSION_SUPPORT.md) · [统一订阅包](docs/UNIFIED_PACKAGE.md) · [2.0.0 更新说明](docs/release-2.0.0.md)。
 
 ## 内容
+
+- **2.0.0 大版本更新**：双版本基线升级为 **`v0.111.1` + `v0.113.1`**（退役 `v0.107.1`）；213 个模型统一迁入 `THINGS_*` 命名空间并附带 `LegacyIdMigrator` 无损迁移旧存档；完整支持 `v0.113.1` **恐惧模式（8 位 Boss 专属 Dominion 与恐惧强化）**与**急速模式（急速商店附魔与「琐事遗物」货架等兼容）**；第二章「深处」新增两位专属 Boss（**人面塔**、**渊墨巨蛸**）、两种普通怪（**刮甲石蚓**、**异彩史莱姆**）并完成遭遇池正规化（6 弱 / 11 强 / 3 纯自制深处精英）；跨章节事件扩至 **38 个**（含 5 个多人同步交互小游戏）；同步重制高清事件插画、卡面、战斗背景并全量对齐原版风味文案。[完整更新说明](docs/release-2.0.0.md)。
 
 - 1.25.27 适配 v0.113.0 Beta 的死亡、商店同步、巨岩交互、章节生成、联机与 F2 API，保留 v0.107.1；不调整本轮玩法数值。[更新说明](docs/release-1.25.27.md)。
 
@@ -99,11 +101,11 @@
 - 1.13.3 隐藏顽固寄生能力；寄生牌被消耗后保留当回合意图，执行当前行动后才安排下一回合再寄生。[实现与实测](docs/leech-delayed-reinfest-20261004.md)。
 - 1.13.2 将牵丝改为交错绕过卡面和牌边的蛾丝缠绕，保留原版材质与解除动画。[实现与实测](docs/silk-wrap-card-vfx-20261004.md)。
 - 1.13.1 参考 Queen 的束缚特效，重做牵丝的卡牌遮罩、丝束纹理、边缘流光、粒子和消散动画。[实现与对照](docs/queen-silk-card-vfx-20261004.md)。
-- Boss：始源雾菇、放缩巨甲虫、墓潮蛞蝓、腐化之遗、盛碗虫族母、活体巨岩
-- 精英与遭遇：灵魂鱼子团、抢劫队、怪癖草蜢等
-- 事件：Backrooms、假商人抢劫、美杜莎、命悬一线
-- 卡牌、遗物、能力与附魔扩展（含战士卡“对撞”与附魔“分裂”）
-- 自定义贴图、背景、场景、音效及中英文本地化
+- Boss（8 位）：始源雾菇、放缩巨甲虫、盛碗虫族母、活体巨岩（巢穴与深处）、人面塔（深处）、渊墨巨蛸（深处）、墓潮蛞蝓、腐化之遗
+- 精英与遭遇：深处 3 组专属精英（菌根双生子、逆流蝾螈、收音水母）、灵魂鱼子团、诡谲双商、怪癖草蜢等
+- 事件（38 个）：含 5 个联机同步小游戏（古藤刻痕盘、古林落籽盘、暗渠货栅、蚌口夹珍、铜鼎争宝）及覆盖一至三章的 33 个策略事件
+- 卡牌、遗物、能力与附魔扩展（12 张牌、15 件遗物、4 种附魔：消散 / 分裂 / 过载 / 配重）
+- 自定义高清贴图、背景、场景、专属 Boss 与深处多段配乐、音效及中英文本地化
 
 ## 配置
 
@@ -115,7 +117,7 @@
 - 未安装两者时直接编辑该 JSON 文件即可。
 - 同一幕的 Boss 槽位最多一个“强制遭遇”项，冲突自动裁决。
 - 关闭模组 Boss 音乐后恢复原版音乐，战斗音效保留；可在战斗中切换。
-- 六个 Boss 与灵魂鱼子团精英可独立调整出现权重：0 不出现，100 默认，200 两倍，最高 1000。权重影响相对概率。
+- 八个 Boss 与灵魂鱼子团精英可独立调整出现权重：0 不出现，100 默认，200 两倍，最高 1000。权重影响相对概率。
 - 可选择“仅出现本模组 Boss”，或强制对应地图的指定 Boss；候选全被禁用时自动回退。筛选和权重在下一次幕生成时生效，已生成地图不重抽。
 - 多人配置由房主自动同步，玩法选项开局后锁定，音乐仍可由房主实时切换。退出房间恢复个人配置；所有玩家需更新到同一模组版本。
 
@@ -139,7 +141,8 @@
 - Godot：`4.5.1 Mono`
 - .NET：`9.0`
 - C#：`13`
-- V113 Beta 基线：`v0.113.0` / commit `16ac0fe3`
+- 正式版基线：`v0.111.1` / commit `cc1f9462`
+- Beta 基线：`v0.113.1` / commit `d09d48e5`
 
 工程仅使用游戏原生 API、Godot、Harmony 与官方工具链，不依赖 RitsuLib 或 BaseLib。
 
@@ -149,37 +152,37 @@
 
 ```powershell
 .\scripts\build-all.ps1 `
-  -DataDirV1071 "D:\path\to\v0.107.1\data_sts2_windows_x86_64" `
-  -DataDirV113 "D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64"
+  -DataDirV1111 "D:\path\to\v0.111.1\data_sts2_windows_x86_64" `
+  -DataDirV1131 "D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64"
 ```
 
-它会依次编译两套实现、导出一次共用 PCK、构建引导 DLL，并对两套真实游戏程序集执行选择、类型加载、Harmony 与保存缓存探针。追加 `-Install` 可安装统一包。
+它会依次编译两套实现、导出一次共用 PCK、构建引导 DLL，并对两套真实游戏程序集执行选择、类型加载、Harmony、模型命名空间与行为探针。追加 `-Install` 可安装统一包。
 
 只构建某个版本的实现用于诊断：
 
 ```powershell
 .\scripts\build.ps1 `
-  -TargetVersion v107.1 `
-  -DataDir "D:\path\to\v0.107.1\data_sts2_windows_x86_64" `
-  -SourceRoot "D:\path\to\STS2-V107.1"
+  -TargetVersion v111.1 `
+  -DataDir "D:\path\to\v0.111.1\data_sts2_windows_x86_64" `
+  -SourceRoot "D:\path\to\STS2-V111.1"
 ```
 
-V113 单目标诊断构建：
+V113.1 单目标诊断构建：
 
 ```powershell
-.\scripts\build.ps1 -TargetVersion v113
+.\scripts\build.ps1 -TargetVersion v113.1
 ```
 
 发布工件位于：
 
-- `build/unified/STS2_Things.json|dll|pck`
+- `build/unified/STS2_Things.json|dll|pck` 与 `STS2_Things.BaseLibBridge.dll`
 
 版本专用诊断/回退构件位于：
 
-- `build/v107.1/STS2_Things.json|dll|pck`
-- `build/v113/STS2_Things.json|dll|pck`
+- `build/v111.1/STS2_Things.json|dll|pck`
+- `build/v113.1/STS2_Things.json|dll|pck`
 
-统一 manifest 的最低版本为 `v0.107.1`。所有订阅玩家下载完全相同的四文件统一包；引导 DLL 只加载当前游戏对应的实现。多人游戏中的所有玩家仍必须使用相同游戏版本和相同 Mod 构建。
+统一 manifest 的最低版本为 `v0.111.1`。所有订阅玩家下载完全相同的四文件统一包；引导 DLL 只加载当前游戏对应的实现。多人游戏中的所有玩家仍必须使用相同游戏版本和相同 Mod 构建。
 
 ## 项目结构
 

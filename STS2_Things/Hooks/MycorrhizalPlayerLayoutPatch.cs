@@ -10,13 +10,15 @@ namespace STS2_Things.Hooks;
 [HarmonyPatch(typeof(NCombatRoom), nameof(NCombatRoom.PositionPlayersAndPets))]
 public static class MycorrhizalPlayerLayoutPatch
 {
-    public const float VerticalOffset = 60f;
+    public static readonly float VerticalOffset = 0f;
 
     [HarmonyPostfix]
     private static void Postfix(List<NCreature> creatureNodes)
     {
+        if (VerticalOffset == 0f)
+            return;
         if (creatureNodes.FirstOrDefault()?.Entity?.CombatState?.Encounter is not
-            (MycorrhizalTwinsElite or ReverseSalamanderElite or CaveMawWeak or CaveMawEncounter or RadioJellyfishElite or SnailTrioWeak))
+            (ThingsMycorrhizalTwinsElite or ThingsReverseSalamanderElite or ThingsCaveMawWeak or ThingsRadioJellyfishElite or ThingsSnailTrioWeak or ThingsScalePeelerWeak or ThingsScalePeelerEncounter or ThingsChromaticSlimeWeak))
             return;
 
         // The native method first resets the formation, including pets and rear

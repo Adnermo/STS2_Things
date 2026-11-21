@@ -33,10 +33,11 @@ public partial class UnifiedStartupProbeNode : Node
             SaveManager.Instance.InitPrefsDataForTest();
             SaveManager.Instance.SettingsSave.Language = "eng";
             ModManager.ResetForTests();
-            // V113 deliberately skips DLL/PCK loading in native test mode.
+            // Native test mode skips DLL/PCK loading across both v0.111.1 and v0.113.1.
             // Keep real startup behavior until all initialization has completed.
             TestMode.IsOn = false;
-            Require(SemanticVersion.TryFromString(args[2] == "v107.1" ? "v0.107.1" : "v0.113.0", out var version),
+            Require(args[2] is "v111.1" or "v113.1", $"Invalid target '{args[2]}'; expected 'v111.1' or 'v113.1'.");
+            Require(SemanticVersion.TryFromString(args[2] == "v111.1" ? "v0.111.1" : "v0.113.1", out var version),
                 "Invalid target version.");
             await ModManager.Initialize(new PackageFileIo(args[0]),
                 new ModSettings { PlayerAgreedToModLoading = true }, version);
@@ -50,7 +51,10 @@ public partial class UnifiedStartupProbeNode : Node
             Require((string?)bootstrap.GetProperty("SelectedTarget")!.GetValue(null) == args[2],
                 "Published bootstrap selected the wrong game version.");
             Type[] modTypes = ReflectionHelper.ModTypes;
-            Require(modTypes.Any(t => t.FullName == "STS2_Things.Acts.Depths"), "Depths was not discovered.");
+            Require(modTypes.Any(t => t.FullName == "STS2_Things.Acts.ThingsDepths"), "ThingsDepths was not discovered.");
+            Type initType = modTypes.Single(t => t.FullName == "STS2_ThingsInit");
+            Require((string?)initType.GetField("ModVersion")?.GetValue(null) == "2.0.0",
+                "STS2_ThingsInit.ModVersion is not 2.0.0.");
             Type? assemblyInfo = typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Modding.AssemblyInfo");
             assemblyInfo?.GetMethod("Init")?.Invoke(null, null);
             MethodInfo init = typeof(ModelDb).GetMethods().Single(m => m.Name == "Init");
@@ -70,7 +74,7 @@ public partial class UnifiedStartupProbeNode : Node
             if (!args.Contains("--load-only"))
             {
                 LocManager.Initialize();
-                ActModel depths = ModelDb.Acts.Single(a => a.GetType().Name == "Depths").ToMutable();
+                ActModel depths = ModelDb.Acts.Single(a => a.GetType().Name == "ThingsDepths").ToMutable();
                 var nativeEvents = ModelDb.AllEvents.Where(e => e.GetType().Assembly == typeof(ActModel).Assembly)
                     .Select(e => e.Id).ToHashSet();
                 Require(depths.AllEvents.Any() && depths.AllEvents.All(e => !nativeEvents.Contains(e.Id)),
@@ -102,7 +106,11 @@ public partial class UnifiedStartupProbeNode : Node
                 await (Task)begin.Invoke(neow, values)!;
                 Require(neow.CurrentOptions.Count == 3 && neow.CurrentOptions.All(o => o.Relic != null) && !neow.IsFinished,
                     "Published package skipped Neow's three starting relic choices.");
-                Require(run.Modifiers.Any(m => m.GetType().Name == "ThingsCrossroads"), "Route ledger disappeared.");
+                Type crossroadsType = modTypes.Single(t => t.FullName == "STS2_Things.Map.Crossroads");
+                Require(!run.Modifiers.Any(m => m.GetType().Name == "ThingsCrossroads"),
+                    "Internal route ledger leaked into RunState.Modifiers.");
+                Require(crossroadsType.GetMethod("Ledger")!.Invoke(null, [run]) != null,
+                    "Route ledger disappeared.");
                 GD.Print($"UNIFIED_STARTUP_NEOW_PASS choices={neow.CurrentOptions.Count}");
                 // The reported save has Neow marked pre-finished without a
                 // chosen reward. New-run-only probes do not exercise this path.

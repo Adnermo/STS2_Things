@@ -25,11 +25,11 @@ public partial class CaveGodProbeNode
         var status = GDExtensionManager.LoadExtension(Path.Combine(root, "addons/spine/spine_godot_extension.gdextension"));
         Assert(status is GDExtensionManager.LoadStatus.Ok or GDExtensionManager.LoadStatus.AlreadyLoaded, "Spine unavailable.");
         GetTree().Root.Size = new Vector2I(1920, 1080);
-        var bg = GD.Load<PackedScene>("res://scenes/backgrounds/cave_god_boss_encounter/cave_god_boss_encounter_background.tscn").Instantiate<Control>();
+        var bg = GD.Load<PackedScene>("res://scenes/backgrounds/things_cave_god_boss_encounter/things_cave_god_boss_encounter_background.tscn").Instantiate<Control>();
         bg.Position = new Vector2(983, 540);
         bg.Scale = Vector2.One * 0.75f;
-        bg.GetNode("Layer_00").AddChild(GD.Load<PackedScene>("res://scenes/backgrounds/cave_god_boss_encounter/layers/cave_god_boss_encounter_bg_00_a.tscn").Instantiate());
-        bg.GetNode("Foreground").AddChild(GD.Load<PackedScene>("res://scenes/backgrounds/cave_god_boss_encounter/layers/cave_god_boss_encounter_fg_a.tscn").Instantiate());
+        bg.GetNode("Layer_00").AddChild(GD.Load<PackedScene>("res://scenes/backgrounds/things_cave_god_boss_encounter/layers/things_cave_god_boss_encounter_bg_00_a.tscn").Instantiate());
+        bg.GetNode("Foreground").AddChild(GD.Load<PackedScene>("res://scenes/backgrounds/things_cave_god_boss_encounter/layers/things_cave_god_boss_encounter_fg_a.tscn").Instantiate());
         AddChild(bg);
         var controller = bg.GetNode<NCaveGodBossBackground>("CaveGod");
         var arms = bg.GetNode<Node2D>("CaveGodArms");
@@ -37,7 +37,7 @@ public partial class CaveGodProbeNode
         var state = Scenario();
         var enemies = new Control { Position = new Vector2(983, 540), Scale = Vector2.One * 0.75f };
         AddChild(enemies);
-        var slots = GD.Load<PackedScene>("res://scenes/encounters/cave_god_boss_encounter.tscn").Instantiate<Control>();
+        var slots = GD.Load<PackedScene>("res://scenes/encounters/things_cave_god_boss_encounter.tscn").Instantiate<Control>();
         slots.Position = new Vector2(-960, -540);
         enemies.AddChild(slots);
         var creatures = new List<NCreature>();
@@ -51,6 +51,13 @@ public partial class CaveGodProbeNode
             node.GlobalPosition = slots.GetNode<Marker2D>(side + "_hand").GlobalPosition;
             creatures.Add(node);
         }
+        var bodyNode = GD.Load<PackedScene>("res://scenes/combat/creature.tscn").Instantiate<NCreature>();
+        typeof(NCreature).GetProperty(nameof(NCreature.Entity))!.SetValue(bodyNode, state.Body.Creature);
+        var bodyVisuals = GD.Load<PackedScene>("res://scenes/creature_visuals/things_cave_god.tscn").Instantiate<NCreatureVisuals>();
+        typeof(NCreature).GetProperty(nameof(NCreature.Visuals))!.SetValue(bodyNode, bodyVisuals);
+        enemies.AddChild(bodyNode);
+        bodyNode.GlobalPosition = slots.GetNode<Marker2D>("body").GlobalPosition;
+
         for (int i = 0; i < 35; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         controller.UpdateHandAnchors(creatures);
         async Task Capture(string name)
@@ -62,13 +69,25 @@ public partial class CaveGodProbeNode
         }
         await Capture("combat");
         var failures = new List<string>();
+        Rect2 bodyRect = bodyNode.Hitbox.GetGlobalRect();
+        var bodyHp = bodyNode.GetNode<Control>("%HealthBar");
+        GD.Print($"UI probe body: creature={bodyNode.GlobalPosition}, hp={bodyHp.GlobalPosition}, hitbox={bodyRect}, vfx={bodyNode.VfxSpawnPosition}");
+        if (bodyRect.Size.X < 580f || bodyRect.Size.Y < 520f)
+            failures.Add($"body torso hitbox too small: {bodyRect}");
+        if (!bodyRect.HasPoint(bodyNode.VfxSpawnPosition))
+            failures.Add($"body VFX spawn {bodyNode.VfxSpawnPosition} outside torso hitbox {bodyRect}");
+        if (bodyHp.GlobalPosition.Y < 50f || bodyHp.GlobalPosition.Y > 130f)
+            failures.Add($"body boss HP bar out of top band: {bodyHp.GlobalPosition}");
         for (int i = 0; i < 2; i++)
         {
             var hp = creatures[i].GetNode<Control>("%HealthBar");
             var bone = rig.GetGlobalBoneTransform(i == 0 ? "arm1_3" : "arm2_3")!.Value;
-            GD.Print($"UI probe arm {i}: creature={creatures[i].GlobalPosition}, hp={hp.GlobalPosition}, bone={bone.Origin}, hitbox={creatures[i].Hitbox.GetGlobalRect()}");
+            Rect2 handRect = creatures[i].Hitbox.GetGlobalRect();
+            GD.Print($"UI probe arm {i}: creature={creatures[i].GlobalPosition}, hp={hp.GlobalPosition}, bone={bone.Origin}, hitbox={handRect}");
             if (Math.Abs(creatures[i].GlobalPosition.X - bone.Origin.X) > 30)
                 failures.Add($"arm {i} UI is not horizontally attached to its fist");
+            if (bodyRect.Intersects(handRect))
+                failures.Add($"body torso hitbox {bodyRect} overlaps arm {i} hitbox {handRect}");
         }
         var hoverTips = (System.Collections.IEnumerable)typeof(ThingsCaveGodAgingPower)
             .GetProperty("ExtraHoverTips", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(ModelDb.Power<ThingsCaveGodAgingPower>())!;

@@ -40,14 +40,14 @@ public partial class NWaterSpongeVisuals : NCreatureVisuals
         if (_creature == null)
             for (Node? parent = GetParent(); parent != null; parent = parent.GetParent())
                 if (parent is NCreature creature) { _creature = creature; break; }
-        float water = Math.Clamp(_creature?.Entity?.Monster is WaterSponge sponge
-            ? sponge.VisibleWater : Math.Max(0, PreviewWater), 0f, WaterSponge.WaterCapacity);
+        float water = Math.Clamp(_creature?.Entity?.Monster is ThingsWaterSponge sponge
+            ? sponge.VisibleWater : Math.Max(0, PreviewWater), 0f, ThingsWaterSponge.WaterCapacity);
         float blend = 1 - Mathf.Exp(-(float)delta * 7);
         _visibleWater = Mathf.Lerp(_visibleWater, water, blend);
         Vector2 target = _baseScale * new Vector2(1 + .06f * water, 1 + .045f * water);
         _body.Scale = _body.Scale.Lerp(target, blend);
         if (_shadow != null) _shadow.Scale = _shadowScale * new Vector2(1 + .055f * _visibleWater, 1);
         // Update the retained material without stealing a temporary potion overlay.
-        _waterMaterial?.SetShaderParameter("water_level", _visibleWater / WaterSponge.WaterCapacity);
+        _waterMaterial?.SetShaderParameter("water_level", _visibleWater / ThingsWaterSponge.WaterCapacity);
     }
 }

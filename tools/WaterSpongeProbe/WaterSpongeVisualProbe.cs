@@ -32,7 +32,7 @@ public partial class WaterSpongeProbeNode
         Assert(IntentAnimData.GetAnimationFrameCount("buff") == 30, "Uses the unmodified native thirty-frame Buff animation.");
         ui.Patch(AccessTools.Method(typeof(CombatStateTracker), "NotifyCombatStateChanged"), prefix: new HarmonyMethod(typeof(WaterSpongeProbeNode), nameof(SkipUiGuard)));
         ScriptManagerBridge.LookupScriptsInAssembly(typeof(NCard).Assembly);
-        ScriptManagerBridge.LookupScriptsInAssembly(typeof(WaterSponge).Assembly);
+        ScriptManagerBridge.LookupScriptsInAssembly(typeof(ThingsWaterSponge).Assembly);
         var loaderType = typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Assets.AtlasResourceLoader");
         var loader = loaderType == null ? null : (ResourceFormatLoader)Activator.CreateInstance(loaderType)!;
         if (loader != null) ResourceLoader.AddResourceFormatLoader(loader, true);
@@ -69,9 +69,8 @@ public partial class WaterSpongeProbeNode
             typeof(NCreature).GetProperty(nameof(NCreature.Visuals))!.SetValue(node, GD.Load<PackedScene>(path).Instantiate<NCreatureVisuals>());
             node.Position = position; view.AddChild(node); return node;
         }
-        foreach (bool weak in new[] { true, false })
         {
-            var s = await Scenario(weak);
+            var s = await Scenario();
             var bg = NCombatBackground.Create(new BackgroundAssets(s.Encounter.Id.Entry.ToLowerInvariant(), new Rng()));
             bg.Position = new Vector2(983, 540); view.AddChild(bg);
             var slots = s.Encounter.CreateScene(); view.AddChild(slots);
@@ -79,17 +78,17 @@ public partial class WaterSpongeProbeNode
             NCreature? spongeNode = null;
             foreach (var (monster, _) in s.Encounter.MonstersWithSlots)
             {
-                string slug = monster is WaterSponge ? "water_sponge" : "sanguine_leech";
+                string slug = monster is ThingsWaterSponge ? "water_sponge" : "sanguine_leech";
                 var node = AddCreature(monster.Creature, $"res://scenes/creature_visuals/{slug}.tscn", slots.GetNode<Node2D>(monster.Creature.SlotName!).Position);
                 await node.UpdateIntent(s.Players.Select(p => p.Creature).ToArray()); node.IntentContainer.Modulate = Colors.White;
                 var sprite = node.Visuals.GetNode<Node2D>("Visuals");
                 sprite.Call("set_update_mode", ClassDB.ClassGetIntegerConstant("SpineConstant", "UpdateMode_Manual"));
                 Pose(sprite, "idle_loop", 0);
-                if (monster is WaterSponge) spongeNode = node;
+                if (monster is ThingsWaterSponge) spongeNode = node;
             }
             for (int frame = 0; frame < 12; frame++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-            await Capture(weak ? "weak_pair" : "strong_colony");
-            foreach (var power in new PowerModel[] { ModelDb.Power<AbsorbentSpongePower>(), ModelDb.Power<SpongeReservoirPower>(), ModelDb.Power<SpongeRinsePower>(), ModelDb.Power<LanternBlindnessPower>(), ModelDb.Power<LeechInfestationPower>() })
+            await Capture("strong_colony");
+            foreach (var power in new PowerModel[] { ModelDb.Power<ThingsAbsorbentSpongePower>(), ModelDb.Power<ThingsSpongeReservoirPower>(), ModelDb.Power<ThingsSpongeRinsePower>(), ModelDb.Power<ThingsLanternBlindnessPower>(), ModelDb.Power<ThingsLeechInfestationPower>() })
             {
                 // V113's original AtlasResourceLoader resolves new mod powers via
                 // its documented BigIcon fallback; V107 reads the 64px .tres.
@@ -103,10 +102,10 @@ public partial class WaterSpongeProbeNode
             int previousWetPixels = -1;
             for (int level = 0; level <= 3; level++)
             {
-                if (level > 0) await PowerCmd.Apply<SpongeReservoirPower>(Choice, s.Sponge.Creature, 1, s.Sponge.Creature, null);
+                if (level > 0) await PowerCmd.Apply<ThingsSpongeReservoirPower>(Choice, s.Sponge.Creature, 1, s.Sponge.Creature, null);
                 await ToSignal(GetTree().CreateTimer(.85), SceneTreeTimer.SignalName.Timeout);
                 Assert(Math.Abs(waterMaterial!.GetShaderParameter("water_level").AsSingle() - level / 3f) < .02f, "Animated material settles at water level " + level);
-                await Capture($"{(weak ? "weak" : "strong")}_water_{level}");
+                await Capture($"strong_water_{level}");
                 using var pixels = view.GetTexture().GetImage();
                 int wetPixels = 0;
                 Vector2I corner = (Vector2I)spongeNode.Position + new Vector2I(-60, -100);
@@ -122,12 +121,12 @@ public partial class WaterSpongeProbeNode
             }
             await spongeNode.UpdateIntent(s.Players.Select(p => p.Creature).ToArray()); spongeNode.IntentContainer.Modulate = Colors.White;
             for (int frame = 0; frame < 24; frame++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-            var reservoir = s.Sponge.Creature.GetPower<SpongeReservoirPower>()!;
+            var reservoir = s.Sponge.Creature.GetPower<ThingsSpongeReservoirPower>()!;
             var tip = reservoir.HoverTips.OfType<HoverTip>().First();
             Assert(tip.IsSmart && tip.Description.Contains("3") && !tip.Description.Contains("{Amount}"), "Native smart hover tip formats the live water amount.");
             var hud = spongeNode.FindChildren("*", "", true, false).OfType<NPower>().Single(power => power.Model == reservoir);
             Assert(hud.GetNode<Label>("%AmountLabel").Text == "3", "Original NPower shows the actual stack count.");
-            var parasiteTips = ModelDb.Card<STS2_Things.Cards.LeechParasite>().HoverTips.OfType<HoverTip>().Select(t => t.Id).ToHashSet();
+            var parasiteTips = ModelDb.Card<STS2_Things.Cards.ThingsLeechParasite>().HoverTips.OfType<HoverTip>().Select(t => t.Id).ToHashSet();
             Assert(parasiteTips.Contains(ModelDb.Power<MegaCrit.Sts2.Core.Models.Powers.RegenPower>().Id.ToString())
                 && parasiteTips.Contains(ModelDb.Power<MegaCrit.Sts2.Core.Models.Powers.StrengthPower>().Id.ToString()), "Parasitism exposes the native Regeneration and Strength hover tips.");
             Assert(spongeSprite.Scale.X > dryScale.X * 1.10f, "Actual creature swells with stored water.");
@@ -141,28 +140,44 @@ public partial class WaterSpongeProbeNode
             ulong firstFrame = buffSprite.Texture!.GetInstanceId();
             await ToSignal(GetTree().CreateTimer(.11), SceneTreeTimer.SignalName.Timeout);
             Assert(buffSprite.Texture!.GetInstanceId() != firstFrame, "Native NIntent advances the Buff frames without a registration patch.");
-            await Capture(weak ? "weak_full_water" : "strong_full_water");
-            Pose(spongeSprite, "cast", .86f); await Capture(weak ? "weak_spray" : "strong_spray");
-            await PowerCmd.Remove(s.Sponge.Creature.GetPower<SpongeReservoirPower>()!);
+            await Capture("strong_full_water");
+            Pose(spongeSprite, "cast", .86f); await Capture("strong_spray");
+            await PowerCmd.Remove(s.Sponge.Creature.GetPower<ThingsSpongeReservoirPower>()!);
             await ToSignal(GetTree().CreateTimer(.85), SceneTreeTimer.SignalName.Timeout);
             Assert(waterMaterial!.GetShaderParameter("water_level").AsSingle() < .02f && spongeSprite.Scale.DistanceTo(dryScale) < .002f, "Spraying drains the belly and shrinks the body.");
-            Pose(spongeSprite, "idle_loop", 0); await Capture(weak ? "weak_drained" : "strong_drained");
-            if (!weak)
+            Pose(spongeSprite, "idle_loop", 0); await Capture("strong_drained");
+            foreach (var (trigger, clip) in new[] { (CreatureAnimator.attackTrigger, "attack"), (CreatureAnimator.castTrigger, "cast"), ("Soak", "soak"), (CreatureAnimator.hitTrigger, "hurt"), (CreatureAnimator.deathTrigger, "die") })
             {
-                foreach (var (trigger, clip) in new[] { (CreatureAnimator.attackTrigger, "attack"), (CreatureAnimator.castTrigger, "cast"), ("Soak", "soak"), (CreatureAnimator.hitTrigger, "hurt"), (CreatureAnimator.deathTrigger, "die") })
-                {
-                    spongeNode.SetAnimationTrigger(trigger);
-                    var track = spongeSprite.Call("get_animation_state").AsGodotObject().Call("get_current", 0).AsGodotObject();
-                    Assert(track.Call("get_animation").AsGodotObject().Call("get_name").AsString() == clip, "Native animation trigger " + trigger);
-                }
-                foreach (var (clip, duration) in new[] { ("idle_loop", 4f), ("attack", 1.15f), ("cast", 1.5f), ("soak", 1.35f), ("hurt", .58f), ("die", 1.5f), ("revive", 1.4f), ("summon", 1.2f), ("power_up", 1.2f) })
-                    for (int phase = 0; phase < 3; phase++)
-                    {
-                        Pose(spongeSprite, clip, duration * phase / 2);
-                        await Capture($"pose_{clip}_{phase}");
-                    }
+                spongeNode.SetAnimationTrigger(trigger);
+                var track = spongeSprite.Call("get_animation_state").AsGodotObject().Call("get_current", 0).AsGodotObject();
+                Assert(track.Call("get_animation").AsGodotObject().Call("get_name").AsString() == clip, "Native animation trigger " + trigger);
             }
-            if (weak && OS.GetCmdlineUserArgs().Contains("--motion")) await RenderMotionClips(view, s, output);
+            foreach (var (clip, duration) in new[] { ("idle_loop", 4f), ("attack", 1.15f), ("cast", 1.5f), ("soak", 1.35f), ("hurt", .58f), ("die", 1.5f), ("revive", 1.4f), ("summon", 1.2f), ("power_up", 1.2f) })
+                for (int phase = 0; phase < 3; phase++)
+                {
+                    Pose(spongeSprite, clip, duration * phase / 2);
+                    await Capture($"pose_{clip}_{phase}");
+                }
+            if (OS.GetCmdlineUserArgs().Contains("--motion")) await RenderMotionClips(view, s, output);
+            await Clear(); DeactivateSyntheticCombat();
+        }
+        {
+            var ls = await Scenario(lantern: true);
+            var bg = NCombatBackground.Create(new BackgroundAssets(ls.Encounter.Id.Entry.ToLowerInvariant(), new Rng()));
+            bg.Position = new Vector2(983, 540); view.AddChild(bg);
+            var slots = ls.Encounter.CreateScene(); view.AddChild(slots);
+            AddCreature(ls.Player.Creature, "res://scenes/creature_visuals/ironclad.tscn", new Vector2(480, 746));
+            foreach (var (monster, _) in ls.Encounter.MonstersWithSlots)
+            {
+                string slug = monster is ThingsWaterSponge ? "water_sponge" : "lantern_fish";
+                var node = AddCreature(monster.Creature, $"res://scenes/creature_visuals/{slug}.tscn", slots.GetNode<Node2D>(monster.Creature.SlotName!).Position);
+                await node.UpdateIntent(ls.Players.Select(p => p.Creature).ToArray()); node.IntentContainer.Modulate = Colors.White;
+                var sprite = node.Visuals.GetNode<Node2D>("Visuals");
+                sprite.Call("set_update_mode", ClassDB.ClassGetIntegerConstant("SpineConstant", "UpdateMode_Manual"));
+                Pose(sprite, "idle_loop", 0);
+            }
+            for (int frame = 0; frame < 12; frame++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await Capture("lantern_sponge_formation");
             await Clear(); DeactivateSyntheticCombat();
         }
         view.QueueFree(); await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);

@@ -29,13 +29,13 @@ using MegaCrit.Sts2.Core.ValueProps;
 
 public partial class GravetideSlugProbeNode : Node
 {
-    private const string BossTypeName = "STS2_Things.Monsters.GravetideSlug";
+    private const string BossTypeName = "STS2_Things.Monsters.ThingsGravetideSlug";
     private const string SlugBaseTypeName = "STS2_Things.Monsters.GravetideSlugBase";
-    private const string SlugTypeName = "STS2_Things.Monsters.GravetideCorpseSlug";
-    private const string CorpseTypeName = "STS2_Things.Monsters.GravetideSlugCorpse";
-    private const string DigestionTypeName = "STS2_Things.Powers.GravetideDigestionPower";
-    private const string MinionTypeName = "STS2_Things.Powers.GravetideMinionPower";
-    private const string EncounterTypeName = "STS2_Things.Encounters.GravetideSlugBossEncounter";
+    private const string SlugTypeName = "STS2_Things.Monsters.ThingsGravetideCorpseSlug";
+    private const string CorpseTypeName = "STS2_Things.Monsters.ThingsGravetideSlugCorpse";
+    private const string DigestionTypeName = "STS2_Things.Powers.ThingsGravetideDigestionPower";
+    private const string MinionTypeName = "STS2_Things.Powers.ThingsGravetideMinionPower";
+    private const string EncounterTypeName = "STS2_Things.Encounters.ThingsGravetideSlugBossEncounter";
 
     private static readonly Assembly ImplementationAssembly = typeof(STS2_ThingsInit).Assembly;
 
@@ -163,6 +163,7 @@ public partial class GravetideSlugProbeNode : Node
         RequireModelType<PowerModel>(DigestionTypeName);
         RequireModelType<PowerModel>(MinionTypeName);
         RequireModelType<EncounterModel>(EncounterTypeName);
+        _ = RequireType("STS2_Things.Hooks.GravetideRavenousPowerPatch");
     }
 
     private static void VerifyDevourAnimationContract()
@@ -455,7 +456,7 @@ public partial class GravetideSlugProbeNode : Node
             Scenario scenario = CreateScenario(
                 playerCount, $"GRAVETIDE_SUMMON_{playerCount}");
             string[] slugSlots = Enumerable.Range(0, 6)
-                .Select(STS2_Things.Encounters.GravetideSlugBossEncounter.GetCorpseSlugSlotName)
+                .Select(STS2_Things.Encounters.ThingsGravetideSlugBossEncounter.GetCorpseSlugSlotName)
                 .ToArray();
             Creature boss = AddMonster(scenario, BossTypeName, "gravetide_boss");
             Creature openingLeft = AddMonster(scenario, SlugTypeName, slugSlots[0]);

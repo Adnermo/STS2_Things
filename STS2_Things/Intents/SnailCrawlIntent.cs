@@ -9,14 +9,14 @@ public sealed class SnailCrawlIntent(int remaining) : DefendIntent
 {
     public override LocString GetIntentLabel(IEnumerable<Creature> targets, Creature owner)
     {
-        var label = new LocString("monsters", "ROCK_SNAIL.crawlLabel");
+        var label = new LocString("monsters", "THINGS_ROCK_SNAIL.crawlLabel");
         label.Add("Remaining", remaining);
         return label;
     }
 
     protected override LocString GetIntentDescription(IEnumerable<Creature> targets, Creature owner)
     {
-        var description = new LocString("powers", "ROCK_CRAWL_STATE_POWER.intentDescription");
+        var description = new LocString("powers", "THINGS_ROCK_CRAWL_STATE_POWER.intentDescription");
         description.Add("Remaining", remaining);
         return description;
     }

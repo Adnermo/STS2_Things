@@ -50,11 +50,9 @@ public partial class CaveGodProbeNode
         Backdrop();
         Caption("Cave God - native card scenes / Chinese locale", new Vector2(45, 45), 32);
         CardModel[] cards = [
-            scenario.State.CreateCard<CaveGodBrokenBladeTrial>(player),
-            scenario.State.CreateCard<CaveGodShatteredShieldTrial>(player),
-            scenario.State.CreateCard<ThingsCaveGodCrystalShard>(player),
-            scenario.State.CreateCard<CaveGodMartialTrial>(player),
-            scenario.State.CreateCard<CaveGodArcaneTrial>(player),
+            scenario.State.CreateCard<MegaCrit.Sts2.Core.Models.Cards.StoneArmor>(player),
+            scenario.State.CreateCard<ThingsLeechParasite>(player),
+            scenario.State.CreateCard<ThingsSnailCrystalChip>(player),
         ];
         var paths = new List<string>();
         for (int i = 0; i < cards.Length; i++)
@@ -70,7 +68,6 @@ public partial class CaveGodProbeNode
             paths.Add(model.PortraitPath);
         }
         Caption("Active encounter", new Vector2(55, 760));
-        Caption("Legacy cards retained for save compatibility", new Vector2(1165, 760));
         await Capture("native-cards");
         foreach (Node child in view.GetChildren()) { view.RemoveChild(child); child.QueueFree(); }
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -78,10 +75,8 @@ public partial class CaveGodProbeNode
         Backdrop();
         Caption("Cave God - native NPower HUD + hover icons", new Vector2(45, 45), 32);
         PowerModel[] powers = [
-            ModelDb.Power<ThingsCaveGodAgingPower>(), ModelDb.Power<ThingsCaveGodAncientCorePower>(),
-            ModelDb.Power<ThingsCaveGodCrystalVeinPower>(), ModelDb.Power<ThingsCaveGodFissurePower>(),
-            ModelDb.Power<CaveGodBrokenBladePower>(), ModelDb.Power<CaveGodShatteredShieldPower>(),
-            ModelDb.Power<CaveGodMartialPower>(), ModelDb.Power<CaveGodArcanePower>(),
+            ModelDb.Power<ThingsCaveGodAgingPower>(),
+            ModelDb.Power<ThingsCaveGodAncientCorePower>(),
         ];
         for (int i = 0; i < powers.Length; i++)
         {
@@ -99,13 +94,13 @@ public partial class CaveGodProbeNode
         }
         Caption("Original map tint and outline assets", new Vector2(45, 580), 28);
         view.AddChild(new ColorRect { Position = new Vector2(45, 650), Size = new Vector2(755, 340), Color = new Color("b8ad90") });
-        string mapPath = ModelDb.Encounter<CaveGodBossEncounter>().BossNodePath;
+        string mapPath = ModelDb.Encounter<ThingsCaveGodBossEncounter>().BossNodePath;
         Texture(GD.Load<Texture2D>(mapPath + ".png"), new Vector2(60, 665), new Vector2(352, 300), new Color("332c28"));
         Texture(GD.Load<Texture2D>(mapPath + "_outline.png"), new Vector2(430, 665), new Vector2(352, 300), new Color("6b4a26"));
         Texture(GD.Load<Texture2D>(mapPath + ".png"), new Vector2(430, 665), new Vector2(352, 300), new Color("332c28"));
         paths.Add(mapPath + ".png"); paths.Add(mapPath + "_outline.png");
         Caption("Run history - 88 px", new Vector2(1050, 650));
-        foreach (string stem in new[] { "cave_god_boss", "cave_god_boss_encounter" })
+        foreach (string stem in new[] { "cave_god_boss", "things_cave_god_boss_encounter" })
         {
             float x = stem.EndsWith("encounter") ? 1300 : 1100;
             foreach (string suffix in new[] { "", "_outline" })

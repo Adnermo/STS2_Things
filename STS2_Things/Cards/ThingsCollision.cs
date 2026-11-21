@@ -6,10 +6,10 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
-using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.ValueProps;
+using STS2_Things.Core.Models;
 
 namespace STS2_Things.Cards;
 
@@ -19,7 +19,7 @@ namespace STS2_Things.Cards;
 /// Exhaust keeps its permanent symmetrical Strength loss from becoming a
 /// repeatable boss-locking effect.
 /// </summary>
-public sealed class ThingsCollision : CardModel
+public sealed class ThingsCollision : ThingsCardModel
 {
     private const string StrengthLossKey = "StrengthLoss";
 
@@ -44,13 +44,8 @@ public sealed class ThingsCollision : CardModel
     {
         ArgumentNullException.ThrowIfNull(cardPlay.Target);
 
-#if STS2_V107_1
-        var attack = DamageCmd.Attack(DynamicVars.Damage.BaseValue).FromCard(this);
-#else
-        // V110 damage hooks consume the CardPlay reference for multiplayer-safe context.
-        var attack = DamageCmd.Attack(DynamicVars.Damage.BaseValue).FromCard(this, cardPlay);
-#endif
-        await attack.Targeting(cardPlay.Target)
+        await AttackFromCard(DynamicVars.Damage.BaseValue, cardPlay)
+            .Targeting(cardPlay.Target)
             .WithAttackerAnim(
                 Ironclad.GetHeavyAnimIfApplicable(Owner.Character),
                 Ironclad.GetHeavyAttackDelayIfApplicable(Owner.Character))

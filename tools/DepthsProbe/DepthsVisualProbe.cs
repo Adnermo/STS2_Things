@@ -41,7 +41,7 @@ public partial class DepthsProbeNode
         }
         NCombatBackground Background(string? path=null)
         {
-            var assets=ModelDb.Act<Depths>().GenerateBackgroundAssets(new Rng());
+            var assets=ModelDb.Act<ThingsDepths>().GenerateBackgroundAssets(new Rng());
             if(path!=null)assets.BgLayers[0]=path;
             var bg=NCombatBackground.Create(assets);bg.Position=new Vector2(983,540);view.AddChild(bg);return bg;
         }
@@ -49,7 +49,7 @@ public partial class DepthsProbeNode
         {
             var run=CreateRun(weak?"pair-preview":"shoal-preview");run.CurrentActIndex=1;
             typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
-            EncounterModel encounter=(weak?ModelDb.Encounter<LanternFishWeak>() as EncounterModel:ModelDb.Encounter<LanternFishEncounter>()).ToMutable();
+            EncounterModel encounter=(weak?ModelDb.Encounter<ThingsLanternFishWeak>() as EncounterModel:ModelDb.Encounter<ThingsLanternFishEncounter>()).ToMutable();
             var habitat=NCombatBackground.Create(new BackgroundAssets(encounter.Id.Entry.ToLowerInvariant(),new Rng()));
             habitat.Position=new Vector2(983,540);view.AddChild(habitat);
             run.AppendToMapPointHistory(MapPointType.Monster,RoomType.Monster,encounter.Id);
@@ -88,14 +88,14 @@ public partial class DepthsProbeNode
             }
             await Clear();DeactivateSyntheticCombat();
         }
-        using(var directory=DirAccess.Open("res://scenes/backgrounds/depths/layers"))
+        using(var directory=DirAccess.Open("res://scenes/backgrounds/things_depths/layers"))
         foreach(string file in directory.GetFiles().Where(file=>file.Contains("_bg_00_")).Order())
         {
-            Background("res://scenes/backgrounds/depths/layers/"+file);
+            Background("res://scenes/backgrounds/things_depths/layers/"+file);
             await ToSignal(GetTree().CreateTimer(.3),SceneTreeTimer.SignalName.Timeout);
             await Capture(Path.GetFileNameWithoutExtension(file));await Clear();
         }
-        var rest=ModelDb.Act<Depths>().CreateRestSiteBackground();rest.Position=new Vector2(26,74);view.AddChild(rest);
+        var rest=ModelDb.Act<ThingsDepths>().CreateRestSiteBackground();rest.Position=new Vector2(26,74);view.AddChild(rest);
         var camperRun=CreateRun("depths-camp-layout");camperRun.CurrentActIndex=1;
         var camper=MegaCrit.Sts2.Core.Nodes.RestSite.NRestSiteCharacter.Create(camperRun.Players[0],0);
         camper.Position=new Vector2(650.8f,715.8f);camper.Scale=Vector2.One*.5f;view.AddChild(camper);

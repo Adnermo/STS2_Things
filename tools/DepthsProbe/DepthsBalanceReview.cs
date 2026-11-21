@@ -23,9 +23,9 @@ public partial class DepthsProbeNode
     // apply, so leaving Parasitism alone intentionally includes its growth.
     private async Task SampleDepthsBalance()
     {
-        var custom = ModelDb.Act<Depths>().AllWeakEncounters
-            .Concat(ModelDb.Act<Depths>().AllRegularEncounters)
-            .Concat(ModelDb.Act<Depths>().AllEliteEncounters.Where(e => e.GetType().Assembly == typeof(Depths).Assembly)).ToArray();
+        var custom = ModelDb.Act<ThingsDepths>().AllWeakEncounters
+            .Concat(ModelDb.Act<ThingsDepths>().AllRegularEncounters)
+            .Concat(ModelDb.Act<ThingsDepths>().AllEliteEncounters.Where(e => e.GetType().Assembly == typeof(ThingsDepths).Assembly)).ToArray();
         EncounterModel[] reference = [
             ModelDb.Encounter<BowlbugsWeak>(), ModelDb.Encounter<ThievingHopperWeak>(), ModelDb.Encounter<TunnelerWeak>(),
             ModelDb.Encounter<BowlbugsNormal>(), ModelDb.Encounter<ChompersNormal>(), ModelDb.Encounter<HunterKillerNormal>(),
@@ -40,27 +40,47 @@ public partial class DepthsProbeNode
             foreach (var creature in b.Enemies) await creature.Monster!.AfterAddedToRoom();
             foreach (var creature in b.Enemies)
             {
-                if (creature.Monster is ReverseSalamander salamander && creature.GetPower<ReverseCurrentPower>() is { } reflux)
+                if (creature.Monster is ThingsReverseSalamander salamander && creature.GetPower<ThingsReverseCurrentPower>() is { } reflux)
                 {
                     string text = reflux.HoverTips.OfType<HoverTip>().First().Description;
                     Assert(text.Contains($"[blue]{salamander.GrowthAmount}[/blue]"),
                         "Native Reflux tooltip displays the actual A0/A20 Strength gift.");
+                    Assert(salamander.UnplayedRecallBlock == (ascension == 0 ? 6 : 8) &&
+                           reflux.DynamicVars["UnplayedBlock"].IntValue == salamander.UnplayedRecallBlock,
+                        "Reverse Current power exposes 6 (A0) / 8 (A8+) UnplayedBlock.");
                 }
-                if (creature.Monster is RadioJellyfish && creature.GetPower<RadioReceptionPower>() is { } reception)
+                if (creature.Monster is ThingsRadioJellyfish jelly && creature.GetPower<ThingsRadioReceptionPower>() is { } reception)
                 {
                     string text = reception.HoverTips.OfType<HoverTip>().First().Description;
                     Assert(text.Contains("[blue]1[/blue]"), "Native Reception tooltip displays one point per opening stack.");
+                    Assert(ThingsRadioJellyfish.BaseEchoDamage == 8 && ThingsRadioJellyfish.BaseSkillBlock == 6,
+                        "Radio Jellyfish base constants updated to 8 damage / 6 skill block.");
+                    Assert(jelly.EchoDamage == (ascension == 0 ? 8 : 9) &&
+                           jelly.ShieldPerSkill == (ascension == 0 ? 7 : 9) &&
+                           reception.DynamicVars["EchoDamage"].IntValue == (ascension == 0 ? 9 : 10) &&
+                           reception.DynamicVars["ShieldPerSkill"].IntValue == (ascension == 0 ? 7 : 9),
+                        "Radio Jellyfish opening stack yields 9/10 hit damage and 7/9 Block per Skill.");
+                }
+                if (creature.Monster is ThingsCaveMaw maw && creature.GetPower<ThingsCaveMawAppetitePower>() is { } appetite)
+                {
+                    Assert(maw.MinInitialHp == (ascension == 0 ? 88 : 96) &&
+                           maw.MaxInitialHp == (ascension == 0 ? 94 : 102) &&
+                           ThingsCaveMaw.BlockPerCard == 10 &&
+                           appetite.DynamicVars["BlockPerCard"].IntValue == 10,
+                        "Cave Maw balance contract reflects 88-94/96-102 HP and 10 Block per consumed Status card.");
                 }
             }
             var roster = b.Enemies.Select(c => new { monster = c.Monster!.Id.Entry, hp = c.MaxHp,
                 baseMin = c.Monster.MinInitialHp, baseMax = c.Monster.MaxInitialHp, block = c.Block }).ToArray();
             var turns = await UnmitigatedTurns(b);
-            records.Add(new { encounter = canonical.Id.Entry, source = canonical.GetType().Assembly == typeof(Depths).Assembly ? "depths" : "native",
+            records.Add(new { encounter = canonical.Id.Entry, source = canonical.GetType().Assembly == typeof(ThingsDepths).Assembly ? "depths" : "native",
                 kind = canonical.RoomType.ToString(), weak = canonical.IsWeak, ascension, players, roster, turns });
             DeactivateSyntheticCombat();
         }
         File.WriteAllText(Path.Combine(_output, "balance-trajectories.json"), JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }));
         Godot.GD.Print($"PASS {records.Count} native balance trajectories: A0/A20, 1/4 players; eight unmitigated turns, not win rates.");
+        await VerifyEliteMechanics();
+        await VerifyBowlbugProgenitorMechanics();
         await SampleAct1EliteReference();
     }
 
@@ -72,9 +92,9 @@ public partial class DepthsProbeNode
         EncounterModel[] encounters = [
             ModelDb.Encounter<BygoneEffigyElite>(), ModelDb.Encounter<ByrdonisElite>(), ModelDb.Encounter<PhrogParasiteElite>(),
             ModelDb.Encounter<PhantasmalGardenersElite>(), ModelDb.Encounter<SkulkingColonyElite>(), ModelDb.Encounter<TerrorEelElite>(),
-            ModelDb.Encounter<RobberyFakeMerchantEncounter>(),
+            ModelDb.Encounter<ThingsRobberyFakeMerchantEncounter>(),
         ];
-        var prepare = typeof(RobberyFakeMerchantEncounter).GetMethod("PrepareForFight", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var prepare = typeof(ThingsRobberyFakeMerchantEncounter).GetMethod("PrepareForFight", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var records = new List<object>();
         foreach (var canonical in encounters)
         foreach (int ascension in new[] { 0, 20 })
@@ -82,7 +102,7 @@ public partial class DepthsProbeNode
         {
             var b = await StrongBattle(canonical, 1, ascension, $"act1-elite-{canonical.Id.Entry}-{seed}");
             foreach (var creature in b.Enemies) await creature.Monster!.AfterAddedToRoom();
-            if (b.Encounter is RobberyFakeMerchantEncounter) await (Task)prepare.Invoke(b.Encounter, [b.State])!;
+            if (b.Encounter is ThingsRobberyFakeMerchantEncounter) await (Task)prepare.Invoke(b.Encounter, [b.State])!;
             var roster = b.Enemies.Select(c => new { monster = c.Monster!.Id.Entry, slot = c.SlotName, hp = c.MaxHp,
                 block = c.Block, strength = c.GetPower<StrengthPower>()?.Amount ?? 0 }).ToArray();
             var turns = await UnmitigatedTurns(b);

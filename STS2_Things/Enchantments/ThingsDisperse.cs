@@ -19,9 +19,12 @@ public sealed class ThingsDisperse : EnchantmentModel
         Card.AddKeyword(CardKeyword.Ethereal);
     }
 
-    // 允许附魔任何类型（基类硬编码禁止 Curse/Status，需覆盖整个 CanEnchant）
+    // 允许附魔诅咒/状态牌，但拒绝任务牌、已有附魔牌与已具备虚无词条的牌
     public override bool CanEnchant(CardModel card)
     {
-        return true;
+        return card != null
+            && card.Type != CardType.Quest
+            && card.Enchantment == null
+            && !card.Keywords.Contains(CardKeyword.Ethereal);
     }
 }

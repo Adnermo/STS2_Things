@@ -12,7 +12,7 @@ internal static class DepthsActCatalogPatch
     [HarmonyPriority(Priority.Last)]
     private static void Postfix(ref IEnumerable<ActModel> __result)
     {
-        __result = __result.Append(ModelDb.Act<Depths>()).Distinct()
+        __result = __result.Append(ModelDb.Act<ThingsDepths>()).Distinct()
             .OrderBy(act => act.Index).ThenBy(act => act.IsDefault ? 0 : 1).ToArray();
     }
 }
@@ -22,5 +22,5 @@ internal static class DepthsActCatalogPatch
 [HarmonyPatch(typeof(AchievementsHelper), nameof(AchievementsHelper.CheckForDefeatedAllEnemiesAchievement))]
 internal static class DepthsVanillaAchievementPatch
 {
-    private static bool Prefix(ActModel act) => act is not Depths;
+    private static bool Prefix(ActModel act) => act is not ThingsDepths;
 }

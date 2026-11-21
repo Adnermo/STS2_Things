@@ -12,7 +12,7 @@ namespace STS2_Things.Features.MerchantBargain;
 [HarmonyPatch]
 internal static class MerchantEntryOnTryPurchaseWrapperPatch
 {
-#if STS2_V113
+#if STS2_V113_1
     private static MethodBase TargetMethod() => AccessTools.Method(
         typeof(MegaCrit.Sts2.Core.Multiplayer.Game.MerchantSynchronizer),
         nameof(MegaCrit.Sts2.Core.Multiplayer.Game.MerchantSynchronizer.PurchaseLocalEntry),
@@ -52,28 +52,7 @@ internal static class MerchantEntryOnTryPurchaseWrapperPatch
 #endif
 }
 
-[HarmonyPatch]
-internal static class MerchantEntryCostPatch
-{
-    private static MethodBase TargetMethod()
-    {
-        return AccessTools.PropertyGetter(typeof(MerchantEntry), nameof(MerchantEntry.Cost))
-            ?? throw new MissingMethodException(typeof(MerchantEntry).FullName, nameof(MerchantEntry.Cost));
-    }
-
-    private static bool Prefix(MerchantEntry __instance, ref int __result)
-    {
-        if (!MerchantBargainManager.TryGetPriceOverride(__instance, out int price))
-        {
-            return true;
-        }
-
-        __result = price;
-        return false;
-    }
-}
-
-#if STS2_V113
+#if STS2_V113_1
 [HarmonyPatch(typeof(NStandardMerchantRoom), nameof(NStandardMerchantRoom.AssetPaths), MethodType.Getter)]
 #else
 [HarmonyPatch(typeof(NMerchantRoom), nameof(NMerchantRoom.AssetPaths), MethodType.Getter)]

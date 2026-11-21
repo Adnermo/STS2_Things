@@ -31,7 +31,7 @@ public partial class DepthsProbeNode
             RunManager.Instance.GenerateRooms();
             await RunManager.Instance.SetActInternal(0);
             await RunManager.Instance.SetActInternal(1);
-            Assert(run.Act is STS2_Things.Acts.Depths, "Act 2 is Depths");
+            Assert(run.Act is STS2_Things.Acts.ThingsDepths, "Act 2 is Depths");
             await RunManager.Instance.SetActInternal(2);
             Assert(run.Act is Glory, "Act 3 remains vanilla Glory");
             MegaCrit.Sts2.Core.Context.LocalContext.NetId = run.Players[0].NetId;
@@ -46,7 +46,7 @@ public partial class DepthsProbeNode
             var victory = NativeEndedRun(RunManager.Instance.OnEnded(isVictory: true));
             Assert(victory.GameMode == GameMode.Standard && victory.Ascension == 2,
                 "Real victory serialized as standard A2");
-            Assert(victory.Acts[1].Id == ModelDb.Act<STS2_Things.Acts.Depths>().Id &&
+            Assert(victory.Acts[1].Id == ModelDb.Act<STS2_Things.Acts.ThingsDepths>().Id &&
                    victory.Acts[2].Id == ModelDb.Act<Glory>().Id,
                 "Victory retained Depths and Glory IDs");
             Assert(RunManager.Instance.History?.Win == true, "History recorded an actual victory");

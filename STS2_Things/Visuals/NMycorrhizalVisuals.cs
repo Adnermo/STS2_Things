@@ -32,9 +32,11 @@ public partial class NMycorrhizalVisuals : NCreatureVisuals
         string pose=robust?"robust":"withered";
         if(_pose!=pose)
         {
+            using Variant stateVar=_sprite.Call("get_animation_state");
+            GodotObject? state=stateVar.VariantType==Variant.Type.Object?stateVar.AsGodotObject():null;
+            if(state==null)return;
             _pose=pose;
-            var state=_sprite.Call("get_animation_state").AsGodotObject();
-            state.Call("set_animation",pose,true,1);
+            using Variant _=state.Call("set_animation",pose,true,1);
         }
     }
 }

@@ -35,7 +35,7 @@ public partial class WaterSpongeProbeNode : Node
     {
         AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency;
         EnsureRuntimeDependency("System.IO.Hashing");
-        Type[] modTypes = typeof(SanguineLeech).Assembly.GetTypes();
+        Type[] modTypes = typeof(ThingsSanguineLeech).Assembly.GetTypes();
         Type[] modelTypes = AbstractModelSubtypes.All
             .Concat(modTypes.Where(type => !type.IsAbstract && typeof(AbstractModel).IsAssignableFrom(type)))
             .Distinct()
@@ -45,7 +45,7 @@ public partial class WaterSpongeProbeNode : Node
         // the exact post-initialization state that the real loader provides.
         typeof(ReflectionHelper).GetField("_modTypes", BindingFlags.NonPublic | BindingFlags.Static)!
             .SetValue(null, modTypes);
-        RegisterSyntheticMod(typeof(SanguineLeech).Assembly);
+        RegisterSyntheticMod(typeof(ThingsSanguineLeech).Assembly);
         // V113 exposes ModManager.State/ModManagerState, while V107.1 does not.
         // Seed it when present without creating a compile-time dependency on the
         // newer API so this same probe source validates both shipped targets.

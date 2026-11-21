@@ -1,4 +1,4 @@
-#if !STS2_V107_1
+#if !STS2_V111_1
 using System.Collections;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -25,6 +25,8 @@ using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Unlocks;
 using STS2_Things.Config;
 using STS2_Things.Features.MerchantBargain;
+using STS2_Things.Modifiers;
+using MegaCrit.Sts2.Core.Hooks;
 
 public static class MerchantV113Regression
 {
@@ -44,12 +46,13 @@ public static class MerchantV113Regression
         };
         TestMode.TurnOnInternal();
         InitializeModels();
+        ThingsMerchantBargainPricePolicy.EnsureSubscribed();
         SaveManager.Instance.InitSettingsDataForTest();
         SaveManager.Instance.InitPrefsDataForTest();
         ThingsModConfig.Load();
         ThingsModConfig.SetValue(ThingsModConfig.FeatureMerchantBargainEnabled, true);
         var harmony = new Harmony("MerchantBargainProbe.V113Sync");
-        foreach (string name in new[] { "MerchantEntryOnTryPurchaseWrapperPatch", "MerchantEntryCostPatch",
+        foreach (string name in new[] { "MerchantEntryOnTryPurchaseWrapperPatch",
                      "MerchantBargainSyncBindPatch", "MerchantBargainSyncUnbindPatch", "MerchantBargainNativePurchaseCleanupPatch" })
             harmony.CreateClassProcessor(Mod.GetType("STS2_Things.Features.MerchantBargain." + name, true)!).Patch();
         harmony.Patch(AccessTools.PropertyGetter(typeof(NMerchantRoom), nameof(NMerchantRoom.Instance)),
@@ -90,6 +93,8 @@ public static class MerchantV113Regression
             GameMode.Standard, false, 0, "merchant-beta-" + count);
         typeof(RunManager).GetProperty("State", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(RunManager.Instance, run);
         run.PushRoom(new MerchantRoom()); run.AppendToMapPointHistory(MapPointType.Shop, RoomType.Shop, null);
+        Require(run.IterateHookListeners(null).OfType<ThingsMerchantBargainPricePolicy>().Any(),
+            "ThingsMerchantBargainPricePolicy must be subscribed in RunState hook listeners.");
         var entries = players.Select(p => new MerchantRelicEntry(ModelDb.Relic<Anchor>().ToMutable(), p)).ToArray();
         var inventories = players.Select((p, i) => new MerchantInventory(p, [], [], [entries[i]], [], null, [])).ToList();
         for (int i = 0; i < count; i++)
@@ -98,6 +103,11 @@ public static class MerchantV113Regression
             typeof(MerchantEntry).GetField("_cost", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(entries[i], 120);
             typeof(Player).GetProperty(nameof(Player.Gold))!.SetValue(players[i], 110);
         }
+        Manager.GetMethod("SetPriceOverride", PrivateStatic)!.Invoke(null, [entries[0], 95]);
+        Require(Hook.ModifyMerchantPrice(run, players[0], entries[0], 120m) == 95m && entries[0].Cost == 95,
+            "ThingsMerchantBargainPricePolicy did not modify MerchantEntry.Cost via Hook.ModifyMerchantPrice.");
+        Manager.GetMethod("ClearPriceOverride", PrivateStatic)!.Invoke(null, [entries[0]]);
+        Require(entries[0].Cost == 120, "Clearing price override did not restore original MerchantEntry.Cost.");
         for (int local = 0; local < count; local++)
         {
             LocalContext.NetId = players[local].NetId;
@@ -120,10 +130,10 @@ public static class MerchantV113Regression
             Require(await sync.PurchaseLocalEntry(entries[local]), "Fifth click wins a negotiated native purchase.");
             Require(_fights == before + 1 && players[local].Gold == 0 && !entries[local].IsStocked, "One fight, one gold spend, one stock removal.");
             Require(players[local].Relics.Count(r => r.Id == ModelDb.Relic<Anchor>().Id) == 1, "Native relic is granted once.");
-            int priceIndex = wire.Sent.FindIndex(m => m is MerchantBargainPriceMessage);
+            int priceIndex = wire.Sent.FindIndex(m => m is ThingsMerchantBargainPriceMessage);
             int purchaseIndex = wire.Sent.FindLastIndex(m => m is MerchantEntryPurchasedMessage);
             Require(priceIndex >= 0 && priceIndex < purchaseIndex, "Reliable price announcement precedes native purchase.");
-            Require(wire.Sent.OfType<MerchantBargainPriceMessage>().Single().Price == 110, "Announced price equals actual spend.");
+            Require(wire.Sent.OfType<ThingsMerchantBargainPriceMessage>().Single().Price == 110, "Announced price equals actual spend.");
             Require(entries[local].Cost == 120, "Temporary negotiated price is cleared after purchase.");
             for (int other = local + 1; other < count; other++)
                 Require(players[other].Gold == 110 && entries[other].IsStocked, "Other inventories remain untouched.");

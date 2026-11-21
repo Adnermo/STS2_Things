@@ -25,8 +25,8 @@ public partial class DepthsProbeNode
             prefix: new HarmonyMethod(typeof(DepthsProbeNode), nameof(CaptureDeathAudio)));
         try
         {
-            foreach (var monster in new MonsterModel[] { ModelDb.Monster<WaterSponge>(), ModelDb.Monster<CaveMaw>(),
-                         ModelDb.Monster<SanguineLeech>(), ModelDb.Monster<ReverseSalamander>(), ModelDb.Monster<GravetideSlug>() })
+            foreach (var monster in new MonsterModel[] { ModelDb.Monster<ThingsWaterSponge>(), ModelDb.Monster<ThingsCaveMaw>(),
+                         ModelDb.Monster<ThingsSanguineLeech>(), ModelDb.Monster<ThingsReverseSalamander>(), ModelDb.Monster<ThingsGravetideSlug>() })
             {
                 DeathAudioCalls.Clear();
                 Assert(!SfxHooks.SfxCmdPlayDeathPatch.Prefix(monster), "Bundled death sound must bypass FMOD: " + monster.Id);
@@ -34,7 +34,7 @@ public partial class DepthsProbeNode
                     "Exactly one native death sound, including final-enemy death: " + monster.Id);
             }
             DeathAudioCalls.Clear();
-            Assert(SfxHooks.SfxCmdPlayDeathPatch.Prefix(ModelDb.Monster<LanternFish>()) && DeathAudioCalls.Count == 0,
+            Assert(SfxHooks.SfxCmdPlayDeathPatch.Prefix(ModelDb.Monster<ThingsLanternFish>()) && DeathAudioCalls.Count == 0,
                 "Borrowed vanilla FMOD sounds still use their original playback.");
         }
         finally { host.UnpatchAll(host.Id); }
@@ -54,11 +54,11 @@ public partial class DepthsProbeNode
                      new Vector2(-2200, 120), new Vector2(-1500, -600) })
         {
             var jet = new SpongeJetRegressionNode { Position = new Vector2(560, 200), Scale = new Vector2(.2f, .2f) };
-            jet.SetPose(WaterSponge.SprayContact - .14f, target, pixel);
+            jet.SetPose(ThingsWaterSponge.SprayContact - .14f, target, pixel);
             view.AddChild(jet);
             jets.Add(jet);
         }
-        float launch = WaterSponge.SprayContact - .14f;
+        float launch = ThingsWaterSponge.SprayContact - .14f;
         var times = new[] { launch + .00001f, launch + .0001f, launch + .0005f,
             launch + .001f, launch + .002f, launch + .004f, launch + .008f,
             launch + .016f, launch + .025f, launch + .04f, launch + .08f, launch + .14f,

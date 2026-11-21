@@ -163,6 +163,12 @@ def encounter_acts(source: Path) -> dict[str, set[str]]:
             r"ModelDb\.Encounter<([A-Za-z0-9_]+)>\(\)", match.group("body")
         ):
             result.setdefault(encounter, set()).add(act)
+    depths_path = source / "Acts" / "ThingsDepths.cs"
+    if depths_path.is_file():
+        depths_text = depths_path.read_text(encoding="utf-8")
+        for encounter in re.findall(r"ModelDb\.Encounter<([A-Za-z0-9_]+)>\(\)", depths_text):
+            # ThingsDepths delegates MusicBankPaths directly to ModelDb.Act<Hive>().MusicBankPaths.
+            result.setdefault(encounter, set()).add("Hive")
     return result
 
 

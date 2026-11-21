@@ -36,7 +36,7 @@ public partial class ThingsSplitProbeNode : Node
             InstallThingsSplitPatches();
             VerifyEligibility();
             VerifyKnownAndUnknownDynamicVars();
-#if !STS2_V107_1
+#if STS2_V113_1
             VerifyHitCountVar();
 #endif
             VerifyBasicStrikeLifecycle();
@@ -63,7 +63,7 @@ public partial class ThingsSplitProbeNode : Node
         AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency;
         EnsureRuntimeDependency("System.IO.Hashing");
 
-        Type[] modTypes = [typeof(ThingsSplit), typeof(CuttingItClose)];
+        Type[] modTypes = [typeof(ThingsSplit), typeof(ThingsCuttingItClose)];
         Type[] modelTypes = AbstractModelSubtypes.All
             .Concat(modTypes)
             .Distinct()
@@ -132,8 +132,11 @@ public partial class ThingsSplitProbeNode : Node
     private static void InstallThingsSplitPatches()
     {
         var harmony = new Harmony($"Adnermo.STS2_Things.SplitProbe.{Guid.NewGuid():N}");
-        Type[] patchTypes = typeof(ThingsSplit)
-            .GetNestedTypes(BindingFlags.NonPublic)
+        Type splitPatchesContainer = typeof(ThingsSplit).Assembly.GetType(
+            "STS2_Things.Hooks.ThingsSplitPatches",
+            throwOnError: true)!;
+        Type[] patchTypes = splitPatchesContainer
+            .GetNestedTypes(BindingFlags.NonPublic | BindingFlags.Public)
             .Where(type => type.GetCustomAttributes(typeof(HarmonyPatch), inherit: true).Length > 0)
             .ToArray();
         Assert(patchTypes.Length >= 8,
@@ -567,6 +570,13 @@ public partial class ThingsSplitProbeNode : Node
     private static void VerifySovereignBladeGrowthDowngrade()
     {
         SovereignBlade card = MutableCard<SovereignBlade>();
+#if STS2_V113_1
+        Assert(card.DynamicVars.TryGetValue("HitCount", out _) && !card.DynamicVars.TryGetValue("Repeat", out _),
+            "Sovereign Blade must expose HitCount (not Repeat) on v0.113.1.");
+#else
+        Assert(card.DynamicVars.TryGetValue("Repeat", out _) && !card.DynamicVars.TryGetValue("HitCount", out _),
+            "Sovereign Blade must expose Repeat (not HitCount) on v0.111.1.");
+#endif
         CardCmd.Enchant<ThingsSplit>(card, 1m);
         Assert(card.DynamicVars.Damage.BaseValue == 5m,
             "Split Sovereign Blade did not start at 5 damage.");
@@ -585,11 +595,14 @@ public partial class ThingsSplitProbeNode : Node
             "Split Sovereign Blade lost its forge mutations during downgrade.");
     }
 
-    private static decimal ReadSovereignRepeats(CardModel card)
-        => card.DynamicVars.TryGetValue("HitCount", out DynamicVar? hits)
-            ? hits.BaseValue : card.DynamicVars.Repeat.BaseValue;
+    private static decimal ReadSovereignRepeats(CardModel card) =>
+#if STS2_V113_1
+        card.DynamicVars["HitCount"].BaseValue;
+#else
+        card.DynamicVars.Repeat.BaseValue;
+#endif
 
-#if !STS2_V107_1
+#if STS2_V113_1
     private static void VerifyHitCountVar()
     {
         var card = ModelDb.Card<Barricade>().ToMutable();
@@ -723,8 +736,8 @@ public partial class ThingsSplitProbeNode : Node
 
     private static void VerifyConsoleJumpScreenCleanupDecision()
     {
-        Type patchType = typeof(CuttingItClose).Assembly.GetType(
-            "STS2_Things.Events.CuttingItCloseConsoleReentryPatch",
+        Type patchType = typeof(ThingsCuttingItClose).Assembly.GetType(
+            "STS2_Things.Hooks.CuttingItCloseConsoleReentryPatch",
             throwOnError: true)!;
         MethodInfo decision = patchType.GetMethod(
             "ShouldPrepareScreens",
@@ -742,30 +755,30 @@ public partial class ThingsSplitProbeNode : Node
                 [args, hasIssuingPlayer, runInProgress, duplicateActive]) ?? false);
         }
 
-        Assert(ShouldPrepare(["CUTTING_IT_CLOSE"]),
-            "The first CUTTING_IT_CLOSE console jump did not request stale screen cleanup.");
-        Assert(ShouldPrepare(["cutting_it_close"]),
-            "CUTTING_IT_CLOSE screen cleanup was not case-insensitive.");
-        Assert(!ShouldPrepare(["CUTTING_IT_CLOSE"], duplicateActive: true),
-            "A rejected duplicate CUTTING_IT_CLOSE jump would clear the active event UI.");
-        Assert(!ShouldPrepare(["CUTTING_IT_CLOSE"], hasIssuingPlayer: false),
+        Assert(ShouldPrepare(["THINGS_CUTTING_IT_CLOSE"]),
+            "The first THINGS_CUTTING_IT_CLOSE console jump did not request stale screen cleanup.");
+        Assert(ShouldPrepare(["things_cutting_it_close"]),
+            "THINGS_CUTTING_IT_CLOSE screen cleanup was not case-insensitive.");
+        Assert(!ShouldPrepare(["THINGS_CUTTING_IT_CLOSE"], duplicateActive: true),
+            "A rejected duplicate THINGS_CUTTING_IT_CLOSE jump would clear the active event UI.");
+        Assert(!ShouldPrepare(["THINGS_CUTTING_IT_CLOSE"], hasIssuingPlayer: false),
             "A console jump without an issuing player would clear screens.");
-        Assert(!ShouldPrepare(["CUTTING_IT_CLOSE"], runInProgress: false),
-            "A CUTTING_IT_CLOSE command outside a run would clear screens.");
-        Assert(!ShouldPrepare(["BACKROOMS"]),
-            "The CUTTING_IT_CLOSE patch would clear screens for another event command.");
+        Assert(!ShouldPrepare(["THINGS_CUTTING_IT_CLOSE"], runInProgress: false),
+            "A THINGS_CUTTING_IT_CLOSE command outside a run would clear screens.");
+        Assert(!ShouldPrepare(["THINGS_BACKROOMS"]),
+            "The THINGS_CUTTING_IT_CLOSE patch would clear screens for another event command.");
         Assert(!ShouldPrepare(Array.Empty<string>()),
-            "The CUTTING_IT_CLOSE patch would clear screens for an empty command.");
+            "The THINGS_CUTTING_IT_CLOSE patch would clear screens for an empty command.");
     }
 
     private static void VerifyEventEligibility()
     {
-        CuttingItClose eventModel = ModelDb.Event<CuttingItClose>();
+        ThingsCuttingItClose eventModel = ModelDb.Event<ThingsCuttingItClose>();
         ThingsSplit split = ModelDb.Enchantment<ThingsSplit>();
-        MethodInfo candidateMethod = typeof(CuttingItClose).GetMethod(
+        MethodInfo candidateMethod = typeof(ThingsCuttingItClose).GetMethod(
             "IsSplitCandidate",
             BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new MissingMethodException(typeof(CuttingItClose).FullName, "IsSplitCandidate");
+            ?? throw new MissingMethodException(typeof(ThingsCuttingItClose).FullName, "IsSplitCandidate");
 
         bool IsCandidate(CardModel card)
         {
@@ -848,7 +861,7 @@ public partial class ThingsSplitProbeNode : Node
             player.Deck.AddInternal(card, silent: true);
         }
 
-        CuttingItClose eventModel = await CreateStartedEvent(player);
+        ThingsCuttingItClose eventModel = await CreateStartedEvent(player);
         var selector = new CapturingCardSelector();
         using (ProbeRuntimeApi.UseSelector(selector))
         {
@@ -867,11 +880,11 @@ public partial class ThingsSplitProbeNode : Node
         CardModel original = player.Deck.Cards.OfType<StrikeIronclad>().First();
         CardModel[] deckBefore = player.Deck.Cards.ToArray();
 
-        CuttingItClose eventModel = await CreateStartedEvent(player);
+        ThingsCuttingItClose eventModel = await CreateStartedEvent(player);
         Assert(eventModel.CurrentOptions.Count == 2,
             "Cutting It Close did not expose both initial event options.");
         Assert(eventModel.CurrentOptions[0].TextKey ==
-               "CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE",
+               "THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.IMPROVISE",
             "Cutting It Close generated an unexpected Improvise option key.");
         Assert(!eventModel.CurrentOptions[0].IsLocked,
             "Cutting It Close generated a locked Improvise option.");
@@ -919,11 +932,11 @@ public partial class ThingsSplitProbeNode : Node
         CardModel original = player.Deck.Cards.OfType<StrikeIronclad>().First();
         CardModel[] deckBefore = player.Deck.Cards.ToArray();
 
-        CuttingItClose eventModel = await CreateStartedEvent(player);
+        ThingsCuttingItClose eventModel = await CreateStartedEvent(player);
         Assert(eventModel.CurrentOptions.Count == 2,
             "Cutting It Close did not expose both initial event options.");
         Assert(eventModel.CurrentOptions[1].TextKey ==
-               "CUTTING_IT_CLOSE.pages.INITIAL.options.THROW",
+               "THINGS_CUTTING_IT_CLOSE.pages.INITIAL.options.THROW",
             "Cutting It Close generated an unexpected Throw option key.");
         Assert(!eventModel.CurrentOptions[1].IsLocked,
             "Cutting It Close generated a locked Throw option.");
@@ -958,7 +971,7 @@ public partial class ThingsSplitProbeNode : Node
         CardModel original = player.Deck.Cards.OfType<StrikeIronclad>().First();
         CardModel[] deckBefore = player.Deck.Cards.ToArray();
 
-        CuttingItClose eventModel = await CreateStartedEvent(player);
+        ThingsCuttingItClose eventModel = await CreateStartedEvent(player);
         var selector = new TestCardSelector();
         selector.PrepareToSelect([original]);
         using (ProbeRuntimeApi.UseSelector(selector))
@@ -989,7 +1002,7 @@ public partial class ThingsSplitProbeNode : Node
     {
         Player player = CreateIroncladRunPlayer();
         CardModel[] deckBefore = player.Deck.Cards.ToArray();
-        CuttingItClose eventModel = await CreateStartedEvent(player);
+        ThingsCuttingItClose eventModel = await CreateStartedEvent(player);
         EventOption option = eventModel.CurrentOptions[0];
         var selector = new TestCardSelector();
         selector.PrepareToSelect(Array.Empty<CardModel>());
@@ -1011,7 +1024,7 @@ public partial class ThingsSplitProbeNode : Node
     {
         Player player = CreateIroncladRunPlayer();
         CardModel[] deckBefore = player.Deck.Cards.ToArray();
-        CuttingItClose eventModel = await CreateStartedEvent(player);
+        ThingsCuttingItClose eventModel = await CreateStartedEvent(player);
         EventOption option = eventModel.CurrentOptions[1];
         var selector = new TestCardSelector();
         selector.PrepareToSelect(Array.Empty<CardModel>());
@@ -1032,7 +1045,7 @@ public partial class ThingsSplitProbeNode : Node
     private static async Task VerifyRemoteUnfinishedDuplicateGuard()
     {
         Player player = CreateIroncladRunPlayer();
-        CuttingItClose completedLocal = await CreateStartedEvent(player);
+        ThingsCuttingItClose completedLocal = await CreateStartedEvent(player);
         EventOption localOption = completedLocal.CurrentOptions[1];
         var selector = new TestCardSelector();
         selector.PrepareToSelect(Array.Empty<CardModel>());
@@ -1043,8 +1056,8 @@ public partial class ThingsSplitProbeNode : Node
         Assert(completedLocal.IsFinished,
             "Remote duplicate-guard fixture did not finish the local event.");
 
-        CuttingItClose unfinishedRemote =
-            (CuttingItClose)ModelDb.Event<CuttingItClose>().ToMutable();
+        ThingsCuttingItClose unfinishedRemote =
+            (ThingsCuttingItClose)ModelDb.Event<ThingsCuttingItClose>().ToMutable();
         Assert(!unfinishedRemote.IsFinished,
             "Remote duplicate-guard fixture unexpectedly started finished.");
         AssertDuplicateJumpGuard(
@@ -1068,8 +1081,8 @@ public partial class ThingsSplitProbeNode : Node
         CardModel[] improviseDeckBefore = improvisingPlayer.Deck.Cards.ToArray();
         CardModel[] throwDeckBefore = throwingPlayer.Deck.Cards.ToArray();
 
-        CuttingItClose improviseEvent = await CreateStartedEvent(improvisingPlayer);
-        CuttingItClose throwEvent = await CreateStartedEvent(throwingPlayer);
+        ThingsCuttingItClose improviseEvent = await CreateStartedEvent(improvisingPlayer);
+        ThingsCuttingItClose throwEvent = await CreateStartedEvent(throwingPlayer);
 
         var improviseSelector = new TestCardSelector();
         improviseSelector.PrepareToSelect([improviseOriginal]);
@@ -1123,10 +1136,10 @@ public partial class ThingsSplitProbeNode : Node
         return Player.CreateForNewRun<Ironclad>(UnlockState.all, netId);
     }
 
-    private static async Task<CuttingItClose> CreateStartedEvent(Player owner)
+    private static async Task<ThingsCuttingItClose> CreateStartedEvent(Player owner)
     {
         ProbeRuntimeApi.PrepareSelectors(owner.RunState);
-        CuttingItClose canonical = ModelDb.Event<CuttingItClose>();
+        ThingsCuttingItClose canonical = ModelDb.Event<ThingsCuttingItClose>();
         var probeVars = new DynamicVarSet([new StringVar("Enchantment", "Split")]);
         probeVars.InitializeWithOwner(canonical);
         FieldInfo dynamicVarsField = typeof(EventModel).GetField(
@@ -1134,7 +1147,7 @@ public partial class ThingsSplitProbeNode : Node
             ?? throw new MissingFieldException(typeof(EventModel).FullName, "_dynamicVars");
         dynamicVarsField.SetValue(canonical, probeVars);
 
-        var eventModel = (CuttingItClose)canonical.ToMutable();
+        var eventModel = (ThingsCuttingItClose)canonical.ToMutable();
         MethodInfo beginEvent = typeof(EventModel).GetMethods(
                 BindingFlags.Public | BindingFlags.Instance)
             .Single(method => method.Name == nameof(EventModel.BeginEvent));
@@ -1151,7 +1164,7 @@ public partial class ThingsSplitProbeNode : Node
         return eventModel;
     }
 
-    private static void AssertDuplicateJumpGuard(CuttingItClose mutableEvent, bool expected)
+    private static void AssertDuplicateJumpGuard(ThingsCuttingItClose mutableEvent, bool expected)
     {
         AssertDuplicateJumpGuard(
             [mutableEvent],
@@ -1164,8 +1177,8 @@ public partial class ThingsSplitProbeNode : Node
         bool expected,
         string context)
     {
-        Type patchType = typeof(CuttingItClose).Assembly.GetType(
-            "STS2_Things.Events.CuttingItCloseConsoleReentryPatch",
+        Type patchType = typeof(ThingsCuttingItClose).Assembly.GetType(
+            "STS2_Things.Hooks.CuttingItCloseConsoleReentryPatch",
             throwOnError: true)!;
         MethodInfo guard = patchType.GetMethod(
             "ShouldBlockDuplicate",
@@ -1174,8 +1187,8 @@ public partial class ThingsSplitProbeNode : Node
         bool actual = (bool)(guard.Invoke(
             null,
             [
-                new[] { "CUTTING_IT_CLOSE" },
-                ModelDb.Event<CuttingItClose>(),
+                new[] { "THINGS_CUTTING_IT_CLOSE" },
+                ModelDb.Event<ThingsCuttingItClose>(),
                 mutableEvents
             ]) ?? false);
         Assert(actual == expected,

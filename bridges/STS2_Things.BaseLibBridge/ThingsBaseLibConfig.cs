@@ -140,6 +140,30 @@ public sealed class ThingsBaseLibConfig : SimpleModConfig
     [ConfigSlider(0, 1000, 10, Format = "{0}%")]
     public static int BossCaveGodWeightPercent { get; set; } = 100;
 
+    [ConfigSection("Bosses")]
+    public static bool BossHumanFaceTowerEnabled { get; set; } = true;
+
+    [ConfigSection("Bosses")]
+    [ConfigVisibleIf(nameof(CanForceHumanFaceTower))]
+    public static bool BossHumanFaceTowerForced { get; set; }
+
+    [ConfigSection("Bosses")]
+    [ConfigHoverTip]
+    [ConfigSlider(0, 1000, 10, Format = "{0}%")]
+    public static int BossHumanFaceTowerWeightPercent { get; set; } = 100;
+
+    [ConfigSection("Bosses")]
+    public static bool BossAbyssalInkmawEnabled { get; set; } = true;
+
+    [ConfigSection("Bosses")]
+    [ConfigVisibleIf(nameof(CanForceAbyssalInkmaw))]
+    public static bool BossAbyssalInkmawForced { get; set; }
+
+    [ConfigSection("Bosses")]
+    [ConfigHoverTip]
+    [ConfigSlider(0, 1000, 10, Format = "{0}%")]
+    public static int BossAbyssalInkmawWeightPercent { get; set; } = 100;
+
     // ---- 遭遇战：其他 ----
 
     [ConfigSection("Other Encounters")]
@@ -200,6 +224,75 @@ public sealed class ThingsBaseLibConfig : SimpleModConfig
     [ConfigSection("Events")]
     public static bool EventCrowdedWardEnabled { get; set; } = true;
 
+    [ConfigSection("Events")]
+    public static bool EventReturnsCounterEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventHotWaxBoxEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventWarmRoyalCellEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventSpliceBoothEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventGildedPressEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventCrookedCounterweightEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventAntSortingTableEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventGrudgeVendingMachineEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventBlindCrabInkwellEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventChronometerRigEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventSilveredGalleryEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventCrackedBrazierEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventSiltWinchEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventBilgeMinesEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventMossRuneLoomEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventClamClawEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventForestPlinkoEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventBronzeCauldronEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventLendingVineEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventOverstuffedBroodEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventScalesOfVanityEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventWallCrackLedgerEnabled { get; set; } = true;
+
+    [ConfigSection("Events")]
+    public static bool EventSpikedDoorEnabled { get; set; } = true;
+
     // ---- 商人猜拳 ----
 
     [ConfigSection("Merchant Bargain")]
@@ -216,7 +309,9 @@ public sealed class ThingsBaseLibConfig : SimpleModConfig
     [ConfigSection("Neow Starting Relics")]
     public static bool NeowRelicMagicGloveEnabled { get; set; } = true;
 
-    // ---- 强制冲突的条件可见（同槽位最多一个强制）----
+    [ConfigSection("Stability")]
+    [ConfigHoverTip]
+    public static bool FeatureDefensiveEngineGuardsEnabled { get; set; } = true;
 
     public static bool CanForceOriginFogmog() => !BossScaleBeetleForced;
 
@@ -229,4 +324,8 @@ public sealed class ThingsBaseLibConfig : SimpleModConfig
     public static bool CanForceBowlbugProgenitor() => !BossCaveGodForced;
 
     public static bool CanForceCaveGod() => !BossBowlbugProgenitorForced;
+
+    public static bool CanForceHumanFaceTower() => !BossAbyssalInkmawForced;
+
+    public static bool CanForceAbyssalInkmaw() => !BossHumanFaceTowerForced;
 }

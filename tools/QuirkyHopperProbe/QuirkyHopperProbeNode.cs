@@ -54,7 +54,7 @@ public partial class QuirkyHopperProbeNode : Node
     {
         AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency;
         EnsureRuntimeDependency("System.IO.Hashing");
-        Type[] modTypes = typeof(QuirkyHopper).Assembly.GetTypes();
+        Type[] modTypes = typeof(ThingsQuirkyHopper).Assembly.GetTypes();
         Type[] modelTypes = AbstractModelSubtypes.All
             .Concat(modTypes.Where(type => !type.IsAbstract && typeof(AbstractModel).IsAssignableFrom(type)))
             .Distinct()
@@ -64,7 +64,7 @@ public partial class QuirkyHopperProbeNode : Node
         // the exact post-initialization state that the real loader provides.
         typeof(ReflectionHelper).GetField("_modTypes", BindingFlags.NonPublic | BindingFlags.Static)!
             .SetValue(null, modTypes);
-        RegisterSyntheticMod(typeof(QuirkyHopper).Assembly);
+        RegisterSyntheticMod(typeof(ThingsQuirkyHopper).Assembly);
         // V113 exposes ModManager.State/ModManagerState, while V107.1 does not.
         // Seed it when present without creating a compile-time dependency on the
         // newer API so this same probe source validates both shipped targets.
@@ -171,31 +171,47 @@ public partial class QuirkyHopperProbeNode : Node
 
     private static void VerifyEncounterAndMoveContract()
     {
-        QuirkyHopperWeak encounter = ModelDb.Encounter<QuirkyHopperWeak>();
+        ThingsQuirkyHopperWeak encounter = ModelDb.Encounter<ThingsQuirkyHopperWeak>();
         Assert(encounter.RoomType == RoomType.Monster, "Encounter is not a normal hallway room.");
         Assert(encounter.IsWeak, "Encounter is not in the Act 2 weak hallway subset.");
         Assert(encounter.Tags.SequenceEqual([EncounterTag.Thieves]), "Encounter tag differs from the native thief encounter.");
 
-        QuirkyHopper hopper = (QuirkyHopper)ModelDb.Monster<QuirkyHopper>().ToMutable();
-        hopper.SetUpForCombat();
-        MonsterMoveStateMachine machine = hopper.MoveStateMachine
-            ?? throw new InvalidOperationException("Move state machine was not initialized.");
-        string[] ids = machine.States.Keys.OrderBy(id => id, StringComparer.Ordinal).ToArray();
-        string[] expectedIds =
-        [
-            "ESCAPE_MOVE",
-            "FLUTTER_MOVE",
-            "HAT_TRICK_MOVE",
-            "NAB_MOVE",
-            "THIEVERY_MOVE"
-        ];
-        Assert(ids.SequenceEqual(expectedIds), "Move state machine differs from the native five-turn chain.");
-        MoveState thievery = (MoveState)machine.States["THIEVERY_MOVE"];
-        Assert(
-            thievery.Intents.Count == 2 &&
-            thievery.Intents[0] is SingleAttackIntent &&
-            thievery.Intents[1] is CardDebuffIntent,
-            "Thievery does not expose the native attack + card-debuff intents.");
+        foreach (int ascension in new[] { 0, 20 })
+        {
+            Scenario contract = CreateScenario($"QUIRKY_CONTRACT_A{ascension}", addCurse: false, addFirePotion: false, ascension: ascension);
+            ThingsQuirkyHopper hopper = contract.Hopper;
+            hopper.SetUpForCombat();
+            Assert(hopper.MinInitialHp == (ascension == 0 ? 68 : 72), $"Quirky Hopper HP mismatch at A{ascension}.");
+            MonsterMoveStateMachine machine = hopper.MoveStateMachine
+                ?? throw new InvalidOperationException("Move state machine was not initialized.");
+            string[] ids = machine.States.Keys.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+            string[] expectedIds =
+            [
+                "ESCAPE_MOVE",
+                "FLUTTER_MOVE",
+                "HAT_TRICK_MOVE",
+                "NAB_MOVE",
+                "THIEVERY_MOVE"
+            ];
+            Assert(ids.SequenceEqual(expectedIds), "Move state machine differs from the native five-turn chain.");
+            MoveState thievery = (MoveState)machine.States["THIEVERY_MOVE"];
+            MoveState hatTrick = (MoveState)machine.States["HAT_TRICK_MOVE"];
+            MoveState nab = (MoveState)machine.States["NAB_MOVE"];
+            Assert(
+                thievery.Intents.Count == 2 &&
+                thievery.Intents[0] is SingleAttackIntent thieveryAttack &&
+                thievery.Intents[1] is CardDebuffIntent &&
+                thieveryAttack.DamageCalc!() == (ascension == 0 ? 15 : 17),
+                $"Thievery intent mismatch at A{ascension}.");
+            Assert(
+                hatTrick.Intents.Single() is SingleAttackIntent hatTrickAttack &&
+                hatTrickAttack.DamageCalc!() == (ascension == 0 ? 19 : 21),
+                $"Hat Trick intent mismatch at A{ascension}.");
+            Assert(
+                nab.Intents.Single() is SingleAttackIntent nabAttack &&
+                nabAttack.DamageCalc!() == (ascension == 0 ? 13 : 15),
+                $"Nab intent mismatch at A{ascension}.");
+        }
     }
 
     private static void VerifyPrioritySelection()
@@ -228,7 +244,7 @@ public partial class QuirkyHopperProbeNode : Node
             "Quirky Hopper must not steal Eternal cards such as Ascender's Bane.");
         Scenario onlyEternal = CreateScenario("QUIRKY_ONLY_ETERNAL", addCurse: false, addFirePotion: false,
             configureDeck: static (run, player) => ReplaceDeck(player, run.CreateCard<AscendersBane>(player)));
-        Assert(typeof(QuirkyHopper).GetMethod("SelectCardToSteal", BindingFlags.Instance | BindingFlags.NonPublic)!
+        Assert(typeof(ThingsQuirkyHopper).GetMethod("SelectCardToSteal", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(onlyEternal.Hopper, [onlyEternal.Player]) is null, "An Eternal-only deck has no theft candidate.");
 
         Scenario common = CreateScenario(
@@ -336,7 +352,7 @@ public partial class QuirkyHopperProbeNode : Node
             new PotionReward(ModelDb.Potion<FirePotion>().ToMutable(), scenario.Player),
             returnedReward
         };
-        QuirkyHopperRewardPolicy policy = ModelDb.Modifier<QuirkyHopperRewardPolicy>();
+        ThingsQuirkyHopperRewardPolicy policy = ModelDb.Modifier<ThingsQuirkyHopperRewardPolicy>();
         bool modified = policy.TryModifyRewardsLate(scenario.Player, rewards, scenario.Room);
         Assert(modified, "Exact-potion reward policy did not run.");
         Assert(rewards.Count == 1 && ReferenceEquals(rewards[0], returnedReward), "Duplicate potion reward was not removed deterministically.");
@@ -346,7 +362,8 @@ public partial class QuirkyHopperProbeNode : Node
         string seed,
         bool addCurse,
         bool addFirePotion,
-        Action<RunState, Player>? configureDeck = null)
+        Action<RunState, Player>? configureDeck = null,
+        int ascension = 0)
     {
         Player player = Player.CreateForNewRun<Ironclad>(UnlockState.all, 1UL);
         RunState runState = ProbeRuntimeApi.CreateForNewRun(
@@ -354,8 +371,12 @@ public partial class QuirkyHopperProbeNode : Node
             ActModel.GetDefaultList().Select(act => act.ToMutable()).ToList(),
             [],
             GameMode.Standard,
-            0,
+            ascension,
             seed);
+        typeof(RunManager).GetProperty("State", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(RunManager.Instance, runState);
+        typeof(RunManager).GetProperty("AscensionManager")!
+            .SetValue(RunManager.Instance, ProbeRuntimeApi.Ascension(ascension));
 
         CardModel? curseCard = null;
         if (addCurse)
@@ -365,7 +386,7 @@ public partial class QuirkyHopperProbeNode : Node
         }
         configureDeck?.Invoke(runState, player);
 
-        QuirkyHopperWeak encounter = (QuirkyHopperWeak)ModelDb.Encounter<QuirkyHopperWeak>().ToMutable();
+        ThingsQuirkyHopperWeak encounter = (ThingsQuirkyHopperWeak)ModelDb.Encounter<ThingsQuirkyHopperWeak>().ToMutable();
         runState.AppendToMapPointHistory(MapPointType.Monster, RoomType.Monster, encounter.Id);
         var room = new CombatRoom(encounter, runState);
         runState.PushRoom(room);
@@ -374,7 +395,7 @@ public partial class QuirkyHopperProbeNode : Node
         room.CombatState.AddPlayer(player);
         player.PopulateCombatState(runState.Rng.Shuffle, room.CombatState);
 
-        QuirkyHopper hopper = (QuirkyHopper)ModelDb.Monster<QuirkyHopper>().ToMutable();
+        ThingsQuirkyHopper hopper = (ThingsQuirkyHopper)ModelDb.Monster<ThingsQuirkyHopper>().ToMutable();
         Creature creature = room.CombatState.CreateCreature(hopper, CombatSide.Enemy, null);
         room.CombatState.AddCreature(creature);
 
@@ -433,9 +454,9 @@ public partial class QuirkyHopperProbeNode : Node
         return new LootStates(potionState, cardState);
     }
 
-    private static CardModel SelectCardToSteal(QuirkyHopper hopper, Player player)
+    private static CardModel SelectCardToSteal(ThingsQuirkyHopper hopper, Player player)
     {
-        MethodInfo method = typeof(QuirkyHopper).GetMethod(
+        MethodInfo method = typeof(ThingsQuirkyHopper).GetMethod(
             "SelectCardToSteal",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         return (CardModel)method.Invoke(hopper, [player])!;
@@ -483,7 +504,7 @@ public partial class QuirkyHopperProbeNode : Node
         Player Player,
         RunState RunState,
         CombatRoom Room,
-        QuirkyHopper Hopper,
+        ThingsQuirkyHopper Hopper,
         Creature HopperCreature,
         PotionModel? FirePotion,
         int PotionSlot,

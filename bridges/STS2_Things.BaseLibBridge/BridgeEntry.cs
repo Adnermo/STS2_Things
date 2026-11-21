@@ -1,6 +1,7 @@
 using System.Reflection;
 using BaseLib;
 using BaseLib.Config;
+using Godot;
 using HarmonyLib;
 
 namespace STS2_Things.BaseLibBridge;
@@ -90,7 +91,7 @@ public static class BridgeEntry
             _synchronizing = true;
             CopyNormalizedValues();
             _config?.ConfigReloaded();
-            _config?.RefreshSessionAccess();
+            Callable.From(() => _config?.RefreshSessionAccess()).CallDeferred();
         }
         finally { _synchronizing = false; }
     }

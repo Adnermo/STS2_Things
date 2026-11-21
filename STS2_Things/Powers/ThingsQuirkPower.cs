@@ -12,12 +12,13 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
+using STS2_Things.Core.Models;
 using STS2_Things.Monsters;
 
 namespace STS2_Things.Powers;
 
 /// <summary>
-/// Tracks one player's loot stolen by <see cref="Monsters.QuirkyHopper"/>.
+/// Tracks one player's loot stolen by <see cref="Monsters.ThingsQuirkyHopper"/>.
 ///
 /// Full-combat multiplayer snapshots retain only a Power's model id and Amount.
 /// The visible loot state and invisible potion recovery state therefore encode all
@@ -25,7 +26,7 @@ namespace STS2_Things.Powers;
 /// The permanent deck card stays in the deck as a save-safe escrow while its combat
 /// copy is absent; killing the Hopper releases that escrow, while escape removes it.
 /// </summary>
-public sealed class ThingsQuirkPower : PowerModel
+public sealed class ThingsQuirkPower : ThingsPowerModel
 {
     private const int PlayerRadix = 4;
     private const int DeckIndexRadix = 8193;
@@ -38,6 +39,15 @@ public sealed class ThingsQuirkPower : PowerModel
     private PotionModel? _stolenPotion;
     private bool _resolved;
     private int _configuredAmount;
+
+    protected override void AfterCloned()
+    {
+        base.AfterCloned();
+        _stolenDeckCard = null;
+        _stolenPotion = null;
+        _resolved = false;
+        _configuredAmount = 0;
+    }
 
     public override PowerType Type => PowerType.Buff;
 

@@ -8,12 +8,15 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Cards;
 using STS2_Things.Cards;
+using STS2_Things.Core.Models;
 
 namespace STS2_Things.Relics;
 
-public sealed class ThingsWhiteFlag : RelicModel
+public sealed class ThingsWhiteFlag : ThingsRelicModel
 {
     public override RelicRarity Rarity => RelicRarity.Ancient;
+
+    public override bool HasUponPickupEffect => true;
 
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         HoverTipFactory.FromCardWithCardHoverTips<ThingsSurrender>()

@@ -43,31 +43,42 @@ public static class SfxHooks
         return !NonInteractiveMode.IsActive && CombatManager.Instance.IsInProgress;
     }
 
+    private static string NormalizeSfxSlug(string id)
+    {
+        string lower = id.ToLowerInvariant();
+        return lower.StartsWith("things_", StringComparison.Ordinal)
+            ? lower["things_".Length..]
+            : lower;
+    }
+
     private static string? MapToNativePath(string fmodPath)
     {
         var segments = fmodPath.Split('/');
         if (segments.Length < 2) return null;
-        var actionName = segments[^1];
-        var monsterId = CustomSfxMonsters.Entries.FirstOrDefault(e => fmodPath.ToLowerInvariant().Contains(e));
+        var actionName = NormalizeSfxSlug(segments[^1]);
+        var monsterId = CustomSfxMonsters.Entries.FirstOrDefault(
+            e => fmodPath.IndexOf(e, StringComparison.OrdinalIgnoreCase) >= 0);
         if (monsterId == null) return null;
         return $"res://sfx/{monsterId}/{actionName}";
     }
 
     private static string MapToNativePathForMonster(string monsterId, string actionName)
     {
-        return $"res://sfx/{monsterId}/{monsterId}_{actionName}";
+        var slug = NormalizeSfxSlug(monsterId);
+        return $"res://sfx/{slug}/{slug}_{actionName}";
     }
 
     public static IEnumerable<string> GetMonsterSoundAssetPaths(string monsterId)
     {
-        if (!CustomSfxMonsters.Entries.Contains(monsterId)) return [];
-        var resDir = $"res://sfx/{monsterId}";
+        var slug = NormalizeSfxSlug(monsterId);
+        if (!CustomSfxMonsters.Entries.Contains(slug)) return [];
+        var resDir = $"res://sfx/{slug}";
         var files = ListAudioFiles(resDir);
         if (files.Count == 0)
         {
             var modRoot = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)
                 ?? AppContext.BaseDirectory;
-            var absDir = Path.Combine(modRoot, "sfx", monsterId);
+            var absDir = Path.Combine(modRoot, "sfx", slug);
             if (Directory.Exists(absDir))
                 foreach (var filePath in Directory.GetFiles(absDir))
                     if (IsAudioFile(filePath))
@@ -136,7 +147,7 @@ public static class SfxHooks
         public static bool Prefix(MonsterModel? monster, int damageAmount)
         {
             if (monster == null) return true;
-            var entry = monster.Id.Entry.ToLowerInvariant();
+            var entry = NormalizeSfxSlug(monster.Id.Entry);
             if (!CustomSfxMonsters.Entries.Contains(entry)) return true;
             if (!CanPlayCombatAudio()) return false;
 
@@ -158,7 +169,7 @@ public static class SfxHooks
         public static bool Prefix(MonsterModel? monster)
         {
             if (monster == null) return true;
-            var entry = monster.Id.Entry.ToLowerInvariant();
+            var entry = NormalizeSfxSlug(monster.Id.Entry);
             // Some of our creatures reuse a bundled sound owned by another
             // monster. PlayDeath goes directly to NAudioManager, so the normal
             // SfxCmd.Play path remapper never sees those aliases.

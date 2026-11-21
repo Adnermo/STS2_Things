@@ -3,10 +3,8 @@ from PIL import Image
 from build_cavegod_ui_assets import ROOT, SOURCE, fit_symbol, save, write_if_changed
 
 ICONS = {
-    'cave_god_broken_blade_power': 'broken_blade_power',
-    'cave_god_shattered_shield_power': 'shattered_shield_power',
-    'cave_god_martial_power': 'martial_power',
-    'cave_god_arcane_power': 'arcane_power',
+    'things_cave_god_broken_blade_power': 'broken_blade_power',
+    'things_cave_god_shattered_shield_power': 'shattered_shield_power',
 }
 
 
@@ -24,7 +22,7 @@ atlas = ExtResource("1_icon")
 region = Rect2(0, 0, 64, 64)
 '''
         write_if_changed(ROOT / 'images/atlases/power_atlas.sprites' / f'{key}.tres', texture.encode())
-    print('CaveGod reviewed trial icons: PASS (4 packed + 4 full-size)')
+    print('CaveGod reviewed trial icons: PASS (2 packed + 2 full-size)')
 
 
 if __name__ == '__main__':

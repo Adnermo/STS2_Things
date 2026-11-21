@@ -89,11 +89,11 @@ public partial class CaveGodProbeNode
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
         };
         AddChild(_actionViewport);
-        var bg = GD.Load<PackedScene>("res://scenes/backgrounds/cave_god_boss_encounter/cave_god_boss_encounter_background.tscn").Instantiate<NCombatBackground>();
+        var bg = GD.Load<PackedScene>("res://scenes/backgrounds/things_cave_god_boss_encounter/things_cave_god_boss_encounter_background.tscn").Instantiate<NCombatBackground>();
         bg.Position = new Vector2(983, 540);
         bg.Scale = Vector2.One * 0.75f;
-        bg.GetNode("Layer_00").AddChild(GD.Load<PackedScene>("res://scenes/backgrounds/cave_god_boss_encounter/layers/cave_god_boss_encounter_bg_00_a.tscn").Instantiate());
-        bg.GetNode("Foreground").AddChild(GD.Load<PackedScene>("res://scenes/backgrounds/cave_god_boss_encounter/layers/cave_god_boss_encounter_fg_a.tscn").Instantiate());
+        bg.GetNode("Layer_00").AddChild(GD.Load<PackedScene>("res://scenes/backgrounds/things_cave_god_boss_encounter/layers/things_cave_god_boss_encounter_bg_00_a.tscn").Instantiate());
+        bg.GetNode("Foreground").AddChild(GD.Load<PackedScene>("res://scenes/backgrounds/things_cave_god_boss_encounter/layers/things_cave_god_boss_encounter_fg_a.tscn").Instantiate());
         var room = new CaveGodProbeRoom();
         _actionViewport.AddChild(room);
         room.AddChild(bg);
@@ -159,13 +159,54 @@ public partial class CaveGodProbeNode
                 GD.Print("CaveGod action regression: PASS (card snatch)");
                 return;
             }
-            foreach (CardModel card in new CardModel[] { ModelDb.Card<CaveGodBrokenBladeTrial>(), ModelDb.Card<CaveGodShatteredShieldTrial>() })
-                if (!card.HasPortrait || !ResourceLoader.Exists(card.PortraitPath)) failures.Add($"trial portrait unavailable: {card.Id}");
-            foreach (PowerModel power in new PowerModel[] { ModelDb.Power<CaveGodBrokenBladePower>(), ModelDb.Power<CaveGodShatteredShieldPower>(), ModelDb.Power<CaveGodMartialPower>(), ModelDb.Power<CaveGodArcanePower>() })
+            foreach (PowerModel power in new PowerModel[]
+            {
+                ModelDb.Power<ThingsCaveGodAncientCorePower>(),
+                ModelDb.Power<ThingsCaveGodAgingPower>(),
+                ModelDb.Power<ThingsCaveGodBrokenBladePower>(),
+                ModelDb.Power<ThingsCaveGodShatteredShieldPower>(),
+            })
                 if (!ResourceLoader.Exists(power.PackedIconPath) || power.ResolvedBigIconPath.Contains("missing_power"))
-                    failures.Add($"trial icon unavailable: {power.Id}");
+                    failures.Add($"cavegod power icon unavailable: {power.Id}");
                 else if (power.Icon is not { } icon || icon.GetWidth() == 0 || icon.GetHeight() == 0)
-                    failures.Add($"trial icon could not decode: {power.Id}");
+                    failures.Add($"cavegod power icon could not decode: {power.Id}");
+
+            // Render actual Ironclad player visuals inside the clenched left/right fists for visual inspection
+            if (!OS.GetCmdlineUserArgs().Contains("--no-images"))
+            {
+                var ironcladVisuals = fixture.State.Players[0].Character.CreateVisuals();
+                var goldRect = captive.GetChildren().OfType<ColorRect>().FirstOrDefault();
+                if (goldRect != null) goldRect.Visible = false;
+                captive.AddChild(ironcladVisuals);
+                typeof(NCreature).GetProperty(nameof(NCreature.Visuals))!.SetValue(captive, ironcladVisuals);
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                if (ironcladVisuals.SpineBody is { } pRig && pRig.HasAnimation("idle_loop"))
+                    pRig.GetAnimationState()?.SetAnimation("idle_loop", true);
+                ironcladVisuals.Body.Call("set_update_mode", ClassDB.ClassGetIntegerConstant("SpineConstant", "UpdateMode_Manual"));
+                ironcladVisuals.Body.Call("update_skeleton", 0f);
+
+                foreach (bool angry in new[] { false, true })
+                foreach (bool right in new[] { false, true })
+                {
+                    controller.RestoreCapturedPlayersInstantly();
+                    controller.SetAngry(angry);
+                    controller.StartAttackAnim(right ? "grab_player_right" : "grab_player", right);
+                    AdvanceAction(2.60);
+                    controller.StartGrabTracking([captive.Entity], right);
+                    controller.HoldGrabAnim();
+                    AdvanceAction(0);
+                    controller._Process(0);
+                    string side = right ? "right" : "left";
+                    await ActionCapture(output, $"ironclad-{side}-{angry}-hold");
+                }
+
+                controller.RestoreCapturedPlayersInstantly();
+                typeof(NCreature).GetProperty(nameof(NCreature.Visuals))!.SetValue(captive, null);
+                captive.RemoveChild(ironcladVisuals);
+                ironcladVisuals.QueueFree();
+                if (goldRect != null) goldRect.Visible = true;
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
 
             foreach (bool angry in new[] { false, true })
             foreach (bool right in new[] { false, true })
@@ -296,21 +337,48 @@ public partial class CaveGodProbeNode
                     failures.Add($"{(right ? "right" : "left")} slam release resting arm: {maxStep:F1}px, {maxTwist:F1}deg/frame at {worstTime:F3}s ({mode}, angry={angry})");
                 if (controller.HasCapturedPlayers || hand.IsGrabbing) failures.Add("Slam did not release captive.");
             }
+            foreach (bool rightLead in new[] { false, true })
             foreach (var mode in new[] { FastModeType.Normal, FastModeType.Fast, FastModeType.Instant })
             {
                 SaveManager.Instance.PrefsSave.FastMode = mode;
                 controller.SetAngry(false);
+                fixture.Body.SetRightLeadsForTest(rightLead);
                 ActionClock = 0;
                 ActionHits.Clear();
                 ActionPoseHits.Clear();
                 await (Task)typeof(ThingsCaveGodBody).GetMethod("JabsMove", BindingFlags.Instance | BindingFlags.NonPublic)!
                     .Invoke(fixture.Body, [fixture.State.PlayerCreatures.ToArray()])!;
-                samples.Add(new { state = "jabs", mode = mode.ToString(), hits = ActionHits.ToArray(), poses = ActionPoseHits.ToArray() });
+                samples.Add(new { state = rightLead ? "jabs-right" : "jabs-left", mode = mode.ToString(), hits = ActionHits.ToArray(), poses = ActionPoseHits.ToArray() });
                 double[] expected = [0.64, 1.34, 2.32];
                 if (ActionPoseHits.Count != 3 || ActionPoseHits.Where((hit, index) => Math.Abs(hit - expected[index]) > 0.025).Any())
-                    failures.Add($"Jabs contact poses ({mode}) do not match damage events.");
+                    failures.Add($"Jabs (rightLead={rightLead}) contact poses ({mode}) do not match damage events.");
                 if (ActionHits.Count != 3 || mode != FastModeType.Instant && ActionHits.Where((hit, index) => Math.Abs(hit - expected[index]) > 0.025).Any())
-                    failures.Add($"Jabs VFX/damage clock ({mode}): {string.Join(", ", ActionHits.Select(hit => hit.ToString("F3")))}; expected 0.640, 1.340, 2.320");
+                    failures.Add($"Jabs (rightLead={rightLead}) VFX/damage clock ({mode}): {string.Join(", ", ActionHits.Select(hit => hit.ToString("F3")))}; expected 0.640, 1.340, 2.320");
+            }
+            foreach (bool right in new[] { false, true })
+            foreach (var mode in new[] { FastModeType.Normal, FastModeType.Fast, FastModeType.Instant })
+            {
+                SaveManager.Instance.PrefsSave.FastMode = mode;
+                controller.SetAngry(false);
+                var hand = right ? (ThingsCaveGodHand)fixture.Right : fixture.Left;
+
+                ActionClock = 0;
+                ActionHits.Clear();
+                ActionPoseHits.Clear();
+                await (Task)typeof(ThingsCaveGodHand).GetMethod("HeavyPunch", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(hand, [fixture.State.PlayerCreatures.ToArray()])!;
+                samples.Add(new { state = right ? "rightpunch" : "leftpunch", mode = mode.ToString(), hits = ActionHits.ToArray(), poses = ActionPoseHits.ToArray() });
+                if (ActionPoseHits.Count != 1 || Math.Abs(ActionPoseHits[0] - 1.18) > 0.025)
+                    failures.Add($"HeavyPunch (right={right}) contact pose ({mode}) got {(ActionPoseHits.Count > 0 ? ActionPoseHits[0] : -1):F3}, expected 1.180.");
+
+                ActionClock = 0;
+                ActionHits.Clear();
+                ActionPoseHits.Clear();
+                await (Task)typeof(ThingsCaveGodHand).GetMethod("CleaveSweep", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(hand, [fixture.State.PlayerCreatures.ToArray()])!;
+                samples.Add(new { state = right ? "cleave-right" : "cleave-left", mode = mode.ToString(), hits = ActionHits.ToArray(), poses = ActionPoseHits.ToArray() });
+                if (ActionPoseHits.Count != 1 || Math.Abs(ActionPoseHits[0] - 1.35) > 0.025)
+                    failures.Add($"CleaveSweep (right={right}) contact pose ({mode}) got {(ActionPoseHits.Count > 0 ? ActionPoseHits[0] : -1):F3}, expected 1.350.");
             }
         }
         finally

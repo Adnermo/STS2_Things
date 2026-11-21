@@ -10,10 +10,11 @@ using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Rooms;
+using STS2_Things.Core.Models;
 
 namespace STS2_Things.Relics;
 
-public sealed class ThingsAlmondWater : RelicModel
+public sealed class ThingsAlmondWater : ThingsRelicModel
 {
     public override RelicRarity Rarity => RelicRarity.Event;
 

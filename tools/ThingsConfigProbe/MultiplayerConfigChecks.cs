@@ -28,10 +28,14 @@ public static class MultiplayerConfigChecks
         ThingsModConfig.SetValue(ThingsModConfig.NeowRelicWhiteFlagEnabled, false);
         var (host, hostWire) = ConfigNetworkFake.Host();
         var listener = DispatchProxy.Create<IStartRunLobbyListener, ConfigSilentListener>();
-        var lobby = (StartRunLobby)Activator.CreateInstance(typeof(StartRunLobby),
-            typeof(StartRunLobby).GetConstructors().Any(c => c.GetParameters().Length == 5)
-                ? [GameMode.Standard, false, host, listener, 4]
-                : new object[] { GameMode.Standard, host, listener, 4 })!;
+        var ctor = typeof(StartRunLobby).GetConstructors().First();
+        var ctorParams = ctor.GetParameters();
+        object?[] ctorArgs = ctorParams.Length == 5 && ctorParams[1].ParameterType == typeof(bool)
+            ? [GameMode.Standard, false, host, listener, 4]
+            : ctorParams.Length == 5
+                ? [GameMode.Standard, host, listener, 4, null]
+                : [GameMode.Standard, host, listener, 4];
+        var lobby = (StartRunLobby)ctor.Invoke(ctorArgs);
         Assert(MultiplayerConfig.IsHost && !MultiplayerConfig.IsLocked, "Host lobby was not attached by its constructor.");
         ThingsModConfig.SetValue(ThingsModConfig.FeatureCustomBgmEnabled, false);
         var preview = (ThingsConfigSnapshotMessage)hostWire.Sent.Last();
@@ -121,11 +125,7 @@ public static class MultiplayerConfigChecks
 
     private static ThingsConfigSnapshotMessage RoundTrip(ThingsConfigSnapshotMessage message)
     {
-#if STS2_V107_1
-        var bus = new NetMessageBus();
-#else
         var bus = new NetMessageBus(new PacketReader(), new PacketWriter());
-#endif
         byte[] bytes = bus.SerializeMessage(1, message, out int length)[..length];
         Assert(bus.TryDeserializeMessage(bytes, out var decoded, out var sender) && sender == 1,
             "Native message bus could not round-trip configuration.");

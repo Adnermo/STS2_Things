@@ -62,55 +62,81 @@ try
     var savedCache = gameAssembly.GetType("MegaCrit.Sts2.Core.Saves.Runs.SavedPropertiesTypeCache");
     var merchantBargainType = modAssembly.GetType(
         "STS2_Things.Features.MerchantBargain.MerchantBargainManager");
+    var merchantPolicyType = modAssembly.GetType(
+        "STS2_Things.Modifiers.ThingsMerchantBargainPricePolicy");
     // Both supported targets have shipped merchant bargaining since v1.25.16.
-    if (merchantBargainType == null)
-        throw new InvalidOperationException("Implementation is missing MerchantBargainManager.");
+    if (merchantBargainType == null || merchantPolicyType == null)
+        throw new InvalidOperationException("Implementation is missing MerchantBargainManager or ThingsMerchantBargainPricePolicy.");
+    if (modAssembly.GetType("STS2_Things.Features.MerchantBargain.MerchantEntryCostPatch") != null)
+        throw new InvalidOperationException("Deprecated MerchantEntryCostPatch still exists in implementation.");
     Console.WriteLine("Merchant bargain presence: PASS");
-    if (savedCache != null &&
-        savedCache.GetMethod("Init", BindingFlags.Public | BindingFlags.Static) == null)
-    {
-        var compatibilityType = modAssembly.GetType(
-            "STS2_Things.Compatibility.Sts2VersionCompatibility", throwOnError: true)!;
-        compatibilityType.GetMethod(
-                "InitializeBeforeModelDatabase",
-                BindingFlags.Public | BindingFlags.Static)!
-            .Invoke(null, null);
-        var curseRemover = modAssembly.GetType("STS2_Things.Relics.ThingsCurseRemover", throwOnError: true)!;
-        var properties = (IEnumerable<PropertyInfo>?)savedCache!
-            .GetMethod("GetJsonPropertiesForType", BindingFlags.Public | BindingFlags.Static)!
-            .Invoke(null, [curseRemover]);
-        if (properties?.Any(property => property.Name == "TimesUsed") != true)
-            throw new InvalidOperationException("V107.1 SavedProperty cache is missing ThingsCurseRemover.TimesUsed.");
-        Console.WriteLine("V107.1 SavedProperty bridge: PASS");
-    }
-    else if (savedCache == null)
-    {
-        var modelIdCache = gameAssembly.GetType(
-            "MegaCrit.Sts2.Core.Multiplayer.Serialization.ModelIdSerializationCache",
-            throwOnError: true)!;
-        foreach (var member in new[]
-                 {
-                     "Init",
-                     "CacheSavedPropertiesForTypeDebug",
-                     "GetJsonPropertiesForType",
-                     "GetNetIdForPropertyName"
-                 })
-        {
-            if (modelIdCache.GetMethod(member, BindingFlags.Public | BindingFlags.Static) == null)
-                throw new InvalidOperationException($"V113 unified serialization cache is missing {member}.");
-        }
+    if (savedCache != null)
+        throw new InvalidOperationException("Target runtime still exposes legacy SavedPropertiesTypeCache.");
 
-        var curseRemover = modAssembly.GetType("STS2_Things.Relics.ThingsCurseRemover", throwOnError: true)!;
-        var timesUsed = curseRemover.GetProperty(
-            "TimesUsed", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        if (timesUsed?.CustomAttributes.Any(attribute =>
-                attribute.AttributeType.FullName ==
-                "MegaCrit.Sts2.Core.Saves.Runs.SavedPropertyAttribute") != true)
-        {
-            throw new InvalidOperationException("V113 ThingsCurseRemover.TimesUsed is missing SavedProperty metadata.");
-        }
-        Console.WriteLine("V113 unified SavedProperty cache contract: PASS");
+    var modelIdCache = gameAssembly.GetType(
+        "MegaCrit.Sts2.Core.Multiplayer.Serialization.ModelIdSerializationCache",
+        throwOnError: true)!;
+    foreach (var member in new[]
+             {
+                 "Init",
+                 "CacheSavedPropertiesForTypeDebug",
+                 "GetJsonPropertiesForType",
+                 "GetNetIdForPropertyName"
+             })
+    {
+        if (modelIdCache.GetMethod(member, BindingFlags.Public | BindingFlags.Static) == null)
+            throw new InvalidOperationException($"Unified serialization cache is missing {member}.");
     }
+
+    modelIdCache.GetField("_initialized", BindingFlags.NonPublic | BindingFlags.Static)!
+        .SetValue(null, true);
+    var cacheDebug = modelIdCache.GetMethod(
+        "CacheSavedPropertiesForTypeDebug", BindingFlags.Public | BindingFlags.Static)!;
+    var getJsonProps = modelIdCache.GetMethod(
+        "GetJsonPropertiesForType", BindingFlags.Public | BindingFlags.Static)!;
+    var getNetId = modelIdCache.GetMethod(
+        "GetNetIdForPropertyName", BindingFlags.Public | BindingFlags.Static)!;
+
+    int savedTypeCount = 0;
+    foreach (var type in modAssembly.GetTypes())
+    {
+        var declaredSaved = type
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .Where(property => property.CustomAttributes.Any(attribute =>
+                attribute.AttributeType.FullName ==
+                "MegaCrit.Sts2.Core.Saves.Runs.SavedPropertyAttribute"))
+            .ToArray();
+        if (declaredSaved.Length == 0)
+            continue;
+
+        savedTypeCount++;
+        cacheDebug.Invoke(null, [type]);
+        var cachedProps = (IEnumerable<PropertyInfo>?)getJsonProps.Invoke(null, [type])
+            ?? throw new InvalidOperationException($"ModelIdSerializationCache returned null properties for {type.FullName}.");
+        var cachedNames = cachedProps.Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
+        foreach (var property in declaredSaved)
+        {
+            if (!cachedNames.Contains(property.Name))
+                throw new InvalidOperationException($"ModelIdSerializationCache omitted {type.FullName}.{property.Name}.");
+            if ((int)getNetId.Invoke(null, [property.Name])! < 0)
+                throw new InvalidOperationException($"ModelIdSerializationCache assigned invalid net ID to {property.Name}.");
+        }
+    }
+
+    foreach (var (typeName, propName) in new[]
+             {
+                 ("STS2_Things.Relics.ThingsCurseRemover", "TimesUsed"),
+                 ("STS2_Things.Modifiers.ThingsCrossroads", "Data"),
+                 ("STS2_Things.Enchantments.ThingsSplit", "SplitState")
+             })
+    {
+        var type = modAssembly.GetType(typeName, throwOnError: true)!;
+        var cachedProps = (IEnumerable<PropertyInfo>?)getJsonProps.Invoke(null, [type]);
+        if (cachedProps?.Any(property => property.Name == propName) != true)
+            throw new InvalidOperationException($"{typeName}.{propName} is missing from ModelIdSerializationCache.");
+    }
+
+    Console.WriteLine($"Unified SavedProperty cache contract: PASS ({savedTypeCount} types)");
 
     Console.WriteLine($"Harmony target probe: PASS ({modAssembly.GetName().Version})");
     return 0;

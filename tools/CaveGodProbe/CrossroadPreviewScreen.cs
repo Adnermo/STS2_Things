@@ -30,7 +30,7 @@ public partial class CrossroadPreviewScreen : NMapScreen
         // Native SetMap keeps its container and queues children for end-of-frame
         // deletion. Immediate Free() hid duplicate coordinates during redraws.
         foreach(var child in points.GetChildren())child.QueueFree();
-        var dot=GD.Load<Texture2D>("res://images/atlases/compressed.sprites/map/map_dot.tres");
+        var dot=NCrossroadLayer.LoadNativeMapDotTexture(this);
         Vector2 PositionFor(MapCoord c)=>new(240+c.col*140+(c.row%3-1)*9,930-c.row*58+(c.col%3-1)*17);
         foreach(var p in ActMap.GetAllMapPoints())
         foreach(var c in p.Children.Where(c=>c.PointType!=MapPointType.Boss))

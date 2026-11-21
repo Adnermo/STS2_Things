@@ -48,8 +48,20 @@ public partial class SanguineLeechProbeNode : Node
             _root = Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), "../.."));
             TestMode.TurnOnInternal();
             ProjectSettings.LoadResourcePack("D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck");
-            string pack=System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")
-                ?? Path.Combine(_root,"build/sanguine_leech/v113/STS2_Things.pck");
+#if STS2_V111_1
+            const string defaultTarget = "v111.1";
+#else
+            const string defaultTarget = "v113.1";
+#endif
+            string pack = System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")
+                ?? new[]
+                {
+                    Path.Combine(_root, $"build/{defaultTarget}/STS2_Things.pck"),
+                    Path.Combine(_root, "build/v113.1/STS2_Things.pck"),
+                    Path.Combine(_root, "build/v111.1/STS2_Things.pck"),
+                    Path.Combine(_root, "build/unified/STS2_Things.pck"),
+                }.FirstOrDefault(File.Exists)
+                ?? Path.Combine(_root, $"build/{defaultTarget}/STS2_Things.pck");
             if (File.Exists(pack)) ProjectSettings.LoadResourcePack(pack);
             SaveManager.Instance.InitSettingsDataForTest();
             SaveManager.Instance.InitPrefsDataForTest();
@@ -61,6 +73,7 @@ public partial class SanguineLeechProbeNode : Node
             await VerifyParasite();
             await VerifyMoves();
             await VerifyHandOverflow();
+            await VerifyOwnerBoundReinfestation();
             if (OS.GetCmdlineUserArgs().Contains("--visual")) await RenderProbe();
             DeactivateSyntheticCombat();
             GD.Print($"Sanguine Leech probe: PASS ({_checks} assertions)");
@@ -78,7 +91,7 @@ public partial class SanguineLeechProbeNode : Node
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
         typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(ascension));
         typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance,new NetSingleplayerGameService());
-        EncounterModel encounter = (weak ? ModelDb.Encounter<SanguineLeechWeak>() as EncounterModel : ModelDb.Encounter<SanguineLeechEncounter>()).ToMutable();
+        EncounterModel encounter = (weak ? ModelDb.Encounter<ThingsSanguineLeechWeak>() as EncounterModel : ModelDb.Encounter<ThingsSanguineLeechEncounter>()).ToMutable();
         run.AppendToMapPointHistory(MapPointType.Monster,RoomType.Monster,encounter.Id);
         var room = new CombatRoom(encounter,run);run.PushRoom(room);
         foreach (var p in party) {p.ResetCombatState();room.CombatState.AddPlayer(p);p.PopulateCombatState(run.Rng.Shuffle,room.CombatState);}
@@ -95,10 +108,10 @@ public partial class SanguineLeechProbeNode : Node
 
     private static void VerifyPools()
     {
-        var depths=ModelDb.Act<Depths>();
-        Assert(depths.AllWeakEncounters.Any(e=>e is SanguineLeechWeak),"Leech pair in Depths weak pool.");
-        Assert(depths.AllRegularEncounters.Any(e=>e is SanguineLeechEncounter),"Leech trio in Depths regular pool.");
-        Assert(depths.AllWeakEncounters.Any(e=>e is LanternFishWeak) && depths.AllRegularEncounters.Any(e=>e is LanternFishEncounter),"Existing fish encounters retained.");
+        var depths=ModelDb.Act<ThingsDepths>();
+        Assert(depths.AllWeakEncounters.Any(e=>e is ThingsSanguineLeechWeak),"Leech pair in Depths weak pool.");
+        Assert(depths.AllRegularEncounters.Any(e=>e is ThingsSanguineLeechEncounter),"Leech trio in Depths regular pool.");
+        Assert(depths.AllWeakEncounters.Any(e=>e is ThingsLanternFishWeak) && depths.AllRegularEncounters.Any(e=>e is ThingsLanternFishEncounter),"Existing fish encounters retained.");
         foreach(bool weak in new[]{true,false})
         {
             var s=Scenario(weak);int expected=weak?2:3;
@@ -133,13 +146,15 @@ public partial class SanguineLeechProbeNode : Node
             {
                 Assert(p.PlayerCombatState!.Hand.Cards.Count==0,"Pre-combat hooks do not silently populate the hand before native UI setup.");
                 await SetupPlayerTurn(p);
-                Assert(p.PlayerCombatState.Hand.Cards.OfType<LeechParasite>().Count()==s.Leeches.Length,"Native turn setup gives each player one opening parasite per leech.");
+                var openingParasites=p.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().ToArray();
+                Assert(openingParasites.Length==s.Leeches.Length,"Native turn setup gives each player one opening parasite per leech.");
+                Assert(openingParasites.Select(c=>c.OwnerLeech).SequenceEqual(s.Leeches.Select(l=>l.Creature)),"Opening parasites bind 1-to-1 to their respective owner leeches.");
                 Assert(p.PlayerCombatState.Hand.Cards.Count==5+s.Leeches.Length,"Five normal opening cards are drawn in addition to the parasites.");
                 Assert(p.PlayerCombatState.Energy==3,"Opening generation preserves native energy reset.");
-                Assert(!p.PlayerCombatState.DrawPile.Cards.OfType<LeechParasite>().Any(),"Opening parasites never enter the draw pile.");
-                Assert(p.Deck.Cards.Count==deck && !p.Deck.Cards.OfType<LeechParasite>().Any(),"Permanent deck unchanged.");
+                Assert(!p.PlayerCombatState.DrawPile.Cards.OfType<ThingsLeechParasite>().Any(),"Opening parasites never enter the draw pile.");
+                Assert(p.Deck.Cards.Count==deck && !p.Deck.Cards.OfType<ThingsLeechParasite>().Any(),"Permanent deck unchanged.");
                 await Hook.BeforeHandDraw(s.Room.CombatState,p,Choice);
-                Assert(p.PlayerCombatState.Hand.Cards.OfType<LeechParasite>().Count()==s.Leeches.Length,"Repeating the first-turn hook does not duplicate parasites.");
+                Assert(p.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().Count()==s.Leeches.Length,"Repeating the first-turn hook does not duplicate parasites.");
             }
         }
         // A fresh mutable encounter reuses the same player IDs but owns its own
@@ -150,9 +165,10 @@ public partial class SanguineLeechProbeNode : Node
             await CardPileCmd.AddGeneratedCardToCombat(full.Room.CombatState.CreateCard<StrikeIronclad>(full.Player),PileType.Hand,full.Player);
         await Hook.BeforeHandDraw(full.Room.CombatState,full.Player,Choice);
         Assert(full.Player.PlayerCombatState!.Hand.Cards.Count==CardPile.MaxCardsInHand,"Opening generation observes the native hand limit.");
-        Assert(full.Player.PlayerCombatState.DiscardPile.Cards.OfType<LeechParasite>().Count()==full.Leeches.Length,"Opening overflow goes to discard through the native generation command.");
+        Assert(full.Player.PlayerCombatState.DiscardPile.Cards.OfType<ThingsLeechParasite>().Count()==full.Leeches.Length,"Opening overflow goes to discard through the native generation command.");
+        Assert(full.Player.PlayerCombatState.DiscardPile.Cards.OfType<ThingsLeechParasite>().Select(c=>c.OwnerLeech).SequenceEqual(full.Leeches.Select(l=>l.Creature)),"Overflowed opening parasites retain owner-leech binding.");
         await Hook.BeforeHandDraw(full.Room.CombatState,full.Player,Choice);
-        Assert(full.Player.PlayerCombatState.DiscardPile.Cards.OfType<LeechParasite>().Count()==full.Leeches.Length,"Overflow is delivered only once per leech and player.");
+        Assert(full.Player.PlayerCombatState.DiscardPile.Cards.OfType<ThingsLeechParasite>().Count()==full.Leeches.Length,"Overflow is delivered only once per leech and player.");
         GD.Print("PASS native opening turn setup, 1-4 player ownership, full normal draw, energy, fresh encounters, duplicate hooks and full-hand overflow.");
     }
 
@@ -166,10 +182,10 @@ public partial class SanguineLeechProbeNode : Node
         await (Task)method.Invoke(CombatManager.Instance,args)!;
     }
 
-    private static LeechParasite Parasite(Fixture s,Player? player=null,PileType pile=PileType.Hand)
+    private static ThingsLeechParasite Parasite(Fixture s,Player? player=null,PileType pile=PileType.Hand)
     {
         player??=s.Player;
-        var card=s.Room.CombatState.CreateCard<LeechParasite>(player);
+        var card=s.Room.CombatState.CreateCard<ThingsLeechParasite>(player);
         pile.GetPile(player).AddInternal(card,silent:true);
         return card;
     }
@@ -184,9 +200,16 @@ public partial class SanguineLeechProbeNode : Node
     }
     private static async Task VerifyParasite()
     {
+        var canonicalClone=(ThingsLeechParasite)ModelDb.Card<ThingsLeechParasite>().ToMutable();
+        Assert(canonicalClone.OwnerLeech==null && !canonicalClone.SuppressReinfestOnExhaust,"Canonical ToMutable starts unbound with suppression cleared.");
         foreach(int players in new[]{1,2,4})
         {
             var s=Scenario(players:players);var card=Parasite(s);
+            card.BindOwnerLeech(s.Leeches[0].Creature);
+            card.SuppressReinfestOnExhaust=true;
+            var combatClone=(ThingsLeechParasite)card.CreateClone();
+            Assert(combatClone.OwnerLeech==s.Leeches[0].Creature && !combatClone.SuppressReinfestOnExhaust,"Combat cloning preserves OwnerLeech and resets SuppressReinfestOnExhaust.");
+            card.SuppressReinfestOnExhaust=false;
             Assert(card.Type==CardType.Status && card.EnergyCost.Canonical==1 && card.MaxUpgradeLevel==0,"Status cost/upgrade rules.");
             Assert(!card.Keywords.Contains(CardKeyword.Innate) && card.Keywords.Contains(CardKeyword.Exhaust),"Parasite has Exhaust and no Innate keyword.");
             await EndHand(s);
@@ -249,9 +272,11 @@ public partial class SanguineLeechProbeNode : Node
             Assert(enemy.CurrentHp==hp && s.Player.Creature.CurrentHp==playerHp,"Full block prevents both damage and lifesteal.");
             await ((MoveState)l.MoveStateMachine.States["CURL_MOVE"]).PerformMove([s.Player.Creature]);
             Assert(enemy.Block==6,"Curl grants six block.");
-            int parasites=s.Player.PlayerCombatState!.Hand.Cards.OfType<LeechParasite>().Count();
+            int parasites=s.Player.PlayerCombatState!.Hand.Cards.OfType<ThingsLeechParasite>().Count();
             await ((MoveState)l.MoveStateMachine.States["INFEST_MOVE"]).PerformMove([s.Player.Creature]);
-            Assert(s.Player.PlayerCombatState.Hand.Cards.OfType<LeechParasite>().Count()==parasites+1,"Infest generates one temporary status directly in hand.");
+            var handParasites=s.Player.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().ToArray();
+            Assert(handParasites.Length==parasites+1,"Infest generates one temporary status directly in hand.");
+            Assert(handParasites[^1].OwnerLeech==enemy,"Infest binds the generated parasite to the casting leech.");
         }
         GD.Print("PASS native moves, ascension, healing and full-block prevention.");
     }
@@ -262,21 +287,67 @@ public partial class SanguineLeechProbeNode : Node
         var full=s.Players[0];var open=s.Players[1];
         for(int i=0;i<CardPile.MaxCardsInHand;i++)
             await CardPileCmd.AddGeneratedCardToCombat(s.Room.CombatState.CreateCard<StrikeIronclad>(full),PileType.Hand,null);
-        await PowerCmd.Apply<STS2_Things.Powers.SpongeRinsePower>(Choice,open.Creature,1,s.Leeches[0].Creature,null);
+        await PowerCmd.Apply<STS2_Things.Powers.ThingsSpongeRinsePower>(Choice,open.Creature,1,s.Leeches[0].Creature,null);
         var move=(MoveState)s.Leeches[0].MoveStateMachine!.States["INFEST_MOVE"];
         await move.PerformMove(s.Players.Select(p=>p.Creature));
         Assert(full.PlayerCombatState!.Hand.Cards.Count==CardPile.MaxCardsInHand,"Infest respects the native full-hand limit.");
-        Assert(full.PlayerCombatState.DiscardPile.Cards.OfType<LeechParasite>().Count()==1,"Full-hand parasite goes to discard using the native overflow rule.");
-        Assert(open.PlayerCombatState!.Hand.Cards.OfType<LeechParasite>().Count()==1,"Another player's free hand still receives the parasite.");
-        Assert(s.Players.All(p=>!p.PlayerCombatState!.DrawPile.Cards.OfType<LeechParasite>().Any()),"Neither normal delivery nor overflow sends parasites to the draw pile.");
-        Assert(open.Creature.GetPower<STS2_Things.Powers.SpongeRinsePower>()?.Amount==1,"Direct hand generation is not a draw and does not consume Rinsed.");
+        Assert(full.PlayerCombatState.DiscardPile.Cards.OfType<ThingsLeechParasite>().Count()==1,"Full-hand parasite goes to discard using the native overflow rule.");
+        Assert(open.PlayerCombatState!.Hand.Cards.OfType<ThingsLeechParasite>().Count()==1,"Another player's free hand still receives the parasite.");
+        Assert(s.Players.All(p=>!p.PlayerCombatState!.DrawPile.Cards.OfType<ThingsLeechParasite>().Any()),"Neither normal delivery nor overflow sends parasites to the draw pile.");
+        Assert(open.Creature.GetPower<STS2_Things.Powers.ThingsSpongeRinsePower>()?.Amount==1,"Direct hand generation is not a draw and does not consume Rinsed.");
         GD.Print("PASS native hand generation, multiplayer ownership, overflow and draw-only Rinsed semantics.");
+    }
+
+    private static async Task VerifyOwnerBoundReinfestation()
+    {
+        var s=Scenario(weak:false);
+        await Hook.BeforeCombatStart(s.Run,s.Room.CombatState);
+        foreach(var l in s.Leeches) l.RollMove([s.Player.Creature]);
+        await Hook.BeforeHandDraw(s.Room.CombatState,s.Player,Choice);
+        var opening=s.Player.PlayerCombatState!.Hand.Cards.OfType<ThingsLeechParasite>().ToArray();
+        Assert(opening.Length==3 && opening.Select(c=>c.OwnerLeech).SequenceEqual(s.Leeches.Select(l=>l.Creature)),
+            "3-leech encounter binds each opening parasite to its distinct leech.");
+
+        // Exhaust ONLY Leech #0's parasite; discard Leech #1/#2's parasites.
+        await CardCmd.Exhaust(Choice,opening[0],skipVisuals:true);
+        await CardCmd.Discard(Choice,opening[1]);
+        await CardCmd.Discard(Choice,opening[2]);
+
+        s.Room.CombatState.CurrentSide=CombatSide.Enemy;
+        foreach(var l in s.Leeches) await l.PerformMove();
+        var afterSideTurnEnd=typeof(Hook).GetMethod("AfterSideTurnEnd",BindingFlags.Public|BindingFlags.Static)
+            ?? typeof(Hook).GetMethod("AfterTurnEnd",BindingFlags.Public|BindingFlags.Static)!;
+        await (Task)afterSideTurnEnd.Invoke(null,[s.Room.CombatState,CombatSide.Enemy,s.Leeches.Select(l=>l.Creature).ToArray()])!;
+        foreach(var l in s.Leeches) l.RollMove([s.Player.Creature]);
+        Assert(s.Leeches[0].NextMove.Id==ThingsSanguineLeech.ReinfestMoveId &&
+               s.Leeches[1].NextMove.Id=="SIP_AGAIN_MOVE" &&
+               s.Leeches[2].NextMove.Id=="SIP_MOVE",
+            "Exhausting Leech #0's parasite queues REINFEST_MOVE ONLY on Leech #0 while Leech #1/#2 keep their normal staggered cycle.");
+
+        // Kill Leech #0, then exhaust a parasite bound to dead Leech #0 AND an unbound parasite.
+        s.Room.CombatState.CurrentSide=CombatSide.Player;
+        var deadBound=Parasite(s);
+        deadBound.BindOwnerLeech(s.Leeches[0].Creature);
+        var unbound=Parasite(s);
+        Assert(unbound.OwnerLeech==null,"Synthetic test parasite starts unbound.");
+        await CreatureCmd.Kill(s.Leeches[0].Creature);
+        await CardCmd.Exhaust(Choice,deadBound,skipVisuals:true);
+        await CardCmd.Exhaust(Choice,unbound,skipVisuals:true);
+
+        s.Room.CombatState.CurrentSide=CombatSide.Enemy;
+        var survivors=s.Leeches.Skip(1).ToArray();
+        foreach(var l in survivors) await l.PerformMove();
+        await (Task)afterSideTurnEnd.Invoke(null,[s.Room.CombatState,CombatSide.Enemy,survivors.Select(l=>l.Creature).ToArray()])!;
+        foreach(var l in survivors) l.RollMove([s.Player.Creature]);
+        Assert(s.Leeches[1].NextMove.Id=="CURL_MOVE" && s.Leeches[2].NextMove.Id=="INFEST_MOVE",
+            "Exhausting a dead leech's parasite or an unbound parasite triggers NO reinfestation on surviving leeches.");
+        GD.Print("PASS 3-leech owner-bound reinfestation isolation, dead-owner no-op, and unbound no-op.");
     }
 
     private static void Assert(bool condition,string message) { if(!condition)throw new Exception(message);_checks++; }
     private sealed record Fixture(RunState Run, CombatRoom Room, List<Player> Players, EncounterModel Encounter)
     {
         public Player Player=>Players[0];
-        public SanguineLeech[] Leeches=>Encounter.MonstersWithSlots.Select(m=>(SanguineLeech)m.Item1).ToArray();
+        public ThingsSanguineLeech[] Leeches=>Encounter.MonstersWithSlots.Select(m=>(ThingsSanguineLeech)m.Item1).ToArray();
     }
 }

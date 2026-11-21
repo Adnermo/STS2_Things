@@ -8,11 +8,13 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Acts;
+using MegaCrit.Sts2.Core.Models.Encounters;
 using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Unlocks;
 using STS2_Things;
+using STS2_Things.Acts;
 using STS2_Things.Config;
 using STS2_Things.Encounters;
 using STS2_Things.Events;
@@ -20,14 +22,21 @@ using STS2_Things.Hooks;
 
 public partial class ThingsConfigProbeNode : Node
 {
-    public override async void _Ready()
+    public override void _Ready()
+    {
+        AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency;
+        EnsureRuntimeDependency("Sentry");
+        EnsureRuntimeDependency("Sentry.Godot");
+        _ = RunProbeAsync();
+    }
+
+    private async System.Threading.Tasks.Task RunProbeAsync()
     {
         try
         {
             TestMode.TurnOnInternal();
             MountPublishedPck();
             Assembly implementationAssembly = typeof(STS2_ThingsInit).Assembly;
-            AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency;
             EnsureRuntimeDependency("System.IO.Hashing");
             RegisterSyntheticMod(implementationAssembly);
             STS2_ThingsInit.Initialize();
@@ -47,13 +56,11 @@ public partial class ThingsConfigProbeNode : Node
                 return;
             }
 
-#if !STS2_V107_1
             if (OS.GetCmdlineUserArgs().Length > 1)
             {
                 AddChild(new ConfigNetworkLiveProbe());
                 return;
             }
-#endif
 
             VerifyConfigDefaultsAndFile();
             await NeowOptionRegression.Run();
@@ -67,11 +74,9 @@ public partial class ThingsConfigProbeNode : Node
             VerifyWeightedSelection();
             VerifyEliteFrequency();
             VerifyMusicSetting();
-            foreach (CardModel trial in new CardModel[]
-                     { ModelDb.Card<STS2_Things.Cards.CaveGodBrokenBladeTrial>(), ModelDb.Card<STS2_Things.Cards.CaveGodShatteredShieldTrial>() })
-                Assert(trial.HasPortrait && ResourceLoader.Exists(trial.PortraitPath), $"Trial portrait is hidden: {trial.Id}");
             VerifyEventGating();
             MultiplayerConfigChecks.Run();
+            BugFixRegressions.Run(this);
 
             GD.Print("Things config probe: PASS");
             GetTree().Quit(0);
@@ -87,6 +92,18 @@ public partial class ThingsConfigProbeNode : Node
 
     private static void VerifyConfigDefaultsAndFile()
     {
+        Assert(ThingsModConfig.CurrentSchemaVersion == "3",
+            $"Expected CurrentSchemaVersion=3, got {ThingsModConfig.CurrentSchemaVersion}.");
+        Assert(ThingsConfigSnapshotMessage.Protocol == 2,
+            $"Expected ThingsConfigSnapshotMessage.Protocol=2, got {ThingsConfigSnapshotMessage.Protocol}.");
+        Assert(ThingsModConfig.Entries.Count == 72,
+            $"Expected 72 config entries, got {ThingsModConfig.Entries.Count}.");
+        Assert(ThingsModConfig.Entries.Any(entry =>
+                   entry.Key == ThingsModConfig.FeatureDefensiveEngineGuardsEnabled &&
+                   entry.Category == ThingsModConfig.Category.Stability &&
+                   entry.Default is true),
+            "Missing FeatureDefensiveEngineGuardsEnabled entry in Category.Stability.");
+
         foreach (ThingsModConfig.Entry entry in ThingsModConfig.Entries)
         {
             Assert(Equals(ThingsModConfig.GetValue(entry.Key), entry.Default),
@@ -104,8 +121,8 @@ public partial class ThingsConfigProbeNode : Node
         }
 
         Assert(document.RootElement.TryGetProperty(ThingsModConfig.SchemaVersion, out JsonElement schema) &&
-              schema.GetString() == "2",
-            "Config file misses SchemaVersion=2.");
+              schema.GetString() == "3",
+            "Config file misses SchemaVersion=3.");
         Assert(document.RootElement.EnumerateObject().All(property => property.Value.ValueKind == JsonValueKind.String),
             "Shared config must remain readable by BaseLib's string dictionary.");
     }
@@ -125,6 +142,37 @@ public partial class ThingsConfigProbeNode : Node
 
     private static void VerifyTypedConfigMigration()
     {
+        File.WriteAllText(ThingsModConfig.ConfigPath,
+            "{\"SchemaVersion\":\"1\",\"CustomBgmEnabled\":\"False\",\"MerchantBargainEnabled\":\"False\"," +
+            "\"DefensiveEngineGuardsEnabled\":\"False\"}");
+        ThingsModConfig.Load();
+        Assert(!ThingsModConfig.GetBool(ThingsModConfig.FeatureCustomBgmEnabled),
+            "Legacy CustomBgmEnabled alias did not migrate to FeatureCustomBgmEnabled.");
+        Assert(!ThingsModConfig.GetBool(ThingsModConfig.FeatureMerchantBargainEnabled),
+            "Legacy MerchantBargainEnabled alias did not migrate to FeatureMerchantBargainEnabled.");
+        Assert(!ThingsModConfig.GetBool(ThingsModConfig.FeatureDefensiveEngineGuardsEnabled),
+            "Legacy DefensiveEngineGuardsEnabled alias did not migrate to FeatureDefensiveEngineGuardsEnabled.");
+        using (JsonDocument migrated = JsonDocument.Parse(File.ReadAllText(ThingsModConfig.ConfigPath)))
+        {
+            Assert(migrated.RootElement.GetProperty(ThingsModConfig.SchemaVersion).GetString() == "3",
+                "Migrated v1 config did not upgrade SchemaVersion to 3.");
+            Assert(migrated.RootElement.GetProperty(ThingsModConfig.FeatureCustomBgmEnabled).GetString() == "False" &&
+                   migrated.RootElement.GetProperty(ThingsModConfig.FeatureMerchantBargainEnabled).GetString() == "False" &&
+                   migrated.RootElement.GetProperty(ThingsModConfig.FeatureDefensiveEngineGuardsEnabled).GetString() == "False",
+                "Migrated v1 config did not persist canonical v3 feature keys.");
+            Assert(!migrated.RootElement.TryGetProperty("CustomBgmEnabled", out _) &&
+                   !migrated.RootElement.TryGetProperty("MerchantBargainEnabled", out _) &&
+                   !migrated.RootElement.TryGetProperty("DefensiveEngineGuardsEnabled", out _),
+                "Migrated v1 config left deprecated alias keys on disk.");
+        }
+
+        File.WriteAllText(ThingsModConfig.ConfigPath,
+            "{\"SchemaVersion\":\"2\",\"EnableCustomBgm\":\"False\",\"EnableMerchantBargain\":\"False\"}");
+        ThingsModConfig.Load();
+        Assert(!ThingsModConfig.GetBool(ThingsModConfig.FeatureCustomBgmEnabled) &&
+               !ThingsModConfig.GetBool(ThingsModConfig.FeatureMerchantBargainEnabled),
+            "Secondary Enable* legacy aliases did not migrate cleanly.");
+
         File.WriteAllText(ThingsModConfig.ConfigPath,
             "{\"SchemaVersion\":true,\"FeatureCustomBgmEnabled\":false,\"BossOriginFogmogEnabled\":false," +
             "\"BossScaleBeetleWeightPercent\":\"275\",\"EncounterSoulRoesWeightPercent\":50}");
@@ -191,16 +239,16 @@ public partial class ThingsConfigProbeNode : Node
     {
         Overgrowth act = (Overgrowth)ModelDb.Act<Overgrowth>().ToMutable();
         List<EncounterModel> encounters = act.GenerateAllEncounters().ToList();
-        Assert(encounters.Any(e => e.Id == ModelDb.Encounter<OriginFogmogBossEncounter>().Id),
+        Assert(encounters.Any(e => e.Id == ModelDb.Encounter<ThingsOriginFogmogBossEncounter>().Id),
             "Origin Fogmog is missing from the default Overgrowth encounter pool.");
-        Assert(encounters.Any(e => e.Id == ModelDb.Encounter<ScaleBeetleBossEncounter>().Id),
+        Assert(encounters.Any(e => e.Id == ModelDb.Encounter<ThingsScaleBeetleBossEncounter>().Id),
             "Scale Beetle is missing from the default Overgrowth encounter pool.");
 
         ThingsModConfig.SetValue(ThingsModConfig.BossOriginFogmogEnabled, false);
         encounters = act.GenerateAllEncounters().ToList();
-        Assert(encounters.All(e => e.Id != ModelDb.Encounter<OriginFogmogBossEncounter>().Id),
+        Assert(encounters.All(e => e.Id != ModelDb.Encounter<ThingsOriginFogmogBossEncounter>().Id),
             "Disabled Origin Fogmog is still in the Overgrowth encounter pool.");
-        Assert(encounters.Any(e => e.Id == ModelDb.Encounter<ScaleBeetleBossEncounter>().Id),
+        Assert(encounters.Any(e => e.Id == ModelDb.Encounter<ThingsScaleBeetleBossEncounter>().Id),
             "Disabling Origin Fogmog removed Scale Beetle.");
         ResetAll();
     }
@@ -211,16 +259,16 @@ public partial class ThingsConfigProbeNode : Node
         ThingsModConfig.SetValue(ThingsModConfig.BossScaleBeetleForced, true);
         List<EncounterModel> bosses = act.BossDiscoveryOrder.ToList();
         Assert(bosses.Count == 1 &&
-               bosses[0].Id == ModelDb.Encounter<ScaleBeetleBossEncounter>().Id,
+               bosses[0].Id == ModelDb.Encounter<ThingsScaleBeetleBossEncounter>().Id,
             $"Forced Scale Beetle produced {bosses.Count} boss candidate(s); expected only Scale Beetle.");
         ResetAll();
 
         // 无强制时：禁用项从 Boss 候选移除，其余保留。
         ThingsModConfig.SetValue(ThingsModConfig.BossOriginFogmogEnabled, false);
         bosses = act.BossDiscoveryOrder.ToList();
-        Assert(bosses.All(b => b.Id != ModelDb.Encounter<OriginFogmogBossEncounter>().Id),
+        Assert(bosses.All(b => b.Id != ModelDb.Encounter<ThingsOriginFogmogBossEncounter>().Id),
             "Disabled Origin Fogmog is still a boss candidate.");
-        Assert(bosses.Any(b => b.Id == ModelDb.Encounter<ScaleBeetleBossEncounter>().Id),
+        Assert(bosses.Any(b => b.Id == ModelDb.Encounter<ThingsScaleBeetleBossEncounter>().Id),
             "Disabling Origin Fogmog removed Scale Beetle from boss candidates.");
         ResetAll();
     }
@@ -231,14 +279,14 @@ public partial class ThingsConfigProbeNode : Node
         List<EventModel> events = act.AllEvents.ToList();
         Assert(events.Any(e => e.Id == ModelDb.Event<ThingsBackrooms>().Id),
             "The ThingsBackrooms event is missing from the default Overgrowth events.");
-        Assert(events.Any(e => e.Id == ModelDb.Event<CuttingItClose>().Id),
+        Assert(events.Any(e => e.Id == ModelDb.Event<ThingsCuttingItClose>().Id),
             "Cutting It Close is missing from the default Overgrowth events.");
 
         ThingsModConfig.SetValue(ThingsModConfig.EventBackroomsEnabled, false);
         events = act.AllEvents.ToList();
         Assert(events.All(e => e.Id != ModelDb.Event<ThingsBackrooms>().Id),
             "The disabled ThingsBackrooms event is still offered in Overgrowth events.");
-        Assert(events.Any(e => e.Id == ModelDb.Event<CuttingItClose>().Id),
+        Assert(events.Any(e => e.Id == ModelDb.Event<ThingsCuttingItClose>().Id),
             "Disabling the ThingsBackrooms event removed Cutting It Close.");
         ResetAll();
 
@@ -263,9 +311,9 @@ public partial class ThingsConfigProbeNode : Node
             Overgrowth act = seed == 0 ? cached : (Overgrowth)ModelDb.Act<Overgrowth>().ToMutable();
             act.GenerateRooms(new Rng(seed), UnlockState.all);
             act.ApplyDiscoveryOrderModifications(UnlockState.all);
-            Assert(act.BossEncounter is ScaleBeetleBossEncounter, "Forced boss was not selected after actual room generation/discovery.");
+            Assert(act.BossEncounter is ThingsScaleBeetleBossEncounter, "Forced boss was not selected after actual room generation/discovery.");
             act.SetSecondBossEncounter(null);
-            Assert(act.SecondBossEncounter is ScaleBeetleBossEncounter, "Single-boss mode removed the Double Boss fight.");
+            Assert(act.SecondBossEncounter is ThingsScaleBeetleBossEncounter, "Single-boss mode removed the Double Boss fight.");
         }
         ResetAll();
         ThingsModConfig.SetValue(ThingsModConfig.BossOnlyModBosses, true);
@@ -289,11 +337,78 @@ public partial class ThingsConfigProbeNode : Node
         Assert(fallback.BossEncounter is not null && !EncounterSelectionPolicy.IsOwnedBoss(fallback.BossEncounter),
             "All-disabled / only-mod mode failed to keep a playable fallback.");
         ResetAll();
+
+        ThingsModConfig.SetValue(ThingsModConfig.BossHumanFaceTowerForced, true);
+        ThingsModConfig.SetValue(ThingsModConfig.BossHumanFaceTowerWeightPercent, 0);
+        for (uint seed = 0; seed < 12; seed++)
+        {
+            var depths = (ThingsDepths)ModelDb.Act<ThingsDepths>().ToMutable();
+            depths.GenerateRooms(new Rng(seed + 500), UnlockState.all);
+            depths.ApplyDiscoveryOrderModifications(UnlockState.all);
+            Assert(depths.BossEncounter is ThingsHumanFaceTowerBossEncounter,
+                "Forced Human-Faced Tower was not selected in Depths.");
+            depths.SetSecondBossEncounter(null);
+            Assert(depths.SecondBossEncounter is ThingsHumanFaceTowerBossEncounter,
+                "Forced Human-Faced Tower did not populate Double Boss in Depths.");
+        }
+        ResetAll();
+
+        ThingsModConfig.SetValues(new Dictionary<string, object?>
+        {
+            [ThingsModConfig.BossHumanFaceTowerForced] = true,
+            [ThingsModConfig.BossCaveGodForced] = true,
+            [ThingsModConfig.BossHumanFaceTowerWeightPercent] = 0,
+            [ThingsModConfig.BossCaveGodWeightPercent] = 0,
+        });
+        var dualSeen = new HashSet<Type>();
+        for (uint seed = 0; seed < 24; seed++)
+        {
+            var depths = (ThingsDepths)ModelDb.Act<ThingsDepths>().ToMutable();
+            Assert(depths.AllBossEncounters.Select(e => e.GetType()).SequenceEqual(
+                [typeof(ThingsHumanFaceTowerBossEncounter), typeof(ThingsCaveGodBossEncounter)]),
+                "Dual-forced Depths + Hive bosses did not retain both bosses in Depths.");
+            var rng = new Rng(seed + 900);
+            depths.GenerateRooms(rng, UnlockState.all);
+            depths.ApplyDiscoveryOrderModifications(UnlockState.all);
+            dualSeen.Add(depths.BossEncounter.GetType());
+            EncounterModel? second = rng.NextItem(depths.AllBossEncounters.Where(e => e.Id != depths.BossEncounter.Id));
+            depths.SetSecondBossEncounter(second);
+            Assert(depths.SecondBossEncounter is not null && depths.SecondBossEncounter.Id != depths.BossEncounter.Id,
+                "Dual-forced Double Boss in Depths did not select the other forced boss.");
+        }
+        Assert(dualSeen.SetEquals([typeof(ThingsHumanFaceTowerBossEncounter), typeof(ThingsCaveGodBossEncounter)]),
+            "Dual-forced Depths bosses did not roll both Human-Faced Tower and Cave God across seeds.");
+        ResetAll();
+        ThingsModConfig.SetValue(ThingsModConfig.BossAbyssalInkmawForced, true);
+        ThingsModConfig.SetValue(ThingsModConfig.BossAbyssalInkmawWeightPercent, 0);
+        for (uint seed = 0; seed < 12; seed++)
+        {
+            var depths = (ThingsDepths)ModelDb.Act<ThingsDepths>().ToMutable();
+            depths.GenerateRooms(new Rng(seed + 600), UnlockState.all);
+            depths.ApplyDiscoveryOrderModifications(UnlockState.all);
+            Assert(depths.BossEncounter is ThingsAbyssalInkmawBossEncounter,
+                "Forced Abyssal Inkmaw was not selected in Depths.");
+            depths.SetSecondBossEncounter(null);
+            Assert(depths.SecondBossEncounter is ThingsAbyssalInkmawBossEncounter,
+                "Forced Abyssal Inkmaw did not populate Double Boss in Depths.");
+        }
+        ResetAll();
+        ThingsModConfig.SetValues(new Dictionary<string, object?>
+        {
+            [ThingsModConfig.BossCaveGodEnabled] = false,
+            [ThingsModConfig.BossHumanFaceTowerEnabled] = false,
+            [ThingsModConfig.BossAbyssalInkmawEnabled] = false,
+        });
+        var depthsFallback = (ThingsDepths)ModelDb.Act<ThingsDepths>().ToMutable();
+        depthsFallback.GenerateRooms(new Rng(777), UnlockState.all);
+        Assert(depthsFallback.BossEncounter is KaiserCrabBoss,
+            "Disabling all three Depths bosses did not fall back to Kaiser Crab.");
+        ResetAll();
     }
 
     private static void VerifyWeightedSelection()
     {
-        EncounterModel mod = ModelDb.Encounter<OriginFogmogBossEncounter>();
+        EncounterModel mod = ModelDb.Encounter<ThingsOriginFogmogBossEncounter>();
         EncounterModel vanilla = ModelDb.Act<Overgrowth>().BossDiscoveryOrder.First(encounter => !EncounterSelectionPolicy.IsOwnedBoss(encounter));
         EncounterModel[] pool = [mod, vanilla];
         var actualRng = new Rng(901);
@@ -339,7 +454,7 @@ public partial class ThingsConfigProbeNode : Node
                     if (rate is not (0 or 100))
                         Assert(next != previous && !next.SharesTagsWith(previous),
                             "Custom elite frequency repeated a consecutive encounter or tag.");
-                    if (next is SoulRoesEncounter) count++;
+                    if (next is ThingsSoulRoesEncounter) count++;
                     previous = next;
                     // PullNextEncounter peeks; the game advances on room entry.
                     act.MarkRoomVisited(RoomType.Elite);
@@ -358,9 +473,10 @@ public partial class ThingsConfigProbeNode : Node
 
     private static void VerifyMusicSetting()
     {
-        EncounterModel[] bosses = [ModelDb.Encounter<OriginFogmogBossEncounter>(), ModelDb.Encounter<ScaleBeetleBossEncounter>(),
-            ModelDb.Encounter<GravetideSlugBossEncounter>(), ModelDb.Encounter<TheLegacyBossEncounter>(),
-            ModelDb.Encounter<BowlbugProgenitorBossEncounter>(), ModelDb.Encounter<CaveGodBossEncounter>()];
+        EncounterModel[] bosses = [ModelDb.Encounter<ThingsOriginFogmogBossEncounter>(), ModelDb.Encounter<ThingsScaleBeetleBossEncounter>(),
+            ModelDb.Encounter<ThingsGravetideSlugBossEncounter>(), ModelDb.Encounter<ThingsTheLegacyBossEncounter>(),
+            ModelDb.Encounter<ThingsBowlbugProgenitorBossEncounter>(), ModelDb.Encounter<ThingsCaveGodBossEncounter>(),
+            ModelDb.Encounter<ThingsHumanFaceTowerBossEncounter>(), ModelDb.Encounter<ThingsAbyssalInkmawBossEncounter>()];
         string[] original = bosses.Select(boss => boss.CustomBgm).ToArray();
         Assert(original.All(track => !string.IsNullOrEmpty(track)), "Default boss music disappeared.");
         ThingsModConfig.SetValue(ThingsModConfig.FeatureCustomBgmEnabled, false);
@@ -418,12 +534,8 @@ public partial class ThingsConfigProbeNode : Node
     private static void InitializeModelDb(Assembly implementationAssembly)
     {
         Type[] implementationTypes = implementationAssembly.GetTypes();
-#if !STS2_V107_1
         Type[] modTypes = OS.GetCmdlineUserArgs().Length > 1 && !OS.GetCmdlineUserArgs().Contains("--neow-only")
             ? [.. implementationTypes, typeof(ConfigNetworkProbeMessage)] : implementationTypes;
-#else
-        Type[] modTypes = implementationTypes;
-#endif
         Type[] modelTypes = [
             .. AbstractModelSubtypes.All,
             .. implementationTypes.Where(type => !type.IsAbstract && typeof(AbstractModel).IsAssignableFrom(type))

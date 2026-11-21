@@ -5,6 +5,9 @@ workers_dev = true
 
 [secrets]
 required = ["ADMIN_PASSWORD", "SESSION_SECRET"]
+# Optional secret (recommended for headless CLI / MCP automation):
+#   ADMIN_API_TOKEN — enables `Authorization: Bearer <ADMIN_API_TOKEN>` on `/api/admin/*`
+#   Set via `wrangler secret put ADMIN_API_TOKEN` (kept optional here so initial deploys never fail).
 
 [[routes]]
 pattern = "reports.adnermo.online"

@@ -11,13 +11,14 @@ using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.ValueProps;
+using STS2_Things.Core.Models;
 
 namespace STS2_Things.Powers;
 
 /// <summary>
 ///     放大 — Boss Buff，每层放大 1%，伤害增 1%
 /// </summary>
-public sealed class ThingsScaleUpPower : PowerModel
+public sealed class ThingsScaleUpPower : ThingsPowerModel
 {
     public override PowerType Type => PowerType.Buff;
     public override PowerStackType StackType => PowerStackType.Counter;
@@ -76,13 +77,8 @@ public sealed class ThingsScaleUpPower : PowerModel
         }
     }
 
-#if STS2_V107_1
-    public override decimal ModifyDamageMultiplicative(Creature? target, decimal amount, ValueProp props,
-        Creature? dealer, CardModel? cardSource)
-#else
-    public override decimal ModifyDamageMultiplicative(Creature? target, decimal amount, ValueProp props,
-        Creature? dealer, CardModel? cardSource, CardPlay? cardPlay)
-#endif
+    protected override decimal OnModifyDamageMultiplicative(
+        Creature? target, decimal amount, ValueProp props, Creature? dealer, CardModel? cardSource, CardPlay? cardPlay)
     {
         if (Owner != dealer || !props.IsPoweredAttack())
             return 1m;

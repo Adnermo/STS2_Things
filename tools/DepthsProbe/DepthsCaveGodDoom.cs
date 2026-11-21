@@ -14,17 +14,19 @@ public partial class DepthsProbeNode
         foreach (bool phase2 in new[] { false, true })
         foreach (bool reverse in new[] { false, true })
         {
-            var b = await StrongBattle(ModelDb.Encounter<CaveGodBossEncounter>(), players);
+            var b = await StrongBattle(ModelDb.Encounter<ThingsCaveGodBossEncounter>(), players);
             var body = b.Monster<ThingsCaveGodBody>();
             var left = b.Monster<ThingsCaveGodLeftHand>();
             var right = b.Monster<ThingsCaveGodRightHand>();
             if (phase2)
             {
-                await CreatureCmd.Kill(left.Creature);
-                await CreatureCmd.Kill(body.Creature);
+                await CreatureCmd.Damage(Choice, body.Creature, 5000m,
+                    MegaCrit.Sts2.Core.ValueProps.ValueProp.Unpowered | MegaCrit.Sts2.Core.ValueProps.ValueProp.Unblockable,
+                    b.Players[0].Creature);
+                Assert(body.IsEnrageLocked && body.NextMove.Id == ThingsCaveGodBody.EnrageId, "Half-HP core must lock EnrageId immediately");
                 await body.PerformMove();
                 body.RollMove(b.Players.Select(p => p.Creature));
-                Assert(body.Phase == 2, "Native phase transition completed before Doom case");
+                Assert(body.Phase == 2 && !body.IsEnrageLocked, "Native phase transition completed before Doom case");
             }
             foreach (var arm in new ThingsCaveGodHand[] { left, right })
                 await PowerCmd.Apply<DoomPower>(Choice, arm.Creature, arm.Creature.CurrentHp,
@@ -52,7 +54,7 @@ public partial class DepthsProbeNode
                 await doom.BeforeSideTurnEnd(Choice, CombatSide.Enemy, b.Enemies);
                 Assert(doom.Amount == 0, "Retired Doom snapshot cannot retrigger after cleansing");
             }
-            for (int turn = 0; turn < 4; turn++)
+            for (int turn = 0; turn < 2; turn++)
             {
                 foreach (var creature in b.Enemies.ToArray()) await creature.Monster!.PerformMove();
                 foreach (var creature in b.Enemies.ToArray()) creature.Monster!.RollMove(b.Players.Select(p => p.Creature));

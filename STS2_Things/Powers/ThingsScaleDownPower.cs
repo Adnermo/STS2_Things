@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.ValueProps;
+using STS2_Things.Core.Models;
 
 namespace STS2_Things.Powers;
 
@@ -18,7 +19,7 @@ namespace STS2_Things.Powers;
 ///     缩小 — 玩家 Debuff，每层缩 1%，伤害减 1%
 ///     模仿 ShrinkPower，支持层数叠加
 /// </summary>
-public sealed class ThingsScaleDownPower : PowerModel
+public sealed class ThingsScaleDownPower : ThingsPowerModel
 {
     public override PowerType Type => PowerType.Debuff;
     public override PowerStackType StackType => PowerStackType.Counter;
@@ -77,13 +78,8 @@ public sealed class ThingsScaleDownPower : PowerModel
         }
     }
 
-#if STS2_V107_1
-    public override decimal ModifyDamageMultiplicative(Creature? target, decimal amount, ValueProp props,
-        Creature? dealer, CardModel? cardSource)
-#else
-    public override decimal ModifyDamageMultiplicative(Creature? target, decimal amount, ValueProp props,
-        Creature? dealer, CardModel? cardSource, CardPlay? cardPlay)
-#endif
+    protected override decimal OnModifyDamageMultiplicative(
+        Creature? target, decimal amount, ValueProp props, Creature? dealer, CardModel? cardSource, CardPlay? cardPlay)
     {
         if (Owner != dealer || !props.IsPoweredAttack())
             return 1m;

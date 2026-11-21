@@ -5,17 +5,18 @@
     <AssemblyName>ThingsConfigProbe</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v107.1'">$(DefineConstants);STS2_V107_1</DefineConstants>
+    <Sts2TargetVersion Condition="'$(Sts2TargetVersion)' == ''">v113.1</Sts2TargetVersion>
+    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v111.1'">$(DefineConstants);STS2_V111_1</DefineConstants>
+    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v113.1'">$(DefineConstants);STS2_V113_1</DefineConstants>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Sts2DataDir Condition="'$(Sts2DataDir)' == ''">D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64</Sts2DataDir>
     <RuntimeDependencyDir Condition="'$(RuntimeDependencyDir)' == ''">D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64</RuntimeDependencyDir>
-    <ImplementationDll Condition="'$(ImplementationDll)' == ''">$(MSBuildProjectDirectory)\..\..\build\v113\STS2_Things.dll</ImplementationDll>
+    <ImplementationDll Condition="'$(ImplementationDll)' == ''">$(MSBuildProjectDirectory)\..\..\build\$(Sts2TargetVersion)\STS2_Things.dll</ImplementationDll>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Remove="obj\**\*.cs" />
     <Compile Remove="bin\**\*.cs" />
-    <Compile Remove="ConfigNetworkLiveProbe.cs" Condition="'$(Sts2TargetVersion)' == 'v107.1'" />
     <Reference Include="sts2">
       <HintPath>$(Sts2DataDir)\sts2.dll</HintPath>
       <Private>true</Private>

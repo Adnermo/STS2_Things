@@ -34,10 +34,12 @@ internal static class PortraitCacheGuard
         {
             harmony.Patch(remember!, prefix: new HarmonyMethod(typeof(PortraitCacheGuard), nameof(BeforeRemember)));
             harmony.Patch(restore!, prefix: new HarmonyMethod(typeof(PortraitCacheGuard), nameof(BeforeRestore)));
-            if (MatchesReplacementResolver(resolve))
-                harmony.Patch(resolve!, postfix: new HarmonyMethod(typeof(PortraitCacheGuard), nameof(AfterResolveReplacement)));
+            if (MatchesReplacementResolver4(resolve))
+                harmony.Patch(resolve!, postfix: new HarmonyMethod(typeof(PortraitCacheGuard), nameof(AfterResolveReplacement4)));
+            else if (MatchesReplacementResolver5(resolve))
+                harmony.Patch(resolve!, postfix: new HarmonyMethod(typeof(PortraitCacheGuard), nameof(AfterResolveReplacement5)));
         }
-        catch
+        catch (Exception)
         {
             CacheShapes.TryRemove(restore!, out _);
             throw; // The manager rolls back only this adapter's own Harmony ID.
@@ -55,7 +57,7 @@ internal static class PortraitCacheGuard
             && args[2].ParameterType.GenericTypeArguments.SequenceEqual(new[] { typeof(string), state });
     }
 
-    private static bool MatchesReplacementResolver(MethodInfo? method)
+    private static bool MatchesReplacementResolver4(MethodInfo? method)
     {
         if (method?.ReturnType != typeof(bool)) return false;
         ParameterInfo[] args = method.GetParameters();
@@ -64,12 +66,32 @@ internal static class PortraitCacheGuard
             && args[3].IsOut && args[3].ParameterType == typeof(Texture2D).MakeByRefType();
     }
 
-    private static void AfterResolveReplacement(ref bool __result, ref Texture2D? __3)
+    private static bool MatchesReplacementResolver5(MethodInfo? method)
+    {
+        if (method?.ReturnType != typeof(bool)) return false;
+        ParameterInfo[] args = method.GetParameters();
+        return args.Length == 5
+            && args[0].ParameterType == typeof(MegaCrit.Sts2.Core.Models.CardModel)
+            && args[1].ParameterType == typeof(string)
+            && args[2].ParameterType == typeof(ulong) && args[3].ParameterType == typeof(int)
+            && args[4].IsOut && args[4].ParameterType == typeof(Texture2D).MakeByRefType();
+    }
+
+    private static void AfterResolveReplacement4(ref bool __result, ref Texture2D? __3)
     {
         if (__result && __3 != null && !GodotObject.IsInstanceValid(__3))
         {
             __result = false;
             __3 = null;
+        }
+    }
+
+    private static void AfterResolveReplacement5(ref bool __result, ref Texture2D? __4)
+    {
+        if (__result && __4 != null && !GodotObject.IsInstanceValid(__4))
+        {
+            __result = false;
+            __4 = null;
         }
     }
 

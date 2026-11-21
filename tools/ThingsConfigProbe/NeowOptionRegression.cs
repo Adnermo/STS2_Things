@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Models.Modifiers;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Unlocks;
+using STS2_Things.Map;
 using STS2_Things.Modifiers;
 using STS2_Things.Config;
 using STS2_Things.Relics;
@@ -26,8 +27,8 @@ internal static class NeowOptionRegression
         LocManager.Initialize();
         Player player = Player.CreateForNewRun<Ironclad>(UnlockState.all, 1);
         RunState run = RunState.CreateForTest([player], seed: "NEOW_CROSSROADS_REGRESSION");
-        Require(run.Modifiers.OfType<ThingsCrossroads>().Count() == 1,
-            "Normal run creation must attach the saved crossroads ledger.");
+        Require(Crossroads.Ledger(run) is not null && !run.Modifiers.Any(m => m is ThingsCrossroads),
+            "Normal run creation must attach the saved crossroads ledger without polluting RunState.Modifiers.");
         var neow = (Neow)ModelDb.Event<Neow>().ToMutable();
         MethodInfo begin = typeof(EventModel).GetMethods(BindingFlags.Public | BindingFlags.Instance)
             .Single(method => method.Name == nameof(EventModel.BeginEvent));
@@ -72,8 +73,8 @@ internal static class NeowOptionRegression
                             $"Neow relic switch failed: {configKeys[i]}.");
                     checkedChoices++;
                 }
-                Require(withLedger.Modifiers.OfType<ThingsCrossroads>().Count() == 1,
-                    "Generating Neow options removed the saved route ledger.");
+                Require(Crossroads.Ledger(withLedger) is not null && !withLedger.Modifiers.Any(m => m is ThingsCrossroads),
+                    "Generating Neow options removed the saved route ledger or leaked it into RunState.Modifiers.");
             }
 
             // Genuine custom rules must retain their original Neow branch, even
@@ -92,8 +93,10 @@ internal static class NeowOptionRegression
                 checkedChoices++;
             }
 
-            var restoredLedger = (ThingsCrossroads)ModifierModel.FromSerializable(run.Modifiers.Single().ToSerializable());
+            var restoredLedger = (ThingsCrossroads)ModifierModel.FromSerializable(Crossroads.Ledger(run)!.ToSerializable());
             var restoredRun = CreateRun(1, "neow-restored", restoredLedger);
+            Require(!restoredRun.Modifiers.Any(m => m is ThingsCrossroads) && ReferenceEquals(Crossroads.Ledger(restoredRun), restoredLedger),
+                "Restoring a legacy ThingsCrossroads modifier must attach it without leaving it in RunState.Modifiers.");
             string savedData = restoredLedger.Data;
             Neow restored = await Start(restoredRun.Players[0]);
             Require(restored.CurrentOptions.Count == 3 && !restored.IsFinished && restoredLedger.Data == savedData,

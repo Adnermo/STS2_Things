@@ -49,7 +49,20 @@ public partial class WaterSpongeProbeNode : Node
             _root = Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), "../.."));
             TestMode.TurnOnInternal();
             ProjectSettings.LoadResourcePack("D:/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.pck");
-            string pack = System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK") ?? Path.Combine(_root, "build/water_sponge/v113/STS2_Things.pck");
+#if STS2_V111_1
+            const string defaultTarget = "v111.1";
+#else
+            const string defaultTarget = "v113.1";
+#endif
+            string pack = System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")
+                ?? new[]
+                {
+                    Path.Combine(_root, $"build/{defaultTarget}/STS2_Things.pck"),
+                    Path.Combine(_root, "build/v113.1/STS2_Things.pck"),
+                    Path.Combine(_root, "build/v111.1/STS2_Things.pck"),
+                    Path.Combine(_root, "build/unified/STS2_Things.pck"),
+                }.FirstOrDefault(File.Exists)
+                ?? Path.Combine(_root, $"build/{defaultTarget}/STS2_Things.pck");
             if (File.Exists(pack)) Assert(ProjectSettings.LoadResourcePack(pack), "Shipping mod PCK mounts.");
             SaveManager.Instance.InitSettingsDataForTest();
             SaveManager.Instance.InitPrefsDataForTest();
@@ -71,7 +84,7 @@ public partial class WaterSpongeProbeNode : Node
         catch (Exception exception) { GD.PushError(exception.ToString()); GetTree().Quit(1); }
     }
 
-    private static async Task<Fixture> Scenario(bool weak = false, int players = 1, int ascension = 0, bool keepOpeningHand = false)
+    private static async Task<Fixture> Scenario(bool lantern = false, int players = 1, int ascension = 0, bool keepOpeningHand = false)
     {
         DeactivateSyntheticCombat();
         var party = Enumerable.Range(1, players).Select(i => Player.CreateForNewRun<Ironclad>(UnlockState.all, (ulong)i)).ToList();
@@ -80,7 +93,7 @@ public partial class WaterSpongeProbeNode : Node
         typeof(RunManager).GetProperty("State", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(RunManager.Instance, run);
         typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance, ProbeRuntimeApi.Ascension(ascension));
         typeof(RunManager).GetProperty("NetService")!.SetValue(RunManager.Instance, new NetSingleplayerGameService());
-        EncounterModel encounter = (weak ? ModelDb.Encounter<SpongeLeechWeak>() as EncounterModel : ModelDb.Encounter<SpongeLeechEncounter>()).ToMutable();
+        EncounterModel encounter = (lantern ? ModelDb.Encounter<ThingsLanternSpongeEncounter>() as EncounterModel : ModelDb.Encounter<ThingsSpongeLeechEncounter>()).ToMutable();
         run.AppendToMapPointHistory(MapPointType.Monster, RoomType.Monster, encounter.Id);
         var room = new CombatRoom(encounter, run); run.PushRoom(room);
         foreach (var player in party) { player.ResetCombatState(); room.CombatState.AddPlayer(player); player.PopulateCombatState(run.Rng.Shuffle, room.CombatState); }
@@ -107,32 +120,44 @@ public partial class WaterSpongeProbeNode : Node
 
     private static async Task VerifyPoolsAndSeeds()
     {
-        var depths = ModelDb.Act<Depths>();
-        Assert(depths.AllWeakEncounters.Any(e => e is SpongeLeechWeak), "Mixed weak encounter in Depths.");
-        Assert(depths.AllRegularEncounters.Any(e => e is SpongeLeechEncounter), "Mixed regular encounter in Depths.");
-        Assert(depths.AllWeakEncounters.Any(e => e is SanguineLeechWeak) && depths.AllRegularEncounters.Any(e => e is SanguineLeechEncounter), "Pure leech encounters retained.");
-        Assert(depths.AllWeakEncounters.Any(e => e is LanternFishWeak) && depths.AllRegularEncounters.Any(e => e is LanternFishEncounter), "Fish encounters retained.");
-        foreach (bool weak in new[] { true, false })
+        var depths = ModelDb.Act<ThingsDepths>();
+        Assert(!depths.AllWeakEncounters.Any(e => e.AllPossibleMonsters.Any(m => m is ThingsWaterSponge)), "Zero Water Sponge encounters in Depths weak pool.");
+        Assert(depths.AllRegularEncounters.Any(e => e is ThingsSpongeLeechEncounter), "Sponge-leech regular encounter in Depths.");
+        Assert(depths.AllRegularEncounters.Any(e => e is ThingsLanternSpongeEncounter), "Lantern-sponge regular encounter in Depths.");
+        Assert(depths.AllWeakEncounters.Any(e => e is ThingsSanguineLeechWeak) && depths.AllRegularEncounters.Any(e => e is ThingsSanguineLeechEncounter), "Pure leech encounters retained.");
+        Assert(depths.AllWeakEncounters.Any(e => e is ThingsLanternFishWeak) && depths.AllRegularEncounters.Any(e => e is ThingsLanternFishEncounter), "Fish encounters retained.");
         foreach (int players in new[] { 1, 2, 4 })
         {
-            var s = await Scenario(weak, players, keepOpeningHand: true);
-            Assert(s.Encounter.IsWeak == weak && s.Leeches.Length == (weak ? 1 : 2), "One/two leeches alongside one sponge.");
-            Assert(s.Encounter.MonstersWithSlots.Count == (weak ? 2 : 3), "Mixed encounter creature count.");
-            Assert(s.Encounter.MonstersWithSlots.All(item => s.Encounter.Slots.Contains(item.Item2!)), "All mixed slots resolve.");
-            Assert(s.Sponge.Creature.GetPower<AbsorbentSpongePower>() != null && s.Sponge.Water == 0, "Empty reservoir and passive at combat start.");
-            Assert(s.Leeches.All(leech => leech.Creature.GetPower<LeechInfestationPower>() is { IsVisible: false, ShouldPlayVfx: false }),
+            var s = await Scenario(players: players, keepOpeningHand: true);
+            Assert(!s.Encounter.IsWeak && s.Leeches.Length == 2, "Two leeches alongside one sponge.");
+            Assert(s.Encounter.MonstersWithSlots.Count == 3, "Sponge-leech encounter creature count.");
+            Assert(s.Encounter.MonstersWithSlots.All(item => s.Encounter.Slots.Contains(item.Item2!)), "All sponge-leech slots resolve.");
+            Assert(s.Sponge.Creature.GetPower<ThingsAbsorbentSpongePower>() != null && s.Sponge.Water == 0, "Empty reservoir and passive at combat start.");
+            Assert(s.Leeches.All(leech => leech.Creature.GetPower<ThingsLeechInfestationPower>() is { IsVisible: false, ShouldPlayVfx: false }),
                 "Leech exhaust hooks use a native hidden power without a HUD icon or application effect.");
             Assert(s.Sponge.MinInitialHp == 46 && s.Sponge.MaxInitialHp == 50, "A0 sponge HP.");
             foreach (var player in s.Players)
             {
-                Assert(player.PlayerCombatState!.Hand.Cards.OfType<LeechParasite>().Count() == s.Leeches.Length, "Native opening hand hook puts each leech's parasite directly in hand.");
-                Assert(!player.PlayerCombatState.DrawPile.Cards.OfType<LeechParasite>().Any(), "Opening parasites do not pollute the draw pile.");
-                Assert(!player.Deck.Cards.OfType<LeechParasite>().Any(), "Permanent deck remains parasite-free.");
+                var opening = player.PlayerCombatState!.Hand.Cards.OfType<ThingsLeechParasite>().ToArray();
+                Assert(opening.Length == s.Leeches.Length, "Native opening hand hook puts each leech's parasite directly in hand.");
+                Assert(opening.Select(c => c.OwnerLeech).SequenceEqual(s.Leeches.Select(l => l.Creature)), "Opening parasites bind 1-to-1 to their respective owner leeches.");
+                Assert(!player.PlayerCombatState.DrawPile.Cards.OfType<ThingsLeechParasite>().Any(), "Opening parasites do not pollute the draw pile.");
+                Assert(!player.Deck.Cards.OfType<ThingsLeechParasite>().Any(), "Permanent deck remains parasite-free.");
             }
+
+            var lantern = await Scenario(lantern: true, players: players);
+            Assert(!lantern.Encounter.IsWeak, "Lantern-sponge is a regular encounter.");
+            Assert(lantern.Encounter.Slots.SequenceEqual(["fish_1", "sponge", "fish_2"]), "Lantern-sponge uses ['fish_1', 'sponge', 'fish_2'] slots.");
+            Assert(lantern.Encounter.MonstersWithSlots.Count == 3, "Lantern-sponge encounter spawns 3 enemies.");
+            Assert(lantern.Encounter.MonstersWithSlots.Count(item => item.Item1 is ThingsWaterSponge) == 1
+                && lantern.Encounter.MonstersWithSlots.Count(item => item.Item1 is ThingsLanternFish) == 2,
+                "Lantern-sponge spawns 1 Water Sponge and 2 Lantern Fish.");
+            Assert(lantern.Encounter.MonstersWithSlots.All(item => lantern.Encounter.Slots.Contains(item.Item2!)), "All lantern-sponge slots resolve.");
+            Assert(lantern.Sponge.Creature.GetPower<ThingsAbsorbentSpongePower>() != null && lantern.Sponge.Water == 0, "Lantern-sponge starts with empty reservoir and passive.");
         }
         var high = await Scenario(ascension: 20);
         Assert(high.Sponge.MinInitialHp == 50 && high.Sponge.MaxInitialHp == 54, "Tough-enemy sponge HP.");
-        GD.Print("PASS mixed pools, counts, opening parasites, multiplayer ownership and HP.");
+        GD.Print("PASS regular sponge pools, lantern-sponge roster, opening parasites, multiplayer ownership and HP.");
     }
 
     private static Task Hit(Fixture s, int? damage = null) => CreatureCmd.Damage(Choice, s.Sponge.Creature,
@@ -152,15 +177,11 @@ public partial class WaterSpongeProbeNode : Node
             "Attack damage grants complete threshold stacks and retains the remainder.");
         var multiple = await Scenario();
         var attackCard = multiple.Room.CombatState.CreateCard<StrikeIronclad>(multiple.Player);
-#if STS2_V107_1
-        await DamageCmd.Attack(1).FromCard(attackCard).Targeting(multiple.Sponge.Creature).WithHitCount(3).Execute(Choice);
-#else
         await DamageCmd.Attack(1).FromCard(attackCard, null).Targeting(multiple.Sponge.Creature).WithHitCount(3).Execute(Choice);
-#endif
         Assert(multiple.Sponge.Water == 0 && multiple.Sponge.StoredDamage == 3,
             "Three one-damage hits only add three damage toward the shared threshold.");
         await Hit(multiple, multiple.Sponge.DamagePerWater * 3 - 3);
-        Assert(multiple.Sponge.Water == 3 && multiple.Sponge.NextMove.Id == WaterSponge.SprayMoveId,
+        Assert(multiple.Sponge.Water == 3 && multiple.Sponge.NextMove.Id == ThingsWaterSponge.SprayMoveId,
             "Three full damage thresholds fill the reservoir and refresh the intent.");
         await Hit(multiple, 1); Assert(multiple.Sponge.Water == 3 && multiple.Sponge.StoredDamage == 0,
             "A full reservoir discards extra damage instead of banking another spray.");
@@ -187,9 +208,9 @@ public partial class WaterSpongeProbeNode : Node
         s = await Scenario(); await Hit(s); await Hit(s);
         Assert(s.Sponge.NextMove.Id == "SOAK_MOVE", "Two water keeps the scheduled move.");
         await s.Sponge.PerformMove();
-        Assert(s.Sponge.Water == 3 && s.Sponge.NextMove.Id == WaterSponge.SprayMoveId, "Soak can fill its own reservoir.");
+        Assert(s.Sponge.Water == 3 && s.Sponge.NextMove.Id == ThingsWaterSponge.SprayMoveId, "Soak can fill its own reservoir.");
         s.Sponge.RollMove(s.Players.Select(p => p.Creature));
-        Assert(s.Sponge.NextMove.Id == WaterSponge.SprayMoveId, "Native move roll must not skip a spray selected mid-Soak.");
+        Assert(s.Sponge.NextMove.Id == ThingsWaterSponge.SprayMoveId, "Native move roll must not skip a spray selected mid-Soak.");
         await s.Sponge.PerformMove();
         Assert(s.Sponge.Water == 0, "Spray empties stored water.");
         s.Sponge.RollMove(s.Players.Select(p => p.Creature));
@@ -200,15 +221,23 @@ public partial class WaterSpongeProbeNode : Node
         await Hit(s); await Hit(s); await Hit(s);
         Assert(s.Sponge.NextMove.Id == MonsterModel.stunnedMoveId, "Filling does not cancel a native stun.");
         await s.Sponge.PerformMove();
-        await s.Sponge.Creature.GetPower<AbsorbentSpongePower>()!.AfterSideTurnEnd(Choice, CombatSide.Enemy, [s.Sponge.Creature]);
+        await s.Sponge.Creature.GetPower<ThingsAbsorbentSpongePower>()!.AfterSideTurnEnd(Choice, CombatSide.Enemy, [s.Sponge.Creature]);
         s.Sponge.RollMove(s.Players.Select(p => p.Creature));
-        Assert(s.Sponge.NextMove.Id == WaterSponge.SprayMoveId, "Spray remains pending after the stun turn.");
+        Assert(s.Sponge.NextMove.Id == ThingsWaterSponge.SprayMoveId, "Spray remains pending after the stun turn.");
         GD.Print("PASS Soak/Slap cycle, mid-action fill, mandatory spray, reset and stun priority.");
     }
 
     private static async Task<T> AddToDraw<T>(Fixture s, Player player) where T : CardModel
     {
         var card = s.Room.CombatState.CreateCard<T>(player);
+        await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Draw, null, CardPilePosition.Top);
+        return card;
+    }
+
+    private static async Task<ThingsLeechParasite> AddParasiteToDraw(Fixture s, Player player, Creature? ownerLeech)
+    {
+        var card = s.Room.CombatState.CreateCard<ThingsLeechParasite>(player);
+        card.BindOwnerLeech(ownerLeech);
         await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Draw, null, CardPilePosition.Top);
         return card;
     }
@@ -235,21 +264,21 @@ public partial class WaterSpongeProbeNode : Node
         {
             var s = await Scenario(ascension: ascension, players: 2);
             string[] leechMoves = s.Leeches.Select(leech => leech.NextMove.Id).ToArray();
-            await PowerCmd.Apply<SpongeReservoirPower>(Choice, s.Sponge.Creature, 3, s.Sponge.Creature, null);
+            await PowerCmd.Apply<ThingsSpongeReservoirPower>(Choice, s.Sponge.Creature, 3, s.Sponge.Creature, null);
             int[] hp = s.Players.Select(p => p.Creature.CurrentHp).ToArray();
             await s.Sponge.PerformMove();
             for (int index = 0; index < s.Players.Count; index++)
             {
                 var player = s.Players[index];
                 Assert(player.Creature.CurrentHp == hp[index] - (ascension == 0 ? 17 : 19), "Spray damage and ascension apply to each player.");
-                Assert(player.Creature.GetPower<SpongeRinsePower>()?.Amount == 1, "Each player gains one independent Rinsed charge.");
+                Assert(player.Creature.GetPower<ThingsSpongeRinsePower>()?.Amount == 1, "Each player gains one independent Rinsed charge.");
                 var normal = await AddToDraw<StrikeIronclad>(s, player);
                 await CardPileCmd.Draw(Choice, 1, player);
-                Assert(player.PlayerCombatState!.Hand.Cards.Contains(normal) && player.Creature.GetPower<SpongeRinsePower>()?.Amount == 1, "Ordinary draws do not consume Rinsed.");
-                var parasite = await AddToDraw<LeechParasite>(s, player);
+                Assert(player.PlayerCombatState!.Hand.Cards.Contains(normal) && player.Creature.GetPower<ThingsSpongeRinsePower>()?.Amount == 1, "Ordinary draws do not consume Rinsed.");
+                var parasite = await AddParasiteToDraw(s, player, s.Leeches[index % s.Leeches.Length].Creature);
                 await CardPileCmd.Draw(Choice, 1, player);
                 Assert(player.PlayerCombatState.ExhaustPile.Cards.Contains(parasite) && !player.PlayerCombatState.Hand.Cards.Contains(parasite), "Native draw exhausts the parasite before it can be retained.");
-                Assert(player.Creature.GetPower<SpongeRinsePower>() == null, "One parasite spends exactly one charge.");
+                Assert(player.Creature.GetPower<ThingsSpongeRinsePower>() == null, "One parasite spends exactly one charge.");
                 Assert(s.Leeches.Select(leech => leech.NextMove.Id).SequenceEqual(leechMoves),
                     "Rinsing a parasite preserves every leech's advertised action for this turn.");
                 await EndHand(player);
@@ -258,28 +287,28 @@ public partial class WaterSpongeProbeNode : Node
             foreach (var leech in s.Leeches) await leech.PerformMove();
             await EndEnemySide(s, s.Leeches.Select(leech => leech.Creature).ToArray());
             foreach (var leech in s.Leeches) leech.RollMove(s.Players.Select(p => p.Creature));
-            Assert(s.Leeches.All(leech => leech.NextMove.Id == SanguineLeech.ReinfestMoveId),
-                "Parasites rinsed for multiple players schedule one refill per leech for the following turn.");
+            Assert(s.Leeches.All(leech => leech.NextMove.Id != ThingsSanguineLeech.ReinfestMoveId),
+                "Rinsed purification suppresses leech reinfestation even for owner-bound parasites.");
         }
         var cleansed = await Scenario(); var owner = cleansed.Player.Creature;
         await PowerCmd.Apply<WeakPower>(Choice, owner, 2, cleansed.Sponge.Creature, null);
         await PowerCmd.Apply<VulnerablePower>(Choice, owner, 2, cleansed.Sponge.Creature, null);
         await PowerCmd.Apply<FrailPower>(Choice, owner, 2, cleansed.Sponge.Creature, null);
-        await PowerCmd.Apply<LanternBlindnessPower>(Choice, owner, 2, cleansed.Sponge.Creature, null);
+        await PowerCmd.Apply<ThingsLanternBlindnessPower>(Choice, owner, 2, cleansed.Sponge.Creature, null);
         await PowerCmd.Apply<StrengthPower>(Choice, owner, 2, owner, null);
-        await PowerCmd.Apply<SpongeReservoirPower>(Choice, cleansed.Sponge.Creature, 3, cleansed.Sponge.Creature, null);
+        await PowerCmd.Apply<ThingsSpongeReservoirPower>(Choice, cleansed.Sponge.Creature, 3, cleansed.Sponge.Creature, null);
         int before = owner.CurrentHp; await cleansed.Sponge.PerformMove();
         Assert(before-owner.CurrentHp == 25, "Vulnerable affects the spray before being washed down.");
-        Assert(owner.GetPower<WeakPower>()?.Amount == 1 && owner.GetPower<VulnerablePower>()?.Amount == 1 && owner.GetPower<FrailPower>()?.Amount == 1 && owner.GetPower<LanternBlindnessPower>()?.Amount == 1, "Only one layer of each supported debuff is washed away.");
+        Assert(owner.GetPower<WeakPower>()?.Amount == 1 && owner.GetPower<VulnerablePower>()?.Amount == 1 && owner.GetPower<FrailPower>()?.Amount == 1 && owner.GetPower<ThingsLanternBlindnessPower>()?.Amount == 1, "Only one layer of each supported debuff is washed away.");
         Assert(owner.GetPower<StrengthPower>()?.Amount == 2, "Positive powers are preserved.");
-        await PowerCmd.Apply<SpongeRinsePower>(Choice, owner, 9, owner, null);
-        Assert(owner.GetPower<SpongeRinsePower>()?.Amount == 2, "Rinsed caps at two charges.");
+        await PowerCmd.Apply<ThingsSpongeRinsePower>(Choice, owner, 9, owner, null);
+        Assert(owner.GetPower<ThingsSpongeRinsePower>()?.Amount == 2, "Rinsed caps at two charges.");
 
         var foreign = await Scenario(players: 2);
-        await PowerCmd.Apply<SpongeRinsePower>(Choice, foreign.Player.Creature, 1, foreign.Sponge.Creature, null);
-        var other = foreign.Players[1]; var otherParasite = await AddToDraw<LeechParasite>(foreign, other);
+        await PowerCmd.Apply<ThingsSpongeRinsePower>(Choice, foreign.Player.Creature, 1, foreign.Sponge.Creature, null);
+        var other = foreign.Players[1]; var otherParasite = await AddParasiteToDraw(foreign, other, foreign.Leeches[0].Creature);
         await CardPileCmd.Draw(Choice, 1, other);
-        Assert(other.PlayerCombatState!.Hand.Cards.Contains(otherParasite) && foreign.Player.Creature.GetPower<SpongeRinsePower>()?.Amount == 1, "One player's Rinsed never consumes another player's cards or charges.");
+        Assert(other.PlayerCombatState!.Hand.Cards.Contains(otherParasite) && foreign.Player.Creature.GetPower<ThingsSpongeRinsePower>()?.Amount == 1, "One player's Rinsed never consumes another player's cards or charges.");
         GD.Print("PASS cleansing order, four debuffs, owner-only native draw/exhaust and parasite end-turn prevention.");
     }
 
@@ -287,11 +316,11 @@ public partial class WaterSpongeProbeNode : Node
     {
         var s = await Scenario();
         string[] moves = s.Leeches.Select(leech => leech.NextMove.Id).ToArray();
-        await PowerCmd.Apply<SpongeRinsePower>(Choice, s.Player.Creature, 1, s.Sponge.Creature, null);
+        await PowerCmd.Apply<ThingsSpongeRinsePower>(Choice, s.Player.Creature, 1, s.Sponge.Creature, null);
         var status = await AddToDraw<T>(s, s.Player);
         await CardPileCmd.Draw(Choice, 1, s.Player);
         Assert(status.Type == CardType.Status && s.Player.PlayerCombatState!.ExhaustPile.Cards.Contains(status), "Rinsed exhausts native status " + status.Id);
-        Assert(s.Player.Creature.GetPower<SpongeRinsePower>() == null, "Each native status consumes exactly one Rinsed charge.");
+        Assert(s.Player.Creature.GetPower<ThingsSpongeRinsePower>() == null, "Each native status consumes exactly one Rinsed charge.");
         Assert(s.Leeches.Select(leech => leech.NextMove.Id).SequenceEqual(moves), "Exhausting non-parasite statuses does not redirect leeches.");
     }
 
@@ -303,20 +332,20 @@ public partial class WaterSpongeProbeNode : Node
         await VerifyCleansedStatus<Slimed>();
         await VerifyCleansedStatus<MegaCrit.Sts2.Core.Models.Cards.Void>();
         var curse = await Scenario();
-        await PowerCmd.Apply<SpongeRinsePower>(Choice, curse.Player.Creature, 1, curse.Sponge.Creature, null);
+        await PowerCmd.Apply<ThingsSpongeRinsePower>(Choice, curse.Player.Creature, 1, curse.Sponge.Creature, null);
         var doubt = await AddToDraw<Doubt>(curse, curse.Player);
         await CardPileCmd.Draw(Choice, 1, curse.Player);
-        Assert(curse.Player.PlayerCombatState!.Hand.Cards.Contains(doubt) && curse.Player.Creature.GetPower<SpongeRinsePower>()?.Amount == 1,
+        Assert(curse.Player.PlayerCombatState!.Hand.Cards.Contains(doubt) && curse.Player.Creature.GetPower<ThingsSpongeRinsePower>()?.Amount == 1,
             "Curses are not Status cards and do not consume Rinsed.");
 
         var nested = await Scenario();
-        await PowerCmd.Apply<SpongeRinsePower>(Choice, nested.Player.Creature, 2, nested.Sponge.Creature, null);
+        await PowerCmd.Apply<ThingsSpongeRinsePower>(Choice, nested.Player.Creature, 2, nested.Sponge.Creature, null);
         await PowerCmd.Apply<DarkEmbracePower>(Choice, nested.Player.Creature, 1, nested.Player.Creature, null);
         for (int i = 0; i < 3; i++) await AddToDraw<Wound>(nested, nested.Player);
         await CardPileCmd.Draw(Choice, 1, nested.Player);
         Assert(nested.Player.PlayerCombatState!.ExhaustPile.Cards.OfType<Wound>().Count() == 2
             && nested.Player.PlayerCombatState.Hand.Cards.OfType<Wound>().Count() == 1
-            && nested.Player.Creature.GetPower<SpongeRinsePower>() == null,
+            && nested.Player.Creature.GetPower<ThingsSpongeRinsePower>() == null,
             "Native exhaust-triggered draws cannot reuse a spent charge; two charges remove two statuses.");
         GD.Print("PASS all five native Status types, curse exclusion, nested draws and non-parasite leech behavior.");
     }
@@ -333,8 +362,8 @@ public partial class WaterSpongeProbeNode : Node
             string[] advertised = s.Leeches.Select(leech => leech.NextMove.Id).ToArray();
             int flashes = 0;
             foreach (var leech in s.Leeches)
-                leech.Creature.GetPower<LeechInfestationPower>()!.Flashed += _ => flashes++;
-            var parasite = await AddToDraw<LeechParasite>(s, s.Player);
+                leech.Creature.GetPower<ThingsLeechInfestationPower>()!.Flashed += _ => flashes++;
+            var parasite = await AddParasiteToDraw(s, s.Player, s.Leeches[0].Creature);
             await CardPileCmd.Draw(Choice, 1, s.Player);
             if (play) await CardCmd.AutoPlay(Choice, parasite, null, skipCardPileVisuals: true);
             else await CardCmd.Exhaust(Choice, parasite, skipVisuals: true);
@@ -342,8 +371,8 @@ public partial class WaterSpongeProbeNode : Node
             Assert(s.Leeches.Select(leech => leech.NextMove.Id).SequenceEqual(advertised),
                 "Play and external exhaust preserve this turn's attack, defense or Infest intent.");
             Assert(flashes == 0, "The hidden infestation mechanic never flashes a buff icon.");
-            // Several clears before a move produce one refill, not a queue of turns.
-            await CardCmd.Exhaust(Choice, await AddToDraw<LeechParasite>(s, s.Player), skipVisuals: true);
+            // Several clears before a move produce one refill on that owner leech, not a queue of turns.
+            await CardCmd.Exhaust(Choice, await AddParasiteToDraw(s, s.Player, s.Leeches[0].Creature), skipVisuals: true);
             foreach (var leech in s.Leeches)
                 await leech.AfterSideTurnEnd(Choice, CombatSide.Player, [s.Player.Creature]);
             Assert(s.Leeches.Select(leech => leech.NextMove.Id).SequenceEqual(advertised),
@@ -352,36 +381,37 @@ public partial class WaterSpongeProbeNode : Node
             {
                 string move = leech.NextMove.Id;
                 int hp = s.Player.Creature.CurrentHp;
-                int hand = s.Player.PlayerCombatState.Hand.Cards.OfType<LeechParasite>().Count();
+                int hand = s.Player.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().Count();
                 await leech.PerformMove();
                 Assert(move is "SIP_MOVE" or "SIP_AGAIN_MOVE" ? s.Player.Creature.CurrentHp == hp - 7 :
-                    move == "CURL_MOVE" ? leech.Creature.Block == SanguineLeech.CurlBlock :
-                    s.Player.PlayerCombatState.Hand.Cards.OfType<LeechParasite>().Count() == hand + 1,
+                    move == "CURL_MOVE" ? leech.Creature.Block == ThingsSanguineLeech.CurlBlock :
+                    s.Player.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().Count() == hand + 1,
                     "The original action really executes before any queued refill.");
             }
             await EndEnemySide(s, s.Leeches.Select(leech => leech.Creature).ToArray());
-            int before = s.Player.PlayerCombatState.Hand.Cards.OfType<LeechParasite>().Count();
+            int before = s.Player.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().Count();
+            s.Leeches[0].RollMove(s.Players.Select(p => p.Creature));
+            Assert(s.Leeches[0].NextMove.Id == ThingsSanguineLeech.ReinfestMoveId, "Owner leech announces refill for the next turn, even after a normal Infest.");
+            s.Leeches[0].RollMove(s.Players.Select(p => p.Creature));
+            Assert(s.Leeches[0].NextMove.Id == ThingsSanguineLeech.ReinfestMoveId, "A mandatory refill cannot be rolled past before acting.");
+            s.Leeches[1].RollMove(s.Players.Select(p => p.Creature));
+            string secondNormalMove = cycle[(phase + 2) % cycle.Length];
+            Assert(s.Leeches[1].NextMove.Id == secondNormalMove, "Other leech keeps its normal cycle when Leech #0's parasite is exhausted.");
+            int expectedGenerated = 1 + (secondNormalMove == "INFEST_MOVE" ? 1 : 0);
             foreach (var leech in s.Leeches)
-            {
-                leech.RollMove(s.Players.Select(p => p.Creature));
-                Assert(leech.NextMove.Id == SanguineLeech.ReinfestMoveId, "Refill is announced for the next turn, even after a normal Infest.");
-                leech.RollMove(s.Players.Select(p => p.Creature));
-                Assert(leech.NextMove.Id == SanguineLeech.ReinfestMoveId, "A mandatory refill cannot be rolled past before acting.");
                 await leech.PerformMove();
-            }
             await EndEnemySide(s, s.Leeches.Select(leech => leech.Creature).ToArray());
-            for (int i = 0; i < s.Leeches.Length; i++)
-            {
-                var leech = s.Leeches[i];
-                leech.RollMove(s.Players.Select(p => p.Creature));
-                Assert(leech.NextMove.Id == cycle[(phase + i + 1) % cycle.Length],
-                    "Insertion resumes this individual leech's saved next action without resetting its cycle.");
-            }
-            Assert(s.Player.PlayerCombatState.Hand.Cards.OfType<LeechParasite>().Count() == before + s.Leeches.Length, "Each leech inserts exactly one parasite directly in hand.");
+            s.Leeches[0].RollMove(s.Players.Select(p => p.Creature));
+            Assert(s.Leeches[0].NextMove.Id == cycle[(phase + 1) % cycle.Length],
+                "Insertion resumes Leech #0's saved next action without resetting its cycle.");
+            s.Leeches[1].RollMove(s.Players.Select(p => p.Creature));
+            Assert(s.Leeches[1].NextMove.Id == cycle[(phase + 3) % cycle.Length],
+                "Uninvolved Leech #1 continues its normal cycle undisturbed.");
+            Assert(s.Player.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().Count() == before + expectedGenerated, "Refill inserts one bound parasite directly in hand.");
         }
 
         var discard = await Scenario();
-        var kept = await AddToDraw<LeechParasite>(discard, discard.Player);
+        var kept = await AddParasiteToDraw(discard, discard.Player, discard.Leeches[0].Creature);
         await CardPileCmd.Draw(Choice, 1, discard.Player);
         string[] originalMoves = discard.Leeches.Select(l => l.NextMove.Id).ToArray();
         await CardCmd.Discard(Choice, kept);
@@ -393,52 +423,61 @@ public partial class WaterSpongeProbeNode : Node
         foreach (var leech in discard.Leeches) await leech.PerformMove();
         await EndEnemySide(discard, discard.Leeches.Select(leech => leech.Creature).ToArray());
         foreach (var leech in discard.Leeches) leech.RollMove(discard.Players.Select(p => p.Creature));
-        Assert(discard.Leeches.All(leech => leech.NextMove.Id != SanguineLeech.ReinfestMoveId),
+        Assert(discard.Leeches.All(leech => leech.NextMove.Id != ThingsSanguineLeech.ReinfestMoveId),
             "Discard and non-parasite exhaust do not leave a delayed refill request.");
 
         var dead = await Scenario();
         var deadLeech = dead.Leeches[0];
         string deadMove = deadLeech.NextMove.Id;
+        var removed = await AddParasiteToDraw(dead, dead.Player, deadLeech.Creature);
+        var unbound = await AddParasiteToDraw(dead, dead.Player, null);
         await CreatureCmd.Damage(Choice, deadLeech.Creature, 999, ValueProp.Unpowered, dead.Player.Creature);
-        var removed = await AddToDraw<LeechParasite>(dead, dead.Player);
         await CardCmd.Exhaust(Choice, removed, skipVisuals: true);
+        await CardCmd.Exhaust(Choice, unbound, skipVisuals: true);
         await deadLeech.AfterCardExhausted(Choice, removed, false);
         Assert(deadLeech.NextMove.Id == deadMove && dead.Leeches[1].NextMove.Id == "SIP_AGAIN_MOVE", "Death and exhaust preserve the survivor's current action.");
         await dead.Leeches[1].PerformMove();
         await EndEnemySide(dead, dead.Leeches.Select(leech => leech.Creature).ToArray());
         dead.Leeches[1].RollMove(dead.Players.Select(p => p.Creature));
-        Assert(deadLeech.NextMove.Id == deadMove && dead.Leeches[1].NextMove.Id == SanguineLeech.ReinfestMoveId, "Only survivors announce the next-turn refill.");
+        Assert(deadLeech.NextMove.Id == deadMove && dead.Leeches[1].NextMove.Id == "CURL_MOVE",
+            "Exhausting a dead leech's parasite or an unbound parasite triggers NO reinfestation on surviving leeches.");
+        await CardCmd.Exhaust(Choice, await AddParasiteToDraw(dead, dead.Player, dead.Leeches[1].Creature), skipVisuals: true);
+        await dead.Leeches[1].PerformMove();
+        await EndEnemySide(dead, dead.Leeches[1].Creature);
+        dead.Leeches[1].RollMove(dead.Players.Select(p => p.Creature));
+        Assert(dead.Leeches[1].NextMove.Id == ThingsSanguineLeech.ReinfestMoveId,
+            "Exhausting the surviving leech's own bound parasite still queues its next-turn refill.");
 
-        var stunned = await Scenario(weak: true);
-        var waiting = stunned.Leeches.Single();
+        var stunned = await Scenario();
+        var waiting = stunned.Leeches[0];
         await CreatureCmd.Stun(waiting.Creature, _ => Task.CompletedTask, "SIP_MOVE");
-        await CardCmd.Exhaust(Choice, await AddToDraw<LeechParasite>(stunned, stunned.Player), skipVisuals: true);
+        await CardCmd.Exhaust(Choice, await AddParasiteToDraw(stunned, stunned.Player, waiting.Creature), skipVisuals: true);
         Assert(waiting.NextMove.Id == MonsterModel.stunnedMoveId, "Clearing a parasite cannot cancel an unperformed stun.");
         await waiting.PerformMove();
         await EndEnemySide(stunned, waiting.Creature);
         waiting.RollMove(stunned.Players.Select(p => p.Creature));
-        Assert(waiting.NextMove.Id == SanguineLeech.ReinfestMoveId, "Pending refill survives the stun turn.");
+        Assert(waiting.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId, "Pending refill survives the stun turn.");
         // Clearing again while a refill is already advertised must schedule
         // another refill next turn, without changing the current action.
-        await CardCmd.Exhaust(Choice, await AddToDraw<LeechParasite>(stunned, stunned.Player), skipVisuals: true);
-        Assert(waiting.NextMove.Id == SanguineLeech.ReinfestMoveId && !waiting.NextMove.CanTransitionAway,
+        await CardCmd.Exhaust(Choice, await AddParasiteToDraw(stunned, stunned.Player, waiting.Creature), skipVisuals: true);
+        Assert(waiting.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && !waiting.NextMove.CanTransitionAway,
             "A new clear leaves the currently advertised refill intact.");
         await waiting.PerformMove();
         await EndEnemySide(stunned, waiting.Creature);
         waiting.RollMove(stunned.Players.Select(p => p.Creature));
-        Assert(waiting.NextMove.Id == SanguineLeech.ReinfestMoveId && !waiting.NextMove.CanTransitionAway,
+        Assert(waiting.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && !waiting.NextMove.CanTransitionAway,
             "A clear on a refill turn schedules another refill for the following turn.");
         await waiting.PerformMove();
         // Model a nested exhaust after the current Infest has begun; native hooks
         // must defer the new request until the current action safely completes.
         var performing = typeof(MonsterModel).GetProperty(nameof(MonsterModel.IsPerformingMove))!;
         performing.SetValue(waiting, true);
-        await CardCmd.Exhaust(Choice, await AddToDraw<LeechParasite>(stunned, stunned.Player), skipVisuals: true);
+        await CardCmd.Exhaust(Choice, await AddParasiteToDraw(stunned, stunned.Player, waiting.Creature), skipVisuals: true);
         Assert(waiting.NextMove.CanTransitionAway, "Nested exhaust does not reset the active action midway through it.");
         performing.SetValue(waiting, false);
         await EndEnemySide(stunned, waiting.Creature);
         waiting.RollMove(stunned.Players.Select(p => p.Creature));
-        Assert(waiting.NextMove.Id == SanguineLeech.ReinfestMoveId && !waiting.NextMove.CanTransitionAway, "Nested request re-arms the refill for the following action.");
+        Assert(waiting.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && !waiting.NextMove.CanTransitionAway, "Nested request re-arms the refill for the following action.");
         await waiting.PerformMove();
         await EndEnemySide(stunned, waiting.Creature);
         waiting.RollMove(stunned.Players.Select(p => p.Creature));
@@ -446,23 +485,23 @@ public partial class WaterSpongeProbeNode : Node
 
         // Repeated player clears must still let the complete base cycle advance;
         // the previous implementation kept jumping back to SIP_AGAIN_MOVE.
-        var repeated = await Scenario(weak: true);
-        var alternating = repeated.Leeches.Single();
+        var repeated = await Scenario();
+        var alternating = repeated.Leeches[0];
         for (int turn = 0; turn < 8; turn++)
         {
             Assert(alternating.NextMove.Id == cycle[turn % cycle.Length], "Repeated inserts preserve two complete normal cycles.");
-            await CardCmd.Exhaust(Choice, await AddToDraw<LeechParasite>(repeated, repeated.Player), skipVisuals: true);
+            await CardCmd.Exhaust(Choice, await AddParasiteToDraw(repeated, repeated.Player, alternating.Creature), skipVisuals: true);
             await alternating.PerformMove();
             await EndEnemySide(repeated, alternating.Creature);
             alternating.RollMove(repeated.Players.Select(p => p.Creature));
-            Assert(alternating.NextMove.Id == SanguineLeech.ReinfestMoveId, "A clear inserts exactly the following turn.");
+            Assert(alternating.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId, "A clear inserts exactly the following turn.");
             await alternating.PerformMove();
             await EndEnemySide(repeated, alternating.Creature);
             alternating.RollMove(repeated.Players.Select(p => p.Creature));
             foreach (var card in repeated.Player.PlayerCombatState!.Hand.Cards.ToArray())
                 await CardCmd.Discard(Choice, card);
         }
-        GD.Print("PASS delayed inserted turns, per-leech cycle resume, two complete interrupted cycles, hand generation, hidden power, death and stun.");
+        GD.Print("PASS delayed inserted turns, owner-only reinfestation, per-leech cycle resume, two complete interrupted cycles, hand generation, hidden power, death and stun.");
     }
 
     private static async Task VerifyNativePowerHooks()
@@ -473,34 +512,34 @@ public partial class WaterSpongeProbeNode : Node
                 .All(intent => intent.GetType().Assembly == typeof(AbstractIntent).Assembly), "Every intent is an original game intent class.");
 
         int absorptionFlashes = 0;
-        s.Sponge.Creature.GetPower<AbsorbentSpongePower>()!.Flashed += _ => absorptionFlashes++;
+        s.Sponge.Creature.GetPower<ThingsAbsorbentSpongePower>()!.Flashed += _ => absorptionFlashes++;
         await Hit(s);
         Assert(absorptionFlashes == 1, "Absorption emits the native PowerModel flash event.");
-        var reservoir = s.Sponge.Creature.GetPower<SpongeReservoirPower>()!;
+        var reservoir = s.Sponge.Creature.GetPower<ThingsSpongeReservoirPower>()!;
         int updates = 0; bool removed = false;
         reservoir.DisplayAmountChanged += () => updates++;
         reservoir.Removed += () => removed = true;
         await Hit(s);
         Assert(reservoir.Amount == 2 && updates == 1, "Native power amount event updates the HUD counter.");
         await PowerCmd.Remove(reservoir);
-        Assert(removed && s.Sponge.Creature.GetPower<SpongeReservoirPower>() == null, "Native removal event clears the power.");
+        Assert(removed && s.Sponge.Creature.GetPower<ThingsSpongeReservoirPower>() == null, "Native removal event clears the power.");
 
-        var rinse = await PowerCmd.Apply<SpongeRinsePower>(Choice, s.Player.Creature, 2, s.Sponge.Creature, null);
+        var rinse = await PowerCmd.Apply<ThingsSpongeRinsePower>(Choice, s.Player.Creature, 2, s.Sponge.Creature, null);
         int rinseFlashes = 0;
         rinse!.Flashed += _ => rinseFlashes++;
-        await AddToDraw<LeechParasite>(s, s.Player);
+        await AddParasiteToDraw(s, s.Player, s.Leeches[0].Creature);
         await CardPileCmd.Draw(Choice, 1, s.Player);
         Assert(rinse.Amount == 1 && rinseFlashes == 1, "Rinse consumes a native power charge and flashes once.");
-        await AddToDraw<LeechParasite>(s, s.Player);
+        await AddParasiteToDraw(s, s.Player, s.Leeches[0].Creature);
         await CardPileCmd.Draw(Choice, 1, s.Player);
-        Assert(s.Player.Creature.GetPower<SpongeRinsePower>() == null, "The native command removes Rinsed at zero.");
+        Assert(s.Player.Creature.GetPower<ThingsSpongeRinsePower>() == null, "The native command removes Rinsed at zero.");
 
-        var blindness = await PowerCmd.Apply<LanternBlindnessPower>(Choice, s.Player.Creature, 1, s.Sponge.Creature, null);
+        var blindness = await PowerCmd.Apply<ThingsLanternBlindnessPower>(Choice, s.Player.Creature, 1, s.Sponge.Creature, null);
         int blindnessFlashes = 0;
         blindness!.Flashed += _ => blindnessFlashes++;
         await AddToDraw<StrikeIronclad>(s, s.Player);
         await CardPileCmd.Draw(Choice, 1, s.Player);
-        Assert(blindnessFlashes == 1 && s.Player.Creature.GetPower<LanternBlindnessPower>() == null,
+        Assert(blindnessFlashes == 1 && s.Player.Creature.GetPower<ThingsLanternBlindnessPower>() == null,
             "Blindness also uses native power flash and zero-stack removal.");
         GD.Print("PASS original intent types and native power display, flash, decrement and removal events.");
     }
@@ -509,7 +548,7 @@ public partial class WaterSpongeProbeNode : Node
     private sealed record Fixture(RunState Run, CombatRoom Room, List<Player> Players, EncounterModel Encounter)
     {
         public Player Player => Players[0];
-        public WaterSponge Sponge => Encounter.MonstersWithSlots.Select(item => item.Item1).OfType<WaterSponge>().Single();
-        public SanguineLeech[] Leeches => Encounter.MonstersWithSlots.Select(item => item.Item1).OfType<SanguineLeech>().ToArray();
+        public ThingsWaterSponge Sponge => Encounter.MonstersWithSlots.Select(item => item.Item1).OfType<ThingsWaterSponge>().Single();
+        public ThingsSanguineLeech[] Leeches => Encounter.MonstersWithSlots.Select(item => item.Item1).OfType<ThingsSanguineLeech>().ToArray();
     }
 }

@@ -7,8 +7,10 @@ using MegaCrit.Sts2.Core.Models.Acts;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using STS2_Things.Acts;
 using STS2_Things.Config;
 using STS2_Things.Encounters;
+using STS2_Things.Platform;
 
 namespace STS2_Things.Hooks;
 
@@ -21,26 +23,30 @@ public static class EncounterSelectionPolicy
 
     public static string? EnabledKey(EncounterModel encounter) => encounter switch
     {
-        OriginFogmogBossEncounter => ThingsModConfig.BossOriginFogmogEnabled,
-        ScaleBeetleBossEncounter => ThingsModConfig.BossScaleBeetleEnabled,
-        GravetideSlugBossEncounter => ThingsModConfig.BossGravetideSlugEnabled,
-        TheLegacyBossEncounter => ThingsModConfig.BossTheLegacyEnabled,
-        BowlbugProgenitorBossEncounter => ThingsModConfig.BossBowlbugProgenitorEnabled,
-        CaveGodBossEncounter => ThingsModConfig.BossCaveGodEnabled,
-        SoulRoesEncounter => ThingsModConfig.EncounterSoulRoesEnabled,
-        QuirkyHopperWeak => ThingsModConfig.EncounterQuirkyHopperEnabled,
+        ThingsOriginFogmogBossEncounter => ThingsModConfig.BossOriginFogmogEnabled,
+        ThingsScaleBeetleBossEncounter => ThingsModConfig.BossScaleBeetleEnabled,
+        ThingsGravetideSlugBossEncounter => ThingsModConfig.BossGravetideSlugEnabled,
+        ThingsTheLegacyBossEncounter => ThingsModConfig.BossTheLegacyEnabled,
+        ThingsBowlbugProgenitorBossEncounter => ThingsModConfig.BossBowlbugProgenitorEnabled,
+        ThingsCaveGodBossEncounter => ThingsModConfig.BossCaveGodEnabled,
+        ThingsHumanFaceTowerBossEncounter => ThingsModConfig.BossHumanFaceTowerEnabled,
+        ThingsAbyssalInkmawBossEncounter => ThingsModConfig.BossAbyssalInkmawEnabled,
+        ThingsSoulRoesEncounter => ThingsModConfig.EncounterSoulRoesEnabled,
+        ThingsQuirkyHopperWeak => ThingsModConfig.EncounterQuirkyHopperEnabled,
         _ => null,
     };
 
     public static string? WeightKey(EncounterModel encounter) => encounter switch
     {
-        OriginFogmogBossEncounter => ThingsModConfig.BossOriginFogmogWeightPercent,
-        ScaleBeetleBossEncounter => ThingsModConfig.BossScaleBeetleWeightPercent,
-        GravetideSlugBossEncounter => ThingsModConfig.BossGravetideSlugWeightPercent,
-        TheLegacyBossEncounter => ThingsModConfig.BossTheLegacyWeightPercent,
-        BowlbugProgenitorBossEncounter => ThingsModConfig.BossBowlbugProgenitorWeightPercent,
-        CaveGodBossEncounter => ThingsModConfig.BossCaveGodWeightPercent,
-        SoulRoesEncounter => ThingsModConfig.EncounterSoulRoesWeightPercent,
+        ThingsOriginFogmogBossEncounter => ThingsModConfig.BossOriginFogmogWeightPercent,
+        ThingsScaleBeetleBossEncounter => ThingsModConfig.BossScaleBeetleWeightPercent,
+        ThingsGravetideSlugBossEncounter => ThingsModConfig.BossGravetideSlugWeightPercent,
+        ThingsTheLegacyBossEncounter => ThingsModConfig.BossTheLegacyWeightPercent,
+        ThingsBowlbugProgenitorBossEncounter => ThingsModConfig.BossBowlbugProgenitorWeightPercent,
+        ThingsCaveGodBossEncounter => ThingsModConfig.BossCaveGodWeightPercent,
+        ThingsHumanFaceTowerBossEncounter => ThingsModConfig.BossHumanFaceTowerWeightPercent,
+        ThingsAbyssalInkmawBossEncounter => ThingsModConfig.BossAbyssalInkmawWeightPercent,
+        ThingsSoulRoesEncounter => ThingsModConfig.EncounterSoulRoesWeightPercent,
         _ => null,
     };
 
@@ -56,6 +62,7 @@ public static class EncounterSelectionPolicy
         Overgrowth => ThingsModConfig.SlotOvergrowth,
         Underdocks => ThingsModConfig.SlotUnderdocks,
         Hive => ThingsModConfig.SlotHive,
+        ThingsDepths => ThingsModConfig.SlotDepths,
         _ => null,
     };
 
@@ -95,7 +102,7 @@ public static class EncounterSelectionPolicy
     public static void DrawElite(ICollection<EncounterModel> encounters, GrabBag<EncounterModel> bag, Rng rng, ActModel act)
     {
         int rate = ThingsModConfig.GetInt(ThingsModConfig.EncounterSoulRoesWeightPercent);
-        if (rate is 0 or 100 || !act.AllEliteEncounters.Any(encounter => encounter is SoulRoesEncounter))
+        if (rate is 0 or 100 || !act.AllEliteEncounters.Any(encounter => encounter is ThingsSoulRoesEncounter))
         {
             VanillaDraw(encounters, bag, rng);
             return;
@@ -116,7 +123,7 @@ internal static class ConfiguredEncounterDrawPatch
 {
     private static IEnumerable<MethodBase> TargetMethods()
     {
-#if STS2_V113
+#if STS2_V113_1
         yield return AccessTools.Method(typeof(ActModel), nameof(ActModel.GenerateRooms),
             [typeof(Rng), typeof(MegaCrit.Sts2.Core.Unlocks.UnlockState), typeof(bool), typeof(bool)]);
 #else
@@ -169,9 +176,18 @@ internal static class ConfiguredSingleBossSecondEncounterPatch
 {
     private static void Prefix(ActModel __instance, ref EncounterModel? encounter)
     {
-        if (encounter is not null || EncounterSelectionPolicy.Slot(__instance) is not { } slot)
+        if (encounter is not null || __instance.BossEncounter is null || EncounterSelectionPolicy.Slot(__instance) is not { } slot)
             return;
-        if (ThingsModConfig.GetForcedBossKeyForSlot(slot) is not null || ThingsModConfig.GetBool(ThingsModConfig.BossOnlyModBosses))
-            encounter = __instance.BossEncounter;
+        if (__instance is not ThingsDepths &&
+            ThingsModConfig.GetForcedBossKeyForSlot(slot) is null &&
+            !ThingsModConfig.GetBool(ThingsModConfig.BossOnlyModBosses))
+            return;
+        if (__instance.AllBossEncounters.Any(candidate => candidate.Id != __instance.BossEncounter.Id))
+            return;
+        if (RunManager.Instance.DebugOnlyGetState() is { } state &&
+            (state.Acts.Count == 0 || !ReferenceEquals(__instance, state.Acts[^1]) ||
+             !Sts2VersionSeam.HasDoubleBossAscension(state)))
+            return;
+        encounter = __instance.BossEncounter;
     }
 }

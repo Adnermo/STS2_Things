@@ -20,6 +20,7 @@ using STS2_Things.Monsters;
 using STS2_Things.Powers;
 using STS2_Things.Relics;
 using STS2_Things.Modifiers;
+using STS2_Things.Platform;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
@@ -90,6 +91,9 @@ public partial class ThingsModelIdProbeNode : Node
                 return;
             }
             VerifyHoursmodFixtureCoexists();
+            VerifyAllConcreteModelsAndRetiredTypes(implementationAssembly);
+            VerifyMutableCloneIsolation(implementationAssembly);
+            VerifyLegacyIdMigrator();
             VerifyRenamedModelIds();
             VerifyPools();
             VerifyLocalization();
@@ -129,17 +133,29 @@ public partial class ThingsModelIdProbeNode : Node
             _hoursmodRecallType = recallType;
             GD.Print($"ModelId probe loaded actual Hoursmod fixture: {hoursmodDll}");
         }
+        else if (typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Models.Cards.Recall", throwOnError: false) is { } nativeRecall)
+        {
+            _hoursmodRecallType = nativeRecall;
+        }
     }
 
     private static void InitializeModelDb(Assembly implementationAssembly)
     {
         Type[] implementationTypes = implementationAssembly.GetTypes();
-        Type[] modTypes = implementationTypes.Concat([_hoursmodRecallType]).ToArray();
-        Type[] modelTypes = [
-            _hoursmodRecallType,
-            .. AbstractModelSubtypes.All,
-            .. implementationTypes.Where(type => !type.IsAbstract && typeof(AbstractModel).IsAssignableFrom(type))
-        ];
+        bool injectSyntheticRecall = _hoursmodRecallType.Assembly != typeof(ModelDb).Assembly;
+        Type[] modTypes = injectSyntheticRecall
+            ? implementationTypes.Concat([_hoursmodRecallType]).ToArray()
+            : implementationTypes;
+        Type[] modelTypes = injectSyntheticRecall
+            ? [
+                _hoursmodRecallType,
+                .. AbstractModelSubtypes.All,
+                .. implementationTypes.Where(type => !type.IsAbstract && typeof(AbstractModel).IsAssignableFrom(type))
+            ]
+            : [
+                .. AbstractModelSubtypes.All,
+                .. implementationTypes.Where(type => !type.IsAbstract && typeof(AbstractModel).IsAssignableFrom(type))
+            ];
         modelTypes = modelTypes.Distinct().ToArray();
 
         typeof(ReflectionHelper).GetField("_modTypes", BindingFlags.NonPublic | BindingFlags.Static)!
@@ -166,14 +182,14 @@ public partial class ThingsModelIdProbeNode : Node
     private static void VerifyCrossroadLedger()
     {
         typeof(MegaCrit.Sts2.Core.GameActions.Multiplayer.ActionTypes).GetMethod("Initialize", BindingFlags.Public | BindingFlags.Static)?.Invoke(null, null);
-        var action = new STS2_Things.Map.NetUnlockCrossroadAction
+        var action = new STS2_Things.Map.ThingsNetUnlockCrossroadAction
         {
             Act = 1, Fingerprint = 123456, From = new(1, 6), To = new(3, 6), Price = 50,
         };
         Assert(MegaCrit.Sts2.Core.GameActions.Multiplayer.ActionTypes.ToId(action) >= 0, "Unlock action was not registered");
         var actionWriter = new PacketWriter(); action.Serialize(actionWriter);
         var actionReader = new PacketReader(); actionReader.Reset(actionWriter.Buffer);
-        var decodedAction = new STS2_Things.Map.NetUnlockCrossroadAction(); decodedAction.Deserialize(actionReader);
+        var decodedAction = new STS2_Things.Map.ThingsNetUnlockCrossroadAction(); decodedAction.Deserialize(actionReader);
         Assert(decodedAction.Fingerprint == action.Fingerprint && decodedAction.From == action.From &&
             decodedAction.To == action.To && decodedAction.Price == 50, "Unlock action packet changed");
         var ledger = (ThingsCrossroads)ModelDb.Modifier<ThingsCrossroads>().ToMutable();
@@ -203,6 +219,238 @@ public partial class ThingsModelIdProbeNode : Node
             "Things Recall was overwritten by Hoursmod fixture.");
     }
 
+    private static void VerifyAllConcreteModelsAndRetiredTypes(Assembly implementationAssembly)
+    {
+        Type[] allTypes = implementationAssembly.GetTypes();
+        string[] retiredShortNames =
+        [
+            "HumanFaceColumnWeak",
+            "CaveGodMartialTrial",
+            "CaveGodArcaneTrial",
+            "CaveGodMartialPower",
+            "CaveGodArcanePower",
+            "ThingsHumanFaceColumnWeak",
+            "ThingsCaveGodMartialTrial",
+            "ThingsCaveGodArcaneTrial",
+            "ThingsCaveGodMartialPower",
+            "ThingsCaveGodArcanePower",
+            "ThingsCaveGodCrystalShard",
+            "ThingsCaveGodCrystalVeinPower",
+            "ThingsCaveGodFissurePower",
+            "ThingsSpongeLeechWeak",
+            "ThingsSilkMothWeak",
+            "ThingsSilkMothEncounter",
+            "ThingsCaveMawEncounter",
+            "ThingsCaveMawSnailEncounter",
+            "ThingsSpongeSnailEncounter",
+            "ThingsLanternMothEncounter"
+        ];
+        foreach (string retiredName in retiredShortNames)
+        {
+            Assert(!allTypes.Any(type => string.Equals(type.Name, retiredName, StringComparison.Ordinal)),
+                $"Retired model type {retiredName} still exists in {implementationAssembly.GetName().Name}.");
+        }
+
+        Type[] concreteModels = allTypes
+            .Where(type => !type.IsAbstract && typeof(AbstractModel).IsAssignableFrom(type))
+            .OrderBy(type => type.FullName, StringComparer.Ordinal)
+            .ToArray();
+        int expectedFromAssembly = allTypes.Count(type =>
+            !type.IsAbstract &&
+            typeof(AbstractModel).IsAssignableFrom(type) &&
+            ModelDb.GetByIdOrNull<AbstractModel>(ModelDb.GetId(type))?.GetType() == type);
+        Assert(concreteModels.Length >= 189 && concreteModels.Length == expectedFromAssembly,
+            $"Expected >= 189 registered concrete AbstractModel subclasses in STS2_Things, found {concreteModels.Length} (ModelDb matched {expectedFromAssembly}).");
+        Assert(concreteModels.Select(ModelDb.GetId).Distinct().Count() == concreteModels.Length,
+            "Duplicate ModelId detected among concrete AbstractModel subclasses in STS2_Things.");
+        Assert(concreteModels.Contains(typeof(ThingsMerchantBargainPricePolicy)),
+            "ThingsMerchantBargainPricePolicy is missing from concrete AbstractModel subclasses.");
+
+        foreach (Type modelType in concreteModels)
+        {
+            Assert(modelType.Name.StartsWith("Things", StringComparison.Ordinal),
+                $"Concrete model class {modelType.FullName} does not start with 'Things'.");
+            ModelId id = ModelDb.GetId(modelType);
+            Assert(id.Entry.StartsWith("THINGS_", StringComparison.Ordinal),
+                $"Concrete model {modelType.FullName} generated unprefixed ModelId {id}.");
+            AbstractModel? canonical = ModelDb.GetByIdOrNull<AbstractModel>(id);
+            Assert(canonical != null && canonical.GetType() == modelType,
+                $"ModelDb lookup for {id} returned {canonical?.GetType().FullName ?? "<null>"}, expected {modelType.FullName}.");
+        }
+    }
+
+    private static void VerifyMutableCloneIsolation(Assembly implementationAssembly)
+    {
+        Type[] concreteModels = implementationAssembly.GetTypes()
+            .Where(type => !type.IsAbstract && typeof(AbstractModel).IsAssignableFrom(type))
+            .OrderBy(type => type.FullName, StringComparer.Ordinal)
+            .ToArray();
+
+        foreach (Type modelType in concreteModels)
+        {
+            ModelId id = ModelDb.GetId(modelType);
+            AbstractModel canonical = ModelDb.GetById<AbstractModel>(id);
+            Assert(canonical.IsCanonical && !canonical.IsMutable,
+                $"Canonical model {id} ({modelType.FullName}) was unexpectedly mutable.");
+
+            AbstractModel cloneA = canonical.MutableClone();
+            AbstractModel cloneB = canonical.MutableClone();
+            Assert(!ReferenceEquals(canonical, cloneA) && !ReferenceEquals(cloneA, cloneB),
+                $"MutableClone() returned a shared instance for {id} ({modelType.FullName}).");
+            Assert(cloneA.IsMutable && !cloneA.IsCanonical && cloneB.IsMutable && !cloneB.IsCanonical,
+                $"MutableClone() did not mark clones mutable for {id} ({modelType.FullName}).");
+            Assert(canonical.IsCanonical && !canonical.IsMutable,
+                $"MutableClone() mutated canonical flag on {id} ({modelType.FullName}).");
+            Assert(cloneA.Id == id && cloneB.Id == id,
+                $"MutableClone() altered ModelId on {modelType.FullName}.");
+
+            MethodInfo? toMutable = modelType.GetMethod(
+                "ToMutable",
+                BindingFlags.Public | BindingFlags.Instance,
+                binder: null,
+                types: Type.EmptyTypes,
+                modifiers: null);
+            if (toMutable != null && typeof(AbstractModel).IsAssignableFrom(toMutable.ReturnType))
+            {
+                var mutableViaTyped = (AbstractModel)toMutable.Invoke(canonical, null)!;
+                Assert(!ReferenceEquals(canonical, mutableViaTyped) &&
+                       !ReferenceEquals(cloneA, mutableViaTyped) &&
+                       mutableViaTyped.IsMutable &&
+                       canonical.IsCanonical,
+                    $"ToMutable() violated canonical/mutable isolation for {id} ({modelType.FullName}).");
+            }
+        }
+
+        ThingsCollision canonicalCollision = ModelDb.Card<ThingsCollision>();
+        var mutableCollision = (ThingsCollision)canonicalCollision.ToMutable();
+        mutableCollision.UpgradeInternal();
+        mutableCollision.FinalizeUpgradeInternal();
+        Assert(mutableCollision.CurrentUpgradeLevel == 1 && canonicalCollision.CurrentUpgradeLevel == 0,
+            "Upgrading mutable ThingsCollision leaked state onto canonical template.");
+
+        ThingsCrossroads canonicalCrossroads = ModelDb.Modifier<ThingsCrossroads>();
+        var mutableCrossroads = (ThingsCrossroads)canonicalCrossroads.ToMutable();
+        mutableCrossroads.Data = "{\"probe\":true}";
+        Assert(string.IsNullOrEmpty(canonicalCrossroads.Data) && mutableCrossroads.Data == "{\"probe\":true}",
+            "Mutating mutable ThingsCrossroads leaked Data onto canonical template.");
+    }
+
+    private static void VerifyLegacyIdMigrator()
+    {
+        Assert(LegacyIdMigrator.TotalDeclaredCount == 136,
+            $"Expected 136 declared legacy ID mappings, found {LegacyIdMigrator.TotalDeclaredCount}.");
+        Assert(LegacyIdMigrator.AllDeclaredMappings.Count == 136,
+            $"AllDeclaredMappings count {LegacyIdMigrator.AllDeclaredMappings.Count} did not match 136.");
+        Assert(LegacyIdMigrator.AllDeclaredMappings.Count(mapping => mapping.IsRetired) == 22,
+            "Expected exactly 22 retired model mappings in LegacyIdMigrator.");
+
+        LegacyIdMigrator.ActivateIfModelDbReady();
+        Assert(LegacyIdMigrator.IsActive, "LegacyIdMigrator was not active after ModelDb initialization.");
+        Assert(LegacyIdMigrator.PrunedCollisions.Count == 0,
+            $"Unexpected pruned legacy ID collisions under clean ModelDb: {LegacyIdMigrator.PrunedCollisions.Count}.");
+        Assert(LegacyIdMigrator.ActiveMigrationCount == 136,
+            $"Expected 136 active legacy ID mappings, found {LegacyIdMigrator.ActiveMigrationCount}.");
+
+        // Verify both ModelId.Deserialize(...) and new ModelId(...) roundtrips plus retired remaps.
+        Assert(ModelId.Deserialize("CARD.SOULFYSH_DISEASE") == new ModelId("CARD", "THINGS_SOULFYSH_DISEASE"),
+            "ModelId.Deserialize did not migrate CARD.SOULFYSH_DISEASE to CARD.THINGS_SOULFYSH_DISEASE.");
+        Assert(ModelId.Deserialize("EVENT.ROBBERY_FAKE_MERCHANT") == new ModelId("EVENT", "THINGS_ROBBERY_FAKE_MERCHANT"),
+            "ModelId.Deserialize did not migrate EVENT.ROBBERY_FAKE_MERCHANT.");
+        Assert(new ModelId("MONSTER", "ORIGIN_FOGMOG").ToString() == "MONSTER.THINGS_ORIGIN_FOGMOG",
+            "new ModelId(\"MONSTER\", \"ORIGIN_FOGMOG\") did not migrate to MONSTER.THINGS_ORIGIN_FOGMOG.");
+        Assert(ModelId.Deserialize("CARD.CAVE_GOD_BROKEN_BLADE_TRIAL").ToString() == "CARD.THINGS_CAVE_GOD_BROKEN_BLADE_TRIAL",
+            "Legacy CARD.CAVE_GOD_BROKEN_BLADE_TRIAL did not migrate to CARD.THINGS_CAVE_GOD_BROKEN_BLADE_TRIAL.");
+        Assert(ModelId.Deserialize("CARD.CAVE_GOD_SHATTERED_SHIELD_TRIAL").ToString() == "CARD.THINGS_CAVE_GOD_SHATTERED_SHIELD_TRIAL",
+            "Legacy CARD.CAVE_GOD_SHATTERED_SHIELD_TRIAL did not migrate to CARD.THINGS_CAVE_GOD_SHATTERED_SHIELD_TRIAL.");
+        Assert(new ModelId("POWER", "CAVE_GOD_BROKEN_BLADE_POWER").ToString() == "POWER.THINGS_CAVE_GOD_BROKEN_BLADE_POWER",
+            "Legacy POWER.CAVE_GOD_BROKEN_BLADE_POWER did not migrate to POWER.THINGS_CAVE_GOD_BROKEN_BLADE_POWER.");
+        Assert(new ModelId("POWER", "CAVE_GOD_SHATTERED_SHIELD_POWER").ToString() == "POWER.THINGS_CAVE_GOD_SHATTERED_SHIELD_POWER",
+            "Legacy POWER.CAVE_GOD_SHATTERED_SHIELD_POWER did not migrate to POWER.THINGS_CAVE_GOD_SHATTERED_SHIELD_POWER.");
+        Assert(new ModelId("POWER", "CAVE_GOD_PENDING_TRIAL_POWER").ToString() == "POWER.THINGS_CAVE_GOD_PENDING_TRIAL_POWER",
+            "Legacy POWER.CAVE_GOD_PENDING_TRIAL_POWER did not migrate to POWER.THINGS_CAVE_GOD_PENDING_TRIAL_POWER.");
+        Assert(ModelId.Deserialize("CARD.CAVE_GOD_MARTIAL_TRIAL").ToString() == "CARD.THINGS_SNAIL_CRYSTAL_CHIP",
+            "Retired CARD.CAVE_GOD_MARTIAL_TRIAL did not remap to CARD.THINGS_SNAIL_CRYSTAL_CHIP.");
+        Assert(ModelId.Deserialize("CARD.CAVE_GOD_ARCANE_TRIAL").ToString() == "CARD.THINGS_SNAIL_CRYSTAL_CHIP",
+            "Retired CARD.CAVE_GOD_ARCANE_TRIAL did not remap to CARD.THINGS_SNAIL_CRYSTAL_CHIP.");
+        Assert(ModelId.Deserialize("CARD.THINGS_CAVE_GOD_CRYSTAL_SHARD").ToString() == "CARD.THINGS_SNAIL_CRYSTAL_CHIP",
+            "Retired CARD.THINGS_CAVE_GOD_CRYSTAL_SHARD did not remap to CARD.THINGS_SNAIL_CRYSTAL_CHIP.");
+        Assert(new ModelId("POWER", "CAVE_GOD_MARTIAL_POWER").ToString() == "POWER.THINGS_CAVE_GOD_ANCIENT_CORE_POWER",
+            "Retired POWER.CAVE_GOD_MARTIAL_POWER did not remap to POWER.THINGS_CAVE_GOD_ANCIENT_CORE_POWER.");
+        Assert(new ModelId("POWER", "CAVE_GOD_ARCANE_POWER").ToString() == "POWER.THINGS_CAVE_GOD_ANCIENT_CORE_POWER",
+            "Retired POWER.CAVE_GOD_ARCANE_POWER did not remap to POWER.THINGS_CAVE_GOD_ANCIENT_CORE_POWER.");
+        Assert(new ModelId("POWER", "THINGS_CAVE_GOD_CRYSTAL_VEIN_POWER").ToString() == "POWER.THINGS_CAVE_GOD_AGING_POWER",
+            "Retired POWER.THINGS_CAVE_GOD_CRYSTAL_VEIN_POWER did not remap to POWER.THINGS_CAVE_GOD_AGING_POWER.");
+        Assert(new ModelId("ENCOUNTER", "HUMAN_FACE_COLUMN_WEAK").ToString() == "ENCOUNTER.THINGS_HUMAN_FACE_COLUMN_ENCOUNTER",
+            "Retired ENCOUNTER.HUMAN_FACE_COLUMN_WEAK did not remap to ENCOUNTER.THINGS_HUMAN_FACE_COLUMN_ENCOUNTER.");
+        Assert(ModelId.Deserialize("ENCOUNTER.SPONGE_LEECH_WEAK").ToString() == "ENCOUNTER.THINGS_SANGUINE_LEECH_WEAK",
+            "Retired ENCOUNTER.SPONGE_LEECH_WEAK did not remap to ENCOUNTER.THINGS_SANGUINE_LEECH_WEAK.");
+        Assert(ModelId.Deserialize("ENCOUNTER.THINGS_SPONGE_LEECH_WEAK").ToString() == "ENCOUNTER.THINGS_SANGUINE_LEECH_WEAK",
+            "Retired ENCOUNTER.THINGS_SPONGE_LEECH_WEAK did not remap to ENCOUNTER.THINGS_SANGUINE_LEECH_WEAK.");
+        Assert(ModelId.Deserialize("ENCOUNTER.SILK_MOTH_WEAK").ToString() == "ENCOUNTER.THINGS_SNAIL_TRIO_WEAK",
+            "Retired ENCOUNTER.SILK_MOTH_WEAK did not remap to ENCOUNTER.THINGS_SNAIL_TRIO_WEAK.");
+        Assert(ModelId.Deserialize("ENCOUNTER.THINGS_SILK_MOTH_WEAK").ToString() == "ENCOUNTER.THINGS_SNAIL_TRIO_WEAK",
+            "Retired ENCOUNTER.THINGS_SILK_MOTH_WEAK did not remap to ENCOUNTER.THINGS_SNAIL_TRIO_WEAK.");
+        Assert(ModelId.Deserialize("ENCOUNTER.SILK_MOTH_ENCOUNTER").ToString() == "ENCOUNTER.THINGS_SILK_MOTH_TRIO",
+            "Retired ENCOUNTER.SILK_MOTH_ENCOUNTER did not remap to ENCOUNTER.THINGS_SILK_MOTH_TRIO.");
+        Assert(ModelId.Deserialize("ENCOUNTER.THINGS_SILK_MOTH_ENCOUNTER").ToString() == "ENCOUNTER.THINGS_SILK_MOTH_TRIO",
+            "Retired ENCOUNTER.THINGS_SILK_MOTH_ENCOUNTER did not remap to ENCOUNTER.THINGS_SILK_MOTH_TRIO.");
+        Assert(ModelId.Deserialize("ENCOUNTER.CAVE_MAW_ENCOUNTER").ToString() == "ENCOUNTER.THINGS_CAVE_MAW_LANTERN_ENCOUNTER",
+            "Retired ENCOUNTER.CAVE_MAW_ENCOUNTER did not remap to ENCOUNTER.THINGS_CAVE_MAW_LANTERN_ENCOUNTER.");
+        Assert(ModelId.Deserialize("ENCOUNTER.THINGS_CAVE_MAW_ENCOUNTER").ToString() == "ENCOUNTER.THINGS_CAVE_MAW_LANTERN_ENCOUNTER",
+            "Retired ENCOUNTER.THINGS_CAVE_MAW_ENCOUNTER did not remap to ENCOUNTER.THINGS_CAVE_MAW_LANTERN_ENCOUNTER.");
+        Assert(ModelId.Deserialize("ENCOUNTER.CAVE_MAW_SNAIL_ENCOUNTER").ToString() == "ENCOUNTER.THINGS_CAVE_MAW_LANTERN_ENCOUNTER",
+            "Retired ENCOUNTER.CAVE_MAW_SNAIL_ENCOUNTER did not remap to ENCOUNTER.THINGS_CAVE_MAW_LANTERN_ENCOUNTER.");
+        Assert(ModelId.Deserialize("ENCOUNTER.THINGS_CAVE_MAW_SNAIL_ENCOUNTER").ToString() == "ENCOUNTER.THINGS_CAVE_MAW_LANTERN_ENCOUNTER",
+            "Retired ENCOUNTER.THINGS_CAVE_MAW_SNAIL_ENCOUNTER did not remap to ENCOUNTER.THINGS_CAVE_MAW_LANTERN_ENCOUNTER.");
+        Assert(ModelId.Deserialize("ENCOUNTER.SPONGE_SNAIL_ENCOUNTER").ToString() == "ENCOUNTER.THINGS_SPONGE_LEECH_ENCOUNTER",
+            "Retired ENCOUNTER.SPONGE_SNAIL_ENCOUNTER did not remap to ENCOUNTER.THINGS_SPONGE_LEECH_ENCOUNTER.");
+        Assert(ModelId.Deserialize("ENCOUNTER.THINGS_SPONGE_SNAIL_ENCOUNTER").ToString() == "ENCOUNTER.THINGS_SPONGE_LEECH_ENCOUNTER",
+            "Retired ENCOUNTER.THINGS_SPONGE_SNAIL_ENCOUNTER did not remap to ENCOUNTER.THINGS_SPONGE_LEECH_ENCOUNTER.");
+        Assert(ModelId.Deserialize("ENCOUNTER.LANTERN_MOTH_ENCOUNTER").ToString() == "ENCOUNTER.THINGS_LANTERN_SPONGE_ENCOUNTER",
+            "Retired ENCOUNTER.LANTERN_MOTH_ENCOUNTER did not remap to ENCOUNTER.THINGS_LANTERN_SPONGE_ENCOUNTER.");
+        Assert(ModelId.Deserialize("ENCOUNTER.THINGS_LANTERN_MOTH_ENCOUNTER").ToString() == "ENCOUNTER.THINGS_LANTERN_SPONGE_ENCOUNTER",
+            "Retired ENCOUNTER.THINGS_LANTERN_MOTH_ENCOUNTER did not remap to ENCOUNTER.THINGS_LANTERN_SPONGE_ENCOUNTER.");
+
+        foreach (LegacyIdMigrator.LegacyMapping mapping in LegacyIdMigrator.AllDeclaredMappings)
+        {
+            ModelId migrated = ModelId.Deserialize($"{mapping.Category}.{mapping.LegacyEntry}");
+            Assert(migrated.Category == mapping.Category && migrated.Entry == mapping.NewEntry,
+                $"Legacy mapping {mapping.Category}.{mapping.LegacyEntry} migrated to {migrated}, expected {mapping.Category}.{mapping.NewEntry}.");
+            Assert(ModelDb.GetByIdOrNull<AbstractModel>(migrated) != null,
+                $"Legacy mapping target {migrated} does not resolve in ModelDb.");
+        }
+
+        // Canonical THINGS_* IDs and external-mod IDs pass through unchanged.
+        Assert(new ModelId("CARD", "THINGS_REUSE").Entry == "THINGS_REUSE",
+            "Canonical THINGS_REUSE entry was altered by LegacyIdMigrator.");
+        Assert(new ModelId("CARD", "RECALL").Entry == "RECALL",
+            "External-mod CARD.RECALL entry was unexpectedly altered by LegacyIdMigrator.");
+
+        // Verify collision pruning when an external mod owns a legacy entry.
+        try
+        {
+            LegacyIdMigrator.RebuildAndActivate(
+                static (category, entry) => category == "CARD" && entry == "SOULFYSH_DISEASE");
+            Assert(LegacyIdMigrator.IsActive, "LegacyIdMigrator should remain active after collision pruning.");
+            Assert(LegacyIdMigrator.PrunedCollisions.Any(
+                    mapping => mapping.Category == "CARD" && mapping.LegacyEntry == "SOULFYSH_DISEASE"),
+                "PrunedCollisions did not record synthetic external-mod collision CARD.SOULFYSH_DISEASE.");
+            Assert(LegacyIdMigrator.ActiveMigrationCount == 135,
+                $"Expected 135 active mappings with 1 pruned collision, found {LegacyIdMigrator.ActiveMigrationCount}.");
+            Assert(new ModelId("CARD", "SOULFYSH_DISEASE").Entry == "SOULFYSH_DISEASE",
+                "Colliding external-mod ID CARD.SOULFYSH_DISEASE was still rewritten after pruning.");
+            Assert(new ModelId("MONSTER", "ORIGIN_FOGMOG").Entry == "THINGS_ORIGIN_FOGMOG",
+                "Non-colliding legacy ID MONSTER.ORIGIN_FOGMOG stopped migrating during collision test.");
+        }
+        finally
+        {
+            LegacyIdMigrator.RebuildAndActivate();
+        }
+
+        Assert(LegacyIdMigrator.PrunedCollisions.Count == 0 && LegacyIdMigrator.ActiveMigrationCount == 136,
+            "LegacyIdMigrator did not restore full 136-mapping state after collision test.");
+    }
+
     private static void VerifyRenamedModelIds()
     {
         foreach (ModelExpectation expectation in RenamedModels)
@@ -223,6 +471,8 @@ public partial class ThingsModelIdProbeNode : Node
         VerifyCardPool<EventCardPool, ThingsSurrender>();
         VerifyCardPool<SilentCardPool, ThingsRecall>();
         VerifyCardPool<SilentCardPool, ThingsPackUp>();
+        VerifyCardPool<TokenCardPool, ThingsCaveGodBrokenBladeTrial>();
+        VerifyCardPool<TokenCardPool, ThingsCaveGodShatteredShieldTrial>();
         VerifyRelicPool<EventRelicPool, ThingsWhiteFlag>();
         VerifyRelicPool<EventRelicPool, ThingsCurseRemover>();
         VerifyRelicPool<EventRelicPool, ThingsMagicGlove>();
@@ -311,6 +561,9 @@ public partial class ThingsModelIdProbeNode : Node
 
         foreach (PowerModel power in new PowerModel[]
                  {
+                     ModelDb.Power<ThingsBowlbugCarapacePower>(),
+                     ModelDb.Power<ThingsBowlbugSiphonPower>(),
+                     ModelDb.Power<ThingsBowlbugVigorPower>(),
                      ModelDb.Power<ThingsDazedPower>(),
                      ModelDb.Power<ThingsOriginPower>(),
                      ModelDb.Power<ThingsQuirkPower>(),
@@ -324,8 +577,11 @@ public partial class ThingsModelIdProbeNode : Node
             Assert(power.ResolvedBigIconPath.Contains("/things_", StringComparison.Ordinal),
                 $"{power.GetType().Name} still derives an unprefixed icon path: {power.ResolvedBigIconPath}");
             VerifyTexture(power.ResolvedBigIconPath);
+            VerifyTexture(power.PackedIconPath);
         }
 
+        string spineExt = Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), "../../addons/spine/spine_godot_extension.gdextension"));
+        GDExtensionManager.LoadExtension(spineExt);
         VerifyScene("res://scenes/creature_visuals/things_scale_beetle.tscn");
         VerifyScene("res://scenes/creature_visuals/things_the_legacy.tscn");
     }

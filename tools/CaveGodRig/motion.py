@@ -1,4 +1,4 @@
-"""Curves and light dynamics for authoring the 活体巨岩 motions."""
+"""Curves and heavy monolithic stone dynamics for authoring the 活体巨岩 motions."""
 from __future__ import annotations
 
 import math
@@ -33,12 +33,19 @@ def _vec(value) -> tuple[float, ...]:
 
 
 class Curve:
-    """Cubic Hermite spline through keys.
+    """Cubic Hermite & steep gravity-drop spline through keys.
 
     Keys are ``(time, value)`` or ``(time, value, mode)``; ``value`` is a number or a tuple.
-    Modes: ``auto`` (smooth Catmull-Rom, limited to avoid overshoot), ``stop`` (zero velocity),
-    ``hit``/``hit3`` (accelerate into the key, stop dead after it), ``go`` (leave the key at speed),
-    ``lin`` (straight line through the neighbours), or an explicit ``(vin, vout)`` velocity pair.
+    Modes:
+    - ``auto``: smooth Catmull-Rom, Fritsch-Carlson limited to avoid overshoot
+    - ``stop``: zero velocity in and out
+    - ``hit`` / ``hit3``: cubic acceleration into the key, dead-stop after it
+    - ``slam`` / ``hit4``: steep quartic monolithic gravity drop (``0.15*s^2 + 0.85*s^4`` / ``0.10*s^2 + 0.90*s^4``)
+      that hangs briefly at the apex, accelerates violently into the rock, and dead-stops on contact
+    - ``drag``: heavy stone unpeel that leaves from rest and builds momentum slowly
+    - ``go`` / ``go3``: leave the key at speed from zero incoming velocity
+    - ``lin``: straight line through the neighbours
+    - explicit ``(vin, vout)`` velocity pair
     Values before the first key and after the last key are held.
     """
 
@@ -49,6 +56,7 @@ class Curve:
         self.scalar = not isinstance(rows[0][1], (tuple, list))
         n, dim = len(rows), len(self.p[0])
         modes = [k[2] if len(k) > 2 else "auto" for k in rows]
+        self.modes = modes
         self.vin: list[tuple[float, ...]] = []
         self.vout: list[tuple[float, ...]] = []
         zero = (0.0,) * dim
@@ -64,6 +72,13 @@ class Curve:
                 k = 3.0 if mode == "hit3" else 2.0
                 vin = tuple(k * v for v in left) if left else zero
                 vout = zero
+            elif mode in ("slam", "hit4"):
+                k = 3.8 if mode == "hit4" else 3.7
+                vin = tuple(k * v for v in left) if left else zero
+                vout = zero
+            elif mode == "drag":
+                vin = zero
+                vout = tuple(0.45 * v for v in right) if right else zero
             elif mode in ("go", "go3"):
                 k = 3.0 if mode == "go3" else 2.0
                 vin = zero
@@ -103,10 +118,18 @@ class Curve:
                     hi = mid
             h = ts[hi] - ts[lo]
             s = (t - ts[lo]) / h
-            s2, s3 = s * s, s * s * s
-            h00, h10, h01, h11 = 2 * s3 - 3 * s2 + 1, s3 - 2 * s2 + s, -2 * s3 + 3 * s2, s3 - s2
             p0, p1, m0, m1 = self.p[lo], self.p[hi], self.vout[lo], self.vin[hi]
-            out = tuple(h00 * p0[d] + h10 * h * m0[d] + h01 * p1[d] + h11 * h * m1[d] for d in range(len(p0)))
+            target_mode = self.modes[hi]
+            if target_mode in ("slam", "hit4"):
+                s2 = s * s
+                s4 = s2 * s2
+                q = (0.10 * s2 + 0.90 * s4) if target_mode == "hit4" else (0.15 * s2 + 0.85 * s4)
+                carry = s * ((1.0 - s) ** 3) * h
+                out = tuple(p0[d] + (p1[d] - p0[d]) * q + m0[d] * carry for d in range(len(p0)))
+            else:
+                s2, s3 = s * s, s * s * s
+                h00, h10, h01, h11 = 2 * s3 - 3 * s2 + 1, s3 - 2 * s2 + s, -2 * s3 + 3 * s2, s3 - s2
+                out = tuple(h00 * p0[d] + h10 * h * m0[d] + h01 * p1[d] + h11 * h * m1[d] for d in range(len(p0)))
         return out[0] if self.scalar else out
 
 
@@ -114,12 +137,20 @@ def const(value) -> Callable[[float], object]:
     return lambda _t: value
 
 
-def shake(t: float, t0: float, amp: float, freq: float = 9.0, decay: float = 6.0, phase: float = 0.0) -> float:
-    """Damped stone resonance after an impact."""
+def shock(t: float, t0: float, amp: float, rise: float = 0.022, decay: float = 7.2) -> float:
+    """Unidirectional tectonic compression pulse peaking 1-2 frames after stone impact."""
     if t < t0:
         return 0.0
     u = t - t0
-    return amp * math.exp(-decay * u) * math.sin(2 * math.pi * freq * u + phase) * smooth(u / 0.02)
+    return amp * smooth(u / rise) * math.exp(-decay * max(0.0, u - 0.6 * rise))
+
+
+def shake(t: float, t0: float, amp: float, freq: float = 11.0, decay: float = 7.2, phase: float = 0.0) -> float:
+    """High-mass damped stone shockwave shudder after an impact (crisp rock resonance, zero floaty bounce)."""
+    if t < t0:
+        return 0.0
+    u = t - t0
+    return amp * math.exp(-decay * u) * math.sin(2 * math.pi * freq * u + phase) * smooth(u / 0.015)
 
 
 def wave(t: float, period: float, cycles: int = 1, phase: float = 0.0) -> float:
@@ -128,7 +159,7 @@ def wave(t: float, period: float, cycles: int = 1, phase: float = 0.0) -> float:
 
 
 def breath(t: float, period: float, cycles: int = 1, peak: float = 0.58) -> float:
-    """0..1 breathing shape, 0 at t=0: slow inhale up to ``peak`` of the cycle, quicker exhale."""
+    """0..1 breathing shape, 0 at t=0: slow inhale up to ``peak`` of the cycle, quicker weighted exhale."""
     phi = (cycles * t / period) % 1.0
     if phi < peak:
         return 0.5 - 0.5 * math.cos(math.pi * phi / peak)
@@ -136,7 +167,7 @@ def breath(t: float, period: float, cycles: int = 1, peak: float = 0.58) -> floa
 
 
 def tremor(t: float, period: float, amp: float, seed: int = 0) -> float:
-    """Loop-safe irregular shiver built from incommensurate integer harmonics."""
+    """Loop-safe irregular tectonic shiver built from incommensurate integer harmonics."""
     harmonics = ((11, 0.55), (13, 0.35), (17, 0.25), (23, 0.15))
     total = 0.0
     for i, (n, weight) in enumerate(harmonics):
@@ -145,7 +176,7 @@ def tremor(t: float, period: float, amp: float, seed: int = 0) -> float:
 
 
 def follow(signal: Sequence[float], dt: float, freq: float, zeta: float) -> list[float]:
-    """Second-order follower (lag + overshoot) of a sampled signal, starting at rest on its first value."""
+    """Second-order follower (heavy mass lag + damped follow-through) starting at rest on its first value."""
     w = 2 * math.pi * freq
     y, v = signal[0], 0.0
     out = []
@@ -162,7 +193,7 @@ def follow(signal: Sequence[float], dt: float, freq: float, zeta: float) -> list
 
 def pendulum(root_acc: Sequence[tuple[float, float]], rigid_angle: Sequence[float], dt: float,
              freq: float, zeta: float, length: float, gain: float) -> list[float]:
-    """Angular deviation (degrees) of a hanging appendage from its rigidly attached direction."""
+    """Angular deviation (degrees) of a heavy hanging stone appendage from its rigidly attached direction."""
     w = 2 * math.pi * freq
     dev, vel = 0.0, 0.0
     prev_rigid = rigid_angle[0]
@@ -170,12 +201,10 @@ def pendulum(root_acc: Sequence[tuple[float, float]], rigid_angle: Sequence[floa
     sub = max(1, int(math.ceil(dt * w / 0.08)))
     h = dt / sub
     for (ax, ay), rigid in zip(root_acc, rigid_angle):
-        # The appendage keeps its world direction when the parent turns quickly.
         turn = math.radians(rigid - prev_rigid)
         prev_rigid = rigid
         dev -= turn
         direction = math.radians(rigid) + dev
-        # Inertial force perpendicular to the appendage (CCW positive).
         perp = -math.sin(direction) * ax + math.cos(direction) * ay
         for _ in range(sub):
             acc = -w * w * dev - 2 * zeta * w * vel - gain * perp / length

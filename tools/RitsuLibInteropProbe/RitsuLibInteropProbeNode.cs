@@ -62,11 +62,15 @@ public partial class RitsuLibInteropProbeNode : Node
             // Inspect the page produced by the real library, then edit through
             // its actual bindings (a schema-only test would miss dropped sliders).
             object page = pageArgs[2]!;
-            object[] decoratedEntries = ((IEnumerable)Get(page, "Sections")).Cast<object>()
+            object[] sections = ((IEnumerable)Get(page, "Sections")).Cast<object>().ToArray();
+            Assert(sections.Length == 7, $"Expected 7 registered RitsuLib sections, got {sections.Length}.");
+            object[] decoratedEntries = sections
                 .SelectMany(section => ((IEnumerable)Get(section, "Entries")).Cast<object>()).ToArray();
             object[] actualEntries = decoratedEntries.Select(Unwrap).ToArray();
+            Assert(actualEntries.Length == ThingsModConfig.Entries.Count && actualEntries.Length == 72,
+                $"Expected 72 registered RitsuLib entries, got {actualEntries.Length}.");
             object[] sliders = actualEntries.Where(entry => entry.GetType().Name == "IntSliderModSettingsEntryDefinition").ToArray();
-            Assert(sliders.Length == 7, $"Expected seven registered sliders, got {sliders.Length}.");
+            Assert(sliders.Length == 9, $"Expected nine registered sliders, got {sliders.Length}.");
             var entriesById = ((object[])schema["sections"]!).Cast<IDictionary<string, object?>>()
                 .SelectMany(section => (IDictionary<string, object?>[])section["entries"]!)
                 .ToDictionary(entry => (string)entry["id"]!);
@@ -84,13 +88,15 @@ public partial class RitsuLibInteropProbeNode : Node
             }
             foreach ((string id, string key, bool value) in new[]
                      { ("custom_bgm", ThingsModConfig.FeatureCustomBgmEnabled, false),
-                       ("only_mod_bosses", ThingsModConfig.BossOnlyModBosses, true) })
+                       ("only_mod_bosses", ThingsModConfig.BossOnlyModBosses, true),
+                       ("defensive_engine_guards_enabled", ThingsModConfig.FeatureDefensiveEngineGuardsEnabled, false) })
             {
                 object entry = actualEntries.Single(entry => (string)Get(entry, "Id") == id);
                 object binding = Get(entry, "Binding");
                 binding.GetType().GetMethod("Write")!.Invoke(binding, [value]);
                 Assert(ThingsModConfig.GetBool(key) == value, $"Real toggle binding did not update {key}.");
             }
+            ThingsModConfig.SetValue(ThingsModConfig.FeatureDefensiveEngineGuardsEnabled, true);
 
             // 值访问器往返（与 ThingsModConfig 共享同一内存态）。
             Assert(RitsuLibInteropProvider.GetRitsuLibSettingBool(

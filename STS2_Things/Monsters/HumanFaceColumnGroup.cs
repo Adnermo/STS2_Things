@@ -11,14 +11,14 @@ namespace STS2_Things.Monsters;
 /// <summary>Encounter-local shared state; no static cross-combat or local-UI state.</summary>
 internal sealed class HumanFaceColumnGroup
 {
-    private readonly List<HumanFaceColumn> _members = [];
-    private readonly HashSet<HumanFaceColumn> _broken = [];
-    private readonly HashSet<HumanFaceColumn> _pendingStuns = [];
+    private readonly List<ThingsHumanFaceColumn> _members = [];
+    private readonly HashSet<ThingsHumanFaceColumn> _broken = [];
+    private readonly HashSet<ThingsHumanFaceColumn> _pendingStuns = [];
     private int _pendingLosses;
     private bool _resolving;
-    public int Remaining { get; private set; } = HumanFaceColumn.InitialLayers;
-    public int Reserve { get; private set; } = HumanFaceColumn.InitialLayers - 3;
-    public HumanFaceColumn[] Living => _members.Where(member => member.Creature.IsAlive)
+    public int Remaining { get; private set; } = ThingsHumanFaceColumn.InitialLayers;
+    public int Reserve { get; private set; } = ThingsHumanFaceColumn.InitialLayers - 3;
+    public ThingsHumanFaceColumn[] Living => _members.Where(member => member.Creature.IsAlive)
         .OrderBy(member => member.Level).ToArray();
 
     public static IReadOnlyList<(MonsterModel, string?)> CreateInitial()
@@ -27,22 +27,22 @@ internal sealed class HumanFaceColumnGroup
         var result = new List<(MonsterModel, string?)>();
         for (int level = 2; level >= 0; level--)
         {
-            var member = (HumanFaceColumn)ModelDb.Monster<HumanFaceColumn>().ToMutable();
+            var member = (ThingsHumanFaceColumn)ModelDb.Monster<ThingsHumanFaceColumn>().ToMutable();
             member.Configure(group, level, 2 - level);
             group._members.Add(member);
-            result.Add((member, HumanFaceColumn.LayerSlots[level]));
+            result.Add((member, ThingsHumanFaceColumn.LayerSlots[level]));
         }
         return result;
     }
 
-    public static HumanFaceColumnGroup ForStandalone(HumanFaceColumn member)
+    public static HumanFaceColumnGroup ForStandalone(ThingsHumanFaceColumn member)
     {
         var group = new HumanFaceColumnGroup { Remaining = 1, Reserve = 0 };
         group._members.Add(member);
         return group;
     }
 
-    public async Task BreakLayer(HumanFaceColumn broken, PlayerChoiceContext context)
+    public async Task BreakLayer(ThingsHumanFaceColumn broken, PlayerChoiceContext context)
     {
         if (!_broken.Add(broken)) return;
         // Capture identity before compacting the stack. In a simultaneous
@@ -80,17 +80,19 @@ internal sealed class HumanFaceColumnGroup
             for (int i = 0; i < replacements; i++)
             {
                 int level = Living.Length;
-                var replacement = (HumanFaceColumn)ModelDb.Monster<HumanFaceColumn>().ToMutable();
+                var replacement = (ThingsHumanFaceColumn)ModelDb.Monster<ThingsHumanFaceColumn>().ToMutable();
                 replacement.Configure(this, level, 0, replacement: true);
                 _members.Add(replacement);
-                await CreatureCmd.Add(replacement, combat, CombatSide.Enemy, HumanFaceColumn.LayerSlots[level]);
+                string slotName = ThingsHumanFaceColumn.LayerSlots[level];
+                string? validSlot = combat.Encounter?.Slots.Contains(slotName) == true ? slotName : null;
+                await CreatureCmd.Add(replacement, combat, CombatSide.Enemy, validSlot);
                 NHumanFaceColumnVisuals.DropIn(replacement.Creature, poses[i], losses, i);
             }
             NHumanFaceColumnVisuals.RestoreReservePoses(Living.LastOrDefault()?.Creature,
                 poses.Skip(replacements).ToArray());
             foreach (var member in Living)
             {
-                if (member.Creature.GetPower<HumanFaceColumnPower>() is { } power)
+                if (member.Creature.GetPower<ThingsHumanFaceColumnPower>() is { } power)
                 {
                     int difference = Remaining - power.Amount;
                     if (difference != 0)

@@ -21,11 +21,11 @@ public partial class DepthsProbeNode
         foreach (int count in new[] { 1, 4 })
         foreach (int asc in new[] { 0, 20 })
         {
-            var b = await StrongBattle(ModelDb.Encounter<FleetingEchoWeak>(), count, asc);
-            var echo = b.Monster<FleetingEcho>();
+            var b = await StrongBattle(ModelDb.Encounter<ThingsFleetingEchoWeak>(), count, asc);
+            var echo = b.Monster<ThingsFleetingEcho>();
             var target = echo.Creature;
             Assert(b.Enemies.Length == 1 && b.Encounter.IsWeak, "One Echo in the weak pool.");
-            Assert(target.GetPower<FleetingFadePower>()?.Amount == 5, "Timer is five for the whole party.");
+            Assert(target.GetPower<ThingsFleetingFadePower>()?.Amount == 5, "Timer is five for the whole party.");
             var source = b.Players[0].Creature;
             foreach (var p in b.Players) { p.Creature.SetMaxHpInternal(10000); p.Creature.SetCurrentHpInternal(10000); }
             for (int i = 0; i < 3; i++)
@@ -54,14 +54,14 @@ public partial class DepthsProbeNode
             // Native GainBlock intentionally stops once the final enemy dies.
             // Keep another enemy alive to verify lethal/overkill conversion
             // during an ongoing battle, without bypassing that native rule.
-            var sentinel=b.State.CreateCreature(ModelDb.Monster<CrystalSnail>().ToMutable(),CombatSide.Enemy,"sentinel");
+            var sentinel=b.State.CreateCreature(ModelDb.Monster<ThingsCrystalSnail>().ToMutable(),CombatSide.Enemy,"sentinel");
             b.State.AddCreature(sentinel);
             await CreatureCmd.Damage(Choice, target, 100, ValueProp.Move, source);
             Assert(source.Block == 29 && target.IsDead, $"Lethal hit converts three effective HP, excluding overkill. actual Block={source.Block}, HP={target.CurrentHp}, dead={target.IsDead}");
             DeactivateSyntheticCombat();
 
-            b = await StrongBattle(ModelDb.Encounter<FleetingEchoWeak>(), count, asc, "echo-timer-"+count+"-"+asc);
-            echo = b.Monster<FleetingEcho>();target = echo.Creature;
+            b = await StrongBattle(ModelDb.Encounter<ThingsFleetingEchoWeak>(), count, asc, "echo-timer-"+count+"-"+asc);
+            echo = b.Monster<ThingsFleetingEcho>();target = echo.Creature;
             foreach (var p in b.Players) { p.Creature.SetMaxHpInternal(10000); p.Creature.SetCurrentHpInternal(10000); }
             int[] expected = asc == 0 ? [24,28,32,36,40] : [28,32,36,40,44];
             for (int phase = 0; phase < 5; phase++)
@@ -72,21 +72,21 @@ public partial class DepthsProbeNode
                 Assert(hp - b.Players[0].Creature.CurrentHp == expected[phase], $"Expected Echo attack damage: players={count}, asc={asc}, phase={phase}, expected={expected[phase]}, actual={hp-b.Players[0].Creature.CurrentHp}, block={b.Players[0].Creature.Block}");
                 if (phase < 4)
                 {
-                    Assert(target.IsAlive && target.GetPower<FleetingFadePower>()?.Amount == 4-phase, "Exactly one timer decrement per enemy action.");
+                    Assert(target.IsAlive && target.GetPower<ThingsFleetingFadePower>()?.Amount == 4-phase, "Exactly one timer decrement per enemy action.");
                     echo.RollMove(b.Players.Select(p => p.Creature));
                 }
             }
             Assert(target.IsDead && !b.State.Enemies.Contains(target), "Final attack resolves before native death removes the Echo.");
             DeactivateSyntheticCombat();
         }
-        var loss = await StrongBattle(ModelDb.Encounter<FleetingEchoWeak>(),1,0,"echo-loss");
-        var losingEcho=loss.Monster<FleetingEcho>();
+        var loss = await StrongBattle(ModelDb.Encounter<ThingsFleetingEchoWeak>(),1,0,"echo-loss");
+        var losingEcho=loss.Monster<ThingsFleetingEcho>();
         loss.Players[0].Creature.SetCurrentHpInternal(1);
         loss.State.CurrentSide=CombatSide.Enemy;
         await losingEcho.PerformMove();
         Assert(loss.Players[0].Creature.IsDead && losingEcho.Creature.IsAlive,
             "Player defeat does not also kill the surviving Echo.");
-        Assert(losingEcho.Creature.GetPower<FleetingFadePower>()?.Amount==5,
+        Assert(losingEcho.Creature.GetPower<ThingsFleetingFadePower>()?.Amount==5,
             "Already ending combat does not continue the timer or create a second outcome.");
         DeactivateSyntheticCombat();
         GD.Print("PASS Fleeting Echo: 1/4 players, A0/A20, five attacks, owner-only Block, pets, lethal and overkill.");
@@ -95,8 +95,8 @@ public partial class DepthsProbeNode
 
     private async Task VerifyFleetingEchoIndirectDamage()
     {
-        var battle = await StrongBattle(ModelDb.Encounter<FleetingEchoWeak>(), 4, seed: "echo-indirect");
-        var echo = battle.Monster<FleetingEcho>().Creature;
+        var battle = await StrongBattle(ModelDb.Encounter<ThingsFleetingEchoWeak>(), 4, seed: "echo-indirect");
+        var echo = battle.Monster<ThingsFleetingEcho>().Creature;
         var lightningOwner = battle.Players[0].Creature;
         var poisonOwner = battle.Players[1].Creature;
         var secondPoisonOwner = battle.Players[2].Creature;
@@ -141,11 +141,7 @@ public partial class DepthsProbeNode
 
         await PowerCmd.Apply<AccelerantPower>(Choice, poisonOwner, 1, poisonOwner, null);
         hp = echo.CurrentHp;
-#if STS2_V107_1
-        await Hook.AfterSideTurnStart(battle.State, CombatSide.Enemy, [echo]);
-#else
         await echo.GetPower<PoisonPower>()!.Trigger(); // Same native entry used by Outbreak.
-#endif
         Assert(hp - echo.CurrentHp == 11 && echo.GetPowerAmount<PoisonPower>() == 4,
             "Accelerant still deals the original 6 + 5 damage and consumes two stacks.");
         Assert(poisonOwner.Block == 9 && secondPoisonOwner.Block == 9 && bystander.Block == 0,
@@ -170,15 +166,15 @@ public partial class DepthsProbeNode
         await PowerCmd.Remove<PoisonPower>(echo);
         await PowerCmd.Apply<PoisonPower>(Choice, echo, 100, secondPoisonOwner, null);
         echo.SetCurrentHpInternal(2);
-        var sentinel = battle.State.CreateCreature(ModelDb.Monster<CrystalSnail>().ToMutable(), CombatSide.Enemy, "sentinel");
+        var sentinel = battle.State.CreateCreature(ModelDb.Monster<ThingsCrystalSnail>().ToMutable(), CombatSide.Enemy, "sentinel");
         battle.State.AddCreature(sentinel);
         await Hook.AfterSideTurnStart(battle.State, CombatSide.Enemy, [echo]);
         Assert(echo.IsDead && secondPoisonOwner.Block == 11,
             "Lethal Poison in an ongoing battle gives Block for only the remaining 2 HP.");
         DeactivateSyntheticCombat();
 
-        battle = await StrongBattle(ModelDb.Encounter<FleetingEchoWeak>(), seed: "echo-poison-final");
-        echo = battle.Monster<FleetingEcho>().Creature;
+        battle = await StrongBattle(ModelDb.Encounter<ThingsFleetingEchoWeak>(), seed: "echo-poison-final");
+        echo = battle.Monster<ThingsFleetingEcho>().Creature;
         poisonOwner = battle.Players[0].Creature;
         await PowerCmd.Apply<PoisonPower>(Choice, echo, 20, poisonOwner, null);
         echo.SetCurrentHpInternal(2);
@@ -193,8 +189,8 @@ public partial class DepthsProbeNode
         Type? atlasType=typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Assets.AtlasResourceLoader");
         ResourceFormatLoader? atlas=atlasType==null?null:(ResourceFormatLoader)Activator.CreateInstance(atlasType)!;
         if(atlas!=null)ResourceLoader.AddResourceFormatLoader(atlas,true);
-        var b = await StrongBattle(ModelDb.Encounter<FleetingEchoWeak>());
-        var entity = b.Monster<FleetingEcho>().Creature;
+        var b = await StrongBattle(ModelDb.Encounter<ThingsFleetingEchoWeak>());
+        var entity = b.Monster<ThingsFleetingEcho>().Creature;
         var view = new SubViewport { Size = new Vector2I(900,650), Disable3D = true,
             TransparentBg = false, RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
         AddChild(view);

@@ -13,7 +13,8 @@ public partial class NThingsCombatBackground : NCombatBackground
     public override void _Ready()
     {
         base._Ready();
-        GetNode<Control>("Layer_00").ZIndex = -2;
+        if (GetNodeOrNull<Control>("Layer_00") is { } backLayer)
+            backLayer.ZIndex = -2;
         // One-layer native templates (e.g. Origin Fogmog) have no Layer_01.
         if (GetNodeOrNull<Control>("Layer_01") is { } middleLayer)
             middleLayer.ZIndex = 1;

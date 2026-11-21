@@ -36,10 +36,8 @@ public partial class DepthsProbeNode : Node
     public override void _Ready()
     {
         AssemblyLoadContext.Default.Resolving += ResolveRuntimeDependency;
-#if !STS2_V107_1
         EnsureRuntimeDependency("Sentry");
         EnsureRuntimeDependency("Sentry.Godot");
-#endif
         _ = Run();
     }
 
@@ -52,14 +50,14 @@ public partial class DepthsProbeNode : Node
             TestMode.TurnOnInternal();
             Assert(ProjectSettings.LoadResourcePack(System.Environment.GetEnvironmentVariable("THINGS_VANILLA_PCK")!), "Native game PCK");
             Assert(ProjectSettings.LoadResourcePack(System.Environment.GetEnvironmentVariable("THINGS_PROBE_PCK")!), "Final mod PCK");
-            ModHelper.AddModelToPool<EventRelicPool, BottledEcho>();
-            ModHelper.AddModelToPool<EventRelicPool, ShadowClaimTicket>();
-            ModHelper.AddModelToPool<EventRelicPool, MycelialDeposit>();
-            ModHelper.AddModelToPool<EventRelicPool, BorrowedEmber>();
+            ModHelper.AddModelToPool<EventRelicPool, ThingsBottledEcho>();
+            ModHelper.AddModelToPool<EventRelicPool, ThingsShadowClaimTicket>();
+            ModHelper.AddModelToPool<EventRelicPool, ThingsMycelialDeposit>();
+            ModHelper.AddModelToPool<EventRelicPool, ThingsBorrowedEmber>();
             ModHelper.AddModelToPool<EventRelicPool, ThingsMedusaHair>();
             InitializeModelDb();
             ScriptManagerBridge.LookupScriptsInAssembly(typeof(ModelDb).Assembly);
-            ScriptManagerBridge.LookupScriptsInAssembly(typeof(BottledEcho).Assembly);
+            ScriptManagerBridge.LookupScriptsInAssembly(typeof(ThingsBottledEcho).Assembly);
             SaveManager.Instance.InitSettingsDataForTest();
             SaveManager.Instance.InitPrefsDataForTest();
             SaveManager.Instance.SettingsSave.Language = "zhs";
@@ -98,10 +96,10 @@ public partial class DepthsProbeNode : Node
             LabelAt("原版参考", new Vector2(871, 66));
             (RelicModel Relic, RelicModel Reference, string Key, string Name)[] rows =
             [
-                (ModelDb.Relic<BottledEcho>(), ModelDb.Relic<MawBank>(), "bottled_echo", "瓶中回声"),
-                (ModelDb.Relic<ShadowClaimTicket>(), ModelDb.Relic<MealTicket>(), "shadow_claim_ticket", "寄存收据"),
-                (ModelDb.Relic<MycelialDeposit>(), ModelDb.Relic<ArcaneScroll>(), "mycelial_deposit", "菌根存单"),
-                (ModelDb.Relic<BorrowedEmber>(), ModelDb.Relic<EmberTea>(), "borrowed_ember", "余烬约定"),
+                (ModelDb.Relic<ThingsBottledEcho>(), ModelDb.Relic<MawBank>(), "things_bottled_echo", "瓶中回声"),
+                (ModelDb.Relic<ThingsShadowClaimTicket>(), ModelDb.Relic<MealTicket>(), "things_shadow_claim_ticket", "寄存收据"),
+                (ModelDb.Relic<ThingsMycelialDeposit>(), ModelDb.Relic<ArcaneScroll>(), "things_mycelial_deposit", "菌根存单"),
+                (ModelDb.Relic<ThingsBorrowedEmber>(), ModelDb.Relic<EmberTea>(), "things_borrowed_ember", "余烬约定"),
                 (ModelDb.Relic<ThingsMedusaHair>(), ModelDb.Relic<SilkenTress>(), "things_medusa_hair", "美杜莎之发")
             ];
             var focusHolders = new List<NRelicInventoryHolder>();
@@ -152,10 +150,10 @@ public partial class DepthsProbeNode : Node
             {
                 assertions = _checks,
                 target =
-#if STS2_V107_1
-                    "v107.1",
+#if STS2_V111_1
+                    "v111.1",
 #else
-                    "v113",
+                    "v113.1",
 #endif
                 relics = rows.Select(r => r.Key).ToArray(),
                 render = "Real NRelic / NRelicInventoryHolder, native counter, focus tween and disabled shader; isolated host, not a full client",

@@ -28,7 +28,7 @@ public partial class LanternFishProbeNode
         var status = GDExtensionManager.LoadExtension(Path.Combine(root, "addons/spine/spine_godot_extension.gdextension"));
         Assert(status is GDExtensionManager.LoadStatus.Ok or GDExtensionManager.LoadStatus.AlreadyLoaded, "Spine extension loaded.");
         ScriptManagerBridge.LookupScriptsInAssembly(typeof(NCard).Assembly);
-        ScriptManagerBridge.LookupScriptsInAssembly(typeof(LanternFish).Assembly);
+        ScriptManagerBridge.LookupScriptsInAssembly(typeof(ThingsLanternFish).Assembly);
         // V113 creates atlas .tres resources dynamically during normal game startup.
         Type? atlasLoaderType = typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Assets.AtlasResourceLoader");
         ResourceFormatLoader? atlasLoader = atlasLoaderType == null ? null : (ResourceFormatLoader)Activator.CreateInstance(atlasLoaderType)!;
@@ -41,7 +41,7 @@ public partial class LanternFishProbeNode
         var view = new SubViewport { Size = new Vector2I(1920,1080), Disable3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
         AddChild(view);
         var bg = MegaCrit.Sts2.Core.Nodes.Rooms.NCombatBackground.Create(
-            new MegaCrit.Sts2.Core.Rooms.BackgroundAssets("lantern_fish_encounter", new MegaCrit.Sts2.Core.Random.Rng()));
+            new MegaCrit.Sts2.Core.Rooms.BackgroundAssets("things_lantern_fish_encounter", new MegaCrit.Sts2.Core.Random.Rng()));
         bg.Position = new Vector2(983,540);
         view.AddChild(bg);
         var s = Scenario();
@@ -52,7 +52,7 @@ public partial class LanternFishProbeNode
         hero.Position = new Vector2(480,746); view.AddChild(hero);
         var nodes = new List<NCreature>();
         var sprites = new List<Node2D>();
-        var slots = GD.Load<PackedScene>("res://scenes/encounters/lantern_fish_encounter.tscn").Instantiate<Control>();
+        var slots = GD.Load<PackedScene>("res://scenes/encounters/things_lantern_fish_encounter.tscn").Instantiate<Control>();
         view.AddChild(slots);
         for (int i=0;i<3;i++)
         {
@@ -100,7 +100,7 @@ public partial class LanternFishProbeNode
         var blinded=Put<DefendIronclad>(s,s.Player,PileType.Hand);
         var wound=Put<Wound>(s,s.Player,PileType.Hand);
         await Blind(s.Player,4);
-        var power=s.Player.Creature.GetPower<LanternBlindnessPower>()!;
+        var power=s.Player.Creature.GetPower<ThingsLanternBlindnessPower>()!;
         await power.AfterCardDrawn(Choice,blinded,false); await power.AfterCardDrawn(Choice,wound,false);
         NCard MakeCard(CardModel model,float x)
         {

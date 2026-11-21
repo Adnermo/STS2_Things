@@ -14,7 +14,7 @@ internal static class ConfigSessionAttachPatch
     private static IEnumerable<MethodBase> TargetMethods()
     {
         yield return AccessTools.Constructor(typeof(StartRunLobby),
-#if STS2_V113
+#if STS2_V113_1
             [typeof(GameMode), typeof(bool), typeof(INetGameService), typeof(IStartRunLobbyListener), typeof(int)]);
 #else
             [typeof(GameMode), typeof(INetGameService), typeof(IStartRunLobbyListener), typeof(int)]);
@@ -23,7 +23,7 @@ internal static class ConfigSessionAttachPatch
             [typeof(INetGameService), typeof(ILoadRunLobbyListener), typeof(SerializableRun)]);
         foreach (ConstructorInfo constructor in AccessTools.GetDeclaredConstructors(typeof(NetClientGameService)))
             yield return constructor;
-#if STS2_V113
+#if STS2_V113_1
         if (AccessTools.Constructor(typeof(JoinFlow), [typeof(INetClientGameService),
                 typeof(MegaCrit.Sts2.Core.Multiplayer.Connection.IClientConnectionInitializer)]) is { } joinConstructor)
 #else
@@ -36,13 +36,25 @@ internal static class ConfigSessionAttachPatch
     {
         switch (__instance)
         {
-            case StartRunLobby start: MultiplayerConfig.Bind(start.NetService); break;
+            case StartRunLobby start:
+                MultiplayerConfig.Bind(start.NetService);
+                MultiplayerConfig.SyncPreConnectedClients(start.NetService);
+                break;
             case LoadRunLobby load: MultiplayerConfig.Bind(load.NetService, lockForLoadedRun: true); break;
             case JoinFlow join when join.NetService is { } service: MultiplayerConfig.Bind(service); break;
             case NetClientGameService client: MultiplayerConfig.Bind(client); break;
         }
     }
 }
+
+#if STS2_V113_1
+[HarmonyPatch(typeof(StartRunLobby), nameof(StartRunLobby.AdmitClientsConnectedBeforeLobbyExisted))]
+internal static class ConfigDailyPreConnectedClientsPatch
+{
+    private static void Postfix(StartRunLobby __instance) =>
+        MultiplayerConfig.SyncPreConnectedClients(__instance.NetService);
+}
+#endif
 
 // Host sends the final snapshot BEFORE the native reliable start message. The
 // client checks it before any act/event/relic generation consumes seeded RNG.
@@ -86,7 +98,7 @@ internal static class ConfigFailedJoinCleanupPatch
     private static async Task<JoinResult> ObserveJoin(Task<JoinResult> pending, JoinFlow flow)
     {
         try { return await pending; }
-        catch
+        catch (Exception)
         {
             MultiplayerConfig.Detach(flow.NetService);
             throw;

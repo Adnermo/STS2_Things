@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$PythonExe = $env:STS2_PYTHON,
 
@@ -37,8 +37,8 @@ function Resolve-GodotExecutables([string]$Requested) {
         $candidates += $Requested
     }
     $candidates += @(
-        'D:\Download\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64_console.exe',
-        'D:\Godot\Godot_v4.5.1-stable_mono_win64_console.exe'
+        'D:\Godot\Godot_v4.5.1-stable_mono_win64_console.exe',
+        'D:\Download\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64_console.exe'
     )
 
     foreach ($candidate in ($candidates | Where-Object { $_ } | Select-Object -Unique)) {
@@ -93,32 +93,29 @@ $logPath = Join-Path $Root 'build\quirky-hopper-visual-render.log'
 if (Test-Path -LiteralPath $logPath -PathType Leaf) {
     Remove-Item -LiteralPath $logPath -Force
 }
+. (Join-Path $PSScriptRoot 'Invoke-GodotProcess.ps1')
+
 $arguments = @(
-    '--path', (Quote-ProcessArgument $Root),
+    '--path', $Root,
+    '--rendering-method', 'gl_compatibility',
     '--script', 'res://scripts/render_quirky_hopper_visual_probe.gd',
-    '--log-file', (Quote-ProcessArgument $logPath),
-    '--', (Quote-ProcessArgument $OutputDir)
+    '--log-file', $logPath,
+    '--', $OutputDir
 )
 
 Write-Host 'Rendering Quirky Hopper animation contract...'
-$process = Start-Process `
-    -FilePath $godotGui `
-    -ArgumentList $arguments `
-    -WindowStyle Hidden `
-    -PassThru
-if (-not $process.WaitForExit(60000)) {
-    Stop-Process -Id $process.Id -Force
+$runResult = Start-HeadlessSafeProcess -FilePath $godotConsole -ArgumentList $arguments -TimeoutMs 60000
+if ($runResult.TimedOut) {
     throw 'Quirky Hopper visual renderer timed out after 60 seconds.'
 }
-$process.Refresh()
-if ($process.ExitCode -ne 0) {
+if ($runResult.ExitCode -ne 0) {
     $tail = if (Test-Path -LiteralPath $logPath) {
         (Get-Content -LiteralPath $logPath -Tail 80) -join [System.Environment]::NewLine
     }
     else {
         '<missing log>'
     }
-    throw "Quirky Hopper visual renderer exited with $($process.ExitCode):`n$tail"
+    throw "Quirky Hopper visual renderer exited with $($runResult.ExitCode):`n$tail"
 }
 if (-not (Test-Path -LiteralPath $logPath -PathType Leaf)) {
     throw "Quirky Hopper visual renderer log was not created: $logPath"

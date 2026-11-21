@@ -4,7 +4,7 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using STS2_Things.Monsters;
-using static STS2_Things.Compatibility.Sts2VersionCompatibility;
+using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Visuals;
 
@@ -26,8 +26,31 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
     private (string Clip, float Time)? _incomingPose;
     private IReadOnlyList<(string Clip, float Time)?>? _reserveStartPoses;
     private bool _entryStarted;
+    private bool _initialAppearanceNormalized;
+    private bool _compendiumDead;
     private float _rotationSpeed = 1;
     private const float RotationDuration = 12f;
+
+    public void SetCompendiumAnimState(string id)
+    {
+        if (id == "die")
+        {
+            _compendiumDead = true;
+            _rotation = "";
+            var state = SpineBody?.TryGetAnimationState();
+            if (state != null)
+            {
+                using (TrackEntryScope(state.GetCurrent(1), out var t1))
+                    t1?.SetTimeScale(0f);
+            }
+        }
+        else
+        {
+            _compendiumDead = false;
+            if (_sprite != null)
+                _sprite.Modulate = Colors.White;
+        }
+    }
 
     public override void _Ready()
     {
@@ -35,22 +58,26 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
         ProcessPriority = 30;
         _sprite = GetNode<Node2D>("Visuals");
         _shadow = GetNode<Node2D>("ContactShadow");
+        Callable.From(NormalizeColumnAppearance).CallDeferred();
     }
 
     public override void _Process(double delta)
     {
         base._Process(delta);
         FindHost();
-        if (_host?.Entity.Monster is not HumanFaceColumn column || _sprite == null) return;
+        if (_host?.Entity.Monster is not ThingsHumanFaceColumn column || _sprite == null) return;
+        NormalizeColumnAppearance();
         // The upper disc covers the lower disc's top plane at the contact seam.
         _host.ZIndex = 2 * column.Level;
-        if (_shadow != null) _shadow.Visible = column.Level == 0 && _host.Entity.IsAlive;
-        if (!_host.Entity.IsAlive)
+        bool deadOrCompendiumDie = !_host.Entity.IsAlive || _compendiumDead;
+        if (_shadow != null) _shadow.Visible = column.Level == 0 && !deadOrCompendiumDie;
+        if (deadOrCompendiumDie)
         {
             ClearReserves();
             // Track 1 controls rotation; parent modulation fades every track,
             // including stone fragments, after the authored shatter motion.
-            using (TrackEntryScope(SpineBody?.TryGetAnimationState()?.GetCurrent(0), out MegaTrackEntry? death))
+            MegaAnimationState? deathState = SpineBody?.TryGetAnimationState();
+            using (TrackEntryScope(deathState?.GetCurrent(0), out MegaTrackEntry? death))
                 if (death?.GetAnimationName() == "die")
                     _sprite.Modulate = new Color(1, 1, 1, 1 - Mathf.SmoothStep(.55f, 1.05f, death.GetTrackTime()));
             return;
@@ -95,14 +122,14 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
             _uiBounds = new Control
             {
                 Name = "ColumnUiBounds",
-                Position = new Vector2(-426, -HumanFaceColumn.LayerSpacing * .5f - 22),
+                Position = new Vector2(-426, -ThingsHumanFaceColumn.LayerSpacing * .5f - 22),
                 Size = new Vector2(184, 74),
                 MouseFilter = Control.MouseFilterEnum.Ignore,
             };
             _host.AddChild(_uiBounds);
             // Preserve the state display's native show/hide tween on its root.
             foreach (var child in _stateDisplay.GetChildren().OfType<Control>())
-                child.Position += Vector2.Up * (HumanFaceColumn.LayerSpacing * .5f + 9);
+                child.Position += Vector2.Up * (ThingsHumanFaceColumn.LayerSpacing * .5f + 9);
             _stateDisplay.SetCreatureBounds(_uiBounds);
             _intents = _host.IntentContainer;
             _intents.Resized += AlignIntents;
@@ -120,9 +147,10 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
 
     private void AlignIntents()
     {
-        if (_intents == null || _uiBounds == null) return;
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree()) return;
+        if (_intents == null || !GodotObject.IsInstanceValid(_intents) || _uiBounds == null || !GodotObject.IsInstanceValid(_uiBounds)) return;
         var center = new Vector2(_uiBounds.Position.X + _uiBounds.Size.X * .5f,
-            -HumanFaceColumn.LayerSpacing * .5f - 55);
+            -ThingsHumanFaceColumn.LayerSpacing * .5f - 55);
         // Native UpdateBounds runs before the first 64px intent expands the
         // initially 40px HBox. Recenter using its settled size, including after
         // replacement/stun, without changing NIntent's own bob or fade.
@@ -136,7 +164,29 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
             if (node is NCreature creature) { _host = creature; break; }
     }
 
-    private void UpdateReserves(HumanFaceColumn column)
+    private void NormalizeColumnAppearance()
+    {
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree()) return;
+        FindHost();
+        if (_host == null || !GodotObject.IsInstanceValid(_host) || _host.Entity?.Monster is not ThingsHumanFaceColumn) return;
+        bool firstPass = !_initialAppearanceNormalized;
+        _initialAppearanceNormalized = true;
+        if (SpineBody?.GetNormalMaterial() is ShaderMaterial normalMat &&
+            (firstPass || normalMat.Shader?.ResourcePath?.Contains("hsv", StringComparison.OrdinalIgnoreCase) == true) &&
+            normalMat.Shader?.ResourcePath?.Contains("liquid_overlay", StringComparison.OrdinalIgnoreCase) != true)
+        {
+            SpineBody.SetNormalMaterial(null!);
+        }
+        if (firstPass || !Mathf.IsEqualApprox(DefaultScale, 1f) || !Scale.IsEqualApprox(Vector2.One))
+        {
+            _host.SetScaleAndHue(1f, 0f);
+            if (_uiBounds != null)
+                _stateDisplay?.SetCreatureBounds(_uiBounds);
+            AlignIntents();
+        }
+    }
+
+    private void UpdateReserves(ThingsHumanFaceColumn column)
     {
         int count = column.IsTopVisible ? column.ReserveLayers : 0;
         while (_reserveSprites.Count > count)
@@ -151,21 +201,27 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
             int i = _reserveSprites.Count;
             var copy = (Node2D)_sprite.Duplicate();
             copy.Name = "ReserveDisc" + i;
-            copy.Position = Vector2.Up * HumanFaceColumn.LayerSpacing * (i + 1);
+            copy.Position = Vector2.Up * ThingsHumanFaceColumn.LayerSpacing * (i + 1);
             copy.Modulate = ReserveTint(i);
             copy.ZIndex = 5 + i;
             AddChild(copy);
             using Variant stateValue = copy.Call("get_animation_state");
-            var rawState = stateValue.AsGodotObject();
-            string name = (i + column.Level + 1) % 2 == 1 ? "rotate_ccw" : "rotate_cw";
-            using Variant ignored = rawState.Call("set_animation", name, true, 1);
-            if (_reserveStartPoses != null && i < _reserveStartPoses.Count && _reserveStartPoses[i] is { } pose)
+            GodotObject? rawState = stateValue.VariantType == Variant.Type.Object ? stateValue.AsGodotObject() : null;
+            if (rawState != null)
             {
-                using Variant trackValue = rawState.Call("get_current", 1);
-                using (TrackEntryScope(new MegaTrackEntry(trackValue), out MegaTrackEntry? entry))
+                string name = (i + column.Level + 1) % 2 == 1 ? "rotate_ccw" : "rotate_cw";
+                using Variant ignored = rawState.Call("set_animation", name, true, 1);
+                if (_reserveStartPoses != null && i < _reserveStartPoses.Count && _reserveStartPoses[i] is { } pose)
                 {
-                    entry?.SetTrackTime(pose.Clip == name ? pose.Time % RotationDuration : ReversePhase(pose.Time));
-                    entry?.SetMixDuration(0);
+                    using Variant trackValue = rawState.Call("get_current", 1);
+                    if (trackValue.VariantType == Variant.Type.Object && trackValue.AsGodotObject() != null)
+                    {
+                        using (TrackEntryScope(new MegaTrackEntry(trackValue), out MegaTrackEntry? entry))
+                        {
+                            entry?.SetTrackTime(pose.Clip == name ? pose.Time % RotationDuration : ReversePhase(pose.Time));
+                            entry?.SetMixDuration(0);
+                        }
+                    }
                 }
             }
             _reserveSprites.Add(copy);
@@ -208,10 +264,15 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
         if (top?.GetCreatureNode()?.Visuals is not NHumanFaceColumnVisuals visuals || visuals._reserveSprites.Count <= reserveIndex)
             return null;
         var reserve = visuals._reserveSprites[reserveIndex];
+        if (!GodotObject.IsInstanceValid(reserve))
+            return null;
         using Variant stateValue = reserve.Call("get_animation_state");
-        using Variant trackValue = stateValue.AsGodotObject().Call("get_current", 1);
-        var track = trackValue.AsGodotObject();
-        if (track == null) return null;
+        GodotObject? rawState = stateValue.VariantType == Variant.Type.Object ? stateValue.AsGodotObject() : null;
+        if (rawState == null)
+            return null;
+        using Variant trackValue = rawState.Call("get_current", 1);
+        if (trackValue.VariantType != Variant.Type.Object || trackValue.AsGodotObject() == null)
+            return null;
         // Read through the shared wrapper to keep both supported APIs aligned.
         using (TrackEntryScope(new MegaTrackEntry(trackValue), out MegaTrackEntry? entry))
             return entry == null ? null : (entry.GetAnimationName(), entry.GetTrackTime());
@@ -249,7 +310,7 @@ public partial class NHumanFaceColumnVisuals : NCreatureVisuals
         if (entering && _entryStarted) return;
         if (entering) _entryStarted = true;
         _dropTween?.Kill();
-        float distance = levels * HumanFaceColumn.LayerSpacing;
+        float distance = levels * ThingsHumanFaceColumn.LayerSpacing;
         Vector2 target;
         if (entering)
         {

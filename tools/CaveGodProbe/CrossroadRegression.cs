@@ -147,10 +147,10 @@ public partial class CaveGodProbeNode
                 payer.Gold=49;
                 Assert(await Crossroads.Purchase(payer,0,plan.Fingerprint,from,to,50)==CrossroadPurchaseResult.InsufficientGold,"Insufficient gold accepted");
                 Assert(!road.IsOpen&&payer.Gold==49,"Rejected purchase mutated the route or gold");payer.Gold=125;
-                var action=new NetUnlockCrossroadAction{Act=0,Fingerprint=plan.Fingerprint,From=from,To=to,Price=50};
+                var action=new ThingsNetUnlockCrossroadAction{Act=0,Fingerprint=plan.Fingerprint,From=from,To=to,Price=50};
                 Assert(action.ToId()>=0,"Native action discovery missed the unlock action");
                 var writer=new PacketWriter();action.Serialize(writer);var reader=new PacketReader();reader.Reset(writer.Buffer);
-                var decoded=new NetUnlockCrossroadAction();decoded.Deserialize(reader);
+                var decoded=new ThingsNetUnlockCrossroadAction();decoded.Deserialize(reader);
                 Assert(decoded.Act==action.Act&&decoded.Fingerprint==action.Fingerprint&&decoded.From==from&&decoded.To==to&&decoded.Price==50,"Action packet changed");
                 var nativeAction=decoded.ToGameAction(payer);nativeAction.OnEnqueued(_=>{},1);await nativeAction.Execute();
                 Assert(nativeAction.Exception==null&&road.IsOpen,"Native unlock action failed");

@@ -22,7 +22,7 @@ public partial class DepthsProbeNode
         GetTree().Root.Size = view.Size;
         string output = Path.Combine(_output, "visuals");
         Directory.CreateDirectory(output);
-        foreach (var canonical in ModelDb.Act<Depths>().AllRegularEncounters.Where(e => NewStrongTypes.Contains(e.GetType())))
+        foreach (var canonical in ModelDb.Act<ThingsDepths>().AllRegularEncounters.Where(e => NewStrongTypes.Contains(e.GetType())))
         foreach (int players in new[] { 1, 4 })
         {
             var b = await StrongBattle(canonical, players);
@@ -65,6 +65,6 @@ public partial class DepthsProbeNode
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         host.UnpatchAll(host.Id);
         if (atlas != null) ResourceLoader.RemoveResourceFormatLoader(atlas);
-        GD.Print("PASS twelve native render captures for all six new encounters in solo and four-player formations.");
+        GD.Print("PASS ten native render captures for all five featured regular encounters in solo and four-player formations.");
     }
 }

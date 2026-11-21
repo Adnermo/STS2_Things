@@ -25,9 +25,9 @@ internal static class MomoLibCompatibility
 
     private static bool BeforeMomoPrefix(string __1, ref bool __result, MethodBase __originalMethod)
     {
-        if (!string.Equals(__1, CustomMusicPlayPatch.GravetideTheme, StringComparison.Ordinal)) return true;
+        if (!CustomMusicPlayPatch.IsModMusicTrack(__1)) return true;
         if (StopPreviousMusic.TryGetValue(__originalMethod, out Action? stop)) stop();
-        // Defer this exact Things-owned WAV to CustomMusicPlayPatch. Everything
+        // Defer Things-owned WAV tracks to CustomMusicPlayPatch. Everything
         // else, including other mods' MP3 music, retains MomoLib's own behavior.
         __result = true;
         return false;

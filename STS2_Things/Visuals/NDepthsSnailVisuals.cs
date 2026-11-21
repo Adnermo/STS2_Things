@@ -2,7 +2,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using STS2_Things.Monsters;
-using static STS2_Things.Compatibility.Sts2VersionCompatibility;
+using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Visuals;
 
@@ -59,7 +59,7 @@ public partial class NDepthsSnailVisuals : NCreatureVisuals
             clip = entry?.GetAnimationName();
             trackTime = entry?.GetTrackTime() ?? 0;
         }
-        if (snail is RockSnail rock && _host.Entity.IsAlive)
+        if (snail is ThingsRockSnail rock && _host.Entity.IsAlive)
         {
             int remaining = rock.CrawlsRemaining;
             float target = remaining switch { 0 => -36, 1 => -18, 3 => 12, _ => 0 };

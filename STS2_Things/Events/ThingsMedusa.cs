@@ -11,25 +11,44 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Enchantments;
 using MegaCrit.Sts2.Core.Models.Potions;
 using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
+using MegaCrit.Sts2.Core.Rewards;
+using MegaCrit.Sts2.Core.Runs;
+using STS2_Things.Core.Models;
 using STS2_Things.Relics;
 
 namespace STS2_Things.Events;
 
-public sealed class ThingsMedusa : EventModel
+public sealed class ThingsMedusa : ThingsEventModel
 {
-    private Player EventOwner => Owner
-        ?? throw new InvalidOperationException("ThingsMedusa event has not been initialized with an owner.");
+    public const int GoldCost = 75;
+
+    private bool _settling;
+
+    protected override void AfterCloned()
+    {
+        base.AfterCloned();
+        _settling = false;
+    }
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
-        new GoldVar(75) // 献上钱财所需金币
+        new GoldVar(GoldCost) // 献上钱财所需金币
     ];
+
+    private static bool CanSteady(CardModel? card) =>
+        card != null && ModelDb.Enchantment<Steady>().CanEnchant(card);
+
+    public override bool IsAllowed(IRunState runState) =>
+        runState.Players.Count > 0
+        && runState.Players.All(player =>
+            !player.Creature.IsDead
+            && (player.GetRelic<PetrifiedToad>() != null
+                || (player.Gold >= GoldCost && player.Deck.Cards.Any(CanSteady))));
 
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()
     {
@@ -53,11 +72,19 @@ public sealed class ThingsMedusa : EventModel
                 lockedTips));
         }
 
-        // 选项2：献上钱财 — 需要75金币
-        if (EventOwner.Gold >= (int)DynamicVars["Gold"].BaseValue)
+        // 选项2：献上钱财 — 需要75金币且存在可附魔稳定的牌
+        bool hasSteadyCard = EventOwner.Deck.Cards.Any(CanSteady);
+        bool hasGold = EventOwner.Gold >= GoldCost;
+        if (hasGold && hasSteadyCard)
         {
             options.Add(new EventOption(this, OfferGold,
                 InitialOptionKey("OFFER_GOLD"),
+                HoverTipFactory.FromEnchantment<Steady>()));
+        }
+        else if (!hasSteadyCard)
+        {
+            options.Add(new EventOption(this, null,
+                InitialOptionKey("OFFER_GOLD_NO_CARD"),
                 HoverTipFactory.FromEnchantment<Steady>()));
         }
         else
@@ -70,7 +97,7 @@ public sealed class ThingsMedusa : EventModel
         // 选项3：礼貌问候
         options.Add(new EventOption(this, Greet,
             InitialOptionKey("GREET"),
-            Array.Empty<IHoverTip>()));
+            [HoverTipFactory.FromPotion<PotionShapedRock>()]));
 
         return options;
     }
@@ -80,6 +107,9 @@ public sealed class ThingsMedusa : EventModel
     /// </summary>
     private async Task ReturnToOwner()
     {
+        if (IsFinished || _settling || EventOwner.Creature.IsDead)
+            return;
+        _settling = true;
         var owner = EventOwner;
         var toad = owner.GetRelic<PetrifiedToad>();
         if (toad != null)
@@ -92,33 +122,60 @@ public sealed class ThingsMedusa : EventModel
     }
 
     /// <summary>
-    /// 献上钱财：失去75金币，选择一张卡附魔保留
+    /// 献上钱财：选择一张卡附魔保留，确认后再扣除75金币
     /// </summary>
     private async Task OfferGold()
     {
+        if (IsFinished || _settling || EventOwner.Creature.IsDead)
+            return;
+        _settling = true;
         var owner = EventOwner;
-        await PlayerCmd.LoseGold(DynamicVars["Gold"].BaseValue, owner, GoldLossType.Spent);
-        var prefs = new CardSelectorPrefs(CardSelectorPrefs.EnchantSelectionPrompt, 1);
-        var enchantment = ModelDb.Enchantment<Steady>();
-        var selected = await CardSelectCmd.FromDeckForEnchantment(owner, enchantment, 1, prefs);
-        foreach (var card in selected)
+        if (owner.Gold < GoldCost || !owner.Deck.Cards.Any(CanSteady))
         {
-            CardCmd.Enchant<Steady>(card, 1m);
-            var vfx = NCardEnchantVfx.Create(card);
-            if (vfx != null)
-            {
-                NRun.Instance?.GlobalUi.CardPreviewContainer.AddChildSafely(vfx);
-            }
+            _settling = false;
+            SetEventState(InitialDescription, GenerateInitialOptions());
+            return;
+        }
+
+        var prefs = new CardSelectorPrefs(CardSelectorPrefs.EnchantSelectionPrompt, 0, 1)
+        {
+            Cancelable = true
+        };
+        var enchantment = ModelDb.Enchantment<Steady>();
+        var card = (await CardSelectCmd.FromDeckForEnchantment(owner, enchantment, 1, CanSteady, prefs))
+            .FirstOrDefault();
+
+        if (card == null || owner.Creature.IsDead || owner.Gold < GoldCost ||
+            !owner.Deck.Cards.Contains(card) || !CanSteady(card))
+        {
+            _settling = false;
+            if (owner.Creature.IsDead)
+                SetEventFinished(L10NLookup($"{Id.Entry}.pages.ABORTED.description"));
+            else
+                SetEventState(InitialDescription, GenerateInitialOptions());
+            return;
+        }
+
+        await PlayerCmd.LoseGold(GoldCost, owner, GoldLossType.Spent);
+        CardCmd.Enchant<Steady>(card, 1m);
+        var vfx = NCardEnchantVfx.Create(card);
+        if (vfx != null)
+        {
+            NRun.Instance?.GlobalUi.CardPreviewContainer.AddChildSafely(vfx);
         }
         SetEventFinished(L10NLookup($"{Id.Entry}.pages.OFFER_GOLD.description"));
     }
 
     /// <summary>
-    /// 礼貌问候：获得1瓶药水形状的石头
+    /// 礼貌问候：获得1瓶药水形状的石头（原生奖励界面支持满药水栏丢弃置换）
     /// </summary>
     private async Task Greet()
     {
-        await PotionCmd.TryToProcure<PotionShapedRock>(EventOwner);
+        if (IsFinished || _settling || EventOwner.Creature.IsDead)
+            return;
+        _settling = true;
+        await RewardsCmd.OfferCustom(EventOwner,
+            [new PotionReward(ModelDb.Potion<PotionShapedRock>().ToMutable(), EventOwner)]);
         SetEventFinished(L10NLookup($"{Id.Entry}.pages.GREET.description"));
     }
 }

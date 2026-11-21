@@ -9,16 +9,19 @@ using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
+using STS2_Things.Core.Models;
 using STS2_Things.Enchantments;
 using static MegaCrit.Sts2.Core.Entities.Cards.PileType;
 
 namespace STS2_Things.Relics;
 
-public sealed class ThingsCurseRemover : RelicModel
+public sealed class ThingsCurseRemover : ThingsRelicModel
 {
     private int _timesUsed;
 
     public override RelicRarity Rarity => RelicRarity.Ancient;
+
+    public override bool HasUponPickupEffect => true;
 
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         HoverTipFactory.FromEnchantment<ThingsDisperse>();
@@ -72,7 +75,11 @@ public sealed class ThingsCurseRemover : RelicModel
         if (IsUsedUp) return Task.CompletedTask;
 
         var pile = card.Pile;
-        if (pile != null && pile.Type == Deck && card.Owner == Owner && card.Type == CardType.Curse)
+        if (pile != null
+            && pile.Type == Deck
+            && card.Owner == Owner
+            && card.Type == CardType.Curse
+            && ModelDb.Enchantment<ThingsDisperse>().CanEnchant(card))
         {
             CardCmd.Enchant<ThingsDisperse>(card, 1m);
             TimesUsed++;

@@ -23,6 +23,20 @@ internal static class KnownModAdapters
             PortraitCacheGuard.Install(assembly, "AliceDefectCard", harmony)),
         new("CuteNecrobinderCards", "cutenecrobinderv0.7", static (assembly, harmony) =>
             PortraitCacheGuard.Install(assembly, "cutenecrobinderv0_7", harmony)),
+        new("AiSilentNsfw", "11", static (assembly, harmony) =>
+            PortraitCacheGuard.Install(assembly, "Mod_11", harmony)),
+        new("CardArtProjectExportMod", "project-export-mod", static (assembly, harmony) =>
+            PortraitCacheGuard.Install(assembly, "project_export_mod", harmony)),
+        new("MechanekoDefectCardArt", "Mechaneko_Defect_Card_Art", static (assembly, harmony) =>
+            PortraitCacheGuard.Install(assembly, "Mechaneko_Defect_Card_Art", harmony)),
+        new("PornographicBeautificationCardsV21", "cae_7c1701bbd70a", static (assembly, harmony) =>
+            PortraitCacheGuard.Install(assembly, "cae_7c1701bbd70a", harmony)),
+        new("PornographicBeautificationCardsV20", "cae_06f512f381a8", static (assembly, harmony) =>
+            PortraitCacheGuard.Install(assembly, "cae_06f512f381a8", harmony)),
+        new("PornographicBeautificationCardsV19", "cae_b59d672a862f", static (assembly, harmony) =>
+            PortraitCacheGuard.Install(assembly, "cae_b59d672a862f", harmony)),
+        new("PornographicBeautificationCardsV18", "cae_13a927d9decf", static (assembly, harmony) =>
+            PortraitCacheGuard.Install(assembly, "cae_13a927d9decf", harmony)),
         new("MomoLib", "MomoLib", MomoLibCompatibility.Install),
     ];
 }

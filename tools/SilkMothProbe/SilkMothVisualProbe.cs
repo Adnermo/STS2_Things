@@ -43,7 +43,7 @@ public partial class SilkMothProbeNode
         var ui=new Harmony("SilkMothProbe.VisualHost");
         ui.Patch(AccessTools.Method(typeof(CombatStateTracker),"NotifyCombatStateChanged"),prefix:new HarmonyMethod(typeof(SilkMothProbeNode),nameof(SkipUiGuard)));
         ui.Patch(AccessTools.Method(typeof(NCard),nameof(NCard.FindOnTable)),prefix:new HarmonyMethod(typeof(SilkMothProbeNode),nameof(FindRenderCard)));
-        ScriptManagerBridge.LookupScriptsInAssembly(typeof(NCard).Assembly);ScriptManagerBridge.LookupScriptsInAssembly(typeof(SilkMoth).Assembly);
+        ScriptManagerBridge.LookupScriptsInAssembly(typeof(NCard).Assembly);ScriptManagerBridge.LookupScriptsInAssembly(typeof(ThingsSilkMoth).Assembly);
         var loaderType=typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Assets.AtlasResourceLoader");
         var loader=loaderType==null?null:(ResourceFormatLoader)Activator.CreateInstance(loaderType)!;
         if(loader!=null)ResourceLoader.AddResourceFormatLoader(loader,true);
@@ -73,13 +73,13 @@ public partial class SilkMothProbeNode
             NCreature? great=null;
             foreach(var(monster,slot) in s.Encounter.MonstersWithSlots)
             {
-                string slug=monster is GreatSilkMoth?"great_silk_moth":"silk_moth";
+                string slug=monster is ThingsGreatSilkMoth?"great_silk_moth":"silk_moth";
                 var node=AddCreature(monster.Creature,$"res://scenes/creature_visuals/{slug}.tscn",slots.GetNode<Node2D>(slot!).Position);
                 await node.UpdateIntent([s.Player.Creature]);node.IntentContainer.Modulate=Colors.White;
                 var sprite=node.Visuals.GetNode<Node2D>("Visuals");
                 sprite.Call("set_update_mode",ClassDB.ClassGetIntegerConstant("SpineConstant","UpdateMode_Manual"));
                 Pose(sprite,"idle_loop",0);
-                if(monster is GreatSilkMoth)great=node;
+                if(monster is ThingsGreatSilkMoth)great=node;
             }
             Assert(great!=null,"Large moth has its packaged native visual.");
             var large=great!.Visuals.GetNode<Node2D>("Visuals");
@@ -94,9 +94,8 @@ public partial class SilkMothProbeNode
             await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);RenderingServer.ForceDraw();
             DeactivateSyntheticCombat();
         }
-        foreach(bool weak in new[]{true,false})
         {
-            var s=await Scenario(weak);
+            var s=await Scenario();
             var bg=NCombatBackground.Create(new BackgroundAssets(s.Encounter.Id.Entry.ToLowerInvariant(),new Rng()));
             bg.Position=new Vector2(983,540);view.AddChild(bg);
             var slots=s.Encounter.CreateScene();view.AddChild(slots);
@@ -104,64 +103,61 @@ public partial class SilkMothProbeNode
             NCreature? mothNode=null;
             foreach(var(monster,_) in s.Encounter.MonstersWithSlots)
             {
-                string slug=monster is SilkMoth?"silk_moth":"sanguine_leech";
+                string slug=monster is ThingsSilkMoth?"silk_moth":monster is ThingsRockSnail?"rock_snail":"slime_snail";
                 var node=AddCreature(monster.Creature,$"res://scenes/creature_visuals/{slug}.tscn",slots.GetNode<Node2D>(monster.Creature.SlotName!).Position);
                 await node.UpdateIntent(s.Players.Select(p=>p.Creature).ToArray());node.IntentContainer.Modulate=Colors.White;
                 var sprite=node.Visuals.GetNode<Node2D>("Visuals");sprite.Call("set_update_mode",ClassDB.ClassGetIntegerConstant("SpineConstant","UpdateMode_Manual"));Pose(sprite,"idle_loop",0);
-                if(monster is SilkMoth)mothNode=node;
+                if(monster is ThingsSilkMoth)mothNode=node;
             }
             for(int frame=0;frame<12;frame++)await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
-            await Capture(weak?"weak_pair":"strong_colony");
+            await Capture("silk_snail_formation");
             var mothSprite=mothNode!.Visuals.GetNode<Node2D>("Visuals");
-            Pose(mothSprite,"cast",.67f);await Capture(weak?"weak_cast":"strong_cast");
+            Pose(mothSprite,"cast",.67f);await Capture("silk_snail_cast");
             Pose(mothSprite,"idle_loop",0);
-            if(weak)
+            await BasicHand(s);
+            int index=0;
+            foreach(var model in s.Player.PlayerCombatState!.Hand.Cards)
             {
-                await BasicHand(s);
-                int index=0;
-                foreach(var model in s.Player.PlayerCombatState!.Hand.Cards)
+                var card=GD.Load<PackedScene>("res://scenes/cards/card.tscn").Instantiate<NCard>();
+                card.Model=model;card.Position=new Vector2(435+index*245,922);card.Scale=Vector2.One*.60f;
+                view.AddChild(card);card.UpdateVisuals(PileType.Hand,CardPreviewMode.Normal);ShownCards[model]=card;index++;
+            }
+            var power=await Apply(s);await Capture("player_pending_buff");
+            Assert(!ShownCards.Values.Any(c=>c.OverlayContainer.GetChildren().OfType<NSilkCardOverlay>().Any()),"Pending buff shows no card overlay.");
+            await Begin(s);
+            foreach(var card in ShownCards.Values)card.UpdateVisuals(PileType.Hand,CardPreviewMode.Normal);
+            for(int frame=0;frame<8;frame++)await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+            Assert(power.HasLivePair,"Rendered bound pair exists.");
+            Assert(ShownCards.Values.Sum(c=>c.OverlayContainer.GetChildren().OfType<NSilkCardOverlay>().Count())==2,"Two native affliction overlays.");
+            Assert(power.HoverTips.OfType<HoverTip>().First().Description.Contains("1"),"Native formatted active hover tip.");
+            Assert(playerNode.FindChildren("*","",true,false).OfType<NPower>().Any(n=>n.Model==power),"Player has original NPower HUD icon.");
+            Assert(ModelDb.Power<ThingsSilkThreadPower>().BigIcon.GetSize()==new Vector2(256,256),"Generated icon resolves.");
+            Assert(ModelDb.Affliction<ThingsSilkLead>().HasOverlay && ModelDb.Affliction<ThingsSilkBound>().HasOverlay,"Both native overlay scene paths resolve.");
+            await Capture("cards_bound");
+            if(OS.GetCmdlineUserArgs().Contains("--card-vfx")) await RenderCardVfxReview(s, output);
+            var first=power.FirstCard!;
+            await CardCmd.AutoPlay(Choice,first,first.TargetType==TargetType.AnyEnemy?s.Moth.Creature:null,skipCardPileVisuals:true);
+            foreach(var card in ShownCards.Values)card.UpdateVisuals(PileType.Hand,CardPreviewMode.Normal);
+            await Capture("cards_released");
+            Assert(!ShownCards.Values.Any(c=>c.OverlayContainer.GetChildren().OfType<NSilkCardOverlay>().Any()),"Native overlays removed on unlock.");
+            foreach(var card in ShownCards.Values){view.RemoveChild(card);card.QueueFree();}ShownCards.Clear();
+            if(OS.GetCmdlineUserArgs().Contains("--motion"))
+            {
+                const int fps=20;string framesDir=Path.Combine(output,"motion");Directory.CreateDirectory(framesDir);
+                var clips=new List<object>();int total=0;
+                foreach(var(name,length) in new(string,float)[]{("idle_loop",4f),("attack",1.2f),("cast",1.55f),("flutter",1.3f),("hurt",.58f),("power_up",1.2f),("die",1.55f),("revive",1.4f),("summon",1.4f)})
                 {
-                    var card=GD.Load<PackedScene>("res://scenes/cards/card.tscn").Instantiate<NCard>();
-                    card.Model=model;card.Position=new Vector2(435+index*245,922);card.Scale=Vector2.One*.60f;
-                    view.AddChild(card);card.UpdateVisuals(PileType.Hand,CardPreviewMode.Normal);ShownCards[model]=card;index++;
-                }
-                var power=await Apply(s);await Capture("player_pending_buff");
-                Assert(!ShownCards.Values.Any(c=>c.OverlayContainer.GetChildren().OfType<NSilkCardOverlay>().Any()),"Pending buff shows no card overlay.");
-                await Begin(s);
-                foreach(var card in ShownCards.Values)card.UpdateVisuals(PileType.Hand,CardPreviewMode.Normal);
-                for(int frame=0;frame<8;frame++)await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
-                Assert(power.HasLivePair,"Rendered bound pair exists.");
-                Assert(ShownCards.Values.Sum(c=>c.OverlayContainer.GetChildren().OfType<NSilkCardOverlay>().Count())==2,"Two native affliction overlays.");
-                Assert(power.HoverTips.OfType<HoverTip>().First().Description.Contains("1"),"Native formatted active hover tip.");
-                Assert(playerNode.FindChildren("*","",true,false).OfType<NPower>().Any(n=>n.Model==power),"Player has original NPower HUD icon.");
-                Assert(ModelDb.Power<SilkThreadPower>().BigIcon.GetSize()==new Vector2(256,256),"Generated icon resolves.");
-                Assert(ModelDb.Affliction<SilkLead>().HasOverlay && ModelDb.Affliction<SilkBound>().HasOverlay,"Both native overlay scene paths resolve.");
-                await Capture("cards_bound");
-                if(OS.GetCmdlineUserArgs().Contains("--card-vfx")) await RenderCardVfxReview(s, output);
-                var first=power.FirstCard!;
-                await CardCmd.AutoPlay(Choice,first,first.TargetType==TargetType.AnyEnemy?s.Moth.Creature:null,skipCardPileVisuals:true);
-                foreach(var card in ShownCards.Values)card.UpdateVisuals(PileType.Hand,CardPreviewMode.Normal);
-                await Capture("cards_released");
-                Assert(!ShownCards.Values.Any(c=>c.OverlayContainer.GetChildren().OfType<NSilkCardOverlay>().Any()),"Native overlays removed on unlock.");
-                foreach(var card in ShownCards.Values){view.RemoveChild(card);card.QueueFree();}ShownCards.Clear();
-                if(OS.GetCmdlineUserArgs().Contains("--motion"))
-                {
-                    const int fps=20;string framesDir=Path.Combine(output,"motion");Directory.CreateDirectory(framesDir);
-                    var clips=new List<object>();int total=0;
-                    foreach(var(name,length) in new(string,float)[]{("idle_loop",4f),("attack",1.2f),("cast",1.55f),("flutter",1.3f),("hurt",.58f),("power_up",1.2f),("die",1.55f),("revive",1.4f),("summon",1.4f)})
+                    int count=(int)Math.Ceiling(length*fps)+1;
+                    for(int frame=0;frame<count;frame++)
                     {
-                        int count=(int)Math.Ceiling(length*fps)+1;
-                        for(int frame=0;frame<count;frame++)
-                        {
-                            Pose(mothSprite,name,Math.Min(frame/(float)fps,length));
-                            await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);RenderingServer.ForceDraw();
-                            using var image=view.GetTexture().GetImage();image.Resize(1280,720,Image.Interpolation.Lanczos);
-                            Assert(image.SaveJpg(Path.Combine(framesDir,$"moth_{name}_{frame:D4}.jpg"),.94f)==Error.Ok,"Native motion frame.");total++;
-                        }
-                        clips.Add(new{slug="moth_"+name,name,duration=length,frames=count});GD.Print("Captured moth motion "+name);
+                        Pose(mothSprite,name,Math.Min(frame/(float)fps,length));
+                        await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);RenderingServer.ForceDraw();
+                        using var image=view.GetTexture().GetImage();image.Resize(1280,720,Image.Interpolation.Lanczos);
+                        Assert(image.SaveJpg(Path.Combine(framesDir,$"moth_{name}_{frame:D4}.jpg"),.94f)==Error.Ok,"Native motion frame.");total++;
                     }
-                    File.WriteAllText(Path.Combine(framesDir,"report.json"),JsonSerializer.Serialize(new{fps,frames=total,clips},new JsonSerializerOptions{WriteIndented=true}));
+                    clips.Add(new{slug="moth_"+name,name,duration=length,frames=count});GD.Print("Captured moth motion "+name);
                 }
+                File.WriteAllText(Path.Combine(framesDir,"report.json"),JsonSerializer.Serialize(new{fps,frames=total,clips},new JsonSerializerOptions{WriteIndented=true}));
             }
             foreach(var child in view.GetChildren()){view.RemoveChild(child);child.QueueFree();}
             await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);RenderingServer.ForceDraw();DeactivateSyntheticCombat();

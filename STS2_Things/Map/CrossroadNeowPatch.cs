@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Reflection.Emit;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Runs;
@@ -8,8 +9,8 @@ using STS2_Things.Modifiers;
 
 namespace STS2_Things.Map;
 
-// The route ledger uses native modifier persistence, but is not a custom-run
-// rule. Neow otherwise sees a nonempty modifier list and skips its relic roll.
+// Defense-in-depth: ThingsCrossroads is now stored outside RunState.Modifiers,
+// and any residual ThingsCrossroads entry is also filtered out from Neow rules.
 [HarmonyPatch]
 internal static class CrossroadNeowPatch
 {
@@ -17,6 +18,8 @@ internal static class CrossroadNeowPatch
     {
         yield return AccessTools.Method(typeof(Neow), "GenerateInitialOptions");
         yield return AccessTools.PropertyGetter(typeof(Neow), nameof(Neow.InitialDescription));
+        if (AccessTools.Method(typeof(Neow), "GenerateNeowModifiers") is { } generateModifiers)
+            yield return generateModifiers;
     }
 
     private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
@@ -54,8 +57,12 @@ internal static class CrossroadNeowResumePatch
         if (!isPreFinished || __instance is not Neow || __instance.Owner is not { } player)
             return;
         IRunState run = player.RunState;
+#if STS2_V113_1
+        if (run.GameMode == GameMode.Blitz || run.IsCustomGame)
+            return;
+#endif
         if (run.CurrentActIndex != 0 || run.TotalFloor != 1 ||
-            !run.Modifiers.Any(m => m is ThingsCrossroads) ||
+            Crossroads.Ledger(run) is null ||
             run.Modifiers.Any(m => m is not ThingsCrossroads))
             return;
         var history = run.CurrentMapPointHistoryEntry;
@@ -63,8 +70,7 @@ internal static class CrossroadNeowResumePatch
             history.PlayerStats.Where(s => s.PlayerId == player.NetId)
                 .Any(s => s.AncientChoices.Any(c => c.WasChosen)))
             return;
-        var startingIds = player.Character.StartingRelics.Select(r => r.Id).OrderBy(id => id.ToString());
-        if (!player.Relics.Select(r => r.Id).OrderBy(id => id.ToString()).SequenceEqual(startingIds))
+        if (player.Relics.Any(r => r.Rarity == RelicRarity.Ancient))
             return;
         isPreFinished = false;
     }

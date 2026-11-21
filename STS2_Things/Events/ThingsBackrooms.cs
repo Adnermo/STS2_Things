@@ -16,19 +16,19 @@ using MegaCrit.Sts2.Core.ValueProps;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
+using STS2_Things.Core.Models;
 using STS2_Things.Enchantments;
 using STS2_Things.Relics;
 
 namespace STS2_Things.Events;
 
-public sealed class ThingsBackrooms : EventModel
+public sealed class ThingsBackrooms : ThingsEventModel
 {
-    private Player EventOwner => Owner
-        ?? throw new InvalidOperationException("ThingsBackrooms event has not been initialized with an owner.");
-
     // 搜索伤害/概率统一以 DynamicVars 为唯一数据源，避免与实例字段不同步
     private int SearchDamage => (int)DynamicVars.HpLoss.BaseValue;
     private int SearchChance => (int)DynamicVars["SearchChance"].BaseValue;
+    private int MaxHpLoss => (int)DynamicVars["MaxHpLoss"].BaseValue;
+    private bool CanRest => !EventOwner.Creature.IsDead && EventOwner.Creature.MaxHp > MaxHpLoss;
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
@@ -41,26 +41,34 @@ public sealed class ThingsBackrooms : EventModel
 
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()
     {
+        EventOption restOption = CanRest
+            ? new EventOption(this, Rest, InitialOptionKey("REST"))
+                .ThatDecreasesMaxHp(MaxHpLoss)
+            : new EventOption(this, null, InitialOptionKey("REST_LOCKED"));
+
         return
         [
-            new EventOption(this, SearchExit, InitialOptionKey("SEARCH_EXIT")),
-            new EventOption(this, Rest, InitialOptionKey("REST"))
+            new EventOption(this, SearchExit, InitialOptionKey("SEARCH_EXIT"))
+                .ThatDoesDamage(SearchDamage),
+            restOption
         ];
     }
 
     private async Task SearchExit()
     {
+        if (IsFinished || EventOwner.Creature.IsDead)
+            return;
+
         var damage = SearchDamage;
         var chance = SearchChance;
 
         // 扣除生命值
-        await CreatureCmd.Damage(
-            new ThrowingPlayerChoiceContext(),
-            EventOwner.Creature,
-            damage,
-            ValueProp.Unblockable | ValueProp.Unpowered,
-            null, null
-        );
+        await ThingsEventHelpers.DealUnblockableDamageAsync(EventOwner, damage);
+        if (EventOwner.Creature.IsDead)
+        {
+            SetEventFinished(L10NLookup($"{Id.Entry}.pages.DEATH.description"));
+            return;
+        }
 
         // 判断是否找到出口
         if (Rng.NextInt(100) < chance)
@@ -74,12 +82,18 @@ public sealed class ThingsBackrooms : EventModel
             DynamicVars.HpLoss.BaseValue = damage + 2;
             DynamicVars["SearchChance"].BaseValue = chance + 20;
 
+            EventOption restOption = CanRest
+                ? new EventOption(this, Rest, $"{Id.Entry}.pages.SEARCH_FAIL.options.REST")
+                    .ThatDecreasesMaxHp(MaxHpLoss)
+                : new EventOption(this, null, $"{Id.Entry}.pages.SEARCH_FAIL.options.REST_LOCKED");
+
             // 显示未找到出口的页面，可以继续寻找
             SetEventState(
                 L10NLookup($"{Id.Entry}.pages.SEARCH_FAIL.description"),
                 [
-                    new EventOption(this, SearchExit, $"{Id.Entry}.pages.SEARCH_FAIL.options.SEARCH_EXIT"),
-                    new EventOption(this, Rest, $"{Id.Entry}.pages.SEARCH_FAIL.options.REST")
+                    new EventOption(this, SearchExit, $"{Id.Entry}.pages.SEARCH_FAIL.options.SEARCH_EXIT")
+                        .ThatDoesDamage(SearchDamage),
+                    restOption
                 ]
             );
         }
@@ -126,10 +140,18 @@ public sealed class ThingsBackrooms : EventModel
 
     private async Task Rest()
     {
-        await STS2_Things.Compatibility.Sts2VersionCompatibility.LoseMaxHp(
+        if (IsFinished || EventOwner.Creature.IsDead || EventOwner.Creature.MaxHp <= MaxHpLoss)
+            return;
+
+        await LoseEventOwnerMaxHpAsync(
             new ThrowingPlayerChoiceContext(),
-            EventOwner.Creature,
             DynamicVars["MaxHpLoss"].BaseValue);
+        if (EventOwner.Creature.IsDead)
+        {
+            SetEventFinished(L10NLookup($"{Id.Entry}.pages.DEATH.description"));
+            return;
+        }
+
         await CreatureCmd.Heal(EventOwner.Creature, DynamicVars.Heal.BaseValue);
         SetEventFinished(L10NLookup($"{Id.Entry}.pages.REST.description"));
     }

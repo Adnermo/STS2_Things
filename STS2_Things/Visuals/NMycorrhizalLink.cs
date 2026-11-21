@@ -54,9 +54,9 @@ public partial class NMycorrhizalLink : Node2D
         if(_host==null)
         {
             for(Node? p=GetParent();p!=null;p=p.GetParent())if(p is NCreature n){_host=n;break;}
-            if(_host?.Entity.Monster is MycorrhizalVanguard)Instances[_host.Entity]=this;
+            if(_host?.Entity.Monster is ThingsMycorrhizalVanguard)Instances[_host.Entity]=this;
         }
-        if(_host?.Entity.Monster is not MycorrhizalVanguard twin){Visible=false;return;}
+        if(_host?.Entity.Monster is not ThingsMycorrhizalVanguard twin){Visible=false;return;}
         _age+=(float)delta;
         if(_pulse>=0){_pulse+=(float)delta;if(_pulse>1.15f)_pulse=-1;}
         var peer=twin.Partner?.Creature;

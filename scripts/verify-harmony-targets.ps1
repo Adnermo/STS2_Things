@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [string]$DataDir,
@@ -16,6 +16,7 @@ $DataDir = [IO.Path]::GetFullPath($DataDir)
 $ModDll = [IO.Path]::GetFullPath($ModDll)
 $DependencyDataDir = [IO.Path]::GetFullPath($DependencyDataDir)
 
+Remove-Item Env:DOTNET_ROOT, Env:DOTNET_MULTILEVEL_LOOKUP -ErrorAction SilentlyContinue
 & dotnet run --project $Project -c Release `
     "-p:Sts2DataDir=$DataDir" -- `
     $DataDir $ModDll $DependencyDataDir

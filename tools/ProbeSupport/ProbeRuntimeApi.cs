@@ -69,7 +69,9 @@ internal static class ProbeRuntimeApi
             BindingFlags.Static | BindingFlags.Public);
         method ??= typeof(AbstractModel).Assembly.GetType("MegaCrit.Sts2.Core.CardSelection.CardSelectorStack")!
             .GetMethod("SetTestSelector", BindingFlags.Static | BindingFlags.Public);
-        return (IDisposable)method!.Invoke(null, [selector])!;
+        return (IDisposable)method!.Invoke(null, method.GetParameters().Length == 2
+            ? [selector, false]
+            : [selector])!;
     }
 
     public static decimal MultiplayerScaling(EncounterModel? encounter, int actIndex)

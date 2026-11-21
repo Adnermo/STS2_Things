@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([switch]$Apply)
 
 $ErrorActionPreference = 'Stop'
@@ -51,14 +51,14 @@ Get-ChildItem -LiteralPath $projectRoot -File -Force | ForEach-Object {
 $buildRoot = Join-Path $projectRoot 'build'
 Get-ChildItem -LiteralPath $buildRoot -Recurse -File -Force | ForEach-Object {
     $relative = [IO.Path]::GetRelativePath($buildRoot, $_.FullName).Replace('\', '/')
-    if ($relative -match '^(v107\.1|v113|unified|release|deliverables|imagegen)/') { return }
+    if ($relative -match '^(v111\.1|v113\.1|unified|release|deliverables|imagegen)/') { return }
     if ($_.Extension -eq '.log') { Add-Candidate $_ 'old diagnostic log' }
     elseif ($_.Name -match '^(idle(_loop)?|attack|cast|hurt|die|summon|power_up|revive|slam|windup|frame)[_-][0-9]{3,}\.png$') {
         Add-Candidate $_ 'rendered animation frame (rebuildable)'
     }
-    elseif (($relative -match '^v(108|109|109-probe|110)/' -or $_.DirectoryName -eq $buildRoot) -and
+    elseif (($relative -match '^v(107(\.\d+)?|108|109|109-probe|110|111|113)/' -or $_.DirectoryName -eq $buildRoot) -and
             $_.Extension -in @('.pck', '.dll', '.pdb')) {
-        Add-Candidate $_ 'obsolete diagnostic build; supported builds use v107.1/v113/unified'
+        Add-Candidate $_ 'obsolete diagnostic build; supported builds use v111.1/v113.1/unified'
     }
 }
 
@@ -72,7 +72,7 @@ foreach ($scope in @('tools', 'bootstrap', 'bridges')) {
         }
     }
 }
-foreach ($cache in @('.tmp\dual-obj-v107', '.tmp\gravetide-qa-obj-v107.1', '.tmp\gravetide-qa-obj-v109', 'scripts\__pycache__',
+foreach ($cache in @('.tmp\dual-obj-v111', '.tmp\gravetide-qa-obj-v111.1', '.tmp\gravetide-qa-obj-v109', 'scripts\__pycache__',
                      'tools\OriginFogmogRig\legacy_v2\out', 'tools\OriginFogmogRig\legacy_v2\pkg',
                      'tools\OriginFogmogRig\legacy_v2\parts', 'tools\OriginFogmogRig\legacy_v2\review_v1')) {
     $directory = Join-Path $projectRoot $cache
@@ -104,7 +104,7 @@ foreach ($entry in $entries) {
 
 # Remove only empty scaffolding/cache directories; never remove source trees recursively.
 $emptyScopes = @('export_templates', 'feature_profiles', 'script_templates', 'text_editor_themes',
-                 'tools', 'bootstrap', 'bridges', '.tmp\dual-obj-v107', '.tmp\gravetide-qa-obj-v107.1', '.tmp\gravetide-qa-obj-v109')
+                 'tools', 'bootstrap', 'bridges', '.tmp\dual-obj-v111', '.tmp\gravetide-qa-obj-v111.1', '.tmp\gravetide-qa-obj-v109')
 foreach ($scope in $emptyScopes) {
     $directory = Join-Path $projectRoot $scope
     if (-not (Test-Path -LiteralPath $directory)) { continue }

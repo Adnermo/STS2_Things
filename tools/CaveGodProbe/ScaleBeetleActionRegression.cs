@@ -94,7 +94,7 @@ public partial class CaveGodProbeNode
         var run = RunState.CreateForTest(players, seed:"scale-beetle-actions");
         typeof(RunManager).GetProperty("State",BindingFlags.NonPublic|BindingFlags.Instance)!.SetValue(RunManager.Instance,run);
         typeof(RunManager).GetProperty("AscensionManager")!.SetValue(RunManager.Instance,ProbeRuntimeApi.Ascension(0));
-        var room = new CombatRoom(ModelDb.Encounter<ScaleBeetleBossEncounter>().ToMutable(),run);
+        var room = new CombatRoom(ModelDb.Encounter<ThingsScaleBeetleBossEncounter>().ToMutable(),run);
         run.PushRoom(room);
         foreach(var player in players)
         {

@@ -1,0 +1,30 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/Core/Nodes/Rooms/NCombatBackground.cs" id="1_bg_root"]
+[ext_resource type="Script" path="res://STS2_Things/Visuals/NHumanFaceTowerBossBackground.cs" id="2_tower_ctrl"]
+[ext_resource type="SpineSkeletonDataResource" path="res://STS2_Things/animations/monsters/human_face_tower/human_face_tower_skel_data.tres" id="3_skel_data"]
+
+[node name="HumanFaceTowerBossEncounterBackground" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+mouse_filter = 2
+script = ExtResource("1_bg_root")
+
+[node name="Layer_00" type="Control" parent="."]
+unique_name_in_owner = true
+anchors_preset = 0
+mouse_filter = 2
+
+[node name="HumanFaceTowerRig" type="Node2D" parent="."]
+unique_name_in_owner = true
+script = ExtResource("2_tower_ctrl")
+
+[node name="TowerWallSpine" type="SpineSprite" parent="HumanFaceTowerRig"]
+unique_name_in_owner = true
+skeleton_data_res = ExtResource("3_skel_data")
+preview_animation = "hold_slot_0"
+
+[node name="Foreground" type="Control" parent="."]
+unique_name_in_owner = true
+anchors_preset = 0
+mouse_filter = 2

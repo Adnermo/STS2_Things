@@ -55,9 +55,34 @@ public static class MultiplayerConfig
         {
             host.ClientConnected += SendToJoiningPlayer;
             CaptureHost(lockForLoadedRun);
-            foreach (ulong peer in host.NetHost?.ConnectedPeerIds ?? []) SendToJoiningPlayer(peer);
+            SendToConnectedPeers(host);
         }
         ThingsModConfig.NotifyEffectiveChanged();
+    }
+
+    public static void SyncPreConnectedClients(INetGameService service)
+    {
+        Bind(service);
+        if (service is INetHostGameService host)
+            SendToConnectedPeers(host);
+    }
+
+    private static int SendToConnectedPeers(INetHostGameService host)
+    {
+        HashSet<ulong> sent = [];
+        foreach (ulong peer in host.NetHost?.ConnectedPeerIds ?? [])
+            if (sent.Add(peer)) SendToJoiningPlayer(peer);
+#if STS2_V113_1
+        foreach (var peer in host.ConnectedPeers)
+            if (sent.Add(peer.peerId)) SendToJoiningPlayer(peer.peerId);
+#else
+        if (host is MegaCrit.Sts2.Core.Multiplayer.NetHostGameService netHostService)
+        {
+            foreach (var peer in netHostService.ConnectedPeers)
+                if (sent.Add(peer.peerId)) SendToJoiningPlayer(peer.peerId);
+        }
+#endif
+        return sent.Count;
     }
 
     public static void Clear()
@@ -120,8 +145,15 @@ public static class MultiplayerConfig
 
     private static void Broadcast()
     {
-        if (_service is { IsConnected: true } service && _snapshot is { } snapshot)
-            service.SendMessage(snapshot);
+        if (_service is not { IsConnected: true } service || _snapshot is not { } snapshot)
+            return;
+        if (service is INetHostGameService host)
+        {
+            if (SendToConnectedPeers(host) == 0 && host.NetHost is null)
+                service.SendMessage(snapshot);
+            return;
+        }
+        service.SendMessage(snapshot);
     }
 
     private static void SendToJoiningPlayer(ulong playerId)

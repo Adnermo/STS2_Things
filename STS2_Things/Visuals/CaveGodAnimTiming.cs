@@ -23,6 +23,10 @@ internal static class CaveGodAnimTiming
     public const float FrontSweepHit = 1.35f;
     public const float FrontSweepLength = 3.45f;
 
+    // leftpunch / rightpunch: central_hit @ 1.18, attack_recover @ 2.85 (clip length 2.95)
+    public const float HeavyPunchHit = 1.18f;
+    public const float HeavyPunchLength = 2.95f;
+
     // card_snatch variants: palm contact, fingers close on the cards, settle.
     public const float CardSnatchLaunch = 1.00f;
     public const float CardSnatchTouch = 1.36f;

@@ -71,8 +71,8 @@ public partial class MycorrhizalTwinsProbeNode
         await Settle(1.1f);await Capture("01_elite_robust_elder");
         if(System.Environment.GetEnvironmentVariable("THINGS_GROUNDING_REVIEW")=="1") CheckGrounding(view,hero,tall,small,output);
         Assert(tall.Visuals.GetNode<NMycorrhizalLink>("RootLink").HasPartner,"Visible root follows actual partner node.");
-        Assert(s.Tall.Creature.GetPower<MycorrhizalBondPower>()!.HoverTips.OfType<HoverTip>().First().Description.Contains("25"),"Formatted native robust description.");
-        Assert(ModelDb.Power<MycorrhizalBondPower>().BigIcon.GetSize()==new Vector2(256,256),"Native large icon.");
+        Assert(s.Tall.Creature.GetPower<ThingsMycorrhizalBondPower>()!.HoverTips.OfType<HoverTip>().First().Description.Contains("25"),"Formatted native robust description.");
+        Assert(ModelDb.Power<ThingsMycorrhizalBondPower>().BigIcon.GetSize()==new Vector2(256,256),"Native large icon.");
         var scaleBefore=sprites[0].Scale;
         await CreatureCmd.SetCurrentHp(s.Short.Creature,28);await EndRound(s);await Settle(1.2f);
         foreach(var n in new[]{tall,small}){await n.UpdateIntent(s.Players.Select(p=>p.Creature).ToArray());n.IntentContainer.Modulate=Colors.White;}
@@ -101,7 +101,7 @@ public partial class MycorrhizalTwinsProbeNode
         await CreatureCmd.Damage(Choice,s.Short.Creature,9999,ValueProp.Unpowered,s.Player.Creature);await Settle(1.2f);Pose(sprites[0],"enrage",.7f);
         Pose(sprites[1],"die",1.9f);small.IntentContainer.Modulate=Colors.Transparent;
         await tall.UpdateIntent(s.Players.Select(p=>p.Creature).ToArray());tall.IntentContainer.Modulate=Colors.White;
-        await Capture("04_surviving_elder_fury");Assert(s.Tall.IsFurious&&s.Tall.Creature.GetPower<MycorrhizalBondPower>()==null,"Rendered severed fury.");
+        await Capture("04_surviving_elder_fury");Assert(s.Tall.IsFurious&&s.Tall.Creature.GetPower<ThingsMycorrhizalBondPower>()==null,"Rendered severed fury.");
         foreach(var child in view.GetChildren()){view.RemoveChild(child);child.QueueFree();}await Frames(3);
         if(System.Environment.GetEnvironmentVariable("THINGS_PLAYER_LAYOUT_REVIEW")=="1")
         {

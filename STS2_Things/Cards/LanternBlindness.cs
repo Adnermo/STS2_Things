@@ -27,7 +27,7 @@ public static class LanternBlindness
     {
         if (!CombatManager.Instance.IsInProgress || destination.Type != PileType.Hand ||
             card.Pile?.Type != PileType.Draw || !card.IsMutable || IsBlinded(card) ||
-            card.Owner.Creature.GetPower<LanternBlindnessPower>() is not { Amount: > 0 } power ||
+            card.Owner.Creature.GetPower<ThingsLanternBlindnessPower>() is not { Amount: > 0 } power ||
             !ReferenceEquals(power.Owner, card.Owner.Creature) || card.CombatState is not { } combat)
             return;
         PendingDrawVeils.Remove(card);

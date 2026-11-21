@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 $base = "https://reports.adnermo.online"
 $credential = Join-Path $env:LOCALAPPDATA 'STS2_Things\private\reports-admin-password.txt'
 if (-not (Test-Path -LiteralPath $credential)) { throw "Admin secret file missing" }

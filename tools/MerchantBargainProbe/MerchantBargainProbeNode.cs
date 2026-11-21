@@ -1,8 +1,11 @@
 using System.Reflection;
 using Godot;
 using MegaCrit.Sts2.Core.Entities.Merchant;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.TreasureRelicPicking;
+using MegaCrit.Sts2.Core.Models;
 using STS2_Things.Features.MerchantBargain;
+using STS2_Things.Modifiers;
 
 public partial class MerchantBargainProbeNode : Node
 {
@@ -22,7 +25,7 @@ public partial class MerchantBargainProbeNode : Node
             VerifyAssetContract();
             VerifyOverlaySurface();
             VerifyPatchTargets();
-#if STS2_V107_1
+#if STS2_V111_1
             await MerchantMultiplayerRegression.Run();
 #else
             await MerchantV113Regression.Run();
@@ -243,7 +246,7 @@ public partial class MerchantBargainProbeNode : Node
         MethodBase purchaseTarget = InvokeTargetMethod(
             assembly,
             "STS2_Things.Features.MerchantBargain.MerchantEntryOnTryPurchaseWrapperPatch");
-#if STS2_V107_1
+#if STS2_V111_1
         Assert(purchaseTarget.DeclaringType == typeof(MerchantEntry) &&
                purchaseTarget.Name == nameof(MerchantEntry.OnTryPurchaseWrapper),
             "Purchase patch resolved to the wrong member.");
@@ -256,15 +259,25 @@ public partial class MerchantBargainProbeNode : Node
         Assert(purchaseTarget.DeclaringType == typeof(MegaCrit.Sts2.Core.Multiplayer.Game.MerchantSynchronizer) &&
                purchaseTarget.Name == "PurchaseLocalEntry" &&
                purchaseTarget.GetParameters().Single().ParameterType == typeof(MerchantEntry),
-            "V113 bargaining must intercept before the native synchronized purchase is broadcast.");
+            "V113.1 bargaining must intercept before the native synchronized purchase is broadcast.");
 #endif
 
-        MethodBase costTarget = InvokeTargetMethod(
-            assembly,
-            "STS2_Things.Features.MerchantBargain.MerchantEntryCostPatch");
-        Assert(costTarget.DeclaringType == typeof(MerchantEntry) &&
-               costTarget.Name == "get_Cost",
-            "Cost patch did not resolve MerchantEntry.get_Cost.");
+        Assert(assembly.GetType("STS2_Things.Features.MerchantBargain.MerchantEntryCostPatch") is null,
+            "Deprecated MerchantEntryCostPatch must not exist in v2.0.0.");
+
+        Type policyType = typeof(ThingsMerchantBargainPricePolicy);
+        Assert(typeof(ModifierModel).IsAssignableFrom(policyType) && !policyType.IsAbstract,
+            "ThingsMerchantBargainPricePolicy must be a concrete ModifierModel.");
+        MethodInfo? priceHook = policyType.GetMethod(
+            nameof(AbstractModel.ModifyMerchantPrice),
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: [typeof(Player), typeof(MerchantEntry), typeof(decimal)],
+            modifiers: null);
+        Assert(priceHook is not null && priceHook.DeclaringType == policyType,
+            "ThingsMerchantBargainPricePolicy must override AbstractModel.ModifyMerchantPrice.");
+        Assert(ThingsMerchantBargainPricePolicy.SubscriptionId == "STS2_Things.MerchantBargainPrice",
+            "Unexpected ThingsMerchantBargainPricePolicy.SubscriptionId.");
     }
 
     private static MethodBase InvokeTargetMethod(Assembly assembly, string typeName)
