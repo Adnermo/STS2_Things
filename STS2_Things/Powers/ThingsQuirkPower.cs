@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -14,6 +15,7 @@ using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
 using STS2_Things.Core.Models;
 using STS2_Things.Monsters;
+using STS2_Things.Platform;
 
 namespace STS2_Things.Powers;
 
@@ -28,12 +30,26 @@ namespace STS2_Things.Powers;
 /// </summary>
 public sealed class ThingsQuirkPower : ThingsPowerModel
 {
-    private const int PlayerRadix = 4;
-    private const int DeckIndexRadix = 8193;
-    private const int CardModelRadix = 8193;
-    private const int PotionSlotRadix = 33;
-    private const int PotionModelRadix = 8193;
-    private const int PotionStateOffset = 500_000_000;
+    // Vanilla PowerModel.SetAmount clamps Amount to [-999_999_999, 999_999_999], so both
+    // bit-packed card and potion payloads must stay strictly below 999_999_999:
+    // - Card state   (bit 29 = 0): 1 .. 536_862_720 < 536_870_912 (64 players × 1022 deck slots × 8191 card models)
+    // - Potion state (bit 29 = 1): 536_870_913 .. 570_425_344 << 999_999_999 (64 players × 63 potion slots × 8191 potion models)
+    private const int PotionStateFlag = 1 << 29; // 536_870_912
+    private const int PlayerRadix = 64; // 6 bits (0..63)
+    private const int DeckIndexRadix = 1023; // 10 bits (0..1022; 0 = none, 1..1022 = deck index + 1)
+    private const int CardModelRadix = 8192; // 13 bits (0..8191; 0 = none, 1..8191 = model index + 1)
+    private const int PotionSlotRadix = 64; // 6 bits (0..63; 0 = none, 1..63 = slot + 1)
+    private const int PotionModelRadix = 8192; // 13 bits (0..8191; 0 = none, 1..8191 = model index + 1)
+
+    private const int CardModelMask = 0x1FFF;
+    private const int DeckIndexShift = 13;
+    private const int DeckIndexMask = 0x3FF;
+    private const int CardPlayerShift = 23;
+
+    private const int PotionModelMask = 0x1FFF;
+    private const int PotionSlotShift = 13;
+    private const int PotionSlotMask = 0x3F;
+    private const int PotionPlayerShift = 19;
 
     private CardModel? _stolenDeckCard;
     private PotionModel? _stolenPotion;
@@ -57,9 +73,50 @@ public sealed class ThingsQuirkPower : ThingsPowerModel
 
     public override int DisplayAmount => 0;
 
-    public bool IsPotionState => Amount >= PotionStateOffset;
+    public bool IsPotionState => Amount >= PotionStateFlag;
 
-    protected override bool IsVisibleInternal => !IsPotionState;
+    protected override bool IsVisibleInternal
+    {
+        get
+        {
+            if (IsPotionState)
+            {
+                return false;
+            }
+
+            if (!IsMutable || Owner?.CombatState is not { } combatState || !MultiplayerCompat.IsExtendedParty(combatState))
+            {
+                return true;
+            }
+
+            Player? stolenPlayer = ResolveStolenPlayer() ?? Target?.Player;
+            if (stolenPlayer != null && LocalContext.IsMe(stolenPlayer))
+            {
+                return true;
+            }
+
+            // In >4p parties, avoid cluttering the Hopper HP bar with 16-32 duplicate icons:
+            // show only the local player's stolen-loot icon when present, or else only the first
+            // card-state icon on Owner while keeping every player's recovery state active.
+            ThingsQuirkPower? firstCardState = null;
+            foreach (ThingsQuirkPower power in Owner.GetPowerInstances<ThingsQuirkPower>())
+            {
+                if (power.IsPotionState)
+                {
+                    continue;
+                }
+
+                firstCardState ??= power;
+                Player? otherPlayer = power.ResolveStolenPlayer() ?? power.Target?.Player;
+                if (otherPlayer != null && LocalContext.IsMe(otherPlayer))
+                {
+                    return false;
+                }
+            }
+
+            return ReferenceEquals(firstCardState, this);
+        }
+    }
 
     protected override IEnumerable<IHoverTip> ExtraHoverTips
     {
@@ -295,8 +352,8 @@ public sealed class ThingsQuirkPower : ThingsPowerModel
 
     private Player? GetPlayer(int playerIndex)
     {
-        IReadOnlyList<Player> players = CombatState.Players;
-        return playerIndex >= 0 && playerIndex < players.Count ? players[playerIndex] : null;
+        IReadOnlyList<Player>? players = Owner?.CombatState?.Players;
+        return players != null && playerIndex >= 0 && playerIndex < players.Count ? players[playerIndex] : null;
     }
 
     private Player? ResolveStolenPlayer()
@@ -336,7 +393,7 @@ public sealed class ThingsQuirkPower : ThingsPowerModel
             {
                 if (index >= PlayerRadix)
                 {
-                    throw new InvalidOperationException("Quirk Power supports at most four players.");
+                    throw new InvalidOperationException("Quirk Power supports at most 64 players.");
                 }
 
                 return index;
@@ -459,7 +516,7 @@ public sealed class ThingsQuirkPower : ThingsPowerModel
         ValidateToken(playerIndex, PlayerRadix, nameof(playerIndex));
         ValidateToken(deckIndexToken, DeckIndexRadix, nameof(deckIndexToken));
         ValidateToken(cardModelToken, CardModelRadix, nameof(cardModelToken));
-        return checked(((playerIndex * DeckIndexRadix + deckIndexToken) * CardModelRadix) + cardModelToken + 1);
+        return checked(((playerIndex << CardPlayerShift) | (deckIndexToken << DeckIndexShift) | cardModelToken) + 1);
     }
 
     private static int EncodePotionState(int playerIndex, int potionSlotToken, int potionModelToken)
@@ -467,7 +524,7 @@ public sealed class ThingsQuirkPower : ThingsPowerModel
         ValidateToken(playerIndex, PlayerRadix, nameof(playerIndex));
         ValidateToken(potionSlotToken, PotionSlotRadix, nameof(potionSlotToken));
         ValidateToken(potionModelToken, PotionModelRadix, nameof(potionModelToken));
-        return checked(PotionStateOffset + ((playerIndex * PotionSlotRadix + potionSlotToken) * PotionModelRadix) + potionModelToken + 1);
+        return checked(PotionStateFlag + (((playerIndex << PotionPlayerShift) | (potionSlotToken << PotionSlotShift) | potionModelToken) + 1));
     }
 
     private CardState DecodeCardState()
@@ -478,11 +535,10 @@ public sealed class ThingsQuirkPower : ThingsPowerModel
         }
 
         int payload = Amount - 1;
-        int cardModelToken = payload % CardModelRadix;
-        payload /= CardModelRadix;
-        int deckIndexToken = payload % DeckIndexRadix;
-        int playerIndex = payload / DeckIndexRadix;
-        return playerIndex is < 0 or >= PlayerRadix
+        int cardModelToken = payload & CardModelMask;
+        int deckIndexToken = (payload >> DeckIndexShift) & DeckIndexMask;
+        int playerIndex = payload >> CardPlayerShift;
+        return playerIndex is < 0 or >= PlayerRadix || deckIndexToken >= DeckIndexRadix
             ? new CardState(-1, -1, -1)
             : new CardState(playerIndex, deckIndexToken - 1, cardModelToken - 1);
     }
@@ -494,11 +550,15 @@ public sealed class ThingsQuirkPower : ThingsPowerModel
             return new PotionState(-1, -1, -1);
         }
 
-        int payload = Amount - PotionStateOffset - 1;
-        int potionModelToken = payload % PotionModelRadix;
-        payload /= PotionModelRadix;
-        int potionSlotToken = payload % PotionSlotRadix;
-        int playerIndex = payload / PotionSlotRadix;
+        int payload = Amount - PotionStateFlag - 1;
+        if (payload < 0)
+        {
+            return new PotionState(-1, -1, -1);
+        }
+
+        int potionModelToken = payload & PotionModelMask;
+        int potionSlotToken = (payload >> PotionSlotShift) & PotionSlotMask;
+        int playerIndex = payload >> PotionPlayerShift;
         return playerIndex is < 0 or >= PlayerRadix
             ? new PotionState(-1, -1, -1)
             : new PotionState(playerIndex, potionSlotToken - 1, potionModelToken - 1);

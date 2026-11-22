@@ -20,6 +20,7 @@ using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Nodes.Audio;
 using MegaCrit.Sts2.Core.ValueProps;
+using STS2_Things.Platform;
 using STS2_Things.Powers;
 using static STS2_Things.Platform.Sts2VersionSeam;
 
@@ -312,7 +313,7 @@ public sealed class ThingsOriginFogmog : ThingsSpineMonster
     {
         await CreatureCmd.TriggerAnim(Creature, "PowerUp", 0f);
         await WaitForStrike("power_up", HealRelease, HealRelease);
-        await CreatureCmd.Heal(Creature, HealAmount * CombatState.Players.Count);
+        await CreatureCmd.Heal(Creature, HealAmount * MultiplayerCompat.GetEffectivePlayerCount(CombatState));
         await FinishMotion("power_up");
     }
 }

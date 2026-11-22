@@ -739,7 +739,13 @@ public sealed class ClamClawMinigame
 
     public void ForceEnd()
     {
-        _completion.TrySetResult(BuildOutcome());
+        if (_completion.Task.IsCompleted)
+            return;
+
+        if (ThingsEventMinigameSync.IsRunActive)
+            _completion.TrySetResult(BuildOutcome());
+        else
+            _completion.TrySetCanceled();
     }
 
     public ThingsClamClawOutcome BuildOutcome() => new(

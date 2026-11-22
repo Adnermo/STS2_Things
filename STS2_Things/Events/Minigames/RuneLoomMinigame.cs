@@ -448,7 +448,12 @@ public sealed class RuneLoomMinigame
 
     public void ForceEnd()
     {
-        if (!_completion.Task.IsCompleted)
+        if (_completion.Task.IsCompleted)
+            return;
+
+        if (ThingsEventMinigameSync.IsRunActive)
+            _completion.TrySetResult(BuildOutcome(cancelled: true));
+        else
             _completion.TrySetCanceled();
     }
 

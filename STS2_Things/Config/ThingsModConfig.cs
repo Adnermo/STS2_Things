@@ -17,6 +17,7 @@ public static class ThingsModConfig
 {
     public enum Category
     {
+        Act,
         Boss,
         Encounter,
         Event,
@@ -46,6 +47,7 @@ public static class ThingsModConfig
     // ===== 键常量（单一来源：BaseLib 桥属性名、RitsuLib schema 与门控代码都引用这里）=====
     public const string SchemaVersion = "SchemaVersion";
     public const string FeatureCustomBgmEnabled = "FeatureCustomBgmEnabled";
+    public const string FeatureGuaranteedDepthsEnabled = "FeatureGuaranteedDepthsEnabled";
     public const string FeatureDefensiveEngineGuardsEnabled = "FeatureDefensiveEngineGuardsEnabled";
     public const string BossOnlyModBosses = "BossOnlyModBosses";
     public const string BossOriginFogmogWeightPercent = "BossOriginFogmogWeightPercent";
@@ -149,6 +151,7 @@ public static class ThingsModConfig
     public static readonly IReadOnlyList<Entry> Entries =
     [
         new(FeatureCustomBgmEnabled, Category.Audio, Default: true),
+        new(FeatureGuaranteedDepthsEnabled, Category.Act, Default: false),
         new(BossOnlyModBosses, Category.Boss, Default: false),
         new(BossOriginFogmogEnabled, Category.Boss, Default: true, Slot: SlotOvergrowth),
         new(BossOriginFogmogForced, Category.Boss, Default: false, Slot: SlotOvergrowth),
@@ -237,6 +240,7 @@ public static class ThingsModConfig
     private static volatile bool _defensiveEngineGuardsEnabled = true;
     private static volatile bool _allCustomCardsEnabled = true;
     private static volatile bool _customBgmEnabled = true;
+    private static volatile bool _guaranteedDepthsEnabled;
     private static volatile bool _bossOnlyModBosses;
     private static volatile bool _merchantBargainEnabled = true;
     private static volatile bool _cardsEnabled = true;
@@ -248,6 +252,8 @@ public static class ThingsModConfig
     public static bool AllCustomCardsEnabled => _allCustomCardsEnabled;
 
     public static bool CustomBgmEnabled => _customBgmEnabled;
+
+    public static bool GuaranteedDepthsEnabled => _guaranteedDepthsEnabled;
 
     public static bool BossOnlyModBossesEnabled => _bossOnlyModBosses;
 
@@ -295,6 +301,8 @@ public static class ThingsModConfig
             return _defensiveEngineGuardsEnabled;
         if (ReferenceEquals(key, FeatureCustomBgmEnabled))
             return _customBgmEnabled;
+        if (ReferenceEquals(key, FeatureGuaranteedDepthsEnabled))
+            return _guaranteedDepthsEnabled;
         if (ReferenceEquals(key, BossOnlyModBosses))
             return _bossOnlyModBosses;
         if (ReferenceEquals(key, FeatureMerchantBargainEnabled))
@@ -318,6 +326,7 @@ public static class ThingsModConfig
     {
         _defensiveEngineGuardsEnabled = GetBoolCore(FeatureDefensiveEngineGuardsEnabled);
         _customBgmEnabled = GetBoolCore(FeatureCustomBgmEnabled);
+        _guaranteedDepthsEnabled = GetBoolCore(FeatureGuaranteedDepthsEnabled);
         _bossOnlyModBosses = GetBoolCore(BossOnlyModBosses);
         _merchantBargainEnabled = GetBoolCore(FeatureMerchantBargainEnabled);
         bool cardsEnabled = GetBoolCore(CardsEnabled);
@@ -539,16 +548,9 @@ public static class ThingsModConfig
     private static bool ResolveConflicts(bool logWarnings)
     {
         bool changed = false;
-        foreach (Entry entry in Entries)
-        {
-            if (entry.Key.EndsWith("Enabled", StringComparison.Ordinal) &&
-                entry.Slot is { } slot && Values.GetValueOrDefault(ForcedKeyFor(slot, entry.Key)) is true && Values[entry.Key] is false)
-            {
-                Values[entry.Key] = true;
-                changed = true;
-            }
-        }
 
+        // First demote duplicate Forced entries within the same slot so a demoted second boss
+        // does not have its Enabled=false state unnecessarily flipped to true below.
         foreach (string slot in new[] { SlotOvergrowth, SlotUnderdocks, SlotHive, SlotDepths })
         {
             string? first = null;
@@ -572,6 +574,16 @@ public static class ThingsModConfig
                         $"STS2_Things config: '{entry.Key}' was demoted because '{first}' is already " +
                         $"forced for the same act boss slot ({slot}).");
                 }
+            }
+        }
+
+        foreach (Entry entry in Entries)
+        {
+            if (entry.Key.EndsWith("Enabled", StringComparison.Ordinal) &&
+                entry.Slot is { } slot && Values.GetValueOrDefault(ForcedKeyFor(slot, entry.Key)) is true && Values[entry.Key] is false)
+            {
+                Values[entry.Key] = true;
+                changed = true;
             }
         }
 

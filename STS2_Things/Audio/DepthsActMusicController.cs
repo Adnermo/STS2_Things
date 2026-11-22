@@ -243,7 +243,7 @@ public sealed partial class DepthsActMusicController : Node
         if (NonInteractiveMode.IsActive)
             return;
 
-        if (controller != null)
+        if (controller != null && GodotObject.IsInstanceValid(controller))
             _pendingSyncController = controller;
 
         if (_syncScheduled)
@@ -257,7 +257,10 @@ public sealed partial class DepthsActMusicController : Node
             _syncScheduled = false;
             try
             {
-                SyncOnMainThread(pending ?? NRunMusicController.Instance);
+                NRunMusicController? target = pending != null && GodotObject.IsInstanceValid(pending)
+                    ? pending
+                    : NRunMusicController.Instance;
+                SyncOnMainThread(target);
             }
             catch (Exception ex)
             {
@@ -431,6 +434,12 @@ public sealed partial class DepthsActMusicController : Node
 
     private static void SyncOnMainThread(NRunMusicController? controller)
     {
+        if (controller == null || !GodotObject.IsInstanceValid(controller))
+        {
+            NRunMusicController? live = NRunMusicController.Instance;
+            controller = live != null && GodotObject.IsInstanceValid(live) ? live : null;
+        }
+
         IRunState? runState = RunManager.Instance.DebugOnlyGetState();
         bool inDepths = runState?.Act is ThingsDepths;
 
@@ -903,8 +912,11 @@ public sealed partial class DepthsActMusicController : Node
 
     private void SuppressFmodActMusic(NRunMusicController? controller)
     {
-        Node? proxy = controller?.GetNodeOrNull<Node>("Proxy");
-        if (proxy == null || !IsInstanceValid(proxy))
+        if (controller == null || !GodotObject.IsInstanceValid(controller))
+            return;
+
+        Node? proxy = controller.GetNodeOrNull<Node>("Proxy");
+        if (proxy == null || !GodotObject.IsInstanceValid(proxy))
             return;
 
         // Only stop _musicEv if it is currently instantiated; leaves _ambienceEv and loaded banks intact.
@@ -917,9 +929,18 @@ public sealed partial class DepthsActMusicController : Node
 
     private void RestoreFmodActMusic(NRunMusicController? controller, int progressIndex)
     {
-        Node? proxy = controller?.GetNodeOrNull<Node>("Proxy");
-        if (proxy == null || !IsInstanceValid(proxy))
+        if (controller == null || !GodotObject.IsInstanceValid(controller))
+        {
+            _fmodActSuppressed = false;
             return;
+        }
+
+        Node? proxy = controller.GetNodeOrNull<Node>("Proxy");
+        if (proxy == null || !GodotObject.IsInstanceValid(proxy))
+        {
+            _fmodActSuppressed = false;
+            return;
+        }
 
         Variant ev = proxy.Get("_musicEv");
         bool hasActiveEvent = ev.VariantType != Variant.Type.Nil && ev.AsGodotObject() != null;

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Random;
+using STS2_Things.Platform;
 
 namespace STS2_Things.Events.Minigames;
 
@@ -144,7 +145,7 @@ public sealed class BronzeCauldronMinigame
     public Task UiDismissedTask => _uiDismissed.Task;
 
     public event Action? StateChanged;
-    public event Action<ulong, float, float, ulong, int>? HostGrabResolved;
+    public event Action<ulong, float, float, byte[], int>? HostGrabResolved;
     public event Action<IReadOnlyList<ThingsBronzeCauldronPlayerOutcome>>? HostFinalizedOutcomes;
 
     public BronzeCauldronMinigame(
@@ -160,7 +161,7 @@ public sealed class BronzeCauldronMinigame
         for (int i = 0; i < players.Count; i++)
         {
             Player p = players[i];
-            (float sx, float sy) = GetStartingHandPos(i);
+            (float sx, float sy) = GetStartingHandPos(i, players.Count);
             var hand = new CauldronHandState
             {
                 Player = p,
@@ -183,50 +184,123 @@ public sealed class BronzeCauldronMinigame
     /// Resting screen-edge entry positions (matching vanilla Treasure Room NHandImage off-screen arms!):
     /// hands start anchored outside the giant cauldron near the screen borders and glide inward on hover.
     /// </summary>
-    public static (float X, float Y) GetStartingHandPos(int slot) => (slot % 4) switch
+    public static (float X, float Y) GetStartingHandPos(int slot) =>
+        GetStartingHandPos(slot, MultiplayerCompat.VanillaMaxPlayers);
+
+    /// <summary>
+    /// Resting screen-edge entry positions for 1–4 players (exact Bottom/Top/Left/Right vanilla anchors)
+    /// and 5–32+ players (evenly distributed around a 360° perimeter ring outside the cauldron, starting at Bottom).
+    /// </summary>
+    public static (float X, float Y) GetStartingHandPos(int slot, int totalPlayers)
     {
-        0 => (Center, BoardSize + 105f), // Bottom screen edge (screen y ~ 1005)
-        1 => (Center, -105f),            // Top screen edge    (screen y ~ 75)
-        2 => (-240f, Center),            // Left screen edge   (screen x ~ 160)
-        _ => (BoardSize + 240f, Center), // Right screen edge  (screen x ~ 1360)
-    };
+        if (totalPlayers <= MultiplayerCompat.VanillaMaxPlayers)
+        {
+            return (slot % 4) switch
+            {
+                0 => (Center, BoardSize + 105f), // Bottom screen edge (screen y ~ 1005)
+                1 => (Center, -105f),            // Top screen edge    (screen y ~ 75)
+                2 => (-240f, Center),            // Left screen edge   (screen x ~ 160)
+                _ => (BoardSize + 240f, Center), // Right screen edge  (screen x ~ 1360)
+            };
+        }
+
+        int safeTotal = Math.Max(1, totalPlayers);
+        int wrappedSlot = ((slot % safeTotal) + safeTotal) % safeTotal;
+        float angle = MathF.PI * 0.5f + wrappedSlot * (MathF.Tau / safeTotal);
+        const float ringRadiusX = 560f;
+        const float ringRadiusY = 465f;
+        return (Center + MathF.Cos(angle) * ringRadiusX, Center + MathF.Sin(angle) * ringRadiusY);
+    }
 
     private void GenerateCauldronTreasures(int playerCount)
     {
         _items.Clear();
-        int n = Math.Clamp(playerCount, 2, 4);
+        bool extendedParty = MultiplayerCompat.IsExtendedParty(playerCount);
 
         // "多但少，空处铺满小额金币（3-10 金）" + 遗物全为原版占卜纸盒子且在稀有/普通间随机！
         // All Relic boxes & featured items orbit well clear of the dead center (r >= 92px) so rapid clockwise rotation makes sniping exciting!
         var featuredSpecs = new List<(CauldronTreasureKind Kind, int Value, float Radius, float MinR, float MaxR)>();
-        bool firstIsRare = _rng.NextFloat() < 0.50f;
-        featuredSpecs.Add((firstIsRare ? CauldronTreasureKind.RareRelic : CauldronTreasureKind.CommonRelic, 1, 31f, 92f, 148f));
-        for (int i = 1; i < n; i++)
+        float featuredGap;
+        int targetTotalItems;
+        bool denseCoinPack;
+
+        if (!extendedParty)
         {
-            bool isRare = _rng.NextFloat() < 0.25f;
-            featuredSpecs.Add((isRare ? CauldronTreasureKind.RareRelic : CauldronTreasureKind.CommonRelic, 1, 30f, 165f, 248f));
+            // Preserve 100% bit-for-bit identical 1–4 player layout, counts, and RNG draw sequence.
+            int n = Math.Clamp(playerCount, 2, 4);
+            bool firstIsRare = _rng.NextFloat() < 0.50f;
+            featuredSpecs.Add((firstIsRare ? CauldronTreasureKind.RareRelic : CauldronTreasureKind.CommonRelic, 1, 31f, 92f, 148f));
+            for (int i = 1; i < n; i++)
+            {
+                bool isRare = _rng.NextFloat() < 0.25f;
+                featuredSpecs.Add((isRare ? CauldronTreasureKind.RareRelic : CauldronTreasureKind.CommonRelic, 1, 30f, 165f, 248f));
+            }
+
+            // 2. Modest special treasures (balanced "多但少": small +3 Max HP hearts, 1-2 upgrades, 2-3 potions & scrolls)
+            int upgrades = n >= 4 ? 2 : 1;
+            for (int i = 0; i < upgrades; i++)
+                featuredSpecs.Add((CauldronTreasureKind.UpgradeCard, 1, 25f, 108f, 235f));
+
+            featuredSpecs.Add((CauldronTreasureKind.MaxHp, MaxHpBeadAmount, 24f, 102f, 224f));
+            featuredSpecs.Add((CauldronTreasureKind.MaxHp, MaxHpBeadAmount, 24f, 142f, 260f));
+
+            int potions = n >= 3 ? 3 : 2;
+            for (int i = 0; i < potions; i++)
+                featuredSpecs.Add((CauldronTreasureKind.Potion, 1, 24f, 112f, 265f));
+
+            int cards = n >= 3 ? 3 : 2;
+            for (int i = 0; i < cards; i++)
+                featuredSpecs.Add((CauldronTreasureKind.Card, 1, 25f, 120f, 268f));
+
+            featuredGap = 26f;
+            targetTotalItems = 60;
+            denseCoinPack = false;
         }
+        else
+        {
+            // Smoothly scale contestable loot for 5–32 player lobbies while keeping the 644px basin readable.
+            bool tightLayout = playerCount >= 12;
+            int relicCount = Math.Clamp(playerCount, 4, 14);
+            float innerRelicR = tightLayout ? 27f : 30f;
+            float outerRelicR = tightLayout ? 26f : 28f;
 
-        // 2. Modest special treasures (balanced "多但少": small +3 Max HP hearts, 1-2 upgrades, 2-3 potions & scrolls)
-        int upgrades = n >= 4 ? 2 : 1;
-        for (int i = 0; i < upgrades; i++)
-            featuredSpecs.Add((CauldronTreasureKind.UpgradeCard, 1, 25f, 108f, 235f));
+            bool firstIsRare = _rng.NextFloat() < 0.50f;
+            featuredSpecs.Add((firstIsRare ? CauldronTreasureKind.RareRelic : CauldronTreasureKind.CommonRelic, 1, innerRelicR, 92f, 148f));
+            for (int i = 1; i < relicCount; i++)
+            {
+                bool isRare = _rng.NextFloat() < 0.25f;
+                featuredSpecs.Add((isRare ? CauldronTreasureKind.RareRelic : CauldronTreasureKind.CommonRelic, 1, outerRelicR, 152f, 258f));
+            }
 
-        featuredSpecs.Add((CauldronTreasureKind.MaxHp, MaxHpBeadAmount, 24f, 102f, 224f));
-        featuredSpecs.Add((CauldronTreasureKind.MaxHp, MaxHpBeadAmount, 24f, 142f, 260f));
+            int upgrades = Math.Clamp(playerCount / 2, 2, 6);
+            float upgradeR = tightLayout ? 22f : 24f;
+            for (int i = 0; i < upgrades; i++)
+                featuredSpecs.Add((CauldronTreasureKind.UpgradeCard, 1, upgradeR, 104f, 240f));
 
-        int potions = n >= 3 ? 3 : 2;
-        for (int i = 0; i < potions; i++)
-            featuredSpecs.Add((CauldronTreasureKind.Potion, 1, 24f, 112f, 265f));
+            int maxHpHearts = Math.Clamp(2 + (playerCount - 4) / 3, 2, 8);
+            float heartR = tightLayout ? 21f : 23f;
+            for (int i = 0; i < maxHpHearts; i++)
+                featuredSpecs.Add((CauldronTreasureKind.MaxHp, MaxHpBeadAmount, heartR, 98f, 260f));
 
-        int cards = n >= 3 ? 3 : 2;
-        for (int i = 0; i < cards; i++)
-            featuredSpecs.Add((CauldronTreasureKind.Card, 1, 25f, 120f, 268f));
+            int potions = Math.Clamp(3 + (playerCount - 4) / 2, 3, 10);
+            float potionR = tightLayout ? 21f : 23f;
+            for (int i = 0; i < potions; i++)
+                featuredSpecs.Add((CauldronTreasureKind.Potion, 1, potionR, 108f, 268f));
+
+            int cards = Math.Clamp(3 + (playerCount - 4) / 2, 3, 10);
+            float cardR = tightLayout ? 22f : 24f;
+            for (int i = 0; i < cards; i++)
+                featuredSpecs.Add((CauldronTreasureKind.Card, 1, cardR, 114f, 270f));
+
+            featuredGap = playerCount >= 17 ? 6f : (playerCount >= 9 ? 11f : 18f);
+            targetTotalItems = Math.Clamp(60 + (playerCount - 4) * 4, 60, 140);
+            denseCoinPack = playerCount > 8;
+        }
 
         int nextIdx = 0;
         foreach (var spec in featuredSpecs)
         {
-            (float ix, float iy) = FindNonOverlappingPosition(spec.Radius, spec.MinR, spec.MaxR, extraGap: 26f, attempts: 180);
+            (float ix, float iy) = FindNonOverlappingPosition(spec.Radius, spec.MinR, spec.MaxR, extraGap: featuredGap, attempts: 180);
             float dx = ix - Center;
             float dy = iy - Center;
             _items.Add(new CauldronTreasureItem
@@ -247,13 +321,14 @@ public sealed class BronzeCauldronMinigame
         }
 
         // 3. Carpet EVERY remaining open space inside the giant 644px bronze basin with gleaming 3-10G coin units!
-        //    Pack up to 60 total items (safely inside 64-bit ulong bitmask) so the cauldron looks overflowing with gold!
-        const int targetTotalItems = 60;
+        //    1–4p packs 60 total items (identical to original); 5–32p scales up to 140 items (synced via byte[] indices).
         while (_items.Count < targetTotalItems)
         {
             int coinVal = _rng.NextInt(SmallCoinMinGold, SmallCoinMaxGold + 1); // 3..10G per coin unit
-            float coinRadius = coinVal >= 7 ? 20f : 17.5f;
-            if (!TryFindOpenCoinSlot(coinRadius, out float cx, out float cy))
+            float coinRadius = denseCoinPack
+                ? (coinVal >= 7 ? 17f : 15f)
+                : (coinVal >= 7 ? 20f : 17.5f);
+            if (!TryFindOpenCoinSlot(coinRadius, denseCoinPack, out float cx, out float cy))
                 break;
 
             float dx = cx - Center;
@@ -309,15 +384,19 @@ public sealed class BronzeCauldronMinigame
         return (bestX, bestY);
     }
 
-    private bool TryFindOpenCoinSlot(float radius, out float outX, out float outY)
+    private bool TryFindOpenCoinSlot(float radius, bool densePack, out float outX, out float outY)
     {
-        float maxDist = CauldronInnerRadius - radius - 14f;
+        float maxDist = CauldronInnerRadius - radius - (densePack ? 10f : 14f);
         float bestX = Center;
         float bestY = Center;
         float bestGap = -9999f;
+        int attempts = densePack ? 120 : 96;
+        float goldPad = densePack ? 2f : 5f;
+        float featuredPad = densePack ? 4f : 9f;
+        float minAcceptGap = densePack ? -4f : -2f;
 
         // Pick the most open remaining pocket across the cauldron floor so coins evenly carpet every empty gap!
-        for (int attempt = 0; attempt < 96; attempt++)
+        for (int attempt = 0; attempt < attempts; attempt++)
         {
             float angle = _rng.NextFloat(0f, MathF.Tau);
             float dist = MathF.Sqrt(_rng.NextFloat(0f, 1f)) * maxDist;
@@ -328,7 +407,7 @@ public sealed class BronzeCauldronMinigame
             foreach (CauldronTreasureItem existing in _items)
             {
                 float d = MathF.Sqrt((cx - existing.X) * (cx - existing.X) + (cy - existing.Y) * (cy - existing.Y));
-                float pad = existing.Kind == CauldronTreasureKind.Gold ? 5f : 9f;
+                float pad = existing.Kind == CauldronTreasureKind.Gold ? goldPad : featuredPad;
                 float gap = d - (radius + existing.Radius + pad);
                 if (gap < minGap)
                     minGap = gap;
@@ -342,7 +421,7 @@ public sealed class BronzeCauldronMinigame
             }
         }
 
-        if (bestGap >= -2f)
+        if (bestGap >= minAcceptGap)
         {
             outX = bestX;
             outY = bestY;
@@ -428,7 +507,7 @@ public sealed class BronzeCauldronMinigame
 
         if (IsHostAuthority)
         {
-            ResolveAuthoritativeGrab(LocalPlayerNetId, grabX, grabY);
+            ResolveAuthoritativeGrabIndices(LocalPlayerNetId, grabX, grabY);
             return true;
         }
 
@@ -443,38 +522,69 @@ public sealed class BronzeCauldronMinigame
     }
 
     /// <summary>
-    /// Host-only authoritative grab resolution: claims all unclaimed items inside the palm circle
-    /// in strict arrival order so two players can NEVER duplicate the same treasure!
-    /// Uses a 64-bit ulong bitmask supporting up to 64 live overflowing cauldron items.
+    /// Host-only authoritative grab resolution returning all claimed item indices (0..255)
+    /// in strict arrival order so two players can NEVER duplicate the same treasure, even with
+    /// 65–140 scaled items in 5–32 player lobbies.
     /// </summary>
-    public ulong ResolveAuthoritativeGrab(ulong playerNetId, float x, float y)
+    public byte[] ResolveAuthoritativeGrabIndices(ulong playerNetId, float x, float y)
     {
         if (!IsHostAuthority || Phase != CauldronPhase.Scramble)
-            return 0UL;
+            return [];
         if (!_hands.TryGetValue(playerNetId, out CauldronHandState? hand))
-            return 0UL;
+            return [];
         if (hand.GrabsRemaining <= 0)
-            return 0UL;
+            return [];
 
         float cx = Math.Clamp(x, -120f, BoardSize + 120f);
         float cy = Math.Clamp(y, -120f, BoardSize + 120f);
         List<CauldronTreasureItem> hits = GetItemsCoveredByPalm(cx, cy);
-        ulong bitmask = 0UL;
+        var claimed = new List<byte>(Math.Min(hits.Count, ThingsCauldronGrabAckMessage.MaxClaimedIndicesPerGrab));
         foreach (CauldronTreasureItem item in hits)
         {
-            if (item.Index is >= 0 and < 64)
-                bitmask |= 1UL << item.Index;
+            if (item.Index is >= 0 and <= byte.MaxValue &&
+                claimed.Count < ThingsCauldronGrabAckMessage.MaxClaimedIndicesPerGrab)
+            {
+                claimed.Add((byte)item.Index);
+            }
         }
 
+        byte[] claimedIndices = claimed.ToArray();
         int nextRemaining = Math.Max(0, hand.GrabsRemaining - 1);
-        ApplyResolvedGrab(playerNetId, cx, cy, bitmask, nextRemaining);
-        HostGrabResolved?.Invoke(playerNetId, cx, cy, bitmask, nextRemaining);
+        ApplyResolvedGrab(playerNetId, cx, cy, claimedIndices, nextRemaining);
+        HostGrabResolved?.Invoke(playerNetId, cx, cy, claimedIndices, nextRemaining);
 
         CheckScrambleCompletion();
+        return claimedIndices;
+    }
+
+    /// <summary>
+    /// Compatibility wrapper for callers/probes expecting a 64-bit bitmask over item indices 0..63.
+    /// Still resolves and broadcasts ALL claimed items (including indices &gt;= 64).
+    /// </summary>
+    public ulong ResolveAuthoritativeGrab(ulong playerNetId, float x, float y)
+    {
+        byte[] claimedIndices = ResolveAuthoritativeGrabIndices(playerNetId, x, y);
+        ulong bitmask = 0UL;
+        for (int i = 0; i < claimedIndices.Length; i++)
+        {
+            if (claimedIndices[i] < 64)
+                bitmask |= 1UL << claimedIndices[i];
+        }
         return bitmask;
     }
 
     public void ApplyResolvedGrab(ulong playerNetId, float x, float y, ulong claimedBitmask, int grabsRemaining)
+    {
+        var indices = new List<byte>();
+        for (int bit = 0; bit < 64; bit++)
+        {
+            if ((claimedBitmask & (1UL << bit)) != 0UL)
+                indices.Add((byte)bit);
+        }
+        ApplyResolvedGrab(playerNetId, x, y, indices, grabsRemaining);
+    }
+
+    public void ApplyResolvedGrab(ulong playerNetId, float x, float y, IReadOnlyList<byte> claimedIndices, int grabsRemaining)
     {
         if (!_hands.TryGetValue(playerNetId, out CauldronHandState? hand))
             return;
@@ -491,13 +601,13 @@ public sealed class BronzeCauldronMinigame
 
         int newlyClaimed = 0;
         CauldronTreasureItem? topItem = null;
-        foreach (CauldronTreasureItem item in _items)
+        for (int i = 0; i < claimedIndices.Count; i++)
         {
-            if (item.Index < 0 || item.Index >= 64)
+            int idx = claimedIndices[i];
+            if (idx < 0 || idx >= _items.Count)
                 continue;
-            if ((claimedBitmask & (1UL << item.Index)) == 0UL)
-                continue;
-            if (item.IsClaimed)
+            CauldronTreasureItem item = _items[idx];
+            if (item.Index != idx || item.IsClaimed)
                 continue;
             item.IsClaimed = true;
             item.ClaimedByNetId = playerNetId;
@@ -634,8 +744,10 @@ public sealed class BronzeCauldronMinigame
         if (!IsHostAuthority || HasFinalizedOutcomes)
             return;
 
+        // Sanitize through the exact same shared caps used by client deserialization so
+        // Host and Clients ALWAYS award bit-for-bit identical outcomes across 2–32+ players.
         List<ThingsBronzeCauldronPlayerOutcome> all = _orderedHands
-            .Select(h => BuildPlayerOutcome(h.Player.NetId))
+            .Select(h => ThingsEventMinigameSync.SanitizeCauldronOutcome(BuildPlayerOutcome(h.Player.NetId)))
             .ToList();
         ApplyFinalOutcomes(all);
         HostFinalizedOutcomes?.Invoke(all);
@@ -652,13 +764,13 @@ public sealed class BronzeCauldronMinigame
         foreach (ThingsBronzeCauldronPlayerOutcome outcome in outcomes)
         {
             if (_playerOutcomes.TryGetValue(outcome.PlayerNetId, out var tcs))
-                tcs.TrySetResult(outcome);
+                tcs.TrySetResult(ThingsEventMinigameSync.SanitizeCauldronOutcome(outcome));
         }
         // Fallback safety for any player absent in packet
         foreach (CauldronHandState hand in _orderedHands)
         {
             if (_playerOutcomes.TryGetValue(hand.Player.NetId, out var tcs))
-                tcs.TrySetResult(BuildPlayerOutcome(hand.Player.NetId));
+                tcs.TrySetResult(ThingsEventMinigameSync.SanitizeCauldronOutcome(BuildPlayerOutcome(hand.Player.NetId)));
         }
 
         StateChanged?.Invoke();
@@ -671,15 +783,27 @@ public sealed class BronzeCauldronMinigame
         _uiDismissed.TrySetResult(true);
     }
 
+    public void CancelAllWaiters()
+    {
+        foreach (TaskCompletionSource<ThingsBronzeCauldronPlayerOutcome> tcs in _playerOutcomes.Values)
+            tcs.TrySetCanceled();
+        _uiDismissed.TrySetCanceled();
+    }
+
     public void ForceEnd()
     {
-        if (!HasFinalizedOutcomes)
+        if (!ThingsEventMinigameSync.IsRunActive)
         {
-            List<ThingsBronzeCauldronPlayerOutcome> all = _orderedHands
-                .Select(h => BuildPlayerOutcome(h.Player.NetId))
-                .ToList();
-            ApplyFinalOutcomes(all);
+            CancelAllWaiters();
+            return;
         }
+
+        if (IsHostAuthority)
+        {
+            if (!HasFinalizedOutcomes)
+                FinalizeAsHost();
+        }
+
         _uiDismissed.TrySetResult(true);
     }
 

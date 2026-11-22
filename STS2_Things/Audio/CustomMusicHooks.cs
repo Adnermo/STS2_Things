@@ -44,13 +44,8 @@ internal static class CustomMusicPlayPatch
 
     internal static bool TryGetAuthoredVolumeDb(string? customMusic, out float volumeDb)
     {
-        if (string.Equals(customMusic, GravetideTheme, StringComparison.Ordinal))
-        {
-            volumeDb = -2f;
-            return true;
-        }
-
-        if (string.Equals(customMusic, HumanFaceTowerTheme, StringComparison.Ordinal) ||
+        if (string.Equals(customMusic, GravetideTheme, StringComparison.Ordinal) ||
+            string.Equals(customMusic, HumanFaceTowerTheme, StringComparison.Ordinal) ||
             string.Equals(customMusic, OriginFogmogTheme, StringComparison.Ordinal) ||
             string.Equals(customMusic, ScaleBeetleTheme, StringComparison.Ordinal) ||
             string.Equals(customMusic, CaveGodTheme, StringComparison.Ordinal) ||

@@ -36,7 +36,7 @@ internal static class LogSanitizer
     internal const int MaxFrameLength = 300;
 
     private static readonly Regex WindowsUserHomeRegex = new(
-        @"[A-Za-z]:[\\/]Users[\\/][^\\/\r\n""':<>|*?\t]+(?:[\\/]|$)",
+        @"(?<![A-Za-z0-9_])[A-Za-z]:[\\/]Users[\\/][^\\/\r\n""':<>|*?\t]+(?:[\\/]|$)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex MacUserHomeRegex = new(
@@ -49,11 +49,11 @@ internal static class LogSanitizer
 
     // Non-Users Windows drive paths (e.g. D:\PrivatePlayer\Game\test.cs -> <LOCAL_PATH>/test.cs)
     private static readonly Regex WindowsOtherDriveFileRegex = new(
-        @"[A-Za-z]:[\\/](?:[^\\/\r\n""':<>|*?\t]+[\\/])+([A-Za-z0-9_.-]+)",
+        @"(?<![A-Za-z0-9_])[A-Za-z]:[\\/](?:[^\\/\r\n""':<>|*?\t]+[\\/])+([A-Za-z0-9_.-]+)",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex WindowsOtherDriveBareRegex = new(
-        @"[A-Za-z]:[\\/][^\s""'<>|*?\r\n:]+",
+        @"(?<![A-Za-z0-9_])[A-Za-z]:[\\/][^\s""'<>|*?\r\n:]+",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     // 17-digit Steam64 IDs (7656119xxxxxxxxxx) and Steam3 [U:1:...] IDs

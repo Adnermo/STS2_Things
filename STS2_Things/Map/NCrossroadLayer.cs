@@ -248,8 +248,20 @@ public partial class NCrossroadLayer : Node2D
 
     private void OnChanged(IRunState run)
     {
-        if (ReferenceEquals(run, _run) && GodotObject.IsInstanceValid(_screen))
-            Callable.From(() => { if (GodotObject.IsInstanceValid(_screen)) _screen.SetMap(_map, _run.Rng.Seed, clearDrawings: false); }).CallDeferred();
+        if (!ReferenceEquals(run, _run) || !GodotObject.IsInstanceValid(_screen))
+            return;
+        Callable.From(() =>
+        {
+            if (!GodotObject.IsInstanceValid(_screen) || _screen.IsTraveling || !ReferenceEquals(_run.Map, _map))
+                return;
+            _screen.SetMap(_map, _run.Rng.Seed, clearDrawings: false);
+            if (_run.CurrentMapCoord is { } coord &&
+                _screen.GetNodeOrNull<Node>("TheMap/MapMarker") != null &&
+                _map.GetPoint(coord) != null)
+            {
+                _screen.InitMarker(coord);
+            }
+        }).CallDeferred();
     }
 
     private async Task Activate(CrossroadRecord road)

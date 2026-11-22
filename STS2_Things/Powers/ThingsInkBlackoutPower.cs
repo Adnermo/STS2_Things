@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Powers;
@@ -95,7 +96,8 @@ public sealed class ThingsInkBlackoutPower : ThingsPowerModel
         Flash();
 
         AbyssalInkBlackout.InkEntirePlayerDeck(Owner.Player);
-        NAbyssalInkSprayOverlay.SetPersistentInkBorder(true, washClean: false);
+        if (LocalContext.IsMe(Owner.Player))
+            NAbyssalInkSprayOverlay.SetPersistentInkBorder(true, washClean: false);
         return Task.CompletedTask;
     }
 
@@ -154,7 +156,8 @@ public sealed class ThingsInkBlackoutPower : ThingsPowerModel
         AssertMutable();
         _activeThisTurn = false;
         AbyssalInkBlackout.ClearPlayerMarksAtTurnEnd(Owner.Player);
-        NAbyssalInkSprayOverlay.SetPersistentInkBorder(false, washClean: false);
+        if (LocalContext.IsMe(Owner.Player))
+            NAbyssalInkSprayOverlay.SetPersistentInkBorder(false, washClean: false);
         await PowerCmd.Decrement(this);
     }
 
@@ -167,8 +170,9 @@ public sealed class ThingsInkBlackoutPower : ThingsPowerModel
             if (oldOwner.Player is { } player)
             {
                 AbyssalInkBlackout.WashPlayerCards(player, playWaveWash: true);
+                if (LocalContext.IsMe(player))
+                    NAbyssalInkSprayOverlay.SetPersistentInkBorder(false, washClean: true);
             }
-            NAbyssalInkSprayOverlay.SetPersistentInkBorder(false, washClean: true);
         }
         return Task.CompletedTask;
     }

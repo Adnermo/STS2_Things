@@ -439,7 +439,11 @@ public static class AbyssalInkBlackout
         return washedCount;
     }
 
-    internal static void Copy(CardModel source, CardModel clone)
+    internal static void Copy(
+        CardModel source,
+        CardModel clone,
+        CardEnergyCost? sourceEnergyCost = null,
+        CardEnergyCost? clonedEnergyCost = null)
     {
         if (!HasAnyTrackedCards)
             return;
@@ -460,8 +464,10 @@ public static class AbyssalInkBlackout
         LocalCostModifier? clonedMod = null;
         if (srcMark.CostModifier != null)
         {
-            List<LocalCostModifier> srcList = LocalModifiersRef(source.EnergyCost);
-            List<LocalCostModifier> dstList = LocalModifiersRef(clone.EnergyCost);
+            CardEnergyCost srcCost = sourceEnergyCost ?? source.EnergyCost;
+            CardEnergyCost dstCost = clonedEnergyCost ?? clone.EnergyCost;
+            List<LocalCostModifier> srcList = LocalModifiersRef(srcCost);
+            List<LocalCostModifier> dstList = LocalModifiersRef(dstCost);
             int idx = srcList.IndexOf(srcMark.CostModifier);
             if (idx >= 0 && idx < dstList.Count)
             {
@@ -577,10 +583,10 @@ internal static class AbyssalInkBlackoutTurnCleanupPatch
 [HarmonyPatch(typeof(CardEnergyCost), nameof(CardEnergyCost.Clone))]
 internal static class AbyssalInkBlackoutClonePatch
 {
-    private static void Postfix(CardModel ____card, CardModel newCard)
+    private static void Postfix(CardEnergyCost __instance, CardModel ____card, CardModel newCard, CardEnergyCost __result)
     {
         if (AbyssalInkBlackout.HasAnyTrackedCards)
-            AbyssalInkBlackout.Copy(____card, newCard);
+            AbyssalInkBlackout.Copy(____card, newCard, __instance, __result);
     }
 }
 

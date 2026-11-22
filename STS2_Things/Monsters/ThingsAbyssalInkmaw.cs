@@ -855,10 +855,17 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         NAbyssalInkmawBossBackground.Current?.PlayBossHurt();
         NGame.Instance?.ScreenShake(ShakeStrength.Medium, ShakeDuration.Short);
 
+        int recoilDamage = ThingsAbyssalCoverPower.SeverRecoilDamage;
+        if (CombatState != null && MultiplayerCompat.IsExtendedParty(CombatState))
+        {
+            int rawPlayers = MultiplayerCompat.GetRawPlayerCount(CombatState);
+            recoilDamage = (int)Math.Round(recoilDamage * MultiplayerCompat.GetExtendedPartyScaleRatio(rawPlayers));
+        }
+
         await CreatureCmd.Damage(
             choiceContext,
             Creature,
-            ThingsAbyssalCoverPower.SeverRecoilDamage,
+            recoilDamage,
             ValueProp.Unblockable | ValueProp.Unpowered | ValueProp.Move,
             null,
             null);

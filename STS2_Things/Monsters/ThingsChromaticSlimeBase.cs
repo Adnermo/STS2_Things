@@ -3,8 +3,12 @@ using MegaCrit.Sts2.Core.Animation;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.MonsterMoves.Intents;
+using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using STS2_Things.Core.Models;
 using STS2_Things.Powers;
 using STS2_Things.Visuals;
@@ -12,10 +16,13 @@ using STS2_Things.Visuals;
 namespace STS2_Things.Monsters;
 
 /// <summary>
-/// Shared Spine animator, slime SFX damage typing, and split phase tracking for all Chromatic Slime tiers.
+/// Shared Spine animator, slime SFX damage typing, half-HP split state support, and split phase tracking
+/// for all Chromatic Slime tiers.
 /// </summary>
 public abstract class ThingsChromaticSlimeBase : ThingsSpineMonster
 {
+    public const string SplitMoveId = "SPLIT_MOVE";
+
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Slime;
 
     /// <summary>True while this slime is alive and combat is still running.</summary>
@@ -24,10 +31,47 @@ public abstract class ThingsChromaticSlimeBase : ThingsSpineMonster
     /// <summary>Determines staggered move cycle offset for pairs spawned from a split.</summary>
     public int StartMovePhase { get; set; }
 
+    /// <summary>Color strain of this slime (null on Large Prismatic Slime; Crimson/Amber/Azure on Medium &amp; Small).</summary>
+    public virtual ChromaticStrain? OwnStrain => null;
+
+    /// <summary>Registered <c>SPLIT_MOVE</c> interrupt state for splittable tiers (Large and Medium).</summary>
+    internal MoveState? SplitState { get; private set; }
+
     protected override void AfterCloned()
     {
         base.AfterCloned();
         StartMovePhase = 0;
+        SplitState = null;
+    }
+
+    /// <summary>Creates and registers the uninterruptible half-HP <c>SPLIT_MOVE</c> state for Large &amp; Medium slimes.</summary>
+    protected MoveState CreateSplitMoveState()
+    {
+        var split = new MoveState(SplitMoveId, SplitMove, new SummonIntent())
+        {
+            MustPerformOnceBeforeTransitioning = true,
+        };
+        split.FollowUpState = split;
+        SplitState = split;
+        return split;
+    }
+
+    /// <summary>Immediately interrupts the current intent and locks this slime into <c>SPLIT_MOVE</c>.</summary>
+    internal void TriggerSplitIntent()
+    {
+        if (SplitState == null || !Creature.IsAlive || NextMove == SplitState)
+            return;
+
+        SetMoveImmediate(SplitState, forceTransition: true);
+    }
+
+    private async Task SplitMove(IReadOnlyList<Creature> targets)
+    {
+        if (!CanAct)
+            return;
+
+        if (Creature.GetPower<ThingsChromaticFissionPower>() is { } fission)
+            await fission.ExecuteSplitAsync(new ThrowingPlayerChoiceContext());
     }
 
     /// <summary>Optional initial Block granted immediately when spawned (used by Amber strains).</summary>

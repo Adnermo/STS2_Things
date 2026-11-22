@@ -6,6 +6,8 @@ using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models.Enchantments;
 using MegaCrit.Sts2.Core.Runs;
+using STS2_Things.Relics;
+using STS2_Things.RestSite;
 
 namespace STS2_Things.Hooks;
 
@@ -22,6 +24,12 @@ internal static class CloneEnchantmentRestSitePatch
     {
         if (player?.Deck?.Cards == null || options == null)
             return;
+
+        if (options.OfType<SpentEmberRestSiteOption>().Any() ||
+            player.GetRelic<ThingsBorrowedEmber>() is { IsSpentCampHere: true })
+        {
+            return;
+        }
 
         if (!player.Deck.Cards.Any(card => card.Enchantment is Clone))
             return;

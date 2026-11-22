@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using Godot;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
@@ -14,10 +17,15 @@ public partial class NArmorSiphonVfx : Node2D
 {
     private const float SiphonDuration = 0.68f;
     private const float BurstDuration = 0.52f;
+    private const int VanillaShardsPerSource = 6;
+    private const int MaxTotalSiphonShards = 48;
+    private const int MaxExtendedSiphonSources = 24;
+    private const int MaxBurstShards = 48;
     private readonly List<Vector2> _sources = [];
     private readonly List<BurstShard> _burstShards = [];
     private Creature? _owner;
     private Vector2 _burstOrigin;
+    private int _rawSourceCount;
     private float _elapsed;
     private bool _isBurst;
 
@@ -31,20 +39,57 @@ public partial class NArmorSiphonVfx : Node2D
         if (host == null)
             return;
 
-        NArmorSiphonVfx vfx = new()
-        {
-            _owner = owner,
-            ZIndex = 35,
-        };
+        List<(Vector2 Pos, bool IsLocal)> resolved = [];
         foreach (Creature source in sources)
         {
             if (Sts2VersionSeam.GetCreatureNode(source) is { } srcNode)
-                vfx._sources.Add(srcNode.VfxSpawnPosition);
+                resolved.Add((srcNode.VfxSpawnPosition, LocalContext.IsMe(source)));
         }
-        if (vfx._sources.Count == 0)
+        if (resolved.Count == 0)
             return;
 
+        NArmorSiphonVfx vfx = new()
+        {
+            _owner = owner,
+            _rawSourceCount = resolved.Count,
+            ZIndex = 35,
+        };
+        SelectSiphonSources(resolved, vfx._sources, MaxExtendedSiphonSources);
+
         host.AddChildSafely(vfx);
+    }
+
+    private static void SelectSiphonSources(
+        List<(Vector2 Pos, bool IsLocal)> candidates,
+        List<Vector2> destination,
+        int maxCount)
+    {
+        if (candidates.Count <= maxCount)
+        {
+            for (int i = 0; i < candidates.Count; i++)
+                destination.Add(candidates[i].Pos);
+            return;
+        }
+
+        int localIndex = candidates.FindIndex(c => c.IsLocal);
+        if (localIndex >= 0)
+            destination.Add(candidates[localIndex].Pos);
+
+        int remaining = maxCount - destination.Count;
+        int nonLocalCount = candidates.Count - (localIndex >= 0 ? 1 : 0);
+        if (remaining <= 0 || nonLocalCount <= 0)
+            return;
+
+        for (int k = 0; k < remaining; k++)
+        {
+            int nonLocalPick = remaining == 1
+                ? nonLocalCount / 2
+                : (int)MathF.Round(k * (nonLocalCount - 1) / (float)(remaining - 1));
+            int actualIndex = (localIndex >= 0 && nonLocalPick >= localIndex)
+                ? nonLocalPick + 1
+                : nonLocalPick;
+            destination.Add(candidates[actualIndex].Pos);
+        }
     }
 
     /// <summary>Spawns faceted cyan crystal fragments bursting away when dorsal armor plates shatter.</summary>
@@ -55,6 +100,7 @@ public partial class NArmorSiphonVfx : Node2D
         if (host == null || ownerNode == null || shardCount <= 0)
             return;
 
+        int clampedShards = Math.Min(shardCount, MaxBurstShards);
         Marker2D? center = ownerNode.Visuals?.GetNodeOrNull<Marker2D>("%CenterPos");
         Vector2 origin = center?.GlobalPosition ?? ownerNode.VfxSpawnPosition;
         NArmorSiphonVfx vfx = new()
@@ -65,7 +111,7 @@ public partial class NArmorSiphonVfx : Node2D
         };
 
         const float golden = 2.3999632f;
-        for (int i = 0; i < shardCount; i++)
+        for (int i = 0; i < clampedShards; i++)
         {
             float angle = -2.65f + i * golden % 4.6f;
             float speed = 175f + (i % 4) * 58f;
@@ -108,14 +154,27 @@ public partial class NArmorSiphonVfx : Node2D
         if (alphaEnvelope <= 0.01f)
             return;
 
+        int effectiveSources = Math.Max(_rawSourceCount, _sources.Count);
+        bool isExtended = MultiplayerCompat.IsExtendedParty(effectiveSources);
+        int shardsPerSource = !isExtended
+            ? VanillaShardsPerSource
+            : (effectiveSources <= 12 ? 3 : 2);
+        float shardAlpha = !isExtended
+            ? alphaEnvelope
+            : alphaEnvelope * (effectiveSources <= 12 ? 0.94f : 0.86f);
+        int totalShardsDrawn = 0;
+
         foreach (Vector2 startGlobal in _sources)
         {
             Vector2 start = ToLocal(startGlobal);
             Vector2 delta = mouthPos - start;
             Vector2 normal = delta.LengthSquared() > 1f ? delta.Normalized().Orthogonal() : Vector2.Up;
 
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < shardsPerSource; i++)
             {
+                if (isExtended && totalShardsDrawn >= MaxTotalSiphonShards)
+                    break;
+
                 float tShard = Mathf.Clamp((progress - i * 0.06f) / 0.56f, 0f, 1f);
                 if (tShard <= 0f || tShard >= 1f)
                     continue;
@@ -123,8 +182,12 @@ public partial class NArmorSiphonVfx : Node2D
                 float sway = Mathf.Sin(tShard * Mathf.Pi) * ((i % 2 == 0 ? 1f : -1f) * (24f + i * 5f));
                 Vector2 pos = start.Lerp(mouthPos, eased) + normal * sway;
                 float radius = (11f - i * 0.8f) * (1f - 0.35f * tShard);
-                DrawFacetedShard(pos, delta.Angle(), radius, alphaEnvelope);
+                DrawFacetedShard(pos, delta.Angle(), radius, shardAlpha);
+                totalShardsDrawn++;
             }
+
+            if (isExtended && totalShardsDrawn >= MaxTotalSiphonShards)
+                break;
         }
 
         float flash = Mathf.Sin(Mathf.Clamp((progress - 0.36f) / 0.42f, 0f, 1f) * Mathf.Pi);

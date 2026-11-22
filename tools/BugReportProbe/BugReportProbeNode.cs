@@ -256,6 +256,26 @@ public partial class BugReportProbeNode : Node
                     && hOwners.Select(o => o?.GetValue<string>()).Contains("things.probe.harmony.owner"),
                     "Harmony owner attributed on patched stack frame");
 
+                // LogSanitizer res:// / user:// / https:// URI preservation regression (must not mangle res:// into re<LOCAL_PATH>)
+                MethodInfo scrubMethod = ModAssembly.GetType("STS2_Things.Diagnostics.LogSanitizer", throwOnError: true)!
+                    .GetMethod("Scrub", BindingFlags.NonPublic | BindingFlags.Static)!;
+                string scrubbedRes = (string)scrubMethod.Invoke(null,
+                    ["ResourceFormatImporter::load - res://scenes/creature_visuals/soul_roes.tscn:1", 2000])!;
+                Check(scrubbedRes.Contains("res://scenes/creature_visuals/soul_roes.tscn:1", StringComparison.Ordinal)
+                    && !scrubbedRes.Contains("re<LOCAL_PATH>", StringComparison.Ordinal),
+                    "LogSanitizer preserves res:// resource paths without mangling into re<LOCAL_PATH>");
+                string scrubbedMixed = (string)scrubMethod.Invoke(null,
+                    ["user://mod_configs/STS2_Things.cfg https://example.com/cb?token=secret_tok C:\\Users\\Alice\\foo.txt D:\\Private\\bar.cs E:/secret/baz.txt", 2000])!;
+                Check(scrubbedMixed.Contains("user://mod_configs/STS2_Things.cfg", StringComparison.Ordinal)
+                    && scrubbedMixed.Contains("https://example.com/cb?token=<REDACTED>", StringComparison.Ordinal)
+                    && scrubbedMixed.Contains("<USER_HOME>/foo.txt", StringComparison.Ordinal)
+                    && scrubbedMixed.Contains("<LOCAL_PATH>/bar.cs", StringComparison.Ordinal)
+                    && scrubbedMixed.Contains("<LOCAL_PATH>/baz.txt", StringComparison.Ordinal)
+                    && !scrubbedMixed.Contains("Alice", StringComparison.Ordinal)
+                    && !scrubbedMixed.Contains("Private", StringComparison.Ordinal)
+                    && !scrubbedMixed.Contains("secret_tok", StringComparison.Ordinal),
+                    "LogSanitizer preserves URI schemes while still scrubbing Windows drive paths and tokens");
+
                 // Multiplayer state divergence capture
                 var localNetState = NetFullCombatState.FromRun(second.Run, null);
                 second.Player.Creature.SetCurrentHpInternal(41);

@@ -95,11 +95,10 @@ public sealed class ThingsRobberyFakeMerchant : ThingsEventModel
         if (unowned.Count >= count)
             return unowned.Take(count).ToList();
 
-        var fallback = pool
-            .Where(candidate => unowned.All(picked => picked.Id != candidate.Id))
-            .ToList()
-            .UnstableShuffle(rng);
-        return unowned.Concat(fallback).Take(count).ToList();
+        RelicModel circlet = ModelDb.Relic<Circlet>();
+        while (unowned.Count < count)
+            unowned.Add(circlet);
+        return unowned;
     }
 
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()

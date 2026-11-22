@@ -31,13 +31,6 @@ public sealed class ThingsNarrowViewfinder : ThingsRelicModel
         return true;
     }
 
-    public override decimal ModifyCardRewardUpgradeOdds(Player player, CardModel card, decimal originalOdds)
-    {
-        if (player != Owner)
-            return originalOdds;
-        return 1m;
-    }
-
     public override bool TryModifyCardRewardOptionsLate(
         Player player,
         List<CardCreationResult> cardRewards,

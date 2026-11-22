@@ -120,7 +120,7 @@ public partial class SanguineLeechProbeNode : Node
             string[] cycle=["SIP_MOVE","INFEST_MOVE","SIP_AGAIN_MOVE","CURL_MOVE"];
             foreach (var l in s.Leeches)
             {
-                Assert(l.MinInitialHp==29 && l.MaxInitialHp==33,"A0 HP range.");
+                Assert(l.MinInitialHp==24 && l.MaxInitialHp==28,"A0 HP range.");
                 for(int turn=0;turn<8;turn++)
                 {
                     var move=l.MoveStateMachine!.RollMove([s.Player.Creature],l.Creature,s.Run.Rng.MonsterAi);
@@ -130,7 +130,7 @@ public partial class SanguineLeechProbeNode : Node
             }
         }
         var high=Scenario(ascension:20);
-        Assert(high.Leeches.All(l=>l.MinInitialHp==32 && l.MaxInitialHp==36),"Tough-enemy HP range.");
+        Assert(high.Leeches.All(l=>l.MinInitialHp==27 && l.MaxInitialHp==31),"Tough-enemy HP range.");
         GD.Print("PASS pools, counts, HP and staggered move state machines.");
     }
 
@@ -263,7 +263,7 @@ public partial class SanguineLeechProbeNode : Node
             var s=Scenario(ascension:ascension);var l=s.Leeches[0];var enemy=l.Creature;
             enemy.SetCurrentHpInternal(enemy.MaxHp-12);int playerHp=s.Player.Creature.CurrentHp;
             await ((MoveState)l.MoveStateMachine!.States["SIP_MOVE"]).PerformMove([s.Player.Creature]);
-            int damage=ascension==0?6:7;
+            int damage=ascension==0?9:10;
             Assert(s.Player.Creature.CurrentHp==playerHp-damage,"Native siphon damage and ascension.");
             Assert(enemy.CurrentHp==enemy.MaxHp-12+damage,"Siphon heals actual life damage.");
             await CreatureCmd.GainBlock(s.Player.Creature,50,ValueProp.Unpowered,null);
@@ -271,7 +271,7 @@ public partial class SanguineLeechProbeNode : Node
             await ((MoveState)l.MoveStateMachine.States["SIP_MOVE"]).PerformMove([s.Player.Creature]);
             Assert(enemy.CurrentHp==hp && s.Player.Creature.CurrentHp==playerHp,"Full block prevents both damage and lifesteal.");
             await ((MoveState)l.MoveStateMachine.States["CURL_MOVE"]).PerformMove([s.Player.Creature]);
-            Assert(enemy.Block==6,"Curl grants six block.");
+            Assert(enemy.Block==5,"Curl grants five block.");
             int parasites=s.Player.PlayerCombatState!.Hand.Cards.OfType<ThingsLeechParasite>().Count();
             await ((MoveState)l.MoveStateMachine.States["INFEST_MOVE"]).PerformMove([s.Player.Creature]);
             var handParasites=s.Player.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().ToArray();

@@ -1,8 +1,13 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using STS2_Things.Monsters;
+using STS2_Things.Platform;
 using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Visuals;
@@ -11,13 +16,18 @@ namespace STS2_Things.Visuals;
 public partial class NSpongeWaterJet : Node2D
 {
     private const int RibbonSegments = 28;
+    private const int ExtendedMediumRibbonSegments = 18;
+    private const int ExtendedLargeRibbonSegments = 14;
+    private const int MaxExtendedJets = 12;
     private MegaSprite? _spine;
     private NCreature? _owner;
     private readonly List<Vector2> _targets = [];
+    private readonly List<(Vector2 Pos, bool IsLocal)> _candidateTargets = [];
     private readonly Vector2[] _ribbonPolygon = new Vector2[(RibbonSegments + 1) * 2];
     private readonly Vector2[] _ribbonCell = new Vector2[4];
     private readonly Color[] _ribbonColors = new Color[1];
     private readonly Vector2[] _droplet = new Vector2[4];
+    private int _rawTargetCount;
     private float _time = -1;
     private float _pixel = 1;
     private bool _wasActive;
@@ -44,22 +54,28 @@ public partial class NSpongeWaterJet : Node2D
             // stream thickness in world pixels so it does not collapse into a line.
             _pixel = 1 / Mathf.Max(.01f, GlobalTransform.X.Length());
             _targets.Clear();
+            _candidateTargets.Clear();
             if (_owner?.Entity is { IsAlive: true } entity)
             {
                 foreach (var player in entity.CombatState?.Players ?? [])
                     if (player.Creature.IsAlive && player.Creature.GetCreatureNode() is { } target)
-                        _targets.Add(ToLocal(target.VfxSpawnPosition));
+                        _candidateTargets.Add((ToLocal(target.VfxSpawnPosition), LocalContext.IsMe(player)));
                 // Standalone native render fixtures have real NCreature siblings but
                 // no singleton combat room. Keep their projection identical to play.
-                if (_targets.Count == 0 && _owner.GetParent() is { } parent)
+                if (_candidateTargets.Count == 0 && _owner.GetParent() is { } parent)
                     foreach (var node in parent.FindChildren("*", "", true, false).OfType<NCreature>())
-                        if (node.Entity is { IsPlayer: true, IsAlive: true }) _targets.Add(ToLocal(node.VfxSpawnPosition));
+                        if (node.Entity is { IsPlayer: true, IsAlive: true })
+                            _candidateTargets.Add((ToLocal(node.VfxSpawnPosition), LocalContext.IsMe(node.Entity)));
             }
+            _rawTargetCount = _candidateTargets.Count;
+            SelectTargetsForDrawing(_candidateTargets, _targets, MaxExtendedJets);
             QueueRedraw();
         }
         else if (_wasActive)
         {
             _targets.Clear();
+            _candidateTargets.Clear();
+            _rawTargetCount = 0;
             QueueRedraw();
         }
         _wasActive = active;
@@ -68,8 +84,61 @@ public partial class NSpongeWaterJet : Node2D
     public override void _Draw()
     {
         if (_time < LaunchTime || _time >= FinishTime || _owner?.Entity.IsDead == true) return;
-        if (_targets.Count == 0) DrawJet(new Vector2(-2200, 120));
-        else foreach (var target in _targets) DrawJet(target);
+        int effectiveCount = Math.Max(_rawTargetCount, _targets.Count);
+        int segments = RibbonSegments;
+        int dropletCount = 8;
+        float alphaScale = 1f;
+        if (MultiplayerCompat.IsExtendedParty(effectiveCount))
+        {
+            segments = effectiveCount <= 10 ? ExtendedMediumRibbonSegments : ExtendedLargeRibbonSegments;
+            dropletCount = effectiveCount <= 10 ? 4 : 3;
+            alphaScale = Mathf.Lerp(0.84f, 0.62f, Mathf.Clamp((effectiveCount - MultiplayerCompat.VanillaMaxPlayers) / 16f, 0f, 1f));
+        }
+
+        if (_targets.Count == 0) DrawJet(new Vector2(-2200, 120), RibbonSegments, 8, 1f);
+        else foreach (var target in _targets) DrawJet(target, segments, dropletCount, alphaScale);
+    }
+
+    private static void SelectTargetsForDrawing(
+        List<(Vector2 Pos, bool IsLocal)> candidates,
+        List<Vector2> destination,
+        int maxCount)
+    {
+        if (candidates.Count <= maxCount)
+        {
+            for (int i = 0; i < candidates.Count; i++)
+                destination.Add(candidates[i].Pos);
+            return;
+        }
+
+        int localIndex = -1;
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            if (candidates[i].IsLocal)
+            {
+                localIndex = i;
+                break;
+            }
+        }
+
+        if (localIndex >= 0)
+            destination.Add(candidates[localIndex].Pos);
+
+        int remaining = maxCount - destination.Count;
+        int nonLocalCount = candidates.Count - (localIndex >= 0 ? 1 : 0);
+        if (remaining <= 0 || nonLocalCount <= 0)
+            return;
+
+        for (int k = 0; k < remaining; k++)
+        {
+            int nonLocalPick = remaining == 1
+                ? nonLocalCount / 2
+                : (int)MathF.Round(k * (nonLocalCount - 1) / (float)(remaining - 1));
+            int actualIndex = (localIndex >= 0 && nonLocalPick >= localIndex)
+                ? nonLocalPick + 1
+                : nonLocalPick;
+            destination.Add(candidates[actualIndex].Pos);
+        }
     }
 
     private Vector2 Along(Vector2 end, float progress)
@@ -82,23 +151,24 @@ public partial class NSpongeWaterJet : Node2D
         return Mouth.Lerp(end, progress) + normal * (arc + ripple);
     }
 
-    private void DrawJet(Vector2 target)
+    private void DrawJet(Vector2 target, int segments, int dropletCount, float alphaScale)
     {
         float lead = Mathf.SmoothStep(0, 1, Mathf.Clamp((_time - LaunchTime) / .14f, 0, 1));
         float tail = Mathf.Clamp((_time - .91f) / .25f, 0, 1);
         float opacity = Mathf.SmoothStep(0, 1, Mathf.Clamp((_time - LaunchTime) / .04f, 0, 1))
-            * (1 - Mathf.SmoothStep(0, 1, Mathf.Clamp((_time - 1.01f) / .22f, 0, 1)));
+            * (1 - Mathf.SmoothStep(0, 1, Mathf.Clamp((_time - 1.01f) / .22f, 0, 1)))
+            * alphaScale;
         if (lead <= tail || opacity <= 0) return;
         // At the first/last fractional frame the stream can be shorter than a
         // pixel. Do not submit effectively collapsed geometry to the renderer.
         if (target.DistanceTo(Mouth) * (lead - tail) < .5f * _pixel) return;
-        Ribbon(target, tail, lead, 8.5f * _pixel, new Color(.20f, .43f, .50f, .82f * opacity));
-        Ribbon(target, tail, lead, 6.4f * _pixel, new Color(.43f, .72f, .82f, .91f * opacity));
-        Ribbon(target, tail, lead, 1.7f * _pixel, new Color(.78f, .91f, .92f, .65f * opacity), -2 * _pixel);
+        Ribbon(target, tail, lead, 8.5f * _pixel, new Color(.20f, .43f, .50f, .82f * opacity), segments);
+        Ribbon(target, tail, lead, 6.4f * _pixel, new Color(.43f, .72f, .82f, .91f * opacity), segments);
+        Ribbon(target, tail, lead, 1.7f * _pixel, new Color(.78f, .91f, .92f, .65f * opacity), segments, -2 * _pixel);
 
         Vector2 direction = (target - Mouth).Normalized();
         Vector2 normal = direction.Orthogonal();
-        for (int index = 0; index < 8; index++)
+        for (int index = 0; index < dropletCount; index++)
         {
             float age = _time - LaunchTime - index * .055f;
             float travel = age / .31f;
@@ -113,28 +183,29 @@ public partial class NSpongeWaterJet : Node2D
         }
     }
 
-    private void Ribbon(Vector2 target, float start, float end, float width, Color color, float offset = 0)
+    private void Ribbon(Vector2 target, float start, float end, float width, Color color, int segments, float offset = 0)
     {
+        int polyLen = (segments + 1) * 2;
         Vector2 normal = (target - Mouth).Normalized().Orthogonal();
-        for (int index = 0; index <= RibbonSegments; index++)
+        for (int index = 0; index <= segments; index++)
         {
-            float u = index / (float)RibbonSegments;
+            float u = index / (float)segments;
             float position = Mathf.Lerp(start, end, u);
             float taper = Mathf.Max(.025f, Mathf.Pow(Mathf.Max(0, Mathf.Sin(u * Mathf.Pi)), .32f));
             float radius = width * (.72f + .28f * Mathf.Sin(position * Mathf.Pi)) * taper;
             Vector2 center = Along(target, position) + normal * offset;
             _ribbonPolygon[index] = center + normal * radius;
-            _ribbonPolygon[_ribbonPolygon.Length - 1 - index] = center - normal * radius;
+            _ribbonPolygon[polyLen - 1 - index] = center - normal * radius;
         }
         // The two banks are already a strip. Drawing its convex cells directly
         // avoids ear-clipping a very thin 58-vertex polygon during launch/tail.
         _ribbonColors[0] = color;
-        for (int index = 0; index < RibbonSegments; index++)
+        for (int index = 0; index < segments; index++)
         {
             _ribbonCell[0] = _ribbonPolygon[index];
             _ribbonCell[1] = _ribbonPolygon[index + 1];
-            _ribbonCell[2] = _ribbonPolygon[_ribbonPolygon.Length - 2 - index];
-            _ribbonCell[3] = _ribbonPolygon[_ribbonPolygon.Length - 1 - index];
+            _ribbonCell[2] = _ribbonPolygon[polyLen - 2 - index];
+            _ribbonCell[3] = _ribbonPolygon[polyLen - 1 - index];
             DrawPrimitive(_ribbonCell, _ribbonColors, []);
         }
     }

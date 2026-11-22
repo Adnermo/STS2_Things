@@ -288,7 +288,7 @@ public abstract class ThingsHumanFaceTowerFace : ThingsMonsterModel
     private async Task ExecuteComboStarterAndRotateAsync(IReadOnlyList<Creature> targets)
     {
         await ExecuteStoneSingleAttackAsync(StarterAttackAnimName, 0.40f, ComboStarterDamage);
-        if (Controller != null && !CombatManager.Instance.IsOverOrEnding)
+        if (Creature.IsAlive && Controller != null && Controller.ActiveFace == this && !CombatManager.Instance.IsOverOrEnding)
         {
             await Controller.ExecuteComboRotationAndFollowUpAsync(this, targets);
         }

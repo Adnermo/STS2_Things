@@ -147,7 +147,7 @@ public partial class ChromaticSlimeProbeNode
             DeactivateSyntheticCombat();
         }
 
-        // 2) Stage 2: Showcase all 3 Medium skins (Crimson, Amber w/ Block, Azure) in native slots + UI
+        // 2) Stage 2: Showcase all 3 Medium skins (Crimson, Amber w/ Block, Azure) with realistic inherited HP + half-HP fission badge
         {
             var s = await Scenario();
             var bg = NCombatBackground.Create(new BackgroundAssets(s.Encounter.Id.Entry.ToLowerInvariant(), new Rng()));
@@ -164,10 +164,12 @@ public partial class ChromaticSlimeProbeNode
             foreach (var (m, slot) in lineup)
             {
                 var c = s.Room.CombatState.CreateCreature(m, CombatSide.Enemy, slot);
+                c.SetMaxHpInternal(36);
+                c.SetCurrentHpInternal(36);
                 s.Room.CombatState.AddCreature(c);
                 m.SetUpForCombat();
                 m.RollMove([s.Player.Creature]);
-                await PowerCmd.Apply<ThingsChromaticFissionPower>(Choice, c, 2m, c, null);
+                await PowerCmd.Apply<ThingsChromaticFissionPower>(Choice, c, 18m, c, null);
                 if (m is ThingsChromaticSlimeMediumAmber)
                     await CreatureCmd.GainBlock(c, 8m, ValueProp.Move, null);
                 var n = AddCreature(view, c, slots.GetNode<Node2D>(slot).Position);
@@ -183,7 +185,7 @@ public partial class ChromaticSlimeProbeNode
             DeactivateSyntheticCombat();
         }
 
-        // 3) Stage 3: Showcase all 4 Small slots + mixed Small trio (Crimson, Amber, Azure) + Split VFX
+        // 3) Stage 3: Showcase all 4 Small slots + dual-color Split VFX (Crimson left + Azure right)
         {
             var s = await Scenario();
             var bg = NCombatBackground.Create(new BackgroundAssets(s.Encounter.Id.Entry.ToLowerInvariant(), new Rng()));
@@ -193,32 +195,32 @@ public partial class ChromaticSlimeProbeNode
             view.AddChild(slots);
             AddCreature(view, s.Player.Creature, new Vector2(340, 746));
 
-            var spawnedSmalls = new List<Creature>();
-            (MonsterModel, string)[] lineup =
+            var spawnedSmalls = new List<(Creature Child, string StrainKey)>();
+            (MonsterModel, string, string)[] lineup =
             [
-                (ModelDb.Monster<ThingsChromaticSlimeSmallCrimson>().ToMutable(), "small_1"),
-                (ModelDb.Monster<ThingsChromaticSlimeSmallAmber>().ToMutable(), "small_2"),
-                (ModelDb.Monster<ThingsChromaticSlimeSmallAzure>().ToMutable(), "small_3"),
-                (ModelDb.Monster<ThingsChromaticSlimeSmallCrimson>().ToMutable(), "small_4"),
+                (ModelDb.Monster<ThingsChromaticSlimeSmallCrimson>().ToMutable(), "small_1", "crimson"),
+                (ModelDb.Monster<ThingsChromaticSlimeSmallCrimson>().ToMutable(), "small_2", "crimson"),
+                (ModelDb.Monster<ThingsChromaticSlimeSmallAzure>().ToMutable(), "small_3", "azure"),
+                (ModelDb.Monster<ThingsChromaticSlimeSmallAzure>().ToMutable(), "small_4", "azure"),
             ];
-            foreach (var (m, slot) in lineup)
+            foreach (var (m, slot, key) in lineup)
             {
                 var c = s.Room.CombatState.CreateCreature(m, CombatSide.Enemy, slot);
+                c.SetMaxHpInternal(16);
+                c.SetCurrentHpInternal(16);
                 s.Room.CombatState.AddCreature(c);
                 m.SetUpForCombat();
                 m.RollMove([s.Player.Creature]);
-                if (m is ThingsChromaticSlimeSmallAmber)
-                    await CreatureCmd.GainBlock(c, 5m, ValueProp.Move, null);
                 var n = AddCreature(view, c, slots.GetNode<Node2D>(slot).Position);
                 await n.UpdateIntent([s.Player.Creature]);
                 n.IntentContainer.Modulate = Colors.White;
                 n.TrackBlockStatus(c);
-                spawnedSmalls.Add(c);
+                spawnedSmalls.Add((c, key));
             }
             for (int f = 0; f < 12; f++)
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
 
-            NChromaticSlimeSplitVfx.PlaySplitArcs(slots.GetNode<Node2D>("large").Position + new Vector2(0, -120), spawnedSmalls, "crimson");
+            NChromaticSlimeSplitVfx.PlaySplitArcs(slots.GetNode<Node2D>("large").Position + new Vector2(0, -120), spawnedSmalls);
             for (int f = 0; f < 8; f++)
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await Capture("chromatic_slime_stage3_smalls_vfx");

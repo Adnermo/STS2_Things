@@ -12,19 +12,22 @@ using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Core.Models;
 using STS2_Things.Monsters;
+using STS2_Things.Platform;
 using STS2_Things.Visuals;
 
 namespace STS2_Things.Powers;
 
-public readonly record struct RadioChannel(int Attacks, int Skills)
+public readonly record struct RadioChannel(int Attacks, int Skills, int AttackThreshold = 1)
 {
-    public int Mask => (Attacks > 0 ? 1 : 0) | (Skills > 0 ? 2 : 0);
+    public int EffectiveAttackThreshold => Math.Max(1, AttackThreshold);
+    public bool HasAttack => Attacks >= EffectiveAttackThreshold;
+    public int Mask => (HasAttack ? 1 : 0) | (Skills > 0 ? 2 : 0);
 }
 
 public readonly record struct RadioProgram(RadioChannel First, RadioChannel Second)
 {
     public int Key => First.Mask | (Second.Mask << 2);
-    public int AttackCount => 1 + (First.Attacks > 0 ? 1 : 0) + (Second.Attacks > 0 ? 1 : 0);
+    public int AttackCount => 1 + (First.HasAttack ? 1 : 0) + (Second.HasAttack ? 1 : 0);
     public int SkillCount => First.Skills + Second.Skills;
     public RadioChannel Channel(int index) => index == 0 ? First : Second;
 }
@@ -69,15 +72,21 @@ public sealed class ThingsRadioReceptionPower : ThingsPowerModel
         if (!IsMutable || Owner?.CombatState is not { } combatState) return default;
         var data = GetInternalData<Data>();
         int a0 = 0, a1 = 0, s0 = 0, s1 = 0;
+        int alivePlayers = 0;
         // NetId identifies the actor; roster order and packet interleaving cannot
         // let the fastest player consume another player's two recording slots.
         foreach (var player in combatState.Players.OrderBy(p => p.NetId))
         {
-            if (!player.Creature.IsAlive || !data.Records.TryGetValue(player.NetId, out var records)) continue;
+            if (!player.Creature.IsAlive) continue;
+            alivePlayers++;
+            if (!data.Records.TryGetValue(player.NetId, out var records)) continue;
             if (records.Count > 0) { if (records[0] == CardType.Attack) a0++; else s0++; }
             if (records.Count > 1) { if (records[1] == CardType.Attack) a1++; else s1++; }
         }
-        return new(new(a0, s0), new(a1, s1));
+        int attackThreshold = MultiplayerCompat.IsExtendedParty(combatState)
+            ? Math.Max(1, (alivePlayers + 3) / 4)
+            : 1;
+        return new(new(a0, s0, attackThreshold), new(a1, s1, attackThreshold));
     }
 
     public override Task AfterApplied(Creature? applier, CardModel? cardSource)
@@ -107,15 +116,10 @@ public sealed class ThingsRadioReceptionPower : ThingsPowerModel
         if (side != CombatSide.Player || Owner?.IsAlive != true) return Task.CompletedTask;
         var data = GetInternalData<Data>();
         data.ListeningPlayers.Clear();
-        if (Owner.Monster is ThingsRadioJellyfish { IsTuningTurn: true })
-        {
-            data.Records.Clear();
-            data.Revision++;
-            Refresh();
-            return Task.CompletedTask;
-        }
         // Extra turns reset only participating players, before opening draws
         // and automatic plays. Other players keep their own current records.
+        // Do not early-return on IsTuningTurn here because enemies have not
+        // rolled their next move yet; AfterSideTurnStart handles Tuning turns.
         foreach (var creature in participants)
             if (creature.Player is { } player)
             {
@@ -124,6 +128,21 @@ public sealed class ThingsRadioReceptionPower : ThingsPowerModel
             }
         data.Revision++;
         Refresh();
+        return Task.CompletedTask;
+    }
+
+    public override Task AfterSideTurnStart(CombatSide side,
+        IReadOnlyList<Creature> participants, ICombatState combatState)
+    {
+        if (side == CombatSide.Player && Owner?.IsAlive == true &&
+            Owner.Monster is ThingsRadioJellyfish { IsTuningTurn: true })
+        {
+            var data = GetInternalData<Data>();
+            data.ListeningPlayers.Clear();
+            data.Records.Clear();
+            data.Revision++;
+            Refresh();
+        }
         return Task.CompletedTask;
     }
 

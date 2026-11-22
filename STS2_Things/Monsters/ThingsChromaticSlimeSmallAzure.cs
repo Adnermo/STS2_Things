@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
+using STS2_Things.Powers;
 
 namespace STS2_Things.Monsters;
 
@@ -18,8 +19,10 @@ namespace STS2_Things.Monsters;
 /// </summary>
 public sealed class ThingsChromaticSlimeSmallAzure : ThingsChromaticSlimeSmallBase
 {
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 11, 10);
-    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 13, 12);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 20, 18);
+    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 24, 22);
+
+    public override ChromaticStrain? OwnStrain => ChromaticStrain.Azure;
 
     protected override string? PreferredSkinName => "azure";
     protected override float? VariantBoundsTop => -120f;
@@ -29,8 +32,8 @@ public sealed class ThingsChromaticSlimeSmallAzure : ThingsChromaticSlimeSmallBa
     protected override string? PreferredAttackAnimation => "attack_azure";
     protected override string? PreferredCastAnimation => "cast_azure";
 
-    private int SpitDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 4, 3);
-    private int DropDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 4, 3);
+    private int SpitDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
+    private int DropDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
     {

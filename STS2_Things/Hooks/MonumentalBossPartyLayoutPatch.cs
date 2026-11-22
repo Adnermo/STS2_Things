@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using STS2_Things.Encounters;
+using STS2_Things.Platform;
 
 namespace STS2_Things.Hooks;
 
@@ -17,14 +18,19 @@ namespace STS2_Things.Hooks;
 /// Replaces vanilla's asymmetric, two-row <c>FullyCenterPlayers</c> party grid for our two
 /// monumental centered-stage Act 2 Depths bosses — <see cref="ThingsAbyssalInkmawBossEncounter"/>
 /// (straight ancient stone bridge between left/right tentacles) and
-/// <see cref="ThingsHumanFaceTowerBossEncounter"/> (wide circular concave stone chamber floor).
+/// <see cref="ThingsHumanFaceTowerBossEncounter"/> (wide circular concave stone chamber floor) —
+/// and extends >4-player (5–32+) parties on those bosses plus
+/// <see cref="ThingsCaveGodBossEncounter"/> into grounded, symmetrically centered staggered rows.
 ///
-/// Vanilla <see cref="NCombatRoom.PositionPlayersAndPets"/> centers only Player 0, pushes Player 1
-/// far left, and pushes Players 2–3 up by -120 local units (-86px) while dimming them to 50% grey,
-/// which puts multiplayer teammates directly on top of the subterranean lake, Boss HP bar, or rear
-/// stone tower wall. This patch arranges all 1–4+ party members symmetrically in a single grounded
-/// front row (flat across the stone bridge, or gently curved forward along the circular tower floor
-/// ring) with full brightness, clean HP-bar clearance, and dedicated spacing for Necrobinder's Osty.
+/// For 1–4 players:
+/// - Inkmaw &amp; Tower arrange all 1–4 party members symmetrically in a single grounded front row
+///   with full brightness, clean HP-bar clearance, and dedicated spacing for Necrobinder's Osty.
+/// - Cave God is left 100% untouched (vanilla placement).
+///
+/// For 5–32+ players:
+/// - Inkmaw, Tower, and Cave God arrange the party into 2–5 staggered grounded rows inside each
+///   stage's safe floor bounds, keeping the local player front-and-center at full brightness with
+///   subtle rear-row depth tinting and back-to-front child ordering.
 /// </summary>
 [HarmonyPatch(typeof(NCombatRoom), nameof(NCombatRoom.PositionPlayersAndPets))]
 public static class MonumentalBossPartyLayoutPatch
@@ -43,8 +49,31 @@ public static class MonumentalBossPartyLayoutPatch
     private const float TowerMaxSpanLocal = 820f;
     private const float TowerMaxSpanWithOstyLocal = 860f;
 
+    private const float InkmawExtendedMaxSpanLocal = 840f;
+    private const float InkmawExtendedMaxSpanWithOstyLocal = 860f;
+    private const float InkmawExtendedPreferredGap = 210f;
+    private const float InkmawExtendedMaxRearDepth = 52f;
+
+    private const float TowerExtendedMaxSpanLocal = 940f;
+    private const float TowerExtendedMaxSpanWithOstyLocal = 960f;
+    private const float TowerExtendedPreferredGap = 225f;
+    private const float TowerExtendedMaxRearDepth = 68f;
+    private const float TowerExtendedFrontArcMaxDrop = 8f;
+
+    private const float CaveGodExtendedMaxSpanLocal = 860f;
+    private const float CaveGodExtendedMaxSpanWithOstyLocal = 880f;
+    private const float CaveGodExtendedPreferredGap = 215f;
+    private const float CaveGodExtendedMaxRearDepth = 72f;
+
     private const float LocalNecrobinderSoloOffsetX = -75f;
     private const float LocalNecrobinderRightGapBonus = 115f;
+
+    private enum BossStageKind
+    {
+        Inkmaw,
+        Tower,
+        CaveGod
+    }
 
     private sealed class PartySlot
     {
@@ -55,6 +84,7 @@ public static class MonumentalBossPartyLayoutPatch
     }
 
     [HarmonyPostfix]
+    [HarmonyPriority(Priority.Low)]
     private static void Postfix(List<NCreature> creatureNodes)
     {
         if (creatureNodes == null || creatureNodes.Count == 0)
@@ -63,16 +93,87 @@ public static class MonumentalBossPartyLayoutPatch
         EncounterModel? encounter = creatureNodes.FirstOrDefault()?.Entity?.CombatState?.Encounter;
         bool isInkmaw = encounter is ThingsAbyssalInkmawBossEncounter;
         bool isTower = encounter is ThingsHumanFaceTowerBossEncounter;
-        if (!isInkmaw && !isTower)
+        bool isCaveGod = encounter is ThingsCaveGodBossEncounter;
+        if (!isInkmaw && !isTower && !isCaveGod)
             return;
+
+        if (isCaveGod)
+        {
+            int playerCount = 0;
+            foreach (NCreature node in creatureNodes)
+            {
+                if (node?.Entity is { IsPlayer: true })
+                    playerCount++;
+            }
+
+            if (!MultiplayerCompat.IsExtendedParty(playerCount))
+                return;
+
+            ApplyCaveGodExtendedPartyFormation(creatureNodes);
+            return;
+        }
 
         ApplyMonumentalPartyFormation(creatureNodes, isTower);
     }
 
     public static void ApplyMonumentalPartyFormation(List<NCreature> creatureNodes, bool isTower)
     {
-        List<PartySlot> rawPlayers = [];
-        PartySlot? localSlot = null;
+        if (!CollectPartySlots(creatureNodes, out PartySlot? localSlot, out List<PartySlot> rawPlayers))
+            return;
+
+        int totalCount = (localSlot != null ? 1 : 0) + rawPlayers.Count;
+        if (MultiplayerCompat.IsExtendedParty(totalCount))
+        {
+            ApplyExtendedFormationSlots(localSlot, rawPlayers, isTower ? BossStageKind.Tower : BossStageKind.Inkmaw);
+            return;
+        }
+
+        // 1–4 players: preserve the exact validated single-row grounded formation.
+        // Order left-to-right so the local player stands prominently near center:
+        //   1p: [Local]
+        //   2p: [Local, Mate0]
+        //   3p: [Mate0, Local, Mate1]
+        //   4p: [Mate0, Local, Mate1, Mate2]
+        List<PartySlot> ordered = BuildDisplayOrder(localSlot, rawPlayers);
+        int count = ordered.Count;
+
+        float[] slotXs = ComputeHorizontalSlots(ordered, isTower);
+        float[] slotYs = ComputeVerticalSlots(count, isTower);
+
+        for (int i = 0; i < count; i++)
+        {
+            PartySlot slot = ordered[i];
+            NCreature player = slot.Player;
+
+            player.Position = new Vector2(slotXs[i], slotYs[i]);
+            if (player.Visuals != null)
+                player.Visuals.Modulate = Colors.White;
+
+            PositionSlotPets(slot, Colors.White, 0.67f);
+        }
+
+        SortFormationChildren(ordered);
+    }
+
+    public static void ApplyCaveGodExtendedPartyFormation(List<NCreature> creatureNodes)
+    {
+        if (!CollectPartySlots(creatureNodes, out PartySlot? localSlot, out List<PartySlot> rawPlayers))
+            return;
+
+        int totalCount = (localSlot != null ? 1 : 0) + rawPlayers.Count;
+        if (!MultiplayerCompat.IsExtendedParty(totalCount))
+            return;
+
+        ApplyExtendedFormationSlots(localSlot, rawPlayers, BossStageKind.CaveGod);
+    }
+
+    private static bool CollectPartySlots(
+        List<NCreature> creatureNodes,
+        out PartySlot? localSlot,
+        out List<PartySlot> rawPlayers)
+    {
+        rawPlayers = [];
+        localSlot = null;
 
         foreach (NCreature node in creatureNodes)
         {
@@ -95,7 +196,7 @@ public static class MonumentalBossPartyLayoutPatch
         }
 
         if (localSlot == null && rawPlayers.Count == 0)
-            return;
+            return false;
 
         // Attach pets to their owning player slot.
         List<PartySlot> allSlots = localSlot != null ? [localSlot, .. rawPlayers] : [.. rawPlayers];
@@ -108,48 +209,230 @@ public static class MonumentalBossPartyLayoutPatch
             ownerSlot?.Pets.Add(node);
         }
 
-        // Order left-to-right so the local player stands prominently near center:
-        //   1p: [Local]
-        //   2p: [Local, Mate0]
-        //   3p: [Mate0, Local, Mate1]
-        //   4p: [Mate0, Local, Mate1, Mate2]
-        //   Np: Local at index (N - 1) / 2, teammates filling remaining slots symmetrically.
-        List<PartySlot> ordered = BuildDisplayOrder(localSlot, rawPlayers);
-        int count = ordered.Count;
+        return true;
+    }
 
-        float[] slotXs = ComputeHorizontalSlots(ordered, isTower);
-        float[] slotYs = ComputeVerticalSlots(count, isTower);
+    private static void ApplyExtendedFormationSlots(
+        PartySlot? localSlot,
+        List<PartySlot> teammates,
+        BossStageKind stage)
+    {
+        int totalCount = (localSlot != null ? 1 : 0) + teammates.Count;
+        int rowCount = ComputeExtendedRowCount(totalCount);
 
-        for (int i = 0; i < count; i++)
+        int basePerRow = totalCount / rowCount;
+        int extraFrontRows = totalCount % rowCount;
+        int[] rowSizes = new int[rowCount];
+        for (int r = 0; r < rowCount; r++)
+            rowSizes[r] = basePerRow + (r < extraFrontRows ? 1 : 0);
+
+        // Build row assignments with the local player front-and-center in row 0.
+        var rows = new List<PartySlot>[rowCount];
+        int mateCursor = 0;
+        for (int r = 0; r < rowCount; r++)
         {
-            PartySlot slot = ordered[i];
-            NCreature player = slot.Player;
-
-            player.Position = new Vector2(slotXs[i], slotYs[i]);
-            if (player.Visuals != null)
-                player.Visuals.Modulate = Colors.White;
-
-            PositionSlotPets(slot);
+            int rowLen = rowSizes[r];
+            var row = new List<PartySlot>(rowLen);
+            int localCol = r == 0 && localSlot != null ? (rowLen - 1) / 2 : -1;
+            for (int c = 0; c < rowLen; c++)
+            {
+                if (c == localCol && localSlot != null)
+                    row.Add(localSlot);
+                else if (mateCursor < teammates.Count)
+                    row.Add(teammates[mateCursor++]);
+            }
+            rows[r] = row;
         }
 
-        // Sort children back-to-front by Y so slightly forward outer-arc heroes render cleanly in front
-        // of inner heroes, and pets render right beside their owning hero.
-        Node? parent = ordered[0].Player.GetParent();
-        if (parent != null)
+        float maxSpan = stage switch
         {
-            int childCursor = 0;
-            foreach (PartySlot slot in ordered.OrderBy(s => s.Player.Position.Y).ThenBy(s => s.Player.Position.X))
-            {
-                if (slot.Player.GetParent() == parent)
-                    parent.MoveChild(slot.Player, childCursor++);
+            BossStageKind.Tower => TowerExtendedMaxSpanLocal,
+            BossStageKind.CaveGod => CaveGodExtendedMaxSpanLocal,
+            _ => InkmawExtendedMaxSpanLocal
+        };
+        float maxSpanWithOsty = stage switch
+        {
+            BossStageKind.Tower => TowerExtendedMaxSpanWithOstyLocal,
+            BossStageKind.CaveGod => CaveGodExtendedMaxSpanWithOstyLocal,
+            _ => InkmawExtendedMaxSpanWithOstyLocal
+        };
+        float preferredGap = stage switch
+        {
+            BossStageKind.Tower => TowerExtendedPreferredGap,
+            BossStageKind.CaveGod => CaveGodExtendedPreferredGap,
+            _ => InkmawExtendedPreferredGap
+        };
+        float maxRearDepth = stage switch
+        {
+            BossStageKind.Tower => TowerExtendedMaxRearDepth,
+            BossStageKind.CaveGod => CaveGodExtendedMaxRearDepth,
+            _ => InkmawExtendedMaxRearDepth
+        };
+        float frontArcMaxDrop = stage == BossStageKind.Tower ? TowerExtendedFrontArcMaxDrop : 0f;
+        float petVisualScale = stage == BossStageKind.CaveGod ? 1.0f : 0.67f;
 
-                foreach (NCreature pet in slot.Pets)
+        var placed = new List<PartySlot>(totalCount);
+        int prevRowLen = 0;
+
+        for (int r = 0; r < rowCount; r++)
+        {
+            List<PartySlot> row = rows[r];
+            int rowLen = row.Count;
+            if (rowLen == 0)
+                continue;
+
+            float rowT = rowCount > 1 ? r / (float)(rowCount - 1) : 0f;
+            float rowBaseY = BaseFloorLocalY - maxRearDepth * rowT;
+            Color rowModulate = GetExtendedRowModulate(r);
+
+            int necroGapIndex = -1;
+            for (int c = 0; c < rowLen - 1; c++)
+            {
+                if (row[c].IsLocalNecrobinder)
                 {
-                    if (pet.GetParent() == parent)
-                        parent.MoveChild(pet, childCursor++);
-                    if (!slot.IsLocal && pet.Visuals?.Bounds != null)
-                        pet.Visuals.Bounds.Visible = false;
+                    necroGapIndex = c;
+                    break;
                 }
+            }
+
+            float rowMaxSpan = necroGapIndex >= 0
+                ? maxSpanWithOsty
+                : maxSpan * (1f - 0.05f * rowT);
+
+            float[] xs = ComputeExtendedRowHorizontalSlots(
+                row,
+                r,
+                prevRowLen,
+                preferredGap,
+                rowMaxSpan,
+                necroGapIndex);
+
+            float rowArc = frontArcMaxDrop * (1f - 0.5f * rowT);
+            float centerCol = (rowLen - 1) * 0.5f;
+
+            for (int c = 0; c < rowLen; c++)
+            {
+                PartySlot slot = row[c];
+                NCreature player = slot.Player;
+
+                float y = rowBaseY;
+                if (rowArc > 0.001f && centerCol > 0.001f)
+                {
+                    float normalized = MathF.Abs(c - centerCol) / centerCol;
+                    y += rowArc * (normalized * normalized);
+                }
+
+                player.Position = new Vector2(xs[c], y);
+                if (player.Visuals != null)
+                    player.Visuals.Modulate = rowModulate;
+
+                PositionSlotPets(slot, rowModulate, petVisualScale);
+                placed.Add(slot);
+            }
+
+            prevRowLen = rowLen;
+        }
+
+        SortFormationChildren(placed);
+    }
+
+    private static int ComputeExtendedRowCount(int count) => count switch
+    {
+        <= 8 => 2,
+        <= 15 => 3,
+        <= 24 => 4,
+        _ => 5
+    };
+
+    private static Color GetExtendedRowModulate(int rowIndex)
+    {
+        float shade = rowIndex switch
+        {
+            <= 0 => 1.00f,
+            1 => 0.88f,
+            2 => 0.78f,
+            3 => 0.70f,
+            _ => 0.64f
+        };
+        return new Color(shade, shade, shade, 1f);
+    }
+
+    private static float[] ComputeExtendedRowHorizontalSlots(
+        List<PartySlot> row,
+        int rowIndex,
+        int prevRowLen,
+        float preferredGap,
+        float rowMaxSpan,
+        int necroGapIndex)
+    {
+        int rowLen = row.Count;
+        float[] xs = new float[rowLen];
+        if (rowLen == 1)
+        {
+            xs[0] = row[0].IsLocalNecrobinder ? LocalNecrobinderSoloOffsetX : 0f;
+            return xs;
+        }
+
+        // Odd rows that share parity with the row directly in front get a bounded half-column
+        // stagger so rear teammates peek cleanly between foreground teammates while staying
+        // strictly inside [-rowMaxSpan * 0.5f, +rowMaxSpan * 0.5f].
+        bool needsStagger = rowIndex > 0 && (rowIndex % 2 == 1) && (rowLen % 2 == prevRowLen % 2);
+        float prelimStep = MathF.Min(preferredGap, rowMaxSpan / (rowLen - 1));
+        float staggerMag = needsStagger ? MathF.Min(prelimStep * 0.44f, 68f) : 0f;
+        float staggerSign = ((rowIndex / 2) % 2 == 0) ? 1f : -1f;
+        float staggerOffset = staggerMag * staggerSign;
+        float spanCeiling = MathF.Max(120f, rowMaxSpan - 2f * staggerMag);
+
+        float[] gaps = new float[rowLen - 1];
+        float totalSpan = 0f;
+        for (int i = 0; i < gaps.Length; i++)
+        {
+            gaps[i] = preferredGap + (i == necroGapIndex ? LocalNecrobinderRightGapBonus : 0f);
+            totalSpan += gaps[i];
+        }
+
+        if (totalSpan > spanCeiling && totalSpan > 0.001f)
+        {
+            float shrink = spanCeiling / totalSpan;
+            for (int i = 0; i < gaps.Length; i++)
+                gaps[i] *= shrink;
+            totalSpan = spanCeiling;
+        }
+
+        float cursor = -totalSpan * 0.5f + staggerOffset;
+        xs[0] = cursor;
+        for (int i = 0; i < gaps.Length; i++)
+        {
+            cursor += gaps[i];
+            xs[i + 1] = cursor;
+        }
+
+        return xs;
+    }
+
+    private static void SortFormationChildren(List<PartySlot> ordered)
+    {
+        if (ordered.Count == 0)
+            return;
+
+        // Sort children back-to-front by Y so front rows and outer-arc heroes render cleanly in
+        // front of rear rows, and pets render right beside their owning hero.
+        Node? parent = ordered[0].Player.GetParent();
+        if (parent == null)
+            return;
+
+        int childCursor = 0;
+        foreach (PartySlot slot in ordered.OrderBy(s => s.Player.Position.Y).ThenBy(s => s.Player.Position.X))
+        {
+            if (slot.Player.GetParent() == parent)
+                parent.MoveChild(slot.Player, childCursor++);
+
+            foreach (NCreature pet in slot.Pets)
+            {
+                if (pet.GetParent() == parent)
+                    parent.MoveChild(pet, childCursor++);
+                if (!slot.IsLocal && pet.Visuals?.Bounds != null)
+                    pet.Visuals.Bounds.Visible = false;
             }
         }
     }
@@ -289,7 +572,7 @@ public static class MonumentalBossPartyLayoutPatch
         return ys;
     }
 
-    private static void PositionSlotPets(PartySlot slot)
+    private static void PositionSlotPets(PartySlot slot, Color modulate, float visualScaleFactor)
     {
         if (slot.Pets.Count == 0)
             return;
@@ -300,7 +583,7 @@ public static class MonumentalBossPartyLayoutPatch
         foreach (NCreature pet in slot.Pets)
         {
             if (pet.Visuals != null)
-                pet.Visuals.Modulate = Colors.White;
+                pet.Visuals.Modulate = modulate;
 
             if (slot.IsLocal && pet.Entity.Monster is Osty)
             {
@@ -321,12 +604,13 @@ public static class MonumentalBossPartyLayoutPatch
         if (groundPets.Count == 0)
             return;
 
-        float playerWidth = player.Visuals != null ? player.Visuals.Bounds.Size.X * 0.67f : 110f;
+        float playerWidth = player.Visuals != null ? player.Visuals.Bounds.Size.X * visualScaleFactor : 110f;
+        float petHalfScale = 0.5f * visualScaleFactor;
         float step = groundPets.Count > 1 ? playerWidth / (groundPets.Count - 1) : 0f;
         for (int i = 0; i < groundPets.Count; i++)
         {
             NCreature pet = groundPets[i];
-            float petHalfW = pet.Visuals != null ? pet.Visuals.Bounds.Size.X * 0.335f : 36f;
+            float petHalfW = pet.Visuals != null ? pet.Visuals.Bounds.Size.X * petHalfScale : 36f;
             pet.Position = new Vector2(
                 player.Position.X + 20f - i * step - petHalfW,
                 player.Position.Y + 10f);

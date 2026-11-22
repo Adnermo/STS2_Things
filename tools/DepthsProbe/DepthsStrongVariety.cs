@@ -215,7 +215,7 @@ public partial class DepthsProbeNode
         }
         Assert(b.Enemies.Length == 0, "All enemies, including column reserves and chromatic slime splits, can be defeated.");
         if (b.Encounter is ThingsChromaticSlimeWeak)
-            Assert(kills == 7, $"Chromatic Slime splits 1 -> 2 -> 4 (7 total kills), got {kills}.");
+            Assert(kills == 1, $"99999 burst kill from full HP bypasses half-HP Chromatic Slime split cleanly (1 kill), got {kills}.");
         DeactivateSyntheticCombat();
         return new { encounter = b.Encounter.Id.Entry, players = b.Players.Count, ascension, seed, turns = 8, kills,
             moves = moves.ToDictionary(kv => kv.Key, kv => kv.Value.Order().ToArray()) };
@@ -295,8 +295,8 @@ public partial class DepthsProbeNode
             var b = await StrongBattle(canonical, players, ascension);
             foreach (var player in b.Players) { player.Creature.SetMaxHpInternal(1000); player.Creature.SetCurrentHpInternal(1000); }
             var maw = b.Monster<ThingsCaveMaw>();
-            Assert(maw.MinInitialHp == (ascension == 0 ? 79 : 86) && maw.MaxInitialHp == (ascension == 0 ? 85 : 92),
-                "Cave Maw uses updated 79-85 (A0) / 86-92 (A8+) HP band.");
+            Assert(maw.MinInitialHp == (ascension == 0 ? 64 : 70) && maw.MaxInitialHp == (ascension == 0 ? 70 : 76),
+                "Cave Maw uses updated 64-70 (A0) / 70-76 (A8+) HP band.");
             Assert(ThingsCaveMaw.BlockPerCard == 10 && ThingsCaveMaw.StrengthPerMeal == 3 &&
                    maw.Creature.GetPower<ThingsCaveMawAppetitePower>()?.DynamicVars["BlockPerCard"].IntValue == 10,
                 "Cave Maw exposes BlockPerCard=10 and StrengthPerMeal=3.");
@@ -309,16 +309,16 @@ public partial class DepthsProbeNode
             }
             maw.RollMove(b.Players.Select(p => p.Creature));
             Assert(maw.NextMove.Id == "DEVOUR_MOVE", "Offer transitions to Devour.");
-            int expectedDevourDamage = ascension == 0 ? 5 : 7;
+            int expectedDevourDamage = ascension == 0 ? 9 : 11;
             Assert(maw.NextMove.Intents.OfType<SingleAttackIntent>().Single().GetTotalDamage([b.Players[0].Creature], maw.Creature) == expectedDevourDamage &&
                    maw.NextMove.Intents.OfType<BuffIntent>().Count() == 1 &&
                    maw.NextMove.Intents.OfType<DefendIntent>().Count() == 1,
-                "Devour advertises SingleAttackIntent(5/7) + BuffIntent + DefendIntent.");
+                "Devour advertises SingleAttackIntent(9/11) + BuffIntent + DefendIntent.");
             await maw.Creature.AfterTurnStart(CombatSide.Enemy);
             int playerHpBefore = b.Players[0].Creature.CurrentHp;
             await maw.PerformMove();
             Assert(playerHpBefore - b.Players[0].Creature.CurrentHp == expectedDevourDamage,
-                "Devour lands its 5/7 light attack before consuming Status cards.");
+                "Devour lands its 9/11 light attack before consuming Status cards.");
             int consumed = players * 2;
             decimal expectedMealBlock = consumed * 10;
             Assert(maw.Creature.Block == expectedMealBlock,
@@ -329,7 +329,7 @@ public partial class DepthsProbeNode
             DeactivateSyntheticCombat();
         }
         Assert(!ModelDb.Card<Debris>().Keywords.Contains(CardKeyword.Retain), "Canonical Debris remains unchanged.");
-        GD.Print("PASS both maw encounters, 79-85/86-92 HP, 5/7 Devour attack, 10 Block per Status card, multiplayer consumption and canonical-card isolation.");
+        GD.Print("PASS both maw encounters, 64-70/70-76 HP, 9/11 Devour attack, 10 Block per Status card, multiplayer consumption and canonical-card isolation.");
     }
 
     private static async Task VerifyEliteMechanics()

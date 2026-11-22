@@ -32,15 +32,16 @@ internal static class BugFixRegressions
         VerifyCaveGodForceKillContracts();
         VerifyDailySaveCrossroadExtraction();
         VerifySnailChipRunAssetRetention();
-        GD.Print("BUGFIX_REGRESSIONS_PASS groups=8");
+        VerifyBossStateDisplayEffectiveZAndPckGuard(host);
+        GD.Print("BUGFIX_REGRESSIONS_PASS groups=9");
     }
 
     private static void VerifyGravetideLoopAndVolume()
     {
         var wav = ResourceLoader.Load<AudioStreamWav>("res://music/gravetide_slug/gravetide_slug_boss_theme.wav");
         Require(wav != null, "Gravetide boss theme failed to load from published PCK.");
-        Require(wav!.LoopMode == AudioStreamWav.LoopModeEnum.Forward && wav.LoopEnd > 4_000_000,
-            $"Gravetide boss theme has invalid loop metadata: mode={wav.LoopMode}, end={wav.LoopEnd}.");
+        Require(wav!.LoopMode == AudioStreamWav.LoopModeEnum.Forward && wav.LoopEnd > 6_500_000 && wav.MixRate == 48_000 && wav.Stereo,
+            $"Gravetide boss theme has invalid loop/format metadata: mode={wav.LoopMode}, end={wav.LoopEnd}, rate={wav.MixRate}, stereo={wav.Stereo}.");
 
         var towerWav = ResourceLoader.Load<AudioStreamWav>("res://music/human_face_tower/human_face_tower_boss_theme.wav");
         Require(towerWav != null, "Human Face Tower boss theme failed to load from published PCK.");
@@ -81,12 +82,15 @@ internal static class BugFixRegressions
         ThingsModConfig.SetValue(ThingsModConfig.FeatureCustomBgmEnabled, true);
         try
         {
+            var gravetideEnc = (ThingsGravetideSlugBossEncounter)ModelDb.Encounter<ThingsGravetideSlugBossEncounter>().ToMutable();
             var fogmogEnc = (ThingsOriginFogmogBossEncounter)ModelDb.Encounter<ThingsOriginFogmogBossEncounter>().ToMutable();
             var beetleEnc = (ThingsScaleBeetleBossEncounter)ModelDb.Encounter<ThingsScaleBeetleBossEncounter>().ToMutable();
             var towerEnc = (ThingsHumanFaceTowerBossEncounter)ModelDb.Encounter<ThingsHumanFaceTowerBossEncounter>().ToMutable();
             var caveGodEnc = (ThingsCaveGodBossEncounter)ModelDb.Encounter<ThingsCaveGodBossEncounter>().ToMutable();
             var bowlbugEnc = (ThingsBowlbugProgenitorBossEncounter)ModelDb.Encounter<ThingsBowlbugProgenitorBossEncounter>().ToMutable();
             var inkmawEnc = (ThingsAbyssalInkmawBossEncounter)ModelDb.Encounter<ThingsAbyssalInkmawBossEncounter>().ToMutable();
+            Require(gravetideEnc.CustomBgm == "res://music/gravetide_slug/gravetide_slug_boss_theme.wav",
+                $"Gravetide Slug CustomBgm mismatch: {gravetideEnc.CustomBgm}");
             Require(fogmogEnc.CustomBgm == "res://music/origin_fogmog/origin_fogmog_boss_theme.wav",
                 $"Origin Fogmog CustomBgm mismatch: {fogmogEnc.CustomBgm}");
             Require(beetleEnc.CustomBgm == "res://music/scale_beetle/scale_beetle_boss_theme.wav",
@@ -100,7 +104,7 @@ internal static class BugFixRegressions
             Require(inkmawEnc.CustomBgm == "res://music/abyssal_inkmaw/abyssal_inkmaw_boss_theme.wav",
                 $"Abyssal Inkmaw CustomBgm mismatch: {inkmawEnc.CustomBgm}");
 
-            foreach (string track in new[] { fogmogEnc.CustomBgm, beetleEnc.CustomBgm, towerEnc.CustomBgm, caveGodEnc.CustomBgm, bowlbugEnc.CustomBgm, inkmawEnc.CustomBgm })
+            foreach (string track in new[] { gravetideEnc.CustomBgm, fogmogEnc.CustomBgm, beetleEnc.CustomBgm, towerEnc.CustomBgm, caveGodEnc.CustomBgm, bowlbugEnc.CustomBgm, inkmawEnc.CustomBgm })
             {
                 object?[] args = [track, 0f];
                 bool recognized = (bool)tryGetVolume.Invoke(null, args)!;
@@ -325,6 +329,75 @@ internal static class BugFixRegressions
         var paths = (IEnumerable<string>)prop.GetValue(chip)!;
         Require(paths.Contains(chip.PortraitPath),
             "SnailCrystalChip must retain its portrait path in ExtraRunAssetPaths across room unloads.");
+    }
+
+    private static void VerifyBossStateDisplayEffectiveZAndPckGuard(Node host)
+    {
+        // 1) ComputeEffectiveZIndex walks ZAsRelative parents and stops at !ZAsRelative (cf56c660 regression).
+        MethodInfo computeEffectiveZ = typeof(STS2_ThingsInit).Assembly
+            .GetType("STS2_Things.Hooks.BossStateDisplayLayerPatch", throwOnError: true)!
+            .GetMethod("ComputeEffectiveZIndex", NonPublicStatic)!;
+        var sceneContainer = new Control { ZIndex = -10, ZAsRelative = true };
+        var allyContainer = new Control { ZIndex = 0, ZAsRelative = true };
+        var normalCreature = new Control { ZIndex = 0, ZAsRelative = true };
+        var absoluteWrapper = new Control { ZIndex = 0, ZAsRelative = false };
+        var moddedCreature = new Control { ZIndex = 0, ZAsRelative = true };
+        host.AddChild(sceneContainer);
+        sceneContainer.AddChild(allyContainer);
+        allyContainer.AddChild(normalCreature);
+        sceneContainer.AddChild(absoluteWrapper);
+        absoluteWrapper.AddChild(moddedCreature);
+        try
+        {
+            int normalZ = (int)computeEffectiveZ.Invoke(null, [normalCreature])!;
+            int moddedZ = (int)computeEffectiveZ.Invoke(null, [moddedCreature])!;
+            Require(normalZ == -10, $"Expected effective Z=-10 under SceneContainer, got {normalZ}.");
+            Require(moddedZ == 0, $"Expected effective Z=0 under ZAsRelative=false wrapper, got {moddedZ}.");
+        }
+        finally
+        {
+            sceneContainer.Free();
+        }
+
+        // 2) PckIntegrityGuard pins files read-shared on Windows, permitting readers while blocking writers.
+        if (OperatingSystem.IsWindows() && !STS2_Things.Platform.PckIntegrityGuard.IsPinned)
+        {
+            string tempPck = Path.Combine(Path.GetTempPath(), $"sts2_things_pck_guard_{Guid.NewGuid():N}.pck");
+            File.WriteAllText(tempPck, "synthetic-pck-guard-probe");
+            MethodInfo tryPinPath = typeof(STS2_Things.Platform.PckIntegrityGuard)
+                .GetMethod("TryPinPath", NonPublicStatic)!;
+            MethodInfo releaseForTest = typeof(STS2_Things.Platform.PckIntegrityGuard)
+                .GetMethod("ReleaseForTest", NonPublicStatic)!;
+            try
+            {
+                bool pinned = (bool)tryPinPath.Invoke(null, [tempPck])!;
+                Require(pinned && STS2_Things.Platform.PckIntegrityGuard.IsPinned,
+                    "PckIntegrityGuard.TryPinPath failed to pin temporary PCK on Windows.");
+                using (var reader = new FileStream(tempPck, FileMode.Open, System.IO.FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    Require(reader.Length > 0, "Pinned PCK must remain readable by Godot and SHA-256 hashing.");
+                }
+
+                bool writeBlocked = false;
+                try
+                {
+                    using var writer = new FileStream(tempPck, FileMode.Open, System.IO.FileAccess.Write, FileShare.None);
+                }
+                catch (IOException)
+                {
+                    writeBlocked = true;
+                }
+                Require(writeBlocked, "Pinned PCK allowed an external write stream instead of blocking mid-session hot-swap.");
+            }
+            finally
+            {
+                releaseForTest.Invoke(null, null);
+                if (File.Exists(tempPck))
+                    File.Delete(tempPck);
+            }
+            Require(!STS2_Things.Platform.PckIntegrityGuard.IsPinned,
+                "PckIntegrityGuard.ReleaseForTest did not release the pinned handle.");
+        }
     }
 
     private static void Require(bool condition, string message)

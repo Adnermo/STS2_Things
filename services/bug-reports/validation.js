@@ -7,6 +7,7 @@ const id = value => text(value, 300);
 const hex64 = value => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
 const base64Text = (value, max) => text(value, max) && value.length > 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(value);
 const BLOB_FORMATS = new Set(["sts2-native-save", "things-screenshot", "sts2-combat-replay"]);
+const MAX_PLAYERS = 32;
 
 const card = value => typeof value === "string" ? id(value) : object(value) && id(value.id)
   && optional(value, "energy", Number.isFinite) && optional(value, "upgrade", Number.isInteger);
@@ -32,11 +33,11 @@ function route(value) {
   return list(value, 20, act => object(act) && Number.isInteger(act.act_index) && list(act.points, 500, point => object(point)
     && optional(point, "rooms", v => list(v, 50, room => object(room) && optional(room, "type", id)
       && optional(room, "model_id", id) && optional(room, "monster_ids", v => list(v, 100, id))))
-    && optional(point, "players", v => list(v, 8, routePlayer))));
+    && optional(point, "players", v => list(v, MAX_PLAYERS, routePlayer))));
 }
 function snapshot(value) {
   return object(value) && optional(value, "seed", v => text(v, 100))
-    && optional(value, "acts", v => list(v, 20, id)) && optional(value, "players", v => list(v, 8, player))
+    && optional(value, "acts", v => list(v, 20, id)) && optional(value, "players", v => list(v, MAX_PLAYERS, player))
     && optional(value, "route", route) && optional(value, "combat", v => object(v) && optional(v, "monsters", m => list(m, 100,
       monster => object(monster) && id(monster.id) && optional(monster, "powers", p => list(p, 500, power)))))
     && optional(value, "ui", v => object(v) && optional(v, "holders", h => list(h, 1500, object)));
@@ -114,8 +115,8 @@ export function validCheckpoint(value) {
   if (!object(value) || typeof value.available !== "boolean") return false;
   if (!value.available) return optional(value, "reason", v => text(v, 200));
   const validPlayers = value.schema === 1
-    ? (Number.isInteger(value.player_count) && value.player_count >= 1 && value.player_count <= 8)
-    : optional(value, "player_count", v => Number.isInteger(v) && v >= 1 && v <= 8);
+    ? (Number.isInteger(value.player_count) && value.player_count >= 1 && value.player_count <= MAX_PLAYERS)
+    : optional(value, "player_count", v => Number.isInteger(v) && v >= 1 && v <= MAX_PLAYERS);
   return value.format === "sts2-native-save" && value.encoding === "gzip-base64"
     && [1, 2].includes(value.schema)
     && hex64(value.sha256)

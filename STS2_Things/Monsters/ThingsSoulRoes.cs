@@ -5,6 +5,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Animation;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -190,6 +191,8 @@ public sealed class ThingsSoulRoes : ThingsSpineMonster
         {
             motion?.FinishCombo();
         }
+        if (!Creature.IsAlive || CombatManager.Instance.IsOverOrEnding)
+            return;
         await FinishMotion("multi_bite_6");
     }
 
@@ -228,10 +231,15 @@ public sealed class ThingsSoulRoes : ThingsSpineMonster
             motion?.FinishCombo();
         }
 
+        if (!Creature.IsAlive || CombatManager.Instance.IsOverOrEnding)
+            return;
+
         if (!IsPlayingTrackZero("multi_bite_4_intangible"))
         {
             await CreatureCmd.TriggerAnim(Creature, "PowerUp", 0f);
             await WaitForPose("power_up", 0.52f, 0.32f);
+            if (!Creature.IsAlive || CombatManager.Instance.IsOverOrEnding)
+                return;
             await PowerCmd.Apply<IntangiblePower>(new ThrowingPlayerChoiceContext(),
                 Creature, 2m, Creature, null);
             await FinishMotion("power_up");
@@ -239,6 +247,8 @@ public sealed class ThingsSoulRoes : ThingsSpineMonster
         else
         {
             await WaitForPose("multi_bite_4_intangible", Multi4IntangiblePeak, Multi4IntangiblePeak - Multi4Contacts[^1]);
+            if (!Creature.IsAlive || CombatManager.Instance.IsOverOrEnding)
+                return;
             await PowerCmd.Apply<IntangiblePower>(new ThrowingPlayerChoiceContext(),
                 Creature, 2m, Creature, null);
             await FinishMotion("multi_bite_4_intangible");

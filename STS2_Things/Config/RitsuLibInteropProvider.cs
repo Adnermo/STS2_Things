@@ -39,6 +39,7 @@ public static class RitsuLibInteropProvider
             ["sections"] = new object[]
             {
                 AudioSection(),
+                ActSection(),
                 BossSection(),
                 EncounterSection(),
                 EventSection(),
@@ -83,6 +84,12 @@ public static class RitsuLibInteropProvider
         Entry("custom_bgm", ThingsModConfig.FeatureCustomBgmEnabled, "Mod custom music", "启用模组自定义音乐",
             "Disable to restore the game's original music. Sound effects remain enabled.",
             "关闭后恢复原版音乐，保留战斗音效。"));
+
+    private static Dictionary<string, object?> ActSection() => Section("acts", "Acts", "章节",
+        Entry("guaranteed_depths", ThingsModConfig.FeatureGuaranteedDepthsEnabled,
+            "Always encounter The Depths (Act 2)", "必定遇到深处（第二幕）",
+            "Force Act 2 to always be The Depths instead of randomly choosing between The Hive and The Depths. Takes effect on new runs; in multiplayer, the host's setting applies.",
+            "开启后，第二幕固定为「深处」，不再与「蜂巢」随机抽取。新开局生效；多人时由房主设置决定。"));
 
     private static Dictionary<string, object?> BossSection()
     {

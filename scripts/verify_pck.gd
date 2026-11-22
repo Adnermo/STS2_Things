@@ -104,7 +104,7 @@ func _initialize() -> void:
 	_verify_file("res://scenes/creature_visuals/things_cave_god_right_hand.tscn")
 	_verify_file("res://scenes/creature_visuals/things_the_legacy.tscn")
 	_verify_file("res://STS2_Things/animations/monsters/the_legacy/the_legacy_skel_data.tres")
-	_verify_wav_loop("res://music/gravetide_slug/gravetide_slug_boss_theme.wav", 4000000)
+	_verify_wav_loop("res://music/gravetide_slug/gravetide_slug_boss_theme.wav", 6500000)
 	_verify_wav_loop("res://music/human_face_tower/human_face_tower_boss_theme.wav", 5500000)
 	_verify_wav_loop("res://music/cave_god/cave_god_boss_theme.wav", 5800000)
 	_verify_wav_loop("res://music/bowlbug_progenitor/bowlbug_progenitor_boss_theme.wav", 6000000)

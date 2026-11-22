@@ -42,6 +42,7 @@ public sealed class ThingsBronzeCauldron : ThingsEventModel
     private static readonly ConditionalWeakTable<IRunState, RoomSessionHolder> RoomSessions = new();
 
     private bool _settling;
+    private BronzeCauldronMinigame? _activeSession;
 
     /// <summary>
     /// Optional driver used exclusively by headless probes/tests when NOverlayStack is absent.
@@ -55,7 +56,37 @@ public sealed class ThingsBronzeCauldron : ThingsEventModel
     {
         base.AfterCloned();
         _settling = false;
+        _activeSession = null;
         MinigameTestDriver = null;
+    }
+
+    protected override void OnEventFinished()
+    {
+        base.OnEventFinished();
+        BronzeCauldronMinigame? session = _activeSession;
+        _activeSession = null;
+        if (session == null)
+        {
+            ThingsEventMinigameSync.ClearStaleCauldronBuffer();
+            return;
+        }
+
+        if (!ThingsEventMinigameSync.IsRunActive)
+        {
+            session.CancelAllWaiters();
+            ThingsEventMinigameSync.DetachCauldronSession(session);
+            if (Owner?.RunState is { } runState &&
+                RoomSessions.TryGetValue(runState, out RoomSessionHolder? holder) &&
+                ReferenceEquals(holder.Session, session))
+            {
+                holder.Session = null;
+                holder.OverlayLaunched = false;
+            }
+            return;
+        }
+
+        if (session.HasFinalizedOutcomes)
+            ThingsEventMinigameSync.DetachCauldronSession(session);
     }
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
@@ -142,6 +173,7 @@ public sealed class ThingsBronzeCauldron : ThingsEventModel
         Player player = EventOwner;
         IRunState runState = player.RunState;
         (BronzeCauldronMinigame session, bool launchUiHere) = AcquireSharedSession(runState);
+        _activeSession = session;
 
         if (launchUiHere)
         {
@@ -164,7 +196,7 @@ public sealed class ThingsBronzeCauldron : ThingsEventModel
                     session.ConfirmUiExit();
                 }
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
                 return;
             }
@@ -172,7 +204,6 @@ public sealed class ThingsBronzeCauldron : ThingsEventModel
             {
                 if (screen != null && NOverlayStack.Instance != null)
                     NOverlayStack.Instance.Remove(screen);
-                ThingsEventMinigameSync.DetachCauldronSession(session);
             }
         }
 
@@ -181,10 +212,13 @@ public sealed class ThingsBronzeCauldron : ThingsEventModel
         {
             outcome = await session.WaitForPlayerOutcomeAsync(player.NetId);
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
             return;
         }
+
+        if (!ThingsEventMinigameSync.IsRunActive)
+            return;
 
         await ApplyScrambleOutcomeAsync(player, outcome);
     }
@@ -192,6 +226,8 @@ public sealed class ThingsBronzeCauldron : ThingsEventModel
     private (BronzeCauldronMinigame Session, bool LaunchUiHere) AcquireSharedSession(IRunState runState)
     {
         RoomSessionHolder holder = RoomSessions.GetOrCreateValue(runState);
+        // CurrentActIndex occupies the hundreds digit (0..9) and Players.Count occupies 0..99,
+        // so this floorStamp stays collision-free across all 1–64 protocol players without altering 1–4p behavior.
         int floorStamp = runState.TotalFloor * 1000 + runState.CurrentActIndex * 100 + runState.Players.Count;
 
         if (holder.Session == null || holder.FloorStamp != floorStamp)

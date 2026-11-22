@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using STS2_Things.Core.Models;
@@ -36,6 +37,7 @@ public sealed class ThingsClamClaw : ThingsEventModel
     private bool _settling;
     private ThingsClamClawOutcome? _bufferedRemoteOutcome;
     private TaskCompletionSource<ThingsClamClawOutcome>? _remoteOutcomeWaiter;
+    private Action? _remoteWaiterCancelRegistration;
 
     /// <summary>
     /// Optional driver used exclusively by headless probes/tests when NOverlayStack is absent.
@@ -50,7 +52,14 @@ public sealed class ThingsClamClaw : ThingsEventModel
         _settling = false;
         _bufferedRemoteOutcome = null;
         _remoteOutcomeWaiter = null;
+        _remoteWaiterCancelRegistration = null;
         MinigameTestDriver = null;
+    }
+
+    protected override void OnEventFinished()
+    {
+        base.OnEventFinished();
+        CancelPendingRemoteWaiter();
     }
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
@@ -120,12 +129,23 @@ public sealed class ThingsClamClaw : ThingsEventModel
 
     internal void ReceiveRemoteOutcome(ThingsClamClawOutcome outcome)
     {
-        if (_remoteOutcomeWaiter != null)
-        {
-            _remoteOutcomeWaiter.TrySetResult(outcome);
+        TaskCompletionSource<ThingsClamClawOutcome>? waiter = _remoteOutcomeWaiter;
+        _remoteOutcomeWaiter = null;
+        if (waiter != null && waiter.TrySetResult(outcome))
             return;
-        }
         _bufferedRemoteOutcome = outcome;
+    }
+
+    private void CancelPendingRemoteWaiter()
+    {
+        Action? cancel = _remoteWaiterCancelRegistration;
+        _remoteWaiterCancelRegistration = null;
+        if (cancel != null)
+            ThingsEventMinigameSync.UnregisterRemoteWaiter(cancel);
+
+        TaskCompletionSource<ThingsClamClawOutcome>? waiter = _remoteOutcomeWaiter;
+        _remoteOutcomeWaiter = null;
+        waiter?.TrySetCanceled();
     }
 
     private Task Grab1Async() => RunClawTierAsync(Tier1GoldCost, Tier1Grabs);
@@ -150,7 +170,9 @@ public sealed class ThingsClamClaw : ThingsEventModel
         ThingsClamClawOutcome outcome;
         if (LocalContext.IsMe(player))
         {
-            var minigame = new ClamClawMinigame(player, Rng, grabs);
+            // Use an isolated derived RNG for local-only claw physics/slip rolls so EventModel.Rng
+            // is never mutated out of sync with remote peers.
+            var minigame = new ClamClawMinigame(player, CreateLocalMinigameRng(player, grabs), grabs);
             NClamClawScreen? screen = null;
             try
             {
@@ -171,7 +193,7 @@ public sealed class ThingsClamClaw : ThingsEventModel
                     outcome = minigame.BuildOutcome();
                 }
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
                 return;
             }
@@ -181,6 +203,9 @@ public sealed class ThingsClamClaw : ThingsEventModel
                     NOverlayStack.Instance.Remove(screen);
             }
 
+            if (!ThingsEventMinigameSync.IsRunActive)
+                return;
+
             ThingsEventMinigameSync.SendClamClawResult(outcome);
         }
         else
@@ -189,25 +214,51 @@ public sealed class ThingsClamClaw : ThingsEventModel
             {
                 outcome = await WaitForRemoteOutcomeAsync();
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
                 return;
             }
+
+            if (!ThingsEventMinigameSync.IsRunActive)
+                return;
         }
 
         await ApplyOutcomeAsync(player, outcome);
     }
 
-    private Task<ThingsClamClawOutcome> WaitForRemoteOutcomeAsync()
+    private async Task<ThingsClamClawOutcome> WaitForRemoteOutcomeAsync()
     {
         if (_bufferedRemoteOutcome != null)
         {
             ThingsClamClawOutcome buffered = _bufferedRemoteOutcome;
             _bufferedRemoteOutcome = null;
-            return Task.FromResult(buffered);
+            return buffered;
         }
-        _remoteOutcomeWaiter = new TaskCompletionSource<ThingsClamClawOutcome>();
-        return _remoteOutcomeWaiter.Task;
+
+        var waiter = new TaskCompletionSource<ThingsClamClawOutcome>();
+        _remoteOutcomeWaiter = waiter;
+        Action cancel = () =>
+        {
+            if (ReferenceEquals(_remoteOutcomeWaiter, waiter))
+                _remoteOutcomeWaiter = null;
+            waiter.TrySetCanceled();
+        };
+        _remoteWaiterCancelRegistration = cancel;
+        ThingsEventMinigameSync.RegisterRemoteWaiter(EventOwner.NetId, cancel);
+        try
+        {
+            return await waiter.Task;
+        }
+        finally
+        {
+            if (ReferenceEquals(_remoteOutcomeWaiter, waiter))
+                _remoteOutcomeWaiter = null;
+            if (ReferenceEquals(_remoteWaiterCancelRegistration, cancel))
+            {
+                _remoteWaiterCancelRegistration = null;
+                ThingsEventMinigameSync.UnregisterRemoteWaiter(cancel);
+            }
+        }
     }
 
     internal async Task ApplyOutcomeAsync(Player player, ThingsClamClawOutcome outcome)
@@ -261,6 +312,29 @@ public sealed class ThingsClamClaw : ThingsEventModel
             return Task.CompletedTask;
         Finish("LEAVE.description");
         return Task.CompletedTask;
+    }
+
+    private static Rng CreateLocalMinigameRng(Player player, int grabs)
+    {
+        IRunState runState = player.RunState;
+        unchecked
+        {
+            ulong h = 14695981039346656037UL;
+            string seedStr = runState.Rng.StringSeed ?? "things_clam_claw";
+            foreach (char ch in seedStr)
+            {
+                h ^= ch;
+                h *= 1099511628211UL;
+            }
+            h ^= (ulong)(uint)runState.TotalFloor * 7919UL;
+            h *= 1099511628211UL;
+            h ^= (ulong)(uint)runState.CurrentActIndex * 313UL;
+            h *= 1099511628211UL;
+            h ^= player.NetId;
+            h *= 1099511628211UL;
+            h ^= (ulong)(uint)grabs * 131UL;
+            return new Rng(h == 0UL ? 1337UL : h, "things_clam_claw");
+        }
     }
 
     private void Finish(string pageSuffix)

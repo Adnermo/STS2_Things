@@ -598,6 +598,10 @@ public abstract class ThingsCaveGodHand : ThingsMonsterModel
         }
     }
 
+    private const int MaxFallbackVisibleStolenCards = 8;
+    private const float MaxFallbackStolenCardSpreadX = 96f;
+    private const float MaxFallbackStolenCardSpreadY = 48f;
+
     private void AttachStolenCardVisual(CardModel card)
     {
         if (Background != null)
@@ -610,13 +614,50 @@ public abstract class ThingsCaveGodHand : ThingsMonsterModel
             Marker2D? marker = creatureNode?.GetSpecialNode<Marker2D>("%StolenCardPos");
             if (marker != null && GodotObject.IsInstanceValid(marker))
             {
+                List<NCard> existing = marker.GetChildren().OfType<NCard>()
+                    .Where(c => GodotObject.IsInstanceValid(c) && !c.IsQueuedForDeletion())
+                    .ToList();
+                NCard? evicted = null;
+                if (existing.Count >= MaxFallbackVisibleStolenCards)
+                {
+                    bool isLocalCard = card.Owner != null && LocalContext.IsMe(card.Owner);
+                    if (!isLocalCard)
+                    {
+                        marker.Visible = true;
+                        return;
+                    }
+
+                    evicted = existing.FirstOrDefault(c => c.Model?.Owner == null || !LocalContext.IsMe(c.Model.Owner));
+                    if (evicted == null)
+                    {
+                        marker.Visible = true;
+                        return;
+                    }
+
+                    CardPreviewVisualFactory.ReturnPreviewSafely(evicted);
+                }
+
                 NCard? nCard = CardPreviewVisualFactory.TryAttachPreview(marker, card);
                 if (nCard != null)
                 {
-                    int childCount = marker.GetChildCount();
-                    float xOffset = (childCount - 1) * 12f;
-                    float yOffset = (childCount - 1) * 8f;
-                    nCard.Position = new Vector2(xOffset, -yOffset);
+                    NCard[] heldCards = marker.GetChildren().OfType<NCard>()
+                        .Where(c => c != evicted && GodotObject.IsInstanceValid(c) && !c.IsQueuedForDeletion())
+                        .ToArray();
+                    if (heldCards.Length <= MultiplayerCompat.VanillaMaxPlayers)
+                    {
+                        int idx = heldCards.Length - 1;
+                        nCard.Position = new Vector2(idx * 12f, -idx * 8f);
+                    }
+                    else
+                    {
+                        float denom = Math.Max(1, heldCards.Length - 1);
+                        float stepX = MathF.Min(12f, MaxFallbackStolenCardSpreadX / denom);
+                        float stepY = MathF.Min(8f, MaxFallbackStolenCardSpreadY / denom);
+                        for (int i = 0; i < heldCards.Length; i++)
+                        {
+                            heldCards[i].Position = new Vector2(i * stepX, -i * stepY);
+                        }
+                    }
                 }
                 marker.Visible = true;
             }

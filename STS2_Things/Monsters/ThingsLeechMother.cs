@@ -40,12 +40,12 @@ public sealed class ThingsLeechMother : ThingsSpineMonster
         _isAwake = false;
         _hasSummonedBrood = false;
     }
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 84, 81);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 70, 66);
     public override int MaxInitialHp => MinInitialHp;
     public override float HpBarSizeReduction => 80;
-    private int Plating => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 12, 10);
-    private int SipDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 8);
-    private int CrushDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12);
+    private int Plating => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 10, 8);
+    private int SipDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12);
+    private int CrushDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 18, 16);
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_attack_light";
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/egg_layer/egg_layer_lay";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_die";

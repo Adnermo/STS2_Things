@@ -147,6 +147,11 @@ public sealed class ThingsSiltWinch : ThingsEventModel
             await PlayerCmd.GainGold(Pull2PotionFallbackGold, EventOwner);
 
         _settling = false;
+        ShowDepth3State();
+    }
+
+    private void ShowDepth3State()
+    {
         bool lowMaxHp = EventOwner.Creature.MaxHp <= Pull3MaxHpLoss;
         bool hasUncommon = ThingsEventHelpers.HasGrabBagRelic(EventOwner, RelicRarity.Uncommon);
         bool hasRare = ThingsEventHelpers.HasGrabBagRelic(EventOwner, RelicRarity.Rare);
@@ -185,6 +190,7 @@ public sealed class ThingsSiltWinch : ThingsEventModel
         if (EventOwner.Creature.MaxHp <= Pull3MaxHpLoss)
         {
             _settling = false;
+            ShowDepth3State();
             return;
         }
 

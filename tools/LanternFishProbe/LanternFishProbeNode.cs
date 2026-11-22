@@ -118,7 +118,7 @@ public partial class LanternFishProbeNode : Node
         Assert(!s.Encounter.IsWeak, "Three fish belong to the strong hallway pool.");
         var fish = s.Encounter.MonstersWithSlots.Select(x => (ThingsLanternFish)x.Item1).ToArray();
         Assert(fish.Length == 3 && fish.Select(f => f.OpeningPhase).SequenceEqual([0,1,3]), "Three staggered fish.");
-        Assert(fish.All(f => f.MinInitialHp == 38 && f.MaxInitialHp == 42), "A0 HP.");
+        Assert(fish.All(f => f.MinInitialHp == 32 && f.MaxInitialHp == 36), "A0 HP.");
         string[] cycle = ["BITE_MOVE", "FLASH_MOVE", "TAIL_MOVE", "GUARD_MOVE"];
         for (int turn = 0; turn < 8; turn++)
         {
@@ -135,7 +135,7 @@ public partial class LanternFishProbeNode : Node
         GD.Print($"Encounter ID: {s.Encounter.Id.Entry}; monster ID: {fish[0].Id.Entry}; power ID: {ModelDb.Power<ThingsLanternBlindnessPower>().Id.Entry}");
         DeactivateSyntheticCombat();
         var high = Scenario(ascension: 20);
-        Assert(high.Encounter.MonstersWithSlots.All(x => x.Item1.MinInitialHp == 42 && x.Item1.MaxInitialHp == 46), "High ascension HP.");
+        Assert(high.Encounter.MonstersWithSlots.All(x => x.Item1.MinInitialHp == 36 && x.Item1.MaxInitialHp == 40), "High ascension HP.");
         DeactivateSyntheticCombat();
     }
 
@@ -156,27 +156,62 @@ public partial class LanternFishProbeNode : Node
         var s = Scenario(players: 2);
         var player = s.Player;
         foreach (var participant in s.Players) participant.PlayerCombatState!.DrawPile.Clear(silent: true);
+        var tutored = Put<StrikeIronclad>(s, player, PileType.Draw);
         var card = Put<StrikeIronclad>(s, player, PileType.Draw);
         var teammate = Put<StrikeIronclad>(s, s.Players[1], PileType.Draw);
         var power = await Blind(player, 2);
         int rngBefore = RngCounter(s.Run.Rng.CombatEnergyCosts);
 
-        // This is the exact gap in native Draw: Add finishes its animation before
-        // AfterCardDrawn is dispatched. The artwork must already be veiled here.
+        // Non-draw moves (e.g. Wish/Tutor/SecretTechnique calling CardPileCmd.Add directly)
+        // and teammate draws must never prime a provisional blindness veil.
         await CardPileCmd.Add(teammate, PileType.Hand, skipVisuals: true);
         Assert(!LanternBlindness.IsVeiled(teammate), "Other player's card is never primed.");
-        await CardPileCmd.Add(card, PileType.Hand, skipVisuals: true);
-        Assert(LanternBlindness.IsVeiled(card) && !LanternBlindness.IsBlinded(card),
-            "Draw pile to hand obscured before AfterCardDrawn.");
+        await CardPileCmd.Add(tutored, PileType.Hand, skipVisuals: true);
+        Assert(!LanternBlindness.IsVeiled(tutored) && !LanternBlindness.IsBlinded(tutored),
+            "Direct tutor Add from draw pile to hand must not prime a false blindness veil.");
         Assert(power.Amount == 2 && RngCounter(s.Run.Rng.CombatEnergyCosts) == rngBefore,
+            "Direct tutor Add does not consume charges or combat cost RNG.");
+
+        // Inside genuine CardPileCmd.Draw, Hand.CardAdded runs during CardPileCmd.Add
+        // BEFORE Hook.AfterCardDrawn is dispatched. The artwork must already be veiled here.
+        bool sawCardAdded = false;
+        bool veiledBeforeHook = false;
+        bool unblindedBeforeHook = false;
+        int amountBeforeHook = -1;
+        int rngDuringAdd = -1;
+        void OnHandCardAdded(CardModel added)
+        {
+            if (!ReferenceEquals(added, card))
+                return;
+            sawCardAdded = true;
+            veiledBeforeHook = LanternBlindness.IsVeiled(added);
+            unblindedBeforeHook = !LanternBlindness.IsBlinded(added);
+            amountBeforeHook = power.Amount;
+            rngDuringAdd = RngCounter(s.Run.Rng.CombatEnergyCosts);
+        }
+
+        var hand = player.PlayerCombatState!.Hand;
+        hand.CardAdded += OnHandCardAdded;
+        try
+        {
+            await CardPileCmd.Draw(Choice, player);
+        }
+        finally
+        {
+            hand.CardAdded -= OnHandCardAdded;
+        }
+
+        Assert(sawCardAdded, "Genuine Draw fired Hand.CardAdded.");
+        Assert(veiledBeforeHook && unblindedBeforeHook,
+            "Genuine Draw primes provisional veil before AfterCardDrawn.");
+        Assert(amountBeforeHook == 2 && rngDuringAdd == rngBefore,
             "Pre-cover does not consume charges or combat cost RNG.");
-        await power.AfterCardDrawn(Choice, card, false);
         Assert(LanternBlindness.IsVeiled(card) && LanternBlindness.IsBlinded(card) && power.Amount == 1,
             "Native draw hook replaces the provisional veil with the actual mark.");
         player.PlayerCombatState!.EndOfTurnCleanup();
         Assert(!LanternBlindness.IsVeiled(card), "Turn cleanup clears real and provisional veils.");
         DeactivateSyntheticCombat();
-        GD.Print("PASS no-flash draw priming and visual/gameplay separation.");
+        GD.Print("PASS no-flash draw priming, tutor isolation, and visual/gameplay separation.");
     }
 
     private static async Task VerifyDraws()
@@ -280,16 +315,16 @@ public partial class LanternFishProbeNode : Node
             await ((MoveState)moves["FLASH_MOVE"]).PerformMove([s.Player.Creature]);
             Assert(s.Player.Creature.GetPower<ThingsLanternBlindnessPower>()?.Amount == 2, "Native flash applies two charges.");
             await ((MoveState)moves["GUARD_MOVE"]).PerformMove([s.Player.Creature]);
-            Assert(fish.Creature.Block == 9, "Native guard grants nine block.");
+            Assert(fish.Creature.Block == 8, "Native guard grants eight block.");
             int hp = s.Player.Creature.CurrentHp;
             await ((MoveState)moves["BITE_MOVE"]).PerformMove([s.Player.Creature]);
-            Assert(s.Player.Creature.CurrentHp == hp - (ascension == 0 ? 12 : 14), "Native bite damage (12 A0 / 14 A20).");
+            Assert(s.Player.Creature.CurrentHp == hp - (ascension == 0 ? 14 : 16), "Native bite damage (14 A0 / 16 A20).");
             hp = s.Player.Creature.CurrentHp;
             await ((MoveState)moves["TAIL_MOVE"]).PerformMove([s.Player.Creature]);
-            Assert(s.Player.Creature.CurrentHp == hp - (ascension == 0 ? 10 : 12), "Native two-hit tail damage (5x2 A0 / 6x2 A20).");
+            Assert(s.Player.Creature.CurrentHp == hp - (ascension == 0 ? 12 : 14), "Native two-hit tail damage (6x2 A0 / 7x2 A20).");
             DeactivateSyntheticCombat();
         }
-        GD.Print("PASS native flash, guard, bite (12/14) and double tail swipe (5x2/6x2) commands.");
+        GD.Print("PASS native flash, guard, bite (14/16) and double tail swipe (6x2/7x2) commands.");
     }
 
     private static void Assert(bool ok, string message) { if (!ok) throw new Exception(message); _assertions++; }

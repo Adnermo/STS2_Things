@@ -7,6 +7,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Helpers;
@@ -230,9 +231,24 @@ public partial class NCaveGodBossBackground : Node2D
         }
     }
 
+    private bool IsPresentationAlive() =>
+        GodotObject.IsInstanceValid(this) && IsInsideTree() && !_presentationEnded;
+
+    private static MegaAnimationState? TryGetValidAnimationState(MegaSprite? controller) =>
+        controller != null && GodotObject.IsInstanceValid(controller.BoundObject)
+            ? controller.TryGetAnimationState()
+            : null;
+
+    private static void SafeKillTween(ref Tween? tween)
+    {
+        if (tween != null && GodotObject.IsInstanceValid(tween))
+            tween.Kill();
+        tween = null;
+    }
+
     public static void ResetHandsUi(NCombatRoom? combatRoom)
     {
-        if (combatRoom == null) return;
+        if (combatRoom == null || !GodotObject.IsInstanceValid(combatRoom)) return;
         foreach (NCreature enemyNode in combatRoom.CreatureNodes)
         {
             if (enemyNode != null && GodotObject.IsInstanceValid(enemyNode) && enemyNode.Entity?.IsEnemy == true)
@@ -256,22 +272,19 @@ public partial class NCaveGodBossBackground : Node2D
             return;
         }
 
-        _weakHurtTween?.Kill();
-        _weakHurtTween = null;
-        _weakFlashTween?.Kill();
-        _weakFlashTween = null;
-        _bgTransitionTween?.Kill();
-        _bgTransitionTween = null;
+        SafeKillTween(ref _weakHurtTween);
+        SafeKillTween(ref _weakFlashTween);
+        SafeKillTween(ref _bgTransitionTween);
         UpdateBackgroundPhaseImmediate(_isAngry);
 
-        if (_bodyNode != null)
+        if (_bodyNode != null && GodotObject.IsInstanceValid(_bodyNode))
         {
             _bodyNode.Modulate = Colors.White;
             _bodyNode.Position = new Vector2(0f, 15f);
             _bodyNode.ZAsRelative = true;
             _bodyNode.ZIndex = 0;
         }
-        if (_armsNode != null)
+        if (_armsNode != null && GodotObject.IsInstanceValid(_armsNode))
         {
             _armsNode.Modulate = Colors.White;
             _armsNode.Position = new Vector2(0f, 15f);
@@ -280,25 +293,31 @@ public partial class NCaveGodBossBackground : Node2D
             _armsNode.ZIndex = ArmsZIndex;
         }
 
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
+            return;
+
         Control? foreground = GetNodeOrNull<Control>("%Foreground")
             ?? GetParent()?.GetNodeOrNull<Control>("%Foreground")
             ?? GetParent()?.GetNodeOrNull<Control>("Foreground");
-        if (foreground != null)
+        if (foreground != null && GodotObject.IsInstanceValid(foreground))
         {
             foreground.ZAsRelative = true;
             foreground.ZIndex = 0;
-            if (foreground.GetChildCount() > 0 && foreground.GetChild(0) is CanvasItem fgChild)
+            if (foreground.GetChildCount() > 0 && foreground.GetChild(0) is CanvasItem fgChild && GodotObject.IsInstanceValid(fgChild))
             {
                 fgChild.ZAsRelative = true;
                 fgChild.ZIndex = 0;
             }
         }
-        if (_armsNode != null && foreground != null)
+        if (_armsNode != null && GodotObject.IsInstanceValid(_armsNode) &&
+            foreground != null && GodotObject.IsInstanceValid(foreground))
         {
             // In normal combat, position _armsNode AFTER Foreground in tree order so hands strike in front of the platform
             if (_armsNode.GetIndex() < foreground.GetIndex())
             {
-                _armsNode.GetParent()?.MoveChild(_armsNode, foreground.GetIndex() + 1);
+                Node? armsParent = _armsNode.GetParent();
+                if (armsParent != null && GodotObject.IsInstanceValid(armsParent))
+                    armsParent.MoveChild(_armsNode, foreground.GetIndex() + 1);
             }
         }
     }
@@ -539,8 +558,8 @@ public partial class NCaveGodBossBackground : Node2D
         _cts?.Cancel();
         RestoreCapturedPlayersInstantly();
         ClearAllStolenCards();
-        _weakHurtTween?.Kill();
-        _weakFlashTween?.Kill();
+        SafeKillTween(ref _weakHurtTween);
+        SafeKillTween(ref _weakFlashTween);
     }
 
     /// <summary>
@@ -716,23 +735,42 @@ public partial class NCaveGodBossBackground : Node2D
 
     private TextureRect? GetRedBgNode()
     {
-        if (_cachedRedBgNode != null && GodotObject.IsInstanceValid(_cachedRedBgNode))
+        if (!GodotObject.IsInstanceValid(this))
+            return null;
+
+        if (_cachedRedBgNode != null)
         {
-            return _cachedRedBgNode;
+            if (GodotObject.IsInstanceValid(_cachedRedBgNode))
+                return _cachedRedBgNode;
+            _cachedRedBgNode = null;
         }
 
-        var layer00 = GetParent()?.GetNodeOrNull<Control>("Layer_00");
-        _cachedRedBgNode = layer00?.GetNodeOrNull<TextureRect>("A/RedBg")
-            ?? layer00?.FindChild("RedBg", recursive: true, owned: false) as TextureRect;
-        return _cachedRedBgNode;
+        if (!IsInsideTree())
+            return null;
+
+        Node? parent = GetParent();
+        if (parent == null || !GodotObject.IsInstanceValid(parent))
+            return null;
+
+        Control? layer00 = parent.GetNodeOrNull<Control>("Layer_00");
+        if (layer00 == null || !GodotObject.IsInstanceValid(layer00))
+            return null;
+
+        _cachedRedBgNode = layer00.GetNodeOrNull<TextureRect>("A/RedBg")
+            ?? layer00.FindChild("RedBg", recursive: true, owned: false) as TextureRect;
+        return _cachedRedBgNode != null && GodotObject.IsInstanceValid(_cachedRedBgNode)
+            ? _cachedRedBgNode
+            : null;
     }
 
     public void UpdateBackgroundPhaseImmediate(bool angry)
     {
-        _bgTransitionTween?.Kill();
-        _bgTransitionTween = null;
-        var redBg = GetRedBgNode();
-        if (redBg != null)
+        SafeKillTween(ref _bgTransitionTween);
+        if (!GodotObject.IsInstanceValid(this))
+            return;
+
+        TextureRect? redBg = GetRedBgNode();
+        if (redBg != null && GodotObject.IsInstanceValid(redBg))
         {
             redBg.Modulate = new Color(1f, 1f, 1f, angry ? 1f : 0f);
         }
@@ -740,10 +778,14 @@ public partial class NCaveGodBossBackground : Node2D
 
     public void StartBackgroundCrossfade(float durationSeconds)
     {
-        var redBg = GetRedBgNode();
-        if (redBg == null) return;
+        if (!IsPresentationAlive())
+            return;
 
-        _bgTransitionTween?.Kill();
+        TextureRect? redBg = GetRedBgNode();
+        if (redBg == null || !GodotObject.IsInstanceValid(redBg))
+            return;
+
+        SafeKillTween(ref _bgTransitionTween);
         _bgTransitionTween = CreateTween();
         _bgTransitionTween.TweenProperty(redBg, "modulate:a", 1.0f, durationSeconds)
             .SetTrans(Tween.TransitionType.Cubic)
@@ -780,7 +822,7 @@ public partial class NCaveGodBossBackground : Node2D
 
     private void ApplyCriticalTremorToSprite(MegaSprite? sprite, bool active)
     {
-        MegaAnimationState? state = sprite?.TryGetAnimationState();
+        MegaAnimationState? state = TryGetValidAnimationState(sprite);
         if (state == null) return;
         if (active && HasBossAnimation(sprite, "critical_tremor"))
         {
@@ -813,16 +855,26 @@ public partial class NCaveGodBossBackground : Node2D
     /// </summary>
     public async Task PlayPhaseTransitionAnim()
     {
+        if (!IsPresentationAlive())
+            return;
+
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
+        CancellationToken token = _cts?.Token ?? CancellationToken.None;
+        if (_cts == null || !IsPresentationAlive())
+            return;
 
         if (HasCapturedPlayers)
         {
             await DropPlayersToGround(isSlam: false);
+            if (!IsPresentationAlive() || token.IsCancellationRequested)
+                return;
         }
 
         ResetVisualState();
+        if (!IsPresentationAlive() || token.IsCancellationRequested)
+            return;
 
         const float AnimSpeed = 1.5f;
 
@@ -839,30 +891,38 @@ public partial class NCaveGodBossBackground : Node2D
             // Segment 1 (0.0s -> 3.07s real time): Boss shifts and channels magma core
             SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
             NGame.Instance?.ScreenShake(ShakeStrength.Weak, ShakeDuration.Long);
-            await Cmd.Wait(4.60f / AnimSpeed, _cts.Token);
+            await Cmd.Wait(4.60f / AnimSpeed, token);
+            if (!IsPresentationAlive())
+                return;
 
             // Segment 2 (t = 4.60s Spine = 3.07s real): Eyes ignite with blazing molten glow
             // Start background crossfade from icy blue to fiery red over 2.0s
             StartBackgroundCrossfade(durationSeconds: 2.0f);
             SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
             NGame.Instance?.ScreenShake(ShakeStrength.Medium, ShakeDuration.Short);
-            await Cmd.Wait((5.33f - 4.60f) / AnimSpeed, _cts.Token);
+            await Cmd.Wait((5.33f - 4.60f) / AnimSpeed, token);
+            if (!IsPresentationAlive())
+                return;
 
             // Segment 3 (t = 5.33s Spine = 3.55s real): Colossal roar upwards! Magma veins burst forth!
             NativeSfxPlayer.Play("res://sfx/cave_god/anger_roar.mp3", volumeDb: 2f);
             NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Long);
             Control? vfxContainer = NCombatRoom.Instance?.CombatVfxContainer;
-            if (vfxContainer != null)
+            if (vfxContainer != null && GodotObject.IsInstanceValid(vfxContainer))
             {
                 VfxCmd.PlayVfx(new Vector2(983f, 450f), VfxCmd.rockShatterPath, vfxContainer);
             }
-            await Cmd.Wait((7.00f - 5.33f) / AnimSpeed, _cts.Token);
+            await Cmd.Wait((7.00f - 5.33f) / AnimSpeed, token);
+            if (!IsPresentationAlive())
+                return;
 
             // Segment 4 (t = 7.00s Spine = 4.67s real): Brutal body slam / shockwave thrashes across basalt floor
             NativeSfxPlayer.Play("res://sfx/cave_god/rock_punch.mp3", volumeDb: 2f);
             SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
             NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Normal);
-            await Cmd.Wait((11.20f - 7.00f) / AnimSpeed, _cts.Token);
+            await Cmd.Wait((11.20f - 7.00f) / AnimSpeed, token);
+            if (!IsPresentationAlive())
+                return;
 
             // Transformation sequence concluded: seamlessly settle into idle_front_angry
             _isTransforming = false;
@@ -875,6 +935,9 @@ public partial class NCaveGodBossBackground : Node2D
         catch (OperationCanceledException)
         {
             _isTransforming = false;
+            if (!IsPresentationAlive())
+                return;
+
             _isAngry = true;
             UpdateBackgroundPhaseImmediate(true);
             SetTimeScaleBoth(1.0f);
@@ -885,8 +948,11 @@ public partial class NCaveGodBossBackground : Node2D
 
     private void SetTimeScaleBoth(float scale)
     {
-        _bodyController?.TryGetAnimationState()?.SetTimeScale(scale);
-        _armsController?.TryGetAnimationState()?.SetTimeScale(scale);
+        if (!GodotObject.IsInstanceValid(this))
+            return;
+
+        TryGetValidAnimationState(_bodyController)?.SetTimeScale(scale);
+        TryGetValidAnimationState(_armsController)?.SetTimeScale(scale);
     }
 
     /// <summary>
@@ -973,16 +1039,28 @@ public partial class NCaveGodBossBackground : Node2D
 
     public async Task PlayAttackAnim(string animBase, float duration, bool isFlipped = false)
     {
+        if (!IsPresentationAlive())
+            return;
+
         StartAttackAnim(animBase, isFlipped);
+        CancellationToken token = _cts?.Token ?? CancellationToken.None;
+        if (_cts == null || !IsPresentationAlive())
+            return;
+
         if (duration > 0f)
         {
-            await Cmd.Wait(duration, _cts?.Token ?? CancellationToken.None);
+            await Cmd.Wait(duration, token);
+            if (!IsPresentationAlive())
+                return;
         }
     }
 
     /// <summary>Wait deterministically for a combat attack beat, then commit the authored contact pose locally.</summary>
     public async Task WaitForAttackFrame(string animBase, float frameTime, float fallbackDelay, bool subtractPreviousDamageWait = false)
     {
+        if (!IsPresentationAlive())
+            return;
+
         bool liveSpineClock = IsInsideTree() &&
                               IsProcessing() &&
                               !NonInteractiveMode.IsActive &&
@@ -992,7 +1070,9 @@ public partial class NCaveGodBossBackground : Node2D
         if (liveSpineClock)
         {
             float currentTrackTime = -1f;
-            using (TrackEntryScope((_armsController ?? _bodyController)?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? liveEntry))
+            MegaAnimationState? initialState = TryGetValidAnimationState(_armsController)
+                ?? TryGetValidAnimationState(_bodyController);
+            using (TrackEntryScope(initialState?.GetCurrent(MainTrack), out MegaTrackEntry? liveEntry))
             {
                 if (liveEntry != null)
                 {
@@ -1009,44 +1089,69 @@ public partial class NCaveGodBossBackground : Node2D
             {
                 float remaining = frameTime - currentTrackTime;
                 if (remaining > 0.012f)
-                    await Cmd.Wait(remaining - 0.008f);
-                int guardFrames = 0;
-                while (IsInsideTree() && IsProcessing() && !_presentationEnded && !CombatManager.Instance.IsEnding && guardFrames++ < 24)
                 {
-                    using var checkScope = TrackEntryScope((_armsController ?? _bodyController)?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? checkEntry);
+                    await Cmd.Wait(remaining - 0.008f);
+                    if (!IsPresentationAlive())
+                        return;
+                }
+                int guardFrames = 0;
+                while (IsPresentationAlive() && IsProcessing() && !CombatManager.Instance.IsEnding && guardFrames++ < 24)
+                {
+                    MegaAnimationState? checkState = TryGetValidAnimationState(_armsController)
+                        ?? TryGetValidAnimationState(_bodyController);
+                    using var checkScope = TrackEntryScope(checkState?.GetCurrent(MainTrack), out MegaTrackEntry? checkEntry);
                     if (checkEntry == null) break;
                     string currentAnim = checkEntry.GetAnimationName();
                     bool matches = currentAnim.StartsWith(animBase, StringComparison.Ordinal) ||
                                    (animBase == "leftpunch" && currentAnim.StartsWith("rightpunch", StringComparison.Ordinal));
                     if (!matches || checkEntry.GetTrackTime() >= frameTime - 0.004f)
                         break;
-                    await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                    SceneTree? tree = GetTree();
+                    if (tree == null)
+                        return;
+                    await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+                    if (!IsPresentationAlive())
+                        return;
                 }
             }
             else if (subtractPreviousDamageWait)
             {
                 await Cmd.CustomScaledWait(Math.Max(0f, fallbackDelay - 0.1f), Math.Max(0f, fallbackDelay - 0.2f));
+                if (!IsPresentationAlive())
+                    return;
             }
             else
             {
                 await Cmd.Wait(Math.Max(0f, fallbackDelay));
+                if (!IsPresentationAlive())
+                    return;
             }
         }
         else if (subtractPreviousDamageWait)
         {
             await Cmd.CustomScaledWait(Math.Max(0f, fallbackDelay - 0.1f), Math.Max(0f, fallbackDelay - 0.2f));
+            if (!IsPresentationAlive())
+                return;
         }
         else
         {
             await Cmd.Wait(Math.Max(0f, fallbackDelay));
+            if (!IsPresentationAlive())
+                return;
         }
+
+        if (!IsPresentationAlive())
+            return;
 
         // Instant/skip-wait modes may resolve without advancing the rendered
         // timeline. Show the contact pose before spawning that hit's effects.
         foreach (var (sprite, controller) in new[] { (_bodyNode, _bodyController), (_armsNode, _armsController) })
         {
-            using var scope = TrackEntryScope(controller?.TryGetAnimationState()?.GetCurrent(MainTrack), out MegaTrackEntry? entry);
-            if (sprite != null && entry != null)
+            if (sprite == null || !GodotObject.IsInstanceValid(sprite))
+                continue;
+
+            using var scope = TrackEntryScope(TryGetValidAnimationState(controller)?.GetCurrent(MainTrack), out MegaTrackEntry? entry);
+            if (entry != null)
             {
                 string currentAnim = entry.GetAnimationName();
                 bool matchesAnim = currentAnim.StartsWith(animBase, StringComparison.Ordinal) ||
@@ -1065,13 +1170,21 @@ public partial class NCaveGodBossBackground : Node2D
 
     public async Task PlayWeakEnterAnim(bool isLeftArmBroken)
     {
+        if (!IsPresentationAlive())
+            return;
+
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
+        CancellationToken token = _cts?.Token ?? CancellationToken.None;
+        if (_cts == null || !IsPresentationAlive())
+            return;
 
         if (HasCapturedPlayers)
         {
             await DropPlayersToGround(isSlam: false);
+            if (!IsPresentationAlive() || token.IsCancellationRequested)
+                return;
         }
 
         string enterAnim = isLeftArmBroken ? "weak_enter" : "weak_enter_right";
@@ -1092,22 +1205,33 @@ public partial class NCaveGodBossBackground : Node2D
         try
         {
             // 0.85s: ground thud impact
-            await Cmd.Wait(0.85f, _cts.Token);
+            await Cmd.Wait(0.85f, token);
+            if (!IsPresentationAlive())
+                return;
+
             NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Short);
             NativeSfxPlayer.Play("res://sfx/cave_god/toss_impact.mp3", volumeDb: 2f);
 
             // Remaining enter settle time: 2.20s - 0.85s = 1.35s
-            await Cmd.Wait(1.35f, _cts.Token);
+            await Cmd.Wait(1.35f, token);
+            if (!IsPresentationAlive())
+                return;
+
             Log.Info($"[CaveGodBackground] Weak enter animation completed ({enterAnim} -> {idleAnim}).");
         }
         catch (OperationCanceledException)
         {
+            if (!IsPresentationAlive())
+                return;
             Log.Info("[CaveGodBackground] Weak enter animation cancelled.");
         }
     }
 
     public void StartWeakAttackAnim(bool isLeftArmBroken)
     {
+        if (!IsPresentationAlive())
+            return;
+
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
@@ -1128,9 +1252,15 @@ public partial class NCaveGodBossBackground : Node2D
 
     public async Task PlayWeakRecoverAnim(bool isLeftArmBroken)
     {
+        if (!IsPresentationAlive())
+            return;
+
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
+        CancellationToken token = _cts?.Token ?? CancellationToken.None;
+        if (_cts == null || !IsPresentationAlive())
+            return;
 
         string recoverAnim = isLeftArmBroken ? "weak_recover" : "weak_recover_right";
         string idleAnim = _isAngry ? "idle_front_angry" : "idle_front";
@@ -1148,19 +1278,27 @@ public partial class NCaveGodBossBackground : Node2D
         try
         {
             // 0.45s: push ground
-            await Cmd.Wait(0.45f, _cts.Token);
+            await Cmd.Wait(0.45f, token);
+            if (!IsPresentationAlive())
+                return;
             SfxCmd.Play("event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone");
 
             // 1.20s: apex rise (0.75s later)
-            await Cmd.Wait(0.75f, _cts.Token);
+            await Cmd.Wait(0.75f, token);
+            if (!IsPresentationAlive())
+                return;
             NGame.Instance?.ScreenShake(ShakeStrength.Weak, ShakeDuration.Short);
 
             // 2.60s total duration: remaining 1.40s
-            await Cmd.Wait(1.40f, _cts.Token);
+            await Cmd.Wait(1.40f, token);
+            if (!IsPresentationAlive())
+                return;
             Log.Info($"[CaveGodBackground] Weak recover animation completed ({recoverAnim} -> {idleAnim}).");
         }
         catch (OperationCanceledException)
         {
+            if (!IsPresentationAlive())
+                return;
             Log.Info("[CaveGodBackground] Weak recover animation cancelled.");
         }
     }
@@ -1421,9 +1559,12 @@ public partial class NCaveGodBossBackground : Node2D
 
     private void SetTrackAnimationBoth(string animName, bool loop, int track)
     {
+        if (!GodotObject.IsInstanceValid(this))
+            return;
+
         float mixDuration = loop ? 0.30f : 0.12f;
-        MegaAnimationState? bodyState = _bodyController?.TryGetAnimationState();
-        MegaAnimationState? armsState = _armsController?.TryGetAnimationState();
+        MegaAnimationState? bodyState = TryGetValidAnimationState(_bodyController);
+        MegaAnimationState? armsState = TryGetValidAnimationState(_armsController);
 
         if (bodyState != null && HasBossAnimation(_bodyController, animName))
         {
@@ -1445,8 +1586,11 @@ public partial class NCaveGodBossBackground : Node2D
 
     private void AddTrackAnimationBoth(string animName, float delay, bool loop, int track)
     {
-        MegaAnimationState? bodyState = _bodyController?.TryGetAnimationState();
-        MegaAnimationState? armsState = _armsController?.TryGetAnimationState();
+        if (!GodotObject.IsInstanceValid(this))
+            return;
+
+        MegaAnimationState? bodyState = TryGetValidAnimationState(_bodyController);
+        MegaAnimationState? armsState = TryGetValidAnimationState(_armsController);
 
         if (bodyState != null && HasBossAnimation(_bodyController, animName))
         {
@@ -1460,8 +1604,11 @@ public partial class NCaveGodBossBackground : Node2D
 
     private void AddEmptyReactionAnimation()
     {
-        _bodyController?.TryGetAnimationState()?.AddEmptyAnimation(ReactionTrack);
-        _armsController?.TryGetAnimationState()?.AddEmptyAnimation(ReactionTrack);
+        if (!GodotObject.IsInstanceValid(this))
+            return;
+
+        TryGetValidAnimationState(_bodyController)?.AddEmptyAnimation(ReactionTrack);
+        TryGetValidAnimationState(_armsController)?.AddEmptyAnimation(ReactionTrack);
     }
 
     /// <summary>
@@ -1532,8 +1679,14 @@ public partial class NCaveGodBossBackground : Node2D
         HideFrontFistOverlay();
 
         if (_capturedPlayers.Count == 0) return;
+        if (!IsPresentationAlive())
+        {
+            RestoreCapturedPlayersInstantly();
+            return;
+        }
+
         NCombatRoom? combatRoom = NCombatRoom.Instance;
-        if (combatRoom == null)
+        if (combatRoom == null || !GodotObject.IsInstanceValid(combatRoom))
         {
             RestoreCapturedPlayersInstantly();
             return;
@@ -1547,6 +1700,7 @@ public partial class NCaveGodBossBackground : Node2D
             // multiplayer cluster lands on exactly the same frame.
             // ---------------------------------------------------------------
             Control? impactVfx = NCombatRoom.Instance?.CombatVfxContainer;
+            List<NCreature> validCaptives = [];
 
             foreach ((NCreature node, Vector2 origPos, float origRot, Vector2 origScale) in _capturedPlayers)
             {
@@ -1561,11 +1715,15 @@ public partial class NCaveGodBossBackground : Node2D
                 // Vertical squash reads as the body being flattened into the stone floor.
                 node.Scale = new Vector2(origScale.X * 1.26f, origScale.Y * 0.60f);
                 node.Rotation = origRot;
+                validCaptives.Add(node);
+            }
 
-                if (impactVfx != null)
+            if (impactVfx != null && GodotObject.IsInstanceValid(impactVfx) && validCaptives.Count > 0)
+            {
+                foreach (NCreature burstTarget in SelectRepresentativeSlamImpactNodes(validCaptives))
                 {
                     // Dust kicked off the basalt at floor level, plus a spray of shattered rock.
-                    Vector2 groundPos = node.GlobalPosition + new Vector2(0f, 26f);
+                    Vector2 groundPos = burstTarget.GlobalPosition + new Vector2(0f, 26f);
                     VfxCmd.PlayVfx(groundPos, VfxCmd.sandyImpactPath, impactVfx);
                     VfxCmd.PlayVfx(groundPos, VfxCmd.rockShatterPath, impactVfx);
                 }
@@ -1576,7 +1734,8 @@ public partial class NCaveGodBossBackground : Node2D
 
             // Hit-stop: hold the crushed pose so the impact registers before recovery starts.
             await Cmd.Wait(SlamImpactHoldDuration);
-            if (_presentationEnded || _capturedPlayers.Count == 0) return;
+            if (!IsPresentationAlive() || _capturedPlayers.Count == 0 || !GodotObject.IsInstanceValid(combatRoom))
+                return;
 
             // ---------------------------------------------------------------
             // Recovery: a back-ease overshoots slightly, so the captives peel off the
@@ -1584,7 +1743,7 @@ public partial class NCaveGodBossBackground : Node2D
             // ---------------------------------------------------------------
             Tween recoverTween = combatRoom.CreateTween().SetParallel()
                 .SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Back);
-            _releaseTween?.Kill();
+            SafeKillTween(ref _releaseTween);
             _releaseTween = recoverTween;
             foreach ((NCreature node, Vector2 origPos, float origRot, Vector2 origScale) in _capturedPlayers)
             {
@@ -1598,6 +1757,8 @@ public partial class NCaveGodBossBackground : Node2D
             }
 
             await Cmd.Wait(SlamRecoverDuration);
+            if (!IsPresentationAlive())
+                return;
             RestoreCapturedPlayersInstantly();
             return;
         }
@@ -1605,8 +1766,8 @@ public partial class NCaveGodBossBackground : Node2D
         // Safe release upon shattered claw: smooth cubic descent back to original stage floor
         // AND smoothly lower the giant stone arm from the sky back to resting ground idle!
         string idleAnim = _isAngry ? "idle_front_angry" : "idle_front";
-        MegaAnimationState? bodyState = _bodyController?.TryGetAnimationState();
-        MegaAnimationState? armsState = _armsController?.TryGetAnimationState();
+        MegaAnimationState? bodyState = TryGetValidAnimationState(_bodyController);
+        MegaAnimationState? armsState = TryGetValidAnimationState(_armsController);
         if (bodyState != null)
         {
             bodyState.SetAnimation(idleAnim, true, MainTrack);
@@ -1622,7 +1783,7 @@ public partial class NCaveGodBossBackground : Node2D
 
         float duration = 0.50f;
         Tween tween = combatRoom.CreateTween().SetParallel().SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic);
-        _releaseTween?.Kill();
+        SafeKillTween(ref _releaseTween);
         _releaseTween = tween;
         foreach ((NCreature node, Vector2 origPos, float origRot, Vector2 origScale) in _capturedPlayers)
         {
@@ -1635,6 +1796,8 @@ public partial class NCaveGodBossBackground : Node2D
         }
 
         await Cmd.Wait(duration);
+        if (!IsPresentationAlive())
+            return;
         RestoreCapturedPlayersInstantly();
     }
 
@@ -1645,23 +1808,26 @@ public partial class NCaveGodBossBackground : Node2D
     /// </summary>
     public void RestoreCapturedPlayersInstantly()
     {
-        _releaseTween?.Kill();
-        _releaseTween = null;
+        SafeKillTween(ref _releaseTween);
         _isGrabTracking = false;
         _isSlamDescending = false;
         _isRightGrab = false;
         HideFrontFistOverlay();
         ResetHandsUi(NCombatRoom.Instance);
-        if (!_isRetreating)
+        bool selfValid = GodotObject.IsInstanceValid(this);
+        bool inTree = selfValid && IsInsideTree();
+        if (!_isRetreating && selfValid)
         {
-            Node2D? armsNode = GetNodeOrNull<Node2D>("%CaveGodArms") ?? GetParent()?.GetNodeOrNull<Node2D>("%CaveGodArms");
-            if (armsNode != null)
+            Node2D? armsNode = _armsNode != null && GodotObject.IsInstanceValid(_armsNode)
+                ? _armsNode
+                : (inTree ? GetNodeOrNull<Node2D>("%CaveGodArms") ?? GetParent()?.GetNodeOrNull<Node2D>("%CaveGodArms") : null);
+            if (armsNode != null && GodotObject.IsInstanceValid(armsNode))
             {
                 armsNode.ZAsRelative = true;
                 armsNode.ZIndex = 2;
                 armsNode.Scale = new Vector2(1.3f, 1.3f);
             }
-            if (_bodyNode != null)
+            if (_bodyNode != null && GodotObject.IsInstanceValid(_bodyNode))
             {
                 _bodyNode.ZAsRelative = true;
                 _bodyNode.ZIndex = 0;
@@ -1671,8 +1837,8 @@ public partial class NCaveGodBossBackground : Node2D
         string idleAnim = _isAngry ? "idle_front_angry" : "idle_front";
         // On room exit the Spine children have already left the tree. Restore
         // player transforms, but do not create track wrappers from a torn-down rig.
-        MegaAnimationState? bodyState = _presentationEnded ? null : _bodyController?.TryGetAnimationState();
-        MegaAnimationState? armsState = _presentationEnded ? null : _armsController?.TryGetAnimationState();
+        MegaAnimationState? bodyState = (!inTree || _presentationEnded) ? null : TryGetValidAnimationState(_bodyController);
+        MegaAnimationState? armsState = (!inTree || _presentationEnded) ? null : TryGetValidAnimationState(_armsController);
         if (bodyState != null)
         {
             using var currentTrackScope = TrackEntryScope(bodyState.GetCurrent(MainTrack), out MegaTrackEntry? currentTrack);
@@ -1721,6 +1887,50 @@ public partial class NCaveGodBossBackground : Node2D
         _capturedPlayers.Clear();
     }
 
+    private const int MaxSlamImpactVfxCount = 6;
+    private const float ExtendedClusterMinRadiusX = 34f;
+    private const float ExtendedClusterMaxRadiusX = 54f;
+    private const float ExtendedClusterMinRadiusY = 24f;
+    private const float ExtendedClusterMaxRadiusY = 36f;
+
+    private static IReadOnlyList<NCreature> SelectRepresentativeSlamImpactNodes(List<NCreature> validCaptives)
+    {
+        if (validCaptives.Count <= MaxSlamImpactVfxCount)
+            return validCaptives;
+
+        var selected = new List<NCreature>(MaxSlamImpactVfxCount);
+        int localIndex = validCaptives.FindIndex(c => c.Entity != null && LocalContext.IsMe(c.Entity));
+        if (localIndex >= 0)
+            selected.Add(validCaptives[localIndex]);
+
+        int remaining = MaxSlamImpactVfxCount - selected.Count;
+        if (remaining <= 0)
+            return selected;
+
+        var others = new List<NCreature>(validCaptives.Count);
+        for (int i = 0; i < validCaptives.Count; i++)
+        {
+            if (i != localIndex)
+                others.Add(validCaptives[i]);
+        }
+
+        if (others.Count <= remaining)
+        {
+            selected.AddRange(others);
+            return selected;
+        }
+
+        for (int k = 0; k < remaining; k++)
+        {
+            int pick = remaining == 1
+                ? others.Count / 2
+                : (int)MathF.Round(k * (others.Count - 1) / (float)(remaining - 1));
+            selected.Add(others[Math.Clamp(pick, 0, others.Count - 1)]);
+        }
+
+        return selected;
+    }
+
     private static Vector2 GetClusterOffset(int index, int total)
     {
         if (total <= 1) return Vector2.Zero;
@@ -1737,13 +1947,28 @@ public partial class NCaveGodBossBackground : Node2D
                 _ => new Vector2(20f, 10f)
             };
         }
-        return index switch
+        if (total == 4)
         {
-            0 => new Vector2(-18f, -18f),
-            1 => new Vector2(18f, -18f),
-            2 => new Vector2(-22f, 10f),
-            _ => new Vector2(22f, 10f)
-        };
+            return index switch
+            {
+                0 => new Vector2(-18f, -18f),
+                1 => new Vector2(18f, -18f),
+                2 => new Vector2(-22f, 10f),
+                _ => new Vector2(22f, 10f)
+            };
+        }
+
+        // >4 players: pack all captives in a compact Vogel golden-angle oval cluster inside the
+        // stone fist pocket (|X| <= 54, |Y| <= 36) so players 5..32 never stack onto one point.
+        const float goldenAngle = 2.39996323f;
+        float t = Mathf.Clamp((total - MultiplayerCompat.VanillaMaxPlayers) / 20f, 0f, 1f);
+        float radiusX = Mathf.Lerp(ExtendedClusterMinRadiusX, ExtendedClusterMaxRadiusX, t);
+        float radiusY = Mathf.Lerp(ExtendedClusterMinRadiusY, ExtendedClusterMaxRadiusY, t);
+        float radial = MathF.Sqrt((index + 0.5f) / Math.Max(1, total));
+        float angle = index * goldenAngle;
+        return new Vector2(
+            MathF.Cos(angle) * radial * radiusX,
+            MathF.Sin(angle) * radial * radiusY);
     }
 
     private static float GetClusterTilt(int index, int total)
@@ -1751,7 +1976,8 @@ public partial class NCaveGodBossBackground : Node2D
         if (total <= 1) return 0f;
         if (total == 2) return index == 0 ? 0.15f : -0.15f;
         if (total == 3) return index == 0 ? 0f : (index == 1 ? 0.18f : -0.18f);
-        return (index % 2 == 0) ? 0.12f : -0.12f;
+        if (total == 4) return (index % 2 == 0) ? 0.12f : -0.12f;
+        return (index % 2 == 0 ? 1f : -1f) * (0.08f + (index % 3) * 0.04f);
     }
 
     /// <summary>
@@ -1812,6 +2038,11 @@ public partial class NCaveGodBossBackground : Node2D
         }
     }
 
+    private const int MaxVisibleStolenCardsPerHand = 8;
+    private const float MaxStolenCardFanHalfWidth = 96f;
+    private const float MaxStolenCardFanArcY = 22f;
+    private const float MaxStolenCardFanTilt = 0.32f;
+
     public void AttachStolenCard(bool isLeft, CardModel card)
     {
         if (_presentationEnded) return;
@@ -1834,17 +2065,61 @@ public partial class NCaveGodBossBackground : Node2D
 
         if (target != null && GodotObject.IsInstanceValid(target))
         {
-            NCard? nCard = CardPreviewVisualFactory.TryAttachPreview(target, card);
-            if (nCard != null)
+            List<NCard> existingCards = target.GetChildren().OfType<NCard>()
+                .Where(c => GodotObject.IsInstanceValid(c) && !c.IsQueuedForDeletion())
+                .ToList();
+            NCard? evicted = null;
+            bool shouldAttachPreview = true;
+
+            if (existingCards.Count >= MaxVisibleStolenCardsPerHand)
             {
-                var heldCards = target.GetChildren().OfType<NCard>().ToArray();
-                for (int i = 0; i < heldCards.Length; i++)
+                bool isLocalCard = card.Owner != null && LocalContext.IsMe(card.Owner);
+                if (isLocalCard)
                 {
-                    float spread = i - (heldCards.Length - 1) * 0.5f;
-                    heldCards[i].Position = new Vector2(spread * 22f, Math.Abs(spread) * 5f);
-                    heldCards[i].Rotation = spread * 0.07f;
+                    evicted = existingCards.FirstOrDefault(c => c.Model?.Owner == null || !LocalContext.IsMe(c.Model.Owner));
+                    if (evicted != null)
+                        CardPreviewVisualFactory.ReturnPreviewSafely(evicted);
+                    else
+                        shouldAttachPreview = false;
                 }
-                Log.Info($"[CaveGodBackground] Attached stolen card visual '{card.Id}' to {(isLeft ? "Left" : "Right")} hand.");
+                else
+                {
+                    shouldAttachPreview = false;
+                }
+            }
+
+            if (shouldAttachPreview)
+            {
+                NCard? nCard = CardPreviewVisualFactory.TryAttachPreview(target, card);
+                if (nCard != null)
+                {
+                    var heldCards = target.GetChildren().OfType<NCard>()
+                        .Where(c => c != evicted && GodotObject.IsInstanceValid(c) && !c.IsQueuedForDeletion())
+                        .ToArray();
+                    if (heldCards.Length <= MultiplayerCompat.VanillaMaxPlayers)
+                    {
+                        for (int i = 0; i < heldCards.Length; i++)
+                        {
+                            float spread = i - (heldCards.Length - 1) * 0.5f;
+                            heldCards[i].Position = new Vector2(spread * 22f, Math.Abs(spread) * 5f);
+                            heldCards[i].Rotation = spread * 0.07f;
+                        }
+                    }
+                    else
+                    {
+                        float maxHalfSpread = MathF.Max(1f, (heldCards.Length - 1) * 0.5f);
+                        float stepX = MathF.Min(22f, MaxStolenCardFanHalfWidth / maxHalfSpread);
+                        float stepY = MathF.Min(5f, MaxStolenCardFanArcY / maxHalfSpread);
+                        float stepRot = MathF.Min(0.07f, MaxStolenCardFanTilt / maxHalfSpread);
+                        for (int i = 0; i < heldCards.Length; i++)
+                        {
+                            float spread = i - (heldCards.Length - 1) * 0.5f;
+                            heldCards[i].Position = new Vector2(spread * stepX, Math.Abs(spread) * stepY);
+                            heldCards[i].Rotation = spread * stepRot;
+                        }
+                    }
+                    Log.Info($"[CaveGodBackground] Attached stolen card visual '{card.Id}' to {(isLeft ? "Left" : "Right")} hand.");
+                }
             }
 
             target.Visible = true;

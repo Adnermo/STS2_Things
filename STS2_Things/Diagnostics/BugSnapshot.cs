@@ -20,6 +20,11 @@ namespace STS2_Things.Diagnostics;
 
 internal static class BugSnapshot
 {
+    // Cap emitted snapshot/route player arrays at 8 so uploads stay backward-compatible with
+    // any live Cloudflare Worker not yet redeployed with the 32-player validation cap, while
+    // guaranteeing the local player is always present in the slice and recording truthful totals.
+    private const int MaxWireSnapshotPlayers = 8;
+
     private sealed class CachedRouteState(
         WeakReference<RunState> runRef,
         int actCount,
@@ -29,6 +34,8 @@ internal static class BugSnapshot
         int totalFloor,
         int lastPointRoomsCount,
         int lastPointPlayerStatsCount,
+        int playerCount,
+        int rawLocalPlayerIndex,
         JsonArray sanitizedRoute,
         int redactions,
         bool integerEncodingChanged)
@@ -41,6 +48,8 @@ internal static class BugSnapshot
         internal int TotalFloor { get; } = totalFloor;
         internal int LastPointRoomsCount { get; } = lastPointRoomsCount;
         internal int LastPointPlayerStatsCount { get; } = lastPointPlayerStatsCount;
+        internal int PlayerCount { get; } = playerCount;
+        internal int RawLocalPlayerIndex { get; } = rawLocalPlayerIndex;
         internal JsonArray SanitizedRoute { get; } = sanitizedRoute;
         internal int Redactions { get; } = redactions;
         internal bool IntegerEncodingChanged { get; } = integerEncodingChanged;
@@ -122,22 +131,46 @@ internal static class BugSnapshot
     internal static JsonObject CapturePeriodic(RunState run, GameAction? waitingAction = null) =>
         CaptureInternal(run, waitingAction, forceFreshRoute: false);
 
+    private static int[] SelectSnapshotPlayerIndices(int totalPlayers, int rawLocalPlayerIndex, out int emittedLocalPlayerIndex)
+    {
+        int emitCount = Math.Min(totalPlayers, MaxWireSnapshotPlayers);
+        var indices = new int[emitCount];
+        if (totalPlayers <= MaxWireSnapshotPlayers || rawLocalPlayerIndex < MaxWireSnapshotPlayers)
+        {
+            for (int i = 0; i < emitCount; i++)
+                indices[i] = i;
+            emittedLocalPlayerIndex = rawLocalPlayerIndex;
+            return indices;
+        }
+
+        // Guarantee the local player is always included in the 8-player wire slice:
+        // keep slots 0..6 and place the local player at emitted index 7.
+        for (int i = 0; i < MaxWireSnapshotPlayers - 1; i++)
+            indices[i] = i;
+        indices[MaxWireSnapshotPlayers - 1] = rawLocalPlayerIndex;
+        emittedLocalPlayerIndex = MaxWireSnapshotPlayers - 1;
+        return indices;
+    }
+
     private static JsonObject CaptureInternal(RunState run, GameAction? waitingAction, bool forceFreshRoute)
     {
         var manager = CombatManager.Instance;
         var combat = manager.DebugOnlyGetState();
         var action = RunManager.Instance.ActionExecutor?.CurrentlyRunningAction ?? waitingAction;
-        int localPlayerIndex = -1;
+        int rawLocalPlayerIndex = -1;
         var playerIds = new ulong[run.Players.Count];
         for (int i = 0; i < run.Players.Count; i++)
         {
             var player = run.Players[i];
             playerIds[i] = player.NetId;
-            if (localPlayerIndex < 0 && LocalContext.IsMe(player))
+            if (rawLocalPlayerIndex < 0 && LocalContext.IsMe(player))
             {
-                localPlayerIndex = i;
+                rawLocalPlayerIndex = i;
             }
         }
+
+        int[] selectedPlayerIndices = SelectSnapshotPlayerIndices(run.Players.Count, rawLocalPlayerIndex, out int emittedLocalPlayerIndex);
+        bool playersTruncated = run.Players.Count > MaxWireSnapshotPlayers;
 
         var result = Object(new
         {
@@ -151,7 +184,9 @@ internal static class BugSnapshot
             current_act_index = run.CurrentActIndex,
             current_act = run.Act.Id.ToString(),
             network_type = RunManager.Instance.NetService.Type.ToString(),
-            local_player_index = localPlayerIndex,
+            local_player_index = emittedLocalPlayerIndex,
+            total_player_count = run.Players.Count,
+            players_truncated = playersTruncated,
             network = new
             {
                 connected = RunManager.Instance.NetService.IsConnected,
@@ -165,32 +200,37 @@ internal static class BugSnapshot
             map_coord = run.CurrentMapCoord?.ToString(),
             current_room = run.CurrentRoom?.GetType().Name,
             acts = run.Acts.Take(20).Select(a => a.Id.ToString()).ToArray(),
-            players = run.Players.Take(8).Select((p, index) => new
+            players = selectedPlayerIndices.Select((sourceIndex, emittedIndex) =>
             {
-                index,
-                character = p.Character.Id.ToString(),
-                hp = p.Creature.CurrentHp,
-                max_hp = p.Creature.MaxHp,
-                block = p.Creature.Block,
-                gold = p.Gold,
-                deck = p.Deck.Cards.Take(1200).Select(Card).ToArray(),
-                relics = p.Relics.Take(400).Select(r => r.Id.ToString()).ToArray(),
-                relic_states = p.Relics.Take(400).Select(r => JsonSerializer.SerializeToNode(r.ToSerializable(), JsonSerializationUtility.GetTypeInfo<MegaCrit.Sts2.Core.Saves.Runs.SerializableRelic>())).ToArray(),
-                potions = p.PotionSlots.Take(80).Select(potion => potion?.Id.ToString()).ToArray(),
-                powers = Powers(p.Creature.Powers),
-                combat = p.PlayerCombatState is { } pc ? new
+                var p = run.Players[sourceIndex];
+                return new
                 {
-                    energy = pc.Energy,
-                    stars = pc.Stars,
-                    turn = pc.TurnNumber,
-                    phase = pc.Phase.ToString(),
-                    orbs = pc.OrbQueue.Orbs.Take(50).Select(o => new { id = o.Id.ToString(), passive = o.PassiveVal, evoke = o.EvokeVal }).ToArray(),
-                    hand = pc.Hand.Cards.Take(200).Select(Card).ToArray(),
-                    draw_pile = pc.DrawPile.Cards.Take(1200).Select(Card).ToArray(),
-                    discard_pile = pc.DiscardPile.Cards.Take(1200).Select(Card).ToArray(),
-                    exhaust_pile = pc.ExhaustPile.Cards.Take(1200).Select(Card).ToArray(),
-                    play_pile = pc.PlayPile.Cards.Take(1200).Select(Card).ToArray(),
-                } : null,
+                    index = emittedIndex,
+                    slot_index = sourceIndex,
+                    character = p.Character.Id.ToString(),
+                    hp = p.Creature.CurrentHp,
+                    max_hp = p.Creature.MaxHp,
+                    block = p.Creature.Block,
+                    gold = p.Gold,
+                    deck = p.Deck.Cards.Take(1200).Select(Card).ToArray(),
+                    relics = p.Relics.Take(400).Select(r => r.Id.ToString()).ToArray(),
+                    relic_states = p.Relics.Take(400).Select(r => JsonSerializer.SerializeToNode(r.ToSerializable(), JsonSerializationUtility.GetTypeInfo<MegaCrit.Sts2.Core.Saves.Runs.SerializableRelic>())).ToArray(),
+                    potions = p.PotionSlots.Take(80).Select(potion => potion?.Id.ToString()).ToArray(),
+                    powers = Powers(p.Creature.Powers),
+                    combat = p.PlayerCombatState is { } pc ? new
+                    {
+                        energy = pc.Energy,
+                        stars = pc.Stars,
+                        turn = pc.TurnNumber,
+                        phase = pc.Phase.ToString(),
+                        orbs = pc.OrbQueue.Orbs.Take(50).Select(o => new { id = o.Id.ToString(), passive = o.PassiveVal, evoke = o.EvokeVal }).ToArray(),
+                        hand = pc.Hand.Cards.Take(200).Select(Card).ToArray(),
+                        draw_pile = pc.DrawPile.Cards.Take(1200).Select(Card).ToArray(),
+                        discard_pile = pc.DiscardPile.Cards.Take(1200).Select(Card).ToArray(),
+                        exhaust_pile = pc.ExhaustPile.Cards.Take(1200).Select(Card).ToArray(),
+                        play_pile = pc.PlayPile.Cards.Take(1200).Select(Card).ToArray(),
+                    } : null,
+                };
             }).ToArray(),
             combat = manager.IsInProgress && combat is not null ? new
             {
@@ -228,7 +268,12 @@ internal static class BugSnapshot
             ui = CaptureUi(),
         });
         var sanitized = BugReplayCodec.SanitizeSnapshot(result, playerIds);
-        var (routeArray, routeRedactions, routeIntegerEncoding) = CaptureRoute(run, playerIds, forceFreshRoute);
+        var (routeArray, routeRedactions, routeIntegerEncoding) = CaptureRoute(
+            run,
+            playerIds,
+            selectedPlayerIndices,
+            rawLocalPlayerIndex,
+            forceFreshRoute);
         sanitized["route"] = routeArray;
         if (routeRedactions > 0)
         {
@@ -244,6 +289,8 @@ internal static class BugSnapshot
     private static (JsonArray Route, int Redactions, bool IntegerEncodingChanged) CaptureRoute(
         RunState run,
         ulong[] playerIds,
+        int[] selectedPlayerIndices,
+        int rawLocalPlayerIndex,
         bool forceFresh)
     {
         var history = run.MapPointHistory;
@@ -273,7 +320,9 @@ internal static class BugSnapshot
             && cached.ActFloor == run.ActFloor
             && cached.TotalFloor == run.TotalFloor
             && cached.LastPointRoomsCount == lastPointRoomsCount
-            && cached.LastPointPlayerStatsCount == lastPointPlayerStatsCount)
+            && cached.LastPointPlayerStatsCount == lastPointPlayerStatsCount
+            && cached.PlayerCount == run.Players.Count
+            && cached.RawLocalPlayerIndex == rawLocalPlayerIndex)
         {
             return ((JsonArray)cached.SanitizedRoute.DeepClone(), cached.Redactions, cached.IntegerEncodingChanged);
         }
@@ -292,7 +341,7 @@ internal static class BugSnapshot
                     monster_ids = room.MonsterIds.Take(80).Select(id => id.ToString()).ToArray(),
                     turns = room.TurnsTaken,
                 }).ToArray(),
-                players = point.PlayerStats.Take(8).Select(CaptureRoutePlayer).ToArray(),
+                players = CaptureRoutePlayers(point.PlayerStats, selectedPlayerIndices),
             }).ToArray(),
         }).ToArray())!.AsArray();
 
@@ -311,11 +360,30 @@ internal static class BugSnapshot
             run.TotalFloor,
             lastPointRoomsCount,
             lastPointPlayerStatsCount,
+            run.Players.Count,
+            rawLocalPlayerIndex,
             (JsonArray)sanitizedRoute.DeepClone(),
             redactions,
             intEncoded);
 
         return (sanitizedRoute, redactions, intEncoded);
+    }
+
+    private static JsonObject[] CaptureRoutePlayers(
+        IReadOnlyList<PlayerMapPointHistoryEntry> stats,
+        int[] selectedPlayerIndices)
+    {
+        if (stats.Count <= MaxWireSnapshotPlayers && selectedPlayerIndices.Length == stats.Count)
+            return stats.Select(CaptureRoutePlayer).ToArray();
+
+        var list = new List<JsonObject>(Math.Min(stats.Count, MaxWireSnapshotPlayers));
+        for (int emittedIdx = 0; emittedIdx < selectedPlayerIndices.Length; emittedIdx++)
+        {
+            int sourceIdx = selectedPlayerIndices[emittedIdx];
+            if (sourceIdx >= 0 && sourceIdx < stats.Count)
+                list.Add(CaptureRoutePlayer(stats[sourceIdx], emittedIdx));
+        }
+        return list.ToArray();
     }
 
     private static JsonObject CaptureRoutePlayer(PlayerMapPointHistoryEntry ps, int index)

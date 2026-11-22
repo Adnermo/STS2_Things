@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Combat;
@@ -13,6 +14,7 @@ using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Core.Models;
 using STS2_Things.Monsters;
+using STS2_Things.Platform;
 using STS2_Things.Visuals;
 
 namespace STS2_Things.Powers;
@@ -26,10 +28,14 @@ namespace STS2_Things.Powers;
 public sealed class ThingsMockeryEchoPower : ThingsPowerModel
 {
     public const int StrengthPerRepeat = 1;
+    public const int MaxStrengthTriggersPerRoundExtended = 4;
 
     private sealed class Data
     {
         public readonly Dictionary<ulong, CardType> LastCardTypeByPlayer = new();
+        public int TriggerTrackingRound = -1;
+        public int StrengthTriggersThisRound;
+        public int BlockTriggersThisRound;
     }
 
     public override PowerType Type => PowerType.Buff;
@@ -72,7 +78,7 @@ public sealed class ThingsMockeryEchoPower : ThingsPowerModel
     {
         if (OwnerMockery is not { IsActiveFace: true } mockery || !Owner.IsAlive)
             return;
-        if (Owner.CombatState?.CurrentSide != CombatSide.Player)
+        if (Owner.CombatState is not { CurrentSide: CombatSide.Player } combatState)
             return;
 
         Data data = GetInternalData<Data>();
@@ -85,13 +91,41 @@ public sealed class ThingsMockeryEchoPower : ThingsPowerModel
         if (!repeatedSameType)
             return;
 
+        bool grantBlock = true;
+        bool grantStrength = true;
+        if (MultiplayerCompat.IsExtendedParty(combatState))
+        {
+            int round = combatState.RoundNumber;
+            if (data.TriggerTrackingRound != round)
+            {
+                data.TriggerTrackingRound = round;
+                data.StrengthTriggersThisRound = 0;
+                data.BlockTriggersThisRound = 0;
+            }
+
+            int effectivePlayers = MultiplayerCompat.GetEffectivePlayerCount(combatState);
+            int maxBlockTriggers = Math.Max(MultiplayerCompat.VanillaMaxPlayers, effectivePlayers * 2);
+            grantBlock = data.BlockTriggersThisRound < maxBlockTriggers;
+            grantStrength = data.StrengthTriggersThisRound < MaxStrengthTriggersPerRoundExtended;
+            if (!grantBlock && !grantStrength)
+                return;
+
+            if (grantBlock)
+                data.BlockTriggersThisRound++;
+            if (grantStrength)
+                data.StrengthTriggersThisRound++;
+        }
+
         int blockGain = mockery.TauntBlock;
         DynamicVars["TauntBlock"].BaseValue = blockGain;
 
         Flash();
         NHumanFaceTowerBossBackground.Current?.PlayFaceOneShot("mockery_taunt", mockery.IdleAnimationName);
-        await CreatureCmd.GainBlock(Owner, blockGain, ValueProp.Unpowered, null);
-        if (Owner.IsAlive)
+        if (grantBlock)
+        {
+            await CreatureCmd.GainBlock(Owner, blockGain, ValueProp.Unpowered, null);
+        }
+        if (grantStrength && Owner.IsAlive)
         {
             await PowerCmd.Apply<StrengthPower>(choiceContext, Owner, StrengthPerRepeat, Owner, null);
         }

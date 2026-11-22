@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.ValueProps;
+using STS2_Things.Platform;
 using STS2_Things.Powers;
 using STS2_Things.Visuals;
 using static STS2_Things.Platform.Sts2VersionSeam;
@@ -26,13 +27,13 @@ public sealed class ThingsCaveMaw : ThingsSpineMonster
     public const int DebrisCount = 2;
     public const int BlockPerCard = 10;
     public const int StrengthPerMeal = 3;
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 86, 79);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 70, 64);
     public override int MaxInitialHp => MinInitialHp + 6;
     public override float HpBarSizeReduction => 60f;
-    private int InitialPlating => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 12, 10);
-    private int DevourDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 5);
-    private int BiteDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9);
-    private int PressDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
+    private int InitialPlating => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 10, 8);
+    private int DevourDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9);
+    private int BiteDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 17, 15);
+    private int PressDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 8, 7);
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Magic;
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_attack_light";
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_devour";
@@ -135,7 +136,15 @@ public sealed class ThingsCaveMaw : ThingsSpineMonster
         if (consumed > 0)
         {
             Creature.GetPower<ThingsCaveMawAppetitePower>()?.ShowMeal();
-            await CreatureCmd.GainBlock(Creature, consumed * BlockPerCard, ValueProp.Unpowered, null);
+            int effectiveConsumed = consumed;
+            if (MultiplayerCompat.IsExtendedParty(CombatState))
+            {
+                int rawPlayers = MultiplayerCompat.GetRawPlayerCount(CombatState);
+                int effectivePlayers = MultiplayerCompat.GetEffectivePlayerCount(CombatState);
+                int scaledConsumed = Math.Max(1, (consumed * effectivePlayers + rawPlayers - 1) / rawPlayers);
+                effectiveConsumed = Math.Min(scaledConsumed, effectivePlayers * DebrisCount);
+            }
+            await CreatureCmd.GainBlock(Creature, effectiveConsumed * BlockPerCard, ValueProp.Unpowered, null);
             await PowerCmd.Apply<StrengthPower>(context, Creature, Math.Min(consumed, StrengthPerMeal), Creature, null);
         }
         await WaitForPose("devour", 2.10f, 0);
@@ -149,7 +158,8 @@ public sealed class ThingsCaveMaw : ThingsSpineMonster
             {
                 if (hit == 0) await CreatureCmd.TriggerAnim(Creature, trigger, 0);
                 float contact = contacts[Math.Min(hit, contacts.Length - 1)];
-                await WaitForPose(animation, contact, hit == 0 ? contact : contacts[hit] - contacts[hit - 1]);
+                float fallback = hit == 0 ? contact : (hit < contacts.Length ? Math.Max(0.18f, contacts[hit] - contacts[hit - 1]) : 0.18f);
+                await WaitForPose(animation, contact, fallback);
                 hit++;
             }).WithAttackerFx(null, AttackSfx).WithHitFx("vfx/vfx_bite").Execute(null);
         await WaitForPose(animation, duration, 0);

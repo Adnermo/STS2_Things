@@ -101,7 +101,7 @@ public sealed class ThingsBowlbugProgenitorDominion : DominionModel
         float deathAnimLength)
     {
         AssertMutable();
-        if (wasRemovalPrevented || creature.Side != CombatSide.Enemy || creature.CombatState is not { } combat)
+        if (CombatManager.Instance.IsOverOrEnding || wasRemovalPrevented || creature.Side != CombatSide.Enemy || creature.CombatState is not { } combat)
             return;
 
         Creature[] livingAllies = combat.Enemies.Where(e => e.IsAlive && e != creature).ToArray();
@@ -175,6 +175,8 @@ public sealed class ThingsHumanFaceTowerDominion : DominionModel
     public override async Task AfterCardPlayed(PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
         AssertMutable();
+        if (CombatManager.Instance.IsOverOrEnding)
+            return;
         if (cardPlay.Card.Owner is not { } player || player.Creature.CombatState is not { } combat)
             return;
 
@@ -191,7 +193,7 @@ public sealed class ThingsHumanFaceTowerDominion : DominionModel
 
             foreach (Creature enemy in combat.Enemies.Where(e => e.IsAlive).ToArray())
             {
-                if (enemy.IsAlive)
+                if (enemy.IsAlive && !CombatManager.Instance.IsOverOrEnding)
                 {
                     await CreatureCmd.GainBlock(enemy, 6m, ValueProp.Unpowered, null);
                 }
@@ -263,6 +265,8 @@ public sealed class ThingsTheLegacyDominion : DominionModel
     public override async Task AfterCardPlayed(PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
         AssertMutable();
+        if (CombatManager.Instance.IsOverOrEnding)
+            return;
         if (cardPlay.Card.Owner?.Creature is { IsAlive: true } creature && creature.CombatState != null)
         {
             await CreatureCmd.Damage(choiceContext, creature, 1m, ValueProp.Unpowered, null, null);

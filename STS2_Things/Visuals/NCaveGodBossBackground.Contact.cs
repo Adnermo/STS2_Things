@@ -5,6 +5,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using STS2_Things.Platform;
 using static STS2_Things.Platform.Sts2VersionSeam;
 
 namespace STS2_Things.Visuals;
@@ -12,6 +13,8 @@ namespace STS2_Things.Visuals;
 public partial class NCaveGodBossBackground
 {
     public const float PlayerStageOffsetY = 60f;
+    private const float MaxExtendedContactOffsetX = 420f;
+    private const float MaxExtendedContactOffsetY = 260f;
     private sealed record ContactRig(GodotObject LeftTarget, GodotObject RightTarget,
         GodotObject LeftWrist, GodotObject RightWrist, GodotObject Grab);
     private readonly record struct ContactPlan(CaveGodContactProfile Profile, Vector2 Offset, float Scale, Vector2 GrabOffset);
@@ -29,8 +32,16 @@ public partial class NCaveGodBossBackground
         _contactPlans = [];
         if (_armsNode == null || NCombatRoom.Instance is not { } room) return;
         var points = new List<(Vector2 Center, Vector2 Feet)>();
-        foreach (var node in room.CreatureNodes.Where(n => n.Entity is { IsPlayer: true, IsAlive: true }))
+        int totalPlayers = 0;
+        int combatPlayerCount = 0;
+        foreach (var node in room.CreatureNodes)
         {
+            if (node.Entity is not { IsPlayer: true } entity) continue;
+            totalPlayers++;
+            if (combatPlayerCount == 0 && entity.CombatState != null)
+                combatPlayerCount = entity.CombatState.Players.Count;
+            if (!entity.IsAlive) continue;
+
             Vector2 feet = node.GlobalPosition;
             Vector2 center = node.Visuals != null ? node.VfxSpawnPosition : feet + new Vector2(0, -100) * node.GetGlobalTransform().Scale.Abs();
             var captured = _capturedPlayers.FirstOrDefault(entry => entry.node == node);
@@ -43,6 +54,7 @@ public partial class NCaveGodBossBackground
             points.Add((ToSpine(center), ToSpine(feet)));
         }
         if (points.Count == 0) return;
+        bool clampExtendedReach = MultiplayerCompat.IsExtendedParty(Math.Max(totalPlayers, combatPlayerCount));
         points.Sort((a, b) => a.Center.X.CompareTo(b.Center.X));
         Vector2 groundCenter = points.Aggregate(Vector2.Zero, (sum, p) => sum + p.Feet) / points.Count;
         var plans = new List<ContactPlan>();
@@ -60,7 +72,19 @@ public partial class NCaveGodBossBackground
             float spanY = group.Max(p => p.Center.Y) - group.Min(p => p.Center.Y) + 80;
             float scale = Mathf.Clamp(Math.Max(spanX / profile.Size.X, spanY / profile.Size.Y), 1f, 2.25f);
             Vector2 offset = center - profile.Center - profile.PalmOffset * (scale - 1);
-            plans.Add(new(profile, offset, scale, groundCenter - new Vector2(-0.65f, -247f)));
+            Vector2 grabOffset = groundCenter - new Vector2(-0.65f, -247f);
+            if (clampExtendedReach)
+            {
+                // Prevent IK arm targets from tearing off-screen if >4-player formations
+                // leave surviving teammates standing far out on the basalt cliff edges.
+                offset = new Vector2(
+                    Mathf.Clamp(offset.X, -MaxExtendedContactOffsetX, MaxExtendedContactOffsetX),
+                    Mathf.Clamp(offset.Y, -MaxExtendedContactOffsetY, MaxExtendedContactOffsetY));
+                grabOffset = new Vector2(
+                    Mathf.Clamp(grabOffset.X, -MaxExtendedContactOffsetX, MaxExtendedContactOffsetX),
+                    Mathf.Clamp(grabOffset.Y, -MaxExtendedContactOffsetY, MaxExtendedContactOffsetY));
+            }
+            plans.Add(new(profile, offset, scale, grabOffset));
         }
         _contactPlans = plans.ToArray();
     }

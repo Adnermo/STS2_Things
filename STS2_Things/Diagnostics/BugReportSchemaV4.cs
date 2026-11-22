@@ -19,6 +19,8 @@ internal static class BugReportSchemaV4
     internal const int SchemaVersion = 4;
     internal const int CheckpointSchemaVersion = 2;
 
+    // Mirrors MultiplayerCompat.MaxSupportedPlayers (kept standalone so pure-.NET BugReportStoreTests compile without Godot).
+    internal const int MaxPlayers = 32;
     internal const int MaxAssemblies = 500;
     internal const int MaxHarmonyPatches = 600;
     internal const int MaxRuntimeFaults = 200;
@@ -342,8 +344,8 @@ internal static class BugReportSchemaV4
         if (!available) return OptionalCheck(obj, "reason", n => IsText(n, 200));
         int? schema = GetInt(obj["schema"]);
         bool validPlayers = schema == 1
-            ? (GetInt(obj["player_count"]) is >= 1 and <= 8)
-            : OptionalCheck(obj, "player_count", n => GetInt(n) is >= 1 and <= 8);
+            ? (GetInt(obj["player_count"]) is >= 1 and <= MaxPlayers)
+            : OptionalCheck(obj, "player_count", n => GetInt(n) is >= 1 and <= MaxPlayers);
         return GetString(obj["format"]) == "sts2-native-save"
             && GetString(obj["encoding"]) == "gzip-base64"
             && schema is 1 or 2
@@ -460,13 +462,13 @@ internal static class BugReportSchemaV4
                     && OptionalCheck(ro, "type", x => IsText(x, 300))
                     && OptionalCheck(ro, "model_id", x => IsText(x, 300))
                     && OptionalCheck(ro, "monster_ids", m => IsList(m, 100, x => IsText(x, 300)))))
-                && OptionalCheck(po, "players", pl => IsList(pl, 8, ValidRoutePlayer))));
+                && OptionalCheck(po, "players", pl => IsList(pl, MaxPlayers, ValidRoutePlayer))));
 
     private static bool ValidSnapshot(JsonNode? n) =>
         n is JsonObject o
         && OptionalCheck(o, "seed", v => IsText(v, 100))
         && OptionalCheck(o, "acts", v => IsList(v, 20, x => IsText(x, 300)))
-        && OptionalCheck(o, "players", v => IsList(v, 8, ValidPlayer))
+        && OptionalCheck(o, "players", v => IsList(v, MaxPlayers, ValidPlayer))
         && OptionalCheck(o, "route", ValidRoute)
         && OptionalCheck(o, "combat", v => v is JsonObject co && OptionalCheck(co, "monsters", m => IsList(m, 100,
             mo => mo is JsonObject mObj && IsText(mObj["id"], 300) && OptionalCheck(mObj, "powers", p => IsList(p, 500, ValidPower)))))

@@ -66,11 +66,11 @@ public partial class DepthsProbeNode
                 }
                 if (creature.Monster is ThingsCaveMaw maw && creature.GetPower<ThingsCaveMawAppetitePower>() is { } appetite)
                 {
-                    Assert(maw.MinInitialHp == (ascension == 0 ? 79 : 86) &&
-                           maw.MaxInitialHp == (ascension == 0 ? 85 : 92) &&
+                    Assert(maw.MinInitialHp == (ascension == 0 ? 64 : 70) &&
+                           maw.MaxInitialHp == (ascension == 0 ? 70 : 76) &&
                            ThingsCaveMaw.BlockPerCard == 10 &&
                            appetite.DynamicVars["BlockPerCard"].IntValue == 10,
-                        "Cave Maw balance contract reflects 79-85/86-92 HP and 10 Block per consumed Status card.");
+                        "Cave Maw balance contract reflects 64-70/70-76 HP and 10 Block per consumed Status card.");
                 }
             }
             var roster = b.Enemies.Select(c => new { monster = c.Monster!.Id.Entry, hp = c.MaxHp,

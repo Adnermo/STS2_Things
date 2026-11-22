@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.ValueProps;
+using STS2_Things.Powers;
 
 namespace STS2_Things.Monsters;
 
@@ -15,8 +16,10 @@ namespace STS2_Things.Monsters;
 /// </summary>
 public sealed class ThingsChromaticSlimeSmallAmber : ThingsChromaticSlimeSmallBase
 {
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 12, 11);
-    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 14, 13);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 22, 20);
+    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 26, 24);
+
+    public override ChromaticStrain? OwnStrain => ChromaticStrain.Amber;
 
     internal override int OpeningBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 6, 5);
     protected override string? PreferredSkinName => "amber";
@@ -24,7 +27,7 @@ public sealed class ThingsChromaticSlimeSmallAmber : ThingsChromaticSlimeSmallBa
     protected override Vector2? VariantCenterPos => new(-2f, -60f);
     protected override Vector2? VariantIntentPos => new(-3f, -156f);
     protected override string? PreferredAttackAnimation => "attack_amber";
-    private int TackleDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 4, 3);
+    private int TackleDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
     private int TackleBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 5, 4);
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()

@@ -250,7 +250,7 @@ public sealed class HumanFaceTowerController
         ThingsHumanFaceTowerFace starterFace,
         IReadOnlyList<Creature> targets)
     {
-        if (CombatManager.Instance.IsOverOrEnding || LivingCount < 2)
+        if (!starterFace.Creature.IsAlive || ActiveFace != starterFace || CombatManager.Instance.IsOverOrEnding || LivingCount < 2)
             return;
 
         ThingsHumanFaceTowerFace? next = PeekNextLivingFace(starterFace);
@@ -264,7 +264,7 @@ public sealed class HumanFaceTowerController
         await RotateToFaceAsync(next, comboWhip: true, waitAnimation: true);
         SyncPivotDisplays();
 
-        if (!CombatManager.Instance.IsOverOrEnding && next.Creature.IsAlive)
+        if (!CombatManager.Instance.IsOverOrEnding && next.Creature.IsAlive && ActiveFace == next)
         {
             await next.ExecuteComboFollowUpAsync(targets);
         }
@@ -300,7 +300,7 @@ public sealed class HumanFaceTowerController
             .WithHitFx("vfx/vfx_attack_blunt")
             .Execute(null);
 
-        if (!CombatManager.Instance.IsOverOrEnding)
+        if (casterFace.Creature.IsAlive && ActiveFace == casterFace && !CombatManager.Instance.IsOverOrEnding)
         {
             await ApplyFullCycleEnchantmentPlaceholderAsync(casterFace, targets);
             await Cmd.Wait(0.35f);

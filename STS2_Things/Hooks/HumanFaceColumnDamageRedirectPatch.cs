@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -64,5 +65,28 @@ internal static class HumanFaceColumnDamageRedirectPatch
 
         decimal negated = Math.Max(0m, decimal.Truncate(unreduced) - decimal.Truncate(__result));
         power.StageModifyNegatedDamage(negated, props);
+    }
+}
+
+/// <summary>
+/// Guards <see cref="Hook.AfterBlockBroken"/> against a null <see cref="ICombatState"/> when an earlier
+/// target in an AoE <c>CreatureCmd.Damage</c> pass (such as a <see cref="ThingsHumanFaceColumn"/> damage
+/// redirect) kills and removes a subsequent target before the outer loop reaches its <c>WasBlockBroken</c> check.
+/// </summary>
+[HarmonyPatch(typeof(Hook), nameof(Hook.AfterBlockBroken))]
+internal static class AfterBlockBrokenNullCombatStateGuardPatch
+{
+    [HarmonyPrefix]
+    private static bool Prefix(ref ICombatState? combatState, ref Task __result)
+    {
+        if (combatState != null)
+            return true;
+
+        combatState = CombatManager.Instance.DebugOnlyGetState();
+        if (combatState != null)
+            return true;
+
+        __result = Task.CompletedTask;
+        return false;
     }
 }

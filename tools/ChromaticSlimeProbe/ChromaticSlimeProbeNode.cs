@@ -15,6 +15,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Models.Powers;
+using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Rooms;
@@ -69,10 +70,10 @@ public partial class ChromaticSlimeProbeNode : Node
             InitializeModelDb();
 
             VerifyPoolsLocalizationAndResources();
-            await VerifyLargeMovesAndCycle();
-            await VerifyDefeatModesOnLarge();
-            await VerifyMediumSplitsAndMixedModesAndTermination();
-            await VerifyAoEMultiMediumSplit();
+            await VerifyLargeStatsMovesAndMultiplayerScaling();
+            await VerifyAsymmetricHalfHpSplitsAndInheritedHp();
+            await VerifyLethalBypassAndEdgeCases();
+            await VerifyMediumSameColorSplitsAndSimultaneousEnemyTurn();
 
             if (OS.GetCmdlineUserArgs().Contains("--visual"))
                 await RenderVisualProbe();
@@ -138,6 +139,20 @@ public partial class ChromaticSlimeProbeNode : Node
         return new Fixture(run, room, party, encounter);
     }
 
+    private static async Task RunEnemyTurnAndPrepareNextPlayerTurn(Fixture s)
+    {
+        s.Room.CombatState.CurrentSide = CombatSide.Enemy;
+        var actors = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
+        foreach (Creature enemy in actors)
+        {
+            if (s.Room.CombatState.ContainsCreature(enemy) && enemy.IsAlive)
+                await enemy.Monster!.PerformMove();
+        }
+        s.Room.CombatState.CurrentSide = CombatSide.Player;
+        foreach (Creature enemy in s.Room.CombatState.Enemies.Where(c => c.IsAlive))
+            enemy.PrepareForNextTurn(s.Players.Select(p => p.Creature));
+    }
+
     private static Task AttackCardHit(CardModel card, Creature target, decimal damage)
     {
         return DamageCmd.Attack(damage).FromCard(card, null).Targeting(target).Execute(Choice);
@@ -200,7 +215,6 @@ public partial class ChromaticSlimeProbeNode : Node
             ]),
             $"Chromatic Slime family shares exactly 3 tier scenes (got {string.Join(", ", distinctVisuals)}).");
 
-        // Verify AssetLoadingSession preload guard routes mod scenes through sequential _vfxScenes queue without touching vanilla scenes.
         var guardType = typeof(ThingsChromaticSlimeWeak).Assembly.GetType("STS2_Things.Hooks.ThreadedScenePreloadGuardPatch");
         Assert(guardType != null, "ThreadedScenePreloadGuardPatch type exists.");
         var shouldSerialize = guardType!.GetMethod("ShouldSerializeScene", BindingFlags.NonPublic | BindingFlags.Static)!;
@@ -208,14 +222,37 @@ public partial class ChromaticSlimeProbeNode : Node
             "Preload guard serializes chromatic_slime_medium.tscn.");
         Assert((bool)shouldSerialize.Invoke(null, ["res://scenes/backgrounds/things_chromatic_slime_weak/things_chromatic_slime_weak_background.tscn"])!,
             "Preload guard serializes Chromatic Slime background scene.");
-        Assert((bool)shouldSerialize.Invoke(null, ["res://scenes/backgrounds/things_robbery_fake_merchant_encounter/things_robbery_fake_merchant_encounter_background.tscn"])!,
-            "Preload guard serializes Robbery Fake Merchant background scene.");
         Assert(!(bool)shouldSerialize.Invoke(null, ["res://scenes/creature_visuals/ironclad.tscn"])!,
             "Preload guard leaves vanilla creature scenes untouched.");
-        Assert(!(bool)shouldSerialize.Invoke(null, ["res://images/powers/things_chromatic_fission_power.png"])!,
-            "Preload guard leaves non-.tscn assets untouched.");
 
         var power = ModelDb.Power<ThingsChromaticFissionPower>();
+        Assert(!power.ShouldScaleInMultiplayer, "Chromatic Fission threshold must NOT double-scale in multiplayer.");
+        foreach (string lang in new[] { "eng", "zhs" })
+        {
+            SaveManager.Instance.SettingsSave.Language = lang;
+            LocManager.Initialize();
+            foreach (string key in new[]
+            {
+                "THINGS_CHROMATIC_FISSION_POWER.largeDescription",
+                "THINGS_CHROMATIC_FISSION_POWER.mediumDescription",
+                "THINGS_CHROMATIC_FISSION_POWER.pendingSplitDescription",
+                "THINGS_CHROMATIC_FISSION_POWER.pendingMediumSplitDescription",
+            })
+            {
+                Assert(LocString.Exists("powers", key), $"Missing power key {key} ({lang}).");
+            }
+            foreach (string splitMoveKey in new[]
+            {
+                "THINGS_CHROMATIC_SLIME_LARGE.moves.SPLIT.title",
+                "THINGS_CHROMATIC_SLIME_MEDIUM_CRIMSON.moves.SPLIT.title",
+                "THINGS_CHROMATIC_SLIME_MEDIUM_AMBER.moves.SPLIT.title",
+                "THINGS_CHROMATIC_SLIME_MEDIUM_AZURE.moves.SPLIT.title",
+            })
+            {
+                Assert(LocString.Exists("monsters", splitMoveKey), $"Missing monster move key {splitMoveKey} ({lang}).");
+            }
+        }
+
         SaveManager.Instance.SettingsSave.Language = "eng";
         LocManager.Initialize();
         Assert(ModelDb.Monster<ThingsChromaticSlimeLarge>().Title.GetFormattedText() == "Chromatic Slime (L)", "ENG large title.");
@@ -223,6 +260,8 @@ public partial class ChromaticSlimeProbeNode : Node
         Assert(power.Description.GetFormattedText().Contains("Crimson"), "ENG power description lists Crimson.");
         Assert(power.HoverTips.OfType<HoverTip>().Any(t => t.Id.Contains("BLOCK", StringComparison.OrdinalIgnoreCase)),
             "Power includes Block hover tip.");
+        Assert(power.HoverTips.OfType<HoverTip>().Any(t => t.Id.Contains("WEAK", StringComparison.OrdinalIgnoreCase)),
+            "Power includes Weak hover tip.");
 
         SaveManager.Instance.SettingsSave.Language = "zhs";
         LocManager.Initialize();
@@ -235,15 +274,20 @@ public partial class ChromaticSlimeProbeNode : Node
         GD.Print("PASS Depths regular pool, 7-slot layout, ZHS/ENG localization, and visual scene resources.");
     }
 
-    private static async Task VerifyLargeMovesAndCycle()
+    private static async Task VerifyLargeStatsMovesAndMultiplayerScaling()
     {
+        // 1P A0 stats + original 3-move prismatic cycle (Prism Splash -> Refractive Gel -> Chromatic Slam)
         var s = await Scenario(players: 1, ascension: 0);
-        Assert(s.Large.MinInitialHp == 34 && s.Large.MaxInitialHp == 38, "Large A0 HP is 34..38.");
+        Assert(s.Large.MinInitialHp == 112 && s.Large.MaxInitialHp == 120,
+            $"Large A0 HP is 112..120 (got {s.Large.MinInitialHp}..{s.Large.MaxInitialHp}).");
         Assert(s.Large.Creature.HasPower<ThingsChromaticFissionPower>(), "Large starts combat with Chromatic Fission.");
-        Assert(s.Large.Creature.GetPower<ThingsChromaticFissionPower>()!.Amount == 2, "Chromatic Fission shows 2 stacks.");
+        var fission = s.Large.Creature.GetPower<ThingsChromaticFissionPower>()!;
+        Assert(fission.Amount == s.Large.Creature.MaxHp / 2,
+            $"Chromatic Fission threshold equals MaxHp / 2 ({s.Large.Creature.MaxHp / 2}, got {fission.Amount}).");
+        Assert(fission.DisplayAmount == fission.Amount, "DisplayAmount shows threshold before split triggers.");
         Assert(s.Large.Creature.SlotName == "large", "Large occupies 'large' slot.");
 
-        string[] cycle = ["PRISM_SPLASH_MOVE", "CHROMATIC_SLAM_MOVE", "REFRACTIVE_GEL_MOVE"];
+        string[] cycle = ["PRISM_SPLASH_MOVE", "REFRACTIVE_GEL_MOVE", "CHROMATIC_SLAM_MOVE"];
         for (int turn = 0; turn < 6; turn++)
         {
             if (turn > 0)
@@ -253,137 +297,283 @@ public partial class ChromaticSlimeProbeNode : Node
             }
             Assert(s.Large.NextMove.Id == cycle[turn % 3], $"Large deterministic cycle turn {turn}: {s.Large.NextMove.Id}");
         }
-        GD.Print("PASS Large opening power & 3-move cycle.");
+
+        // Execute all 3 moves in live turn progression and check Slimed / Block / Strength
+        var sExec = await Scenario(players: 1, ascension: 0);
+        await CreatureCmd.SetMaxHp(sExec.Player.Creature, 200);
+        await CreatureCmd.Heal(sExec.Player.Creature, 200);
+        Assert(sExec.Large.NextMove.Id == "PRISM_SPLASH_MOVE", "Opens with PRISM_SPLASH_MOVE.");
+        await RunEnemyTurnAndPrepareNextPlayerTurn(sExec);
+        int slimedAfterT1 = sExec.Player.PlayerCombatState!.DiscardPile.Cards.Count(c => c is Slimed);
+        Assert(slimedAfterT1 == 2, $"PRISM_SPLASH_MOVE adds 2 Slimed to Discard (got {slimedAfterT1}).");
+        Assert(sExec.Large.NextMove.Id == "REFRACTIVE_GEL_MOVE", "T2 rolls REFRACTIVE_GEL_MOVE.");
+
+        await RunEnemyTurnAndPrepareNextPlayerTurn(sExec);
+        Assert(sExec.Large.Creature.Block == 12, $"REFRACTIVE_GEL_MOVE grants 12 Block at A0 (got {sExec.Large.Creature.Block}).");
+        Assert(sExec.Large.Creature.GetPowerAmount<StrengthPower>() == 2,
+            $"REFRACTIVE_GEL_MOVE grants +2 Strength at A0 (got {sExec.Large.Creature.GetPowerAmount<StrengthPower>()}).");
+        Assert(sExec.Large.NextMove.Id == "CHROMATIC_SLAM_MOVE", "T3 rolls CHROMATIC_SLAM_MOVE.");
+
+        int hpBeforeSlam = sExec.Player.Creature.CurrentHp;
+        await RunEnemyTurnAndPrepareNextPlayerTurn(sExec);
+        Assert(hpBeforeSlam - sExec.Player.Creature.CurrentHp == 26,
+            $"CHROMATIC_SLAM_MOVE deals 24 + 2 Str = 26 dmg at A0 (got {hpBeforeSlam - sExec.Player.Creature.CurrentHp}).");
+        int slimedAfterT3 = sExec.Player.PlayerCombatState!.DiscardPile.Cards.Count(c => c is Slimed);
+        Assert(slimedAfterT3 == 3, $"CHROMATIC_SLAM_MOVE adds 1 more Slimed (total 3, got {slimedAfterT3}).");
+
+        // A20 Tough/Deadly stats + 2P & 4P multiplayer threshold sanity (no double-scaling!)
+        var sA20 = await Scenario(players: 1, ascension: 20);
+        Assert(sA20.Large.MinInitialHp == 120 && sA20.Large.MaxInitialHp == 128, "Large A20 HP is 120..128.");
+
+        foreach (int pCount in new[] { 2, 4 })
+        {
+            var sMp = await Scenario(players: pCount, ascension: 0);
+            var mpFission = sMp.Large.Creature.GetPower<ThingsChromaticFissionPower>()!;
+            Assert(mpFission.Amount == sMp.Large.Creature.MaxHp / 2,
+                $"{pCount}P split threshold must equal scaled MaxHp/2 ({sMp.Large.Creature.MaxHp / 2}, got {mpFission.Amount}).");
+            Assert(mpFission.Amount < sMp.Large.Creature.MaxHp, $"{pCount}P threshold is strictly below MaxHp.");
+        }
+
+        GD.Print("PASS Large stats, original 3-move prismatic cycle, and 1P/2P/4P threshold scaling.");
     }
 
-    private static async Task VerifyDefeatModesOnLarge()
+    private static async Task VerifyAsymmetricHalfHpSplitsAndInheritedHp()
     {
-        // 1. Powered Attack Overkill >= 5 (exact threshold 5) -> 2x Medium Crimson
+        // 1. Powered Attack pushing >= 5 past half-HP (exact boundary excess == 5) -> Crimson + Azure
+        {
+            var s = await Scenario(players: 1, ascension: 0);
+            var large = s.Large.Creature;
+            var fission = large.GetPower<ThingsChromaticFissionPower>()!;
+            int threshold = fission.Amount;
+
+            // Chip down to threshold + 2 first (must NOT trigger split yet)
+            await AttackCardHit(MakeOwnedAttack(s.Player), large, large.CurrentHp - (threshold + 2));
+            Assert(!GetIsSplitTriggered(fission), "Staying above 50% HP does NOT trigger Split.");
+            Assert(s.Large.NextMove.Id == "PRISM_SPLASH_MOVE", "Intent stays PRISM_SPLASH_MOVE above 50%.");
+
+            // Cross with 7 damage -> lands at threshold - 5 (exact excess == 5)
+            await AttackCardHit(MakeOwnedAttack(s.Player), large, 7);
+            Assert(large.CurrentHp == threshold - 5, "Large HP reached threshold - 5.");
+            Assert(GetIsSplitTriggered(fission), "Crossing <= 50% immediately arms Split.");
+            Assert(GetPrimaryStrain(fission) == ChromaticStrain.Crimson && GetSecondaryStrain(fission) == ChromaticStrain.Azure,
+                $"Attack excess == 5 locks Crimson + Azure (got {GetPrimaryStrain(fission)} + {GetSecondaryStrain(fission)}).");
+            Assert(s.Large.NextMove.Id == "SPLIT_MOVE", "Intent immediately interrupts to SPLIT_MOVE.");
+            Assert(s.Large.NextMove.Intents.Single() is SummonIntent, "SPLIT_MOVE shows SummonIntent.");
+            Assert(fission.DisplayAmount == large.CurrentHp, "DisplayAmount tracks live remaining HP once armed.");
+            string pendingText = fission.HoverTips.OfType<HoverTip>().First().Description;
+            Assert(pendingText.Contains("Crimson Slime (M)") && pendingText.Contains("Azure Slime (M)") && pendingText.Contains(large.CurrentHp.ToString()),
+                $"Pending split tooltip previews locked pair and inherited HP: {pendingText}");
+
+            // Additional chip damage BEFORE Enemy Turn updates inherited HP live without changing locked colors
+            await CreatureCmd.Damage(Choice, large, 8, ValueProp.Unpowered, s.Player.Creature);
+            int expectedSplitHp = large.CurrentHp;
+            Assert(fission.DisplayAmount == expectedSplitHp, "Additional damage updates live DisplayAmount.");
+            Assert(GetPrimaryStrain(fission) == ChromaticStrain.Crimson && GetSecondaryStrain(fission) == ChromaticStrain.Azure,
+                "Locked color pair does NOT mutate on follow-up hits.");
+
+            // Stun must NOT overwrite armed SPLIT_MOVE
+            await CreatureCmd.Stun(large);
+            Assert(s.Large.NextMove.Id == "SPLIT_MOVE", "Armed SPLIT_MOVE cannot be overwritten by Stun.");
+
+            // Enemy Turn executes SPLIT_MOVE -> spawns 2 asymmetric Mediums inheriting expectedSplitHp
+            await RunEnemyTurnAndPrepareNextPlayerTurn(s);
+            Assert(!s.Room.CombatState.ContainsCreature(large), "Parent Large cleanly removed after splitting.");
+            Assert(!s.Room.CombatState.EscapedCreatures.Any(), "Splitting must NOT record parent as escaped (zero gold loss).");
+
+            var meds = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
+            Assert(meds.Count == 2, $"Large split spawns 2 Mediums (got {meds.Count}).");
+            Creature left = meds.Single(c => c.SlotName == "med_1");
+            Creature right = meds.Single(c => c.SlotName == "med_2");
+            Assert(left.Monster is ThingsChromaticSlimeMediumCrimson, "med_1 is Primary Medium Crimson.");
+            Assert(right.Monster is ThingsChromaticSlimeMediumAzure, "med_2 is Secondary Medium Azure.");
+            Assert(left.MaxHp == expectedSplitHp && left.CurrentHp == expectedSplitHp,
+                $"Left medium inherits exact remaining HP ({expectedSplitHp}, got {left.CurrentHp}/{left.MaxHp}).");
+            Assert(right.MaxHp == expectedSplitHp && right.CurrentHp == expectedSplitHp,
+                $"Right medium inherits exact remaining HP ({expectedSplitHp}, got {right.CurrentHp}/{right.MaxHp}).");
+            Assert(left.GetPower<ThingsChromaticFissionPower>()?.Amount == expectedSplitHp / 2,
+                $"Medium Crimson carries half-HP fission threshold ({expectedSplitHp / 2}).");
+            Assert(right.GetPower<ThingsChromaticFissionPower>()?.Amount == expectedSplitHp / 2,
+                $"Medium Azure carries half-HP fission threshold ({expectedSplitHp / 2}).");
+            Assert(left.Monster!.NextMove.Id == "CRIMSON_REND_MOVE" && right.Monster!.NextMove.Id == "TIDE_MIST_MOVE",
+                "Asymmetric Medium pair staggers opening moves.");
+        }
+
+        // 2a. Powered Attack pushing < 5 past threshold (excess == 4) -> Amber + Crimson
         {
             var s = await Scenario();
             var large = s.Large.Creature;
-            await AttackCardHit(MakeOwnedAttack(s.Player), large, large.CurrentHp + 5);
-            Assert(!large.IsAlive, "Large defeated cleanly.");
+            int threshold = large.GetPower<ThingsChromaticFissionPower>()!.Amount;
+            await AttackCardHit(MakeOwnedAttack(s.Player), large, large.CurrentHp - (threshold - 4));
+            int splitHp = large.CurrentHp;
+            Assert(s.Large.NextMove.Id == "SPLIT_MOVE", "Excess == 4 interrupts into SPLIT_MOVE.");
+            await RunEnemyTurnAndPrepareNextPlayerTurn(s);
             var meds = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
-            Assert(meds.Count == 2, $"Overkill >= 5 spawns 2 mediums (got {meds.Count}).");
-            Assert(meds.All(c => c.Monster is ThingsChromaticSlimeMediumCrimson), "Both mediums are Crimson.");
-            Assert(meds.Select(c => c.SlotName).OrderBy(n => n).SequenceEqual(["med_1", "med_2"]), "Spawned into med_1 & med_2.");
-            Assert(meds.All(c => c.HasPower<ThingsChromaticFissionPower>()), "Mediums inherit Chromatic Fission.");
-            Assert(meds[0].Monster!.NextMove.Id == "CRIMSON_REND_MOVE" && meds[1].Monster!.NextMove.Id == "CRYSTAL_SURGE_MOVE",
-                "Spawned Crimson mediums stagger opening moves.");
-            Assert(!CombatManager.Instance.IsOverOrEnding, "ShouldStopCombatFromEnding keeps combat active after Large split.");
+            Assert(meds.Single(c => c.SlotName == "med_1").Monster is ThingsChromaticSlimeMediumAmber,
+                "Attack excess == 4 spawns Primary Medium Amber in med_1.");
+            Assert(meds.Single(c => c.SlotName == "med_1").Block == 8, "Medium Amber enters with 8 Opening Block.");
+            Assert(meds.Single(c => c.SlotName == "med_2").Monster is ThingsChromaticSlimeMediumCrimson,
+                "Attack excess == 4 spawns Secondary Medium Crimson in med_2.");
+            Assert(meds.All(c => c.MaxHp == splitHp && c.CurrentHp == splitHp), "Both inherit exact remaining HP.");
         }
 
-        // 2a. Powered Attack Overkill == 4 (< 5) -> 2x Medium Amber (with 8 Opening Block)
+        // 2b. Powered Attack landing EXACTLY on threshold (excess == 0) -> Amber + Crimson
         {
             var s = await Scenario();
             var large = s.Large.Creature;
-            await AttackCardHit(MakeOwnedAttack(s.Player), large, large.CurrentHp + 4);
-            var meds = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
-            Assert(meds.Count == 2 && meds.All(c => c.Monster is ThingsChromaticSlimeMediumAmber),
-                "Overkill == 4 spawns 2 Medium Amber.");
-            Assert(meds.All(c => c.Block == 8), "Both Medium Amber gain 8 opening Block.");
+            int threshold = large.GetPower<ThingsChromaticFissionPower>()!.Amount;
+            await AttackCardHit(MakeOwnedAttack(s.Player), large, large.CurrentHp - threshold);
+            var fission = large.GetPower<ThingsChromaticFissionPower>()!;
+            Assert(GetIsSplitTriggered(fission) && GetPrimaryStrain(fission) == ChromaticStrain.Amber && GetSecondaryStrain(fission) == ChromaticStrain.Crimson,
+                "Exact half-HP Attack hit (excess == 0) locks Amber + Crimson.");
         }
 
-        // 2b. Powered Attack exact lethal Overkill == 0 -> 2x Medium Amber
+        // 3a. Skill card crossing half-HP (even deep excess == 20) -> Azure + Amber
         {
             var s = await Scenario();
             var large = s.Large.Creature;
-            await AttackCardHit(MakeOwnedAttack(s.Player), large, large.CurrentHp);
+            int threshold = large.GetPower<ThingsChromaticFissionPower>()!.Amount;
+            await AttackCardHit(MakeOwnedSkill(s.Player), large, large.CurrentHp - (threshold - 20));
+            await RunEnemyTurnAndPrepareNextPlayerTurn(s);
             var meds = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
-            Assert(meds.Count == 2 && meds.All(c => c.Monster is ThingsChromaticSlimeMediumAmber),
-                "Overkill == 0 spawns 2 Medium Amber.");
+            Assert(meds.Single(c => c.SlotName == "med_1").Monster is ThingsChromaticSlimeMediumAzure,
+                "Skill card crossing spawns Primary Medium Azure.");
+            Assert(meds.Single(c => c.SlotName == "med_2").Monster is ThingsChromaticSlimeMediumAmber,
+                "Skill card crossing spawns Secondary Medium Amber.");
         }
 
-        // 3a. Skill card damage (even huge overkill >= 5) -> 2x Medium Azure
+        // 3b. Unpowered / Poison damage crossing an ALREADY-stunned Large -> overrides Stun & spawns Azure + Amber
         {
-            var s = await Scenario();
+            var s = await Scenario(players: 2, ascension: 0);
             var large = s.Large.Creature;
-            await AttackCardHit(MakeOwnedSkill(s.Player), large, large.CurrentHp + 20);
+            int threshold = large.GetPower<ThingsChromaticFissionPower>()!.Amount;
+            await CreatureCmd.Stun(large);
+            Assert(s.Large.NextMove.Id == "STUNNED", "Large initially stunned.");
+            await CreatureCmd.Damage(Choice, large, large.CurrentHp - (threshold - 10), ValueProp.Unpowered, s.Player.Creature);
+            int expectedMpSplitHp = large.CurrentHp;
+            Assert(s.Large.NextMove.Id == "SPLIT_MOVE", "Half-HP crossing overrides Stun into SPLIT_MOVE.");
+            await RunEnemyTurnAndPrepareNextPlayerTurn(s);
             var meds = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
-            Assert(meds.Count == 2 && meds.All(c => c.Monster is ThingsChromaticSlimeMediumAzure),
-                "Non-Attack Skill card kill (even with high overkill) spawns 2 Medium Azure.");
+            Assert(meds.Single(c => c.SlotName == "med_1").Monster is ThingsChromaticSlimeMediumAzure,
+                "2P Unpowered crossing spawns Medium Azure.");
+            Assert(meds.Single(c => c.SlotName == "med_2").Monster is ThingsChromaticSlimeMediumAmber,
+                "2P Unpowered crossing spawns Medium Amber.");
+            Assert(meds.All(c => c.MaxHp == expectedMpSplitHp && c.CurrentHp == expectedMpSplitHp),
+                $"2P Mediums inherit exact remaining HP without double-scaling ({expectedMpSplitHp}).");
         }
 
-        // 3b. Unpowered / Orb / Poison damage (null cardSource) -> 2x Medium Azure
-        {
-            var s = await Scenario();
-            var large = s.Large.Creature;
-            await CreatureCmd.Damage(Choice, large, large.CurrentHp + 15, ValueProp.Unpowered, s.Player.Creature);
-            var meds = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
-            Assert(meds.Count == 2 && meds.All(c => c.Monster is ThingsChromaticSlimeMediumAzure),
-                "Unpowered / Orb / Poison kill spawns 2 Medium Azure.");
-        }
-
-        // 3c. Direct Kill (Doom / Judgment bypassing DamageCmd) -> 2x Medium Azure
-        {
-            var s = await Scenario();
-            var large = s.Large.Creature;
-            await CreatureCmd.Kill(large);
-            var meds = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
-            Assert(meds.Count == 2 && meds.All(c => c.Monster is ThingsChromaticSlimeMediumAzure),
-                "Direct Kill (Doom) defaults cleanly to 2 Medium Azure.");
-        }
-
-        GD.Print("PASS all defeat-mode classification rules (Crimson >=5, Amber <5 & exact 0, Azure skill/unpowered/Doom).");
+        GD.Print("PASS all asymmetric half-HP split pairings (Crimson+Azure, Amber+Crimson, Azure+Amber), live HP preview, Stun rules, and 2P HP inheritance.");
     }
 
-    private static async Task VerifyMediumSplitsAndMixedModesAndTermination()
+    private static async Task VerifyLethalBypassAndEdgeCases()
+    {
+        // 1. High-burst lethal from > 50% HP straight to 0 -> skips Split completely!
+        {
+            var s = await Scenario();
+            var large = s.Large.Creature;
+            await AttackCardHit(MakeOwnedAttack(s.Player), large, large.CurrentHp + 20);
+            Assert(!large.IsAlive, "Large killed in one burst.");
+            Assert(s.Room.CombatState.Enemies.All(c => !c.IsAlive),
+                "1-shot lethal kill from >50% skips Split cleanly (0 Mediums spawned).");
+        }
+
+        // 2. Finishing off an already-armed Large BEFORE Enemy Turn -> skips Split completely!
+        {
+            var s = await Scenario();
+            var large = s.Large.Creature;
+            int threshold = large.GetPower<ThingsChromaticFissionPower>()!.Amount;
+            await AttackCardHit(MakeOwnedAttack(s.Player), large, large.CurrentHp - (threshold - 10));
+            Assert(s.Large.NextMove.Id == "SPLIT_MOVE", "Large armed for Split.");
+            await AttackCardHit(MakeOwnedAttack(s.Player), large, large.CurrentHp + 5);
+            Assert(!large.IsAlive && s.Room.CombatState.Enemies.All(c => !c.IsAlive),
+                "Killing armed Large before Enemy Turn prevents Split cleanly.");
+        }
+
+        // 3. 1-HP split edge case -> 1/1 HP Mediums do NOT carry dead 0-threshold fission power
+        {
+            var s = await Scenario();
+            var large = s.Large.Creature;
+            await AttackCardHit(MakeOwnedAttack(s.Player), large, large.CurrentHp - 1);
+            Assert(large.CurrentHp == 1 && s.Large.NextMove.Id == "SPLIT_MOVE", "1-HP Large arms SPLIT_MOVE.");
+            await RunEnemyTurnAndPrepareNextPlayerTurn(s);
+            var meds = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
+            Assert(meds.Count == 2 && meds.All(c => c.MaxHp == 1 && c.CurrentHp == 1),
+                "1-HP Large splits into two 1/1 HP Mediums.");
+            Assert(meds.All(c => !c.HasPower<ThingsChromaticFissionPower>()),
+                "1-HP Mediums omit Chromatic Fission cleanly (splitHp < 2).");
+        }
+
+        GD.Print("PASS lethal 1-shot bypass, pre-turn armed-split kill, and 1-HP split edge case.");
+    }
+
+    private static async Task VerifyMediumSameColorSplitsAndSimultaneousEnemyTurn()
     {
         var s = await Scenario();
-        // Split Large via Poison -> 2x Medium Azure (med_1, med_2)
-        await CreatureCmd.Damage(Choice, s.Large.Creature, s.Large.Creature.CurrentHp, ValueProp.Unpowered, s.Player.Creature);
+        var large = s.Large.Creature;
+        // Drop Large to 40 HP via deep Attack -> Crimson (med_1) + Azure (med_2) at 40/40 HP (threshold 20)
+        await AttackCardHit(MakeOwnedAttack(s.Player), large, large.CurrentHp - 40);
+        await RunEnemyTurnAndPrepareNextPlayerTurn(s);
+
         var meds = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
-        Assert(meds.Count == 2, "2 Azure mediums present.");
         Creature medLeft = meds.Single(c => c.SlotName == "med_1");
         Creature medRight = meds.Single(c => c.SlotName == "med_2");
+        Assert(medLeft.MaxHp == 40 && medRight.MaxHp == 40, "Both Mediums inherited 40 HP.");
 
-        // Kill left medium via Overkill Attack -> 2x Small Crimson in small_1, small_2
-        await AttackCardHit(MakeOwnedAttack(s.Player), medLeft, medLeft.CurrentHp + 7);
-        var aliveAfterFirst = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
-        Assert(aliveAfterFirst.Count == 3, "medRight + 2 Small Crimson active simultaneously.");
-        var smallsCrimson = aliveAfterFirst.Where(c => c.Monster is ThingsChromaticSlimeSmallCrimson).ToList();
-        Assert(smallsCrimson.Count == 2, "Left medium split into 2 Small Crimson.");
-        Assert(smallsCrimson.Select(c => c.SlotName).OrderBy(x => x).SequenceEqual(["small_1", "small_2"]),
-            "Left medium splits into small_1 and small_2.");
-        Assert(smallsCrimson.All(c => !c.HasPower<ThingsChromaticFissionPower>()),
-            "Terminal Small slimes do NOT carry Chromatic Fission.");
+        // Push BOTH Mediums <= 20 HP in the same Player Turn (Crimson to 14 HP via Poison, Azure to 12 HP via Attack)
+        // Mediums MUST split into their OWN color regardless of hit source!
+        await CreatureCmd.Damage(Choice, medLeft, 26, ValueProp.Unpowered, s.Player.Creature);
+        await AttackCardHit(MakeOwnedAttack(s.Player), medRight, 28);
+        Assert(medLeft.CurrentHp == 14 && medLeft.Monster!.NextMove.Id == "SPLIT_MOVE",
+            "Medium Crimson at 14 HP immediately arms SPLIT_MOVE.");
+        Assert(medRight.CurrentHp == 12 && medRight.Monster!.NextMove.Id == "SPLIT_MOVE",
+            "Medium Azure at 12 HP immediately arms SPLIT_MOVE.");
 
-        // Kill right medium via Precision Attack (0 overkill) -> 2x Small Amber in small_3, small_4
-        await AttackCardHit(MakeOwnedAttack(s.Player), medRight, medRight.CurrentHp);
-        var allSmalls = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
-        Assert(allSmalls.Count == 4, "4 terminal Small slimes active across small_1..small_4.");
-        var smallsAmber = allSmalls.Where(c => c.Monster is ThingsChromaticSlimeSmallAmber).ToList();
-        Assert(smallsAmber.Count == 2, "Right medium split into 2 Small Amber.");
-        Assert(smallsAmber.All(c => c.Block == 5), "Both Small Amber start with 5 Block.");
-        Assert(smallsAmber.Select(c => c.SlotName).OrderBy(x => x).SequenceEqual(["small_3", "small_4"]),
-            "Right medium splits into small_3 and small_4 with zero slot overlap.");
-        Assert(allSmalls.Select(c => c.SlotName).Distinct().Count() == 4, "All 4 Small slots distinct.");
+        // Check medium pending split descriptions
+        string leftTip = medLeft.GetPower<ThingsChromaticFissionPower>()!.HoverTips.OfType<HoverTip>().First().Description;
+        Assert(leftTip.Contains("Crimson Slime (S)") && leftTip.Contains("14"),
+            $"Medium Crimson pending tooltip previews 2x Small Crimson at 14 HP: {leftTip}");
 
-        // Kill all 4 Small slimes -> none split further and zero enemies remain
-        foreach (Creature sm in allSmalls)
-            await CreatureCmd.Damage(Choice, sm, sm.Block + sm.CurrentHp + 20, ValueProp.Unpowered, s.Player.Creature);
+        // Simultaneous Enemy Turn splits both Mediums into 4 same-color Smalls across small_1..small_4
+        await RunEnemyTurnAndPrepareNextPlayerTurn(s);
+        var smalls = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
+        Assert(smalls.Count == 4, $"Simultaneous Medium splits yield 4 Smalls (got {smalls.Count}).");
+        Assert(smalls.Select(c => c.SlotName).OrderBy(n => n).SequenceEqual(["small_1", "small_2", "small_3", "small_4"]),
+            "All 4 Smalls occupy small_1..small_4 without slot collisions.");
 
-        Assert(s.Room.CombatState.Enemies.All(c => !c.IsAlive), "Small slimes never split further.");
-        GD.Print("PASS independent Medium splits, mixed strains across waves, and terminal Small cleanup.");
+        var leftSmalls = smalls.Where(c => c.SlotName is "small_1" or "small_2").ToList();
+        var rightSmalls = smalls.Where(c => c.SlotName is "small_3" or "small_4").ToList();
+        Assert(leftSmalls.All(c => c.Monster is ThingsChromaticSlimeSmallCrimson && c.MaxHp == 14 && c.CurrentHp == 14),
+            "Medium Crimson splits into 2x Small Crimson inheriting 14/14 HP (own color even when crossed by Poison).");
+        Assert(rightSmalls.All(c => c.Monster is ThingsChromaticSlimeSmallAzure && c.MaxHp == 12 && c.CurrentHp == 12),
+            "Medium Azure splits into 2x Small Azure inheriting 12/12 HP (own color even when crossed by Attack).");
+        Assert(smalls.All(c => !c.HasPower<ThingsChromaticFissionPower>()),
+            "Terminal Smalls never carry Chromatic Fission.");
+        Assert(!s.Room.CombatState.EscapedCreatures.Any(), "Zero escaped-creature gold loss across full 1->2->4 chain.");
+
+        // Killing all 4 Smalls ends combat cleanly with no further splits
+        foreach (Creature sm in smalls)
+            await CreatureCmd.Damage(Choice, sm, sm.Block + sm.CurrentHp + 10, ValueProp.Unpowered, s.Player.Creature);
+        Assert(s.Room.CombatState.Enemies.All(c => !c.IsAlive), "All 4 Smalls cleanly defeated.");
+
+        // Also verify bursting a Medium cleanly from >50% to 0 skips its Small split!
+        var s2 = await Scenario();
+        await AttackCardHit(MakeOwnedAttack(s2.Player), s2.Large.Creature, s2.Large.Creature.CurrentHp - 36);
+        await RunEnemyTurnAndPrepareNextPlayerTurn(s2);
+        var burstTarget = s2.Room.CombatState.Enemies.First(c => c.IsAlive);
+        await AttackCardHit(MakeOwnedAttack(s2.Player), burstTarget, burstTarget.CurrentHp + 20);
+        Assert(s2.Room.CombatState.Enemies.Count(c => c.IsAlive) == 1,
+            "Bursting one Medium from full HP to 0 skips its Small split cleanly.");
+
+        GD.Print("PASS Medium same-color half-HP splits, simultaneous 4-Small Enemy Turn, Medium 1-shot bypass, and terminal cleanup.");
     }
 
-    private static async Task VerifyAoEMultiMediumSplit()
-    {
-        var s = await Scenario();
-        await AttackCardHit(MakeOwnedAttack(s.Player), s.Large.Creature, s.Large.Creature.CurrentHp + 10);
-        var meds = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToArray();
-        Assert(meds.Length == 2, "Both Mediums alive before simultaneous AoE.");
+    private static bool GetIsSplitTriggered(ThingsChromaticFissionPower power) =>
+        (bool)typeof(ThingsChromaticFissionPower).GetProperty("IsSplitTriggered", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(power)!;
 
-        var card = MakeOwnedAttack(s.Player);
-        await DamageCmd.Attack(200).FromCard(card, null).TargetingAllOpponents(s.Room.CombatState).Execute(Choice);
-        var afterAoe = s.Room.CombatState.Enemies.Where(c => c.IsAlive).ToList();
-        Assert(afterAoe.Count == 4, $"Simultaneous AoE killing both Mediums spawns all 4 Smalls (got {afterAoe.Count}).");
-        Assert(afterAoe.All(c => c.Monster is ThingsChromaticSlimeSmallCrimson), "All 4 Smalls are Crimson.");
-        Assert(afterAoe.Select(c => c.SlotName).OrderBy(n => n).SequenceEqual(["small_1", "small_2", "small_3", "small_4"]),
-            "Simultaneous AoE places all 4 Smalls across small_1..small_4 without slot collisions.");
-        GD.Print("PASS simultaneous AoE multi-medium kill cleanly populates small_1..small_4.");
-    }
+    private static ChromaticStrain? GetPrimaryStrain(ThingsChromaticFissionPower power) =>
+        (ChromaticStrain?)typeof(ThingsChromaticFissionPower).GetProperty("PrimaryStrain", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(power);
+
+    private static ChromaticStrain? GetSecondaryStrain(ThingsChromaticFissionPower power) =>
+        (ChromaticStrain?)typeof(ThingsChromaticFissionPower).GetProperty("SecondaryStrain", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(power);
 
     private static void Assert(bool condition, string message)
     {

@@ -257,10 +257,69 @@ public partial class NInkBlackoutCardVeil : Control
 
     public static void DetachFromCard(NCard card, bool refreshCardVisuals = true)
     {
-        if (ActiveVeils.Count == 0 || !GodotObject.IsInstanceValid(card))
+        if (!GodotObject.IsInstanceValid(card))
             return;
-        if (FindVeil(card) is { } veil)
-            veil.DetachAndFree(refreshCardVisuals);
+
+        bool detachedAny = false;
+        if (VeilsByCard.TryGetValue(card, out NInkBlackoutCardVeil? mapped))
+        {
+            VeilsByCard.Remove(card);
+            if (GodotObject.IsInstanceValid(mapped) && !mapped._detaching)
+            {
+                mapped.DetachAndFree(refreshCardVisuals: false);
+                detachedAny = true;
+            }
+        }
+
+        // Always scan the host nodes directly without relying on ActiveVeils/VeilsByCard:
+        // _ExitTree() clears both registries before deferred NCard.OnFreedToPool() executes.
+        Control? body = card.Body != null && GodotObject.IsInstanceValid(card.Body) ? card.Body : null;
+        Control? cardContainer = card.GetNodeOrNull<Control>("%CardContainer");
+        if (cardContainer != null && (!GodotObject.IsInstanceValid(cardContainer) || ReferenceEquals(cardContainer, body)))
+            cardContainer = null;
+
+        detachedAny |= DetachChildVeils(body);
+        detachedAny |= DetachChildVeils(cardContainer);
+        detachedAny |= DetachChildVeils(card);
+
+        if (detachedAny && refreshCardVisuals)
+            RefreshCardVisualsGuarded(card);
+    }
+
+    private static bool DetachChildVeils(Node? host)
+    {
+        if (host == null || !GodotObject.IsInstanceValid(host))
+            return false;
+
+        bool detachedAny = false;
+        for (int i = host.GetChildCount() - 1; i >= 0; i--)
+        {
+            Node child = host.GetChild(i);
+            if (child is not NInkBlackoutCardVeil veil || !GodotObject.IsInstanceValid(veil))
+                continue;
+
+            if (!veil._detaching)
+            {
+                veil.DetachAndFree(refreshCardVisuals: false);
+            }
+            else
+            {
+                ActiveVeils.Remove(veil);
+                if (veil._card != null && VeilsByCard.TryGetValue(veil._card, out NInkBlackoutCardVeil? mapped) && ReferenceEquals(mapped, veil))
+                    VeilsByCard.Remove(veil._card);
+                if (ReferenceEquals(veil.GetParent(), host))
+                {
+                    if (NGame.IsMainThread() && (host.IsNodeReady() || !host.IsInsideTree()))
+                        host.RemoveChild(veil);
+                    else
+                        host.CallDeferred(Node.MethodName.RemoveChild, veil);
+                }
+                if (!veil.IsQueuedForDeletion())
+                    veil.QueueFree();
+            }
+            detachedAny = true;
+        }
+        return detachedAny;
     }
 
     private static Control ResolveHostBody(NCard card)
@@ -288,13 +347,27 @@ public partial class NInkBlackoutCardVeil : Control
     public override void _EnterTree()
     {
         base._EnterTree();
+        if (_detaching ||
+            !GodotObject.IsInstanceValid(_card) ||
+            _card.Model == null ||
+            !ReferenceEquals(_card.Model, _boundModel) ||
+            !AbyssalInkBlackout.IsVeiled(_card.Model))
+        {
+            Visible = false;
+            DetachAndFree(refreshCardVisuals: false, deferRemoveChild: true);
+            return;
+        }
+
         ActiveVeils.Add(this);
         CombatManager.Instance.CombatEnded += OnCombatEnded;
-        if (GodotObject.IsInstanceValid(_card))
+        VeilsByCard.AddOrUpdate(_card, this);
+        _card.ModelChanged -= OnCardModelChanged;
+        _card.ModelChanged += OnCardModelChanged;
+
+        if (_active && !_washing)
         {
-            VeilsByCard.AddOrUpdate(_card, this);
-            _card.ModelChanged -= OnCardModelChanged;
-            _card.ModelChanged += OnCardModelChanged;
+            ApplyBodyChildrenMask();
+            SuppressCardHighlight();
         }
     }
 
@@ -313,7 +386,7 @@ public partial class NInkBlackoutCardVeil : Control
 
     public override void _Ready()
     {
-        if (!GodotObject.IsInstanceValid(_card))
+        if (_detaching || !GodotObject.IsInstanceValid(_card))
             return;
 
         if (_cachedShader == null || !GodotObject.IsInstanceValid(_cachedShader))
@@ -648,7 +721,7 @@ public partial class NInkBlackoutCardVeil : Control
         }
     }
 
-    private void DetachAndFree(bool refreshCardVisuals = true)
+    private void DetachAndFree(bool refreshCardVisuals = true, bool deferRemoveChild = false)
     {
         if (_detaching)
             return;
@@ -670,10 +743,12 @@ public partial class NInkBlackoutCardVeil : Control
         // Detach from the scene tree BEFORE any NCard.UpdateVisuals refresh so Harmony postfixes
         // can never rediscover this veil and recurse (prevents STATUS_STACK_OVERFLOW / 0xc00000fd).
         Node? parent = GetParent();
-        if (parent != null && GodotObject.IsInstanceValid(parent) && NGame.IsMainThread() &&
-            (parent.IsNodeReady() || !parent.IsInsideTree()))
+        if (parent != null && GodotObject.IsInstanceValid(parent))
         {
-            parent.RemoveChild(this);
+            if (!deferRemoveChild && NGame.IsMainThread() && (parent.IsNodeReady() || !parent.IsInsideTree()))
+                parent.RemoveChild(this);
+            else
+                parent.CallDeferred(Node.MethodName.RemoveChild, this);
         }
 
         QueueFree();
@@ -775,8 +850,7 @@ internal static class AbyssalInkBlackoutPoolCleanupPatch
 {
     private static void Postfix(NCard __instance)
     {
-        if (NInkBlackoutCardVeil.HasActiveVeils)
-            NInkBlackoutCardVeil.DetachFromCard(__instance, refreshCardVisuals: false);
+        NInkBlackoutCardVeil.DetachFromCard(__instance, refreshCardVisuals: false);
     }
 }
 

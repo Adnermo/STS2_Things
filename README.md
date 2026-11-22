@@ -6,7 +6,7 @@
 
 原创第二章「深处」 · 8 位专属 Boss · 38 个跨章节事件与 5 款联机小游戏 · 单包双版本零依赖运行
 
-[![Version](https://img.shields.io/badge/Version-v2.0.5-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
+[![Version](https://img.shields.io/badge/Version-v2.0.6-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
 [![STS2 Support](https://img.shields.io/badge/STS2-v0.111.0%20%7C%20v0.111.1%20%7C%20v0.113.1%20Beta-1565c0?style=flat-square)](docs/DUAL_VERSION_SUPPORT.md)
 [![Steam Workshop](https://img.shields.io/badge/Steam-Workshop-1b2838?style=flat-square&logo=steam)](https://steamcommunity.com/sharedfiles/filedetails/?id=3747607944)
 [![Direct Mirror](https://img.shields.io/badge/国内直链-网盘下载-00838f?style=flat-square)](https://pan.adnermo.online/STS2_Things/latest)
@@ -211,6 +211,7 @@ STS2_Things/
 
 完整历史版本记录请参阅 **[CHANGELOG.md](CHANGELOG.md)** 或 **[`docs/releases/`](docs/releases/)**。
 
+- **`v2.0.6`**（[完整说明](docs/releases/release-2.0.6.md)）：新增「必定遇到深处（第二幕）」总开关（BaseLib / RitsuLib / 联机同步，不改 RNG）；全面适配 5–32 人多人上限解除模组；新增运行期 PCK 句柄锁防止 Steam 后台热更新覆写引发资源解析崩溃；修复人面柱「彼岸咆哮」破盾转嫁卡屏、战后选卡血条穿透遮挡、灯笼鱼致盲误遮检索牌、狭小取景器免费升级商店牌、联机小游戏断线死锁等 30+ 项全库审计与线上反馈 Bug。
 - **`v2.0.5`**（[完整说明](docs/releases/release-2.0.5.md)）：紧急修复渊墨巨蛸一阶段受灾厄触发 `KillWithoutCheckingWinCondition` 递归异常导致战斗卡死（同步加固活体巨岩本体/双臂）；下调盛碗虫族母「护主」（`25%`）、人面柱「叠柱」（上层 `50%` / 中层 `25%`）与渊墨巨蛸「触腕庇护」（固定 `25%`）减伤。
 - **`v2.0.4`**（[完整说明](docs/releases/release-2.0.4.md)）：第二章「深处」全部 38 个怪物类（常规/弱敌、精英与 3 位 Boss）血量与直接攻击伤害同步下调约 10%，并专项削弱菌根双生子（取消换血免费力量、降低互疗/狂暴奖励与攻防数值）；高清重绘 18 枚能力（Power）图标及 `power_atlas` 打包贴图；精修墨浊覆牌、蛛丝缠绕、逆流、腐潮吞噬、再利用与追忆等动态文案与悬浮提示。
 - **`v2.0.3`**（[完整说明](docs/releases/release-2.0.3.md)）：紧急修复异彩史莱姆（`THINGS_CHROMATIC_SLIME_WEAK`）进房黑屏卡死/闪退与双假商人事件战斗死锁（合并中/小史莱姆共享层级场景并通过 `SetupSkins` 切皮，清除背景自引用，新增 `ThreadedScenePreloadGuardPatch` 串行预加载模组场景）；统一修复各 Boss/小怪血条与意图被前景遮挡、巨型甲虫缩放意图偏移及深处各场遭遇站位布局；`min_game_version` 正式兼容至 **`v0.111.0`**。

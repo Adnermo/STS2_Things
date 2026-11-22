@@ -2,15 +2,18 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Messages.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Runs;
+using STS2_Things.Platform;
 
 namespace STS2_Things.Events.Minigames;
 
@@ -301,6 +304,7 @@ public struct ThingsCauldronHandMessage : INetMessage, IRunLocationTargetedMessa
 
 /// <summary>
 /// Client-to-Host reliable grab request during Depths Bronze Tripod Scramble.
+/// Not broadcast by the host (non-host peers ignore it; host broadcasts the authoritative ack).
 /// </summary>
 public struct ThingsCauldronGrabRequestMessage : INetMessage, IRunLocationTargetedMessage
 {
@@ -308,7 +312,7 @@ public struct ThingsCauldronGrabRequestMessage : INetMessage, IRunLocationTarget
     public float GrabX;
     public float GrabY;
 
-    public bool ShouldBroadcast => true;
+    public bool ShouldBroadcast => false;
     public NetTransferMode Mode => NetTransferMode.Reliable;
     public LogLevel LogLevel => LogLevel.Debug;
     public bool ShouldBuffer => true;
@@ -329,16 +333,55 @@ public struct ThingsCauldronGrabRequestMessage : INetMessage, IRunLocationTarget
 }
 
 /// <summary>
-/// Host-authoritative reliable grab acknowledgement broadcasting which exact items a player claimed.
+/// Host-authoritative reliable grab acknowledgement broadcasting which exact item indices (0..255)
+/// a player claimed. Uses an explicit byte array loop (no 64-item bitmask ceiling and no 3-bit WriteList).
 /// </summary>
 public struct ThingsCauldronGrabAckMessage : INetMessage, IRunLocationTargetedMessage
 {
+    public const int MaxClaimedIndicesPerGrab = 64;
+
     public RunLocation Location { get; set; }
     public ulong GrabberNetId;
     public float GrabX;
     public float GrabY;
-    public ulong ClaimedBitmask;
+    public byte[]? ClaimedIndices;
     public int GrabsRemaining;
+
+    /// <summary>
+    /// Compatibility 64-bit bitmask projection over <see cref="ClaimedIndices"/> for indices 0..63.
+    /// </summary>
+    public ulong ClaimedBitmask
+    {
+        readonly get
+        {
+            ulong mask = 0UL;
+            if (ClaimedIndices != null)
+            {
+                for (int i = 0; i < ClaimedIndices.Length; i++)
+                {
+                    byte idx = ClaimedIndices[i];
+                    if (idx < 64)
+                        mask |= 1UL << idx;
+                }
+            }
+            return mask;
+        }
+        set
+        {
+            if (value == 0UL)
+            {
+                ClaimedIndices = [];
+                return;
+            }
+            var list = new List<byte>(8);
+            for (int bit = 0; bit < 64; bit++)
+            {
+                if ((value & (1UL << bit)) != 0UL)
+                    list.Add((byte)bit);
+            }
+            ClaimedIndices = list.ToArray();
+        }
+    }
 
     public bool ShouldBroadcast => true;
     public NetTransferMode Mode => NetTransferMode.Reliable;
@@ -351,7 +394,10 @@ public struct ThingsCauldronGrabAckMessage : INetMessage, IRunLocationTargetedMe
         writer.WriteULong(GrabberNetId);
         writer.WriteFloat(GrabX);
         writer.WriteFloat(GrabY);
-        writer.WriteULong(ClaimedBitmask);
+        int count = Math.Clamp(ClaimedIndices?.Length ?? 0, 0, MaxClaimedIndicesPerGrab);
+        writer.WriteByte((byte)count);
+        for (int i = 0; i < count; i++)
+            writer.WriteByte(ClaimedIndices![i]);
         writer.WriteInt(GrabsRemaining);
     }
 
@@ -361,7 +407,11 @@ public struct ThingsCauldronGrabAckMessage : INetMessage, IRunLocationTargetedMe
         GrabberNetId = reader.ReadULong();
         GrabX = reader.ReadFloat();
         GrabY = reader.ReadFloat();
-        ClaimedBitmask = reader.ReadULong();
+        int count = Math.Clamp((int)reader.ReadByte(), 0, MaxClaimedIndicesPerGrab);
+        var indices = new byte[count];
+        for (int i = 0; i < count; i++)
+            indices[i] = reader.ReadByte();
+        ClaimedIndices = indices;
         GrabsRemaining = reader.ReadInt();
     }
 }
@@ -369,6 +419,7 @@ public struct ThingsCauldronGrabAckMessage : INetMessage, IRunLocationTargetedMe
 /// <summary>
 /// Host-authoritative reliable final outcome table for every player in the Bronze Tripod Scramble
 /// so all peers award identical rewards and pass room-exit checksums cleanly.
+/// Bit-packed at 14 bytes/player (32 players ≈ 456 bytes, comfortably below PacketWriter's 1024-byte default).
 /// </summary>
 public struct ThingsCauldronFinalOutcomeMessage : INetMessage, IRunLocationTargetedMessage
 {
@@ -393,27 +444,38 @@ public struct ThingsCauldronFinalOutcomeMessage : INetMessage, IRunLocationTarge
     public void Serialize(PacketWriter writer)
     {
         writer.Write(Location);
-        int count = Math.Clamp(PlayerCount, 0, 8);
-        writer.WriteInt(count);
+        int count = Math.Clamp(PlayerCount, 0, MultiplayerCompat.MaxProtocolPlayers);
+        if (NetIds == null || GoldAmounts == null || MaxHpGains == null || UpgradeCounts == null ||
+            PotionCounts == null || CardCounts == null || CommonRelicCounts == null ||
+            UncommonRelicCounts == null || RareRelicCounts == null || ItemsGrabbedCounts == null)
+        {
+            count = 0;
+        }
+        else
+        {
+            count = Math.Min(count, NetIds.Length);
+        }
+
+        writer.WriteByte((byte)count);
         for (int i = 0; i < count; i++)
         {
-            writer.WriteULong(NetIds[i]);
-            writer.WriteInt(GoldAmounts[i]);
-            writer.WriteInt(MaxHpGains[i]);
-            writer.WriteInt(UpgradeCounts[i]);
-            writer.WriteInt(PotionCounts[i]);
-            writer.WriteInt(CardCounts[i]);
-            writer.WriteInt(CommonRelicCounts[i]);
-            writer.WriteInt(UncommonRelicCounts[i]);
-            writer.WriteInt(RareRelicCounts[i]);
-            writer.WriteInt(ItemsGrabbedCounts[i]);
+            writer.WriteULong(NetIds![i]);
+            writer.WriteInt(Math.Clamp(GoldAmounts![i], 0, 2000), 11);
+            writer.WriteInt(Math.Clamp(MaxHpGains![i], 0, 31), 5);
+            writer.WriteInt(Math.Clamp(UpgradeCounts![i], 0, 15), 4);
+            writer.WriteInt(Math.Clamp(PotionCounts![i], 0, 15), 4);
+            writer.WriteInt(Math.Clamp(CardCounts![i], 0, 15), 4);
+            writer.WriteInt(Math.Clamp(CommonRelicCounts![i], 0, 15), 4);
+            writer.WriteInt(Math.Clamp(UncommonRelicCounts![i], 0, 15), 4);
+            writer.WriteInt(Math.Clamp(RareRelicCounts![i], 0, 15), 4);
+            writer.WriteInt(Math.Clamp(ItemsGrabbedCounts![i], 0, 255), 8);
         }
     }
 
     public void Deserialize(PacketReader reader)
     {
         Location = reader.Read<RunLocation>();
-        int count = Math.Clamp(reader.ReadInt(), 0, 8);
+        int count = Math.Clamp((int)reader.ReadByte(), 0, MultiplayerCompat.MaxProtocolPlayers);
         PlayerCount = count;
         NetIds = new ulong[count];
         GoldAmounts = new int[count];
@@ -428,34 +490,35 @@ public struct ThingsCauldronFinalOutcomeMessage : INetMessage, IRunLocationTarge
         for (int i = 0; i < count; i++)
         {
             NetIds[i] = reader.ReadULong();
-            GoldAmounts[i] = reader.ReadInt();
-            MaxHpGains[i] = reader.ReadInt();
-            UpgradeCounts[i] = reader.ReadInt();
-            PotionCounts[i] = reader.ReadInt();
-            CardCounts[i] = reader.ReadInt();
-            CommonRelicCounts[i] = reader.ReadInt();
-            UncommonRelicCounts[i] = reader.ReadInt();
-            RareRelicCounts[i] = reader.ReadInt();
-            ItemsGrabbedCounts[i] = reader.ReadInt();
+            GoldAmounts[i] = reader.ReadInt(11);
+            MaxHpGains[i] = reader.ReadInt(5);
+            UpgradeCounts[i] = reader.ReadInt(4);
+            PotionCounts[i] = reader.ReadInt(4);
+            CardCounts[i] = reader.ReadInt(4);
+            CommonRelicCounts[i] = reader.ReadInt(4);
+            UncommonRelicCounts[i] = reader.ReadInt(4);
+            RareRelicCounts[i] = reader.ReadInt(4);
+            ItemsGrabbedCounts[i] = reader.ReadInt(8);
         }
     }
 
     public List<ThingsBronzeCauldronPlayerOutcome> ToSanitizedOutcomes()
     {
-        var list = new List<ThingsBronzeCauldronPlayerOutcome>(PlayerCount);
-        for (int i = 0; i < PlayerCount; i++)
+        int count = NetIds == null ? 0 : Math.Clamp(PlayerCount, 0, NetIds.Length);
+        var list = new List<ThingsBronzeCauldronPlayerOutcome>(count);
+        for (int i = 0; i < count; i++)
         {
-            list.Add(new ThingsBronzeCauldronPlayerOutcome(
-                NetIds[i],
-                Math.Clamp(GoldAmounts[i], 0, 600),
-                Math.Clamp(MaxHpGains[i], 0, 12),
-                Math.Clamp(UpgradeCounts[i], 0, 3),
-                Math.Clamp(PotionCounts[i], 0, 4),
-                Math.Clamp(CardCounts[i], 0, 4),
-                Math.Clamp(CommonRelicCounts[i], 0, 4),
-                Math.Clamp(UncommonRelicCounts[i], 0, 2),
-                Math.Clamp(RareRelicCounts[i], 0, 4),
-                Math.Clamp(ItemsGrabbedCounts[i], 0, 64)));
+            list.Add(ThingsEventMinigameSync.SanitizeCauldronOutcome(new ThingsBronzeCauldronPlayerOutcome(
+                NetIds![i],
+                GoldAmounts[i],
+                MaxHpGains[i],
+                UpgradeCounts[i],
+                PotionCounts[i],
+                CardCounts[i],
+                CommonRelicCounts[i],
+                UncommonRelicCounts[i],
+                RareRelicCounts[i],
+                ItemsGrabbedCounts[i])));
         }
         return list;
     }
@@ -464,7 +527,7 @@ public struct ThingsCauldronFinalOutcomeMessage : INetMessage, IRunLocationTarge
         RunLocation location,
         IReadOnlyList<ThingsBronzeCauldronPlayerOutcome> outcomes)
     {
-        int n = Math.Min(outcomes.Count, 8);
+        int n = Math.Min(outcomes.Count, MultiplayerCompat.MaxProtocolPlayers);
         var msg = new ThingsCauldronFinalOutcomeMessage
         {
             Location = location,
@@ -482,7 +545,7 @@ public struct ThingsCauldronFinalOutcomeMessage : INetMessage, IRunLocationTarge
         };
         for (int i = 0; i < n; i++)
         {
-            ThingsBronzeCauldronPlayerOutcome o = outcomes[i];
+            ThingsBronzeCauldronPlayerOutcome o = ThingsEventMinigameSync.SanitizeCauldronOutcome(outcomes[i]);
             msg.NetIds[i] = o.PlayerNetId;
             msg.GoldAmounts[i] = o.GoldAmount;
             msg.MaxHpGains[i] = o.MaxHpGain;
@@ -498,8 +561,27 @@ public struct ThingsCauldronFinalOutcomeMessage : INetMessage, IRunLocationTarge
     }
 }
 
-internal static class ThingsEventMinigameSync
+public static class ThingsEventMinigameSync
 {
+    /// <summary>
+    /// Unified Bronze Tripod Scramble outcome sanitizer applied on BOTH host finalization
+    /// and client packet decode so every peer awards bit-for-bit identical outcomes.
+    /// </summary>
+    public static ThingsBronzeCauldronPlayerOutcome SanitizeCauldronOutcome(ThingsBronzeCauldronPlayerOutcome outcome) => new(
+        outcome.PlayerNetId,
+        Math.Clamp(outcome.GoldAmount, 0, 1500),
+        Math.Clamp(outcome.MaxHpGain, 0, 24),
+        Math.Clamp(outcome.UpgradeCount, 0, 8),
+        Math.Clamp(outcome.PotionCount, 0, 8),
+        Math.Clamp(outcome.CardCount, 0, 8),
+        Math.Clamp(outcome.CommonRelicCount, 0, 8),
+        Math.Clamp(outcome.UncommonRelicCount, 0, 6),
+        Math.Clamp(outcome.RareRelicCount, 0, 8),
+        Math.Clamp(outcome.ItemsGrabbed, 0, 128));
+
+    internal static bool IsRunActive =>
+        RunManager.Instance is { IsInProgress: true, IsCleaningUp: false };
+
     private sealed class State(
         RunLocationTargetedMessageBuffer buffer,
         INetGameService gameService,
@@ -510,8 +592,93 @@ internal static class ThingsEventMinigameSync
         public readonly INetGameService GameService = gameService;
         public readonly IPlayerCollection PlayerCollection = playerCollection;
         public readonly ulong LocalPlayerId = localPlayerId;
+        public readonly List<(ulong OwnerNetId, Action Cancel)> RemoteOutcomeWaiters = [];
+        public readonly HashSet<ulong> DisconnectedPeers = [];
+        public RunLobby? SubscribedRunLobby;
+        public bool LocalDisconnected;
         public BronzeCauldronMinigame? ActiveCauldron;
         public List<ThingsBronzeCauldronPlayerOutcome>? BufferedCauldronFinal;
+        public RunLocation BufferedCauldronFinalLocation;
+
+        public void EnsureRunLobbySubscribed()
+        {
+            RunLobby? lobby = RunManager.Instance?.RunLobby;
+            if (lobby == null || ReferenceEquals(SubscribedRunLobby, lobby))
+                return;
+            if (SubscribedRunLobby != null)
+                SubscribedRunLobby.RemotePlayerDisconnected -= HandlePeerDisconnected;
+            SubscribedRunLobby = lobby;
+            lobby.RemotePlayerDisconnected += HandlePeerDisconnected;
+        }
+
+        public void HandleLocalDisconnected(NetErrorInfo _)
+        {
+            LocalDisconnected = true;
+            CancelAllWaiters();
+        }
+
+        public void HandleClientDisconnected(ulong peerId, NetErrorInfo _)
+        {
+            HandlePeerDisconnected(peerId);
+        }
+
+        public void HandlePeerDisconnected(ulong peerId)
+        {
+            DisconnectedPeers.Add(peerId);
+            CancelWaitersForPeer(peerId);
+        }
+
+        public void CancelWaitersForPeer(ulong peerId)
+        {
+            List<Action>? toCancel = null;
+            for (int i = RemoteOutcomeWaiters.Count - 1; i >= 0; i--)
+            {
+                if (RemoteOutcomeWaiters[i].OwnerNetId == peerId)
+                {
+                    toCancel ??= [];
+                    toCancel.Add(RemoteOutcomeWaiters[i].Cancel);
+                    RemoteOutcomeWaiters.RemoveAt(i);
+                }
+            }
+
+            if (toCancel != null)
+            {
+                foreach (Action cancel in toCancel)
+                    cancel();
+            }
+        }
+
+        public void CancelAllWaiters()
+        {
+            if (RemoteOutcomeWaiters.Count > 0)
+            {
+                Action[] toCancel = new Action[RemoteOutcomeWaiters.Count];
+                for (int i = 0; i < RemoteOutcomeWaiters.Count; i++)
+                    toCancel[i] = RemoteOutcomeWaiters[i].Cancel;
+                RemoteOutcomeWaiters.Clear();
+                foreach (Action cancel in toCancel)
+                    cancel();
+            }
+
+            BronzeCauldronMinigame? cauldron = ActiveCauldron;
+            ActiveCauldron = null;
+            BufferedCauldronFinal = null;
+            cauldron?.CancelAllWaiters();
+        }
+
+        public void DetachAndCancelAll()
+        {
+            LocalDisconnected = true;
+            GameService.Disconnected -= HandleLocalDisconnected;
+            if (GameService is INetHostGameService hostService)
+                hostService.ClientDisconnected -= HandleClientDisconnected;
+            if (SubscribedRunLobby != null)
+            {
+                SubscribedRunLobby.RemotePlayerDisconnected -= HandlePeerDisconnected;
+                SubscribedRunLobby = null;
+            }
+            CancelAllWaiters();
+        }
 
         public void HandleBilgeSweep(ThingsBilgeSweepResultMessage message, ulong senderId)
         {
@@ -572,14 +739,19 @@ internal static class ThingsEventMinigameSync
         {
             if (senderId == LocalPlayerId || ActiveCauldron == null || !ActiveCauldron.IsHostAuthority)
                 return;
-            ActiveCauldron.ResolveAuthoritativeGrab(senderId, message.GrabX, message.GrabY);
+            ActiveCauldron.ResolveAuthoritativeGrabIndices(senderId, message.GrabX, message.GrabY);
         }
 
         public void HandleCauldronGrabAck(ThingsCauldronGrabAckMessage message, ulong senderId)
         {
             if (ActiveCauldron == null || ActiveCauldron.IsHostAuthority)
                 return;
-            ActiveCauldron.ApplyResolvedGrab(message.GrabberNetId, message.GrabX, message.GrabY, message.ClaimedBitmask, message.GrabsRemaining);
+            ActiveCauldron.ApplyResolvedGrab(
+                message.GrabberNetId,
+                message.GrabX,
+                message.GrabY,
+                message.ClaimedIndices ?? [],
+                message.GrabsRemaining);
         }
 
         public void HandleCauldronFinal(ThingsCauldronFinalOutcomeMessage message, ulong senderId)
@@ -593,6 +765,7 @@ internal static class ThingsEventMinigameSync
             else
             {
                 BufferedCauldronFinal = outcomes;
+                BufferedCauldronFinalLocation = message.Location;
             }
         }
     }
@@ -616,6 +789,9 @@ internal static class ThingsEventMinigameSync
         buffer.RegisterMessageHandler<ThingsCauldronGrabRequestMessage>(state.HandleCauldronGrabRequest);
         buffer.RegisterMessageHandler<ThingsCauldronGrabAckMessage>(state.HandleCauldronGrabAck);
         buffer.RegisterMessageHandler<ThingsCauldronFinalOutcomeMessage>(state.HandleCauldronFinal);
+        gameService.Disconnected += state.HandleLocalDisconnected;
+        if (gameService is INetHostGameService hostService)
+            hostService.ClientDisconnected += state.HandleClientDisconnected;
     }
 
     internal static void Unbind(OneOffSynchronizer synchronizer)
@@ -630,9 +806,41 @@ internal static class ThingsEventMinigameSync
         state.Buffer.UnregisterMessageHandler<ThingsCauldronGrabRequestMessage>(state.HandleCauldronGrabRequest);
         state.Buffer.UnregisterMessageHandler<ThingsCauldronGrabAckMessage>(state.HandleCauldronGrabAck);
         state.Buffer.UnregisterMessageHandler<ThingsCauldronFinalOutcomeMessage>(state.HandleCauldronFinal);
-        state.ActiveCauldron = null;
-        state.BufferedCauldronFinal = null;
+        state.DetachAndCancelAll();
         States.Remove(synchronizer);
+    }
+
+    internal static void OnRunCleanUp(RunManager runManager)
+    {
+        OneOffSynchronizer? sync = runManager.OneOffSynchronizer;
+        if (sync != null)
+            Unbind(sync);
+    }
+
+    internal static void RegisterRemoteWaiter(ulong ownerNetId, Action cancel)
+    {
+        OneOffSynchronizer? sync = RunManager.Instance?.OneOffSynchronizer;
+        if (sync == null || !States.TryGetValue(sync, out State? state))
+            return;
+        state.EnsureRunLobbySubscribed();
+        if (state.LocalDisconnected || state.DisconnectedPeers.Contains(ownerNetId))
+        {
+            cancel();
+            return;
+        }
+        state.RemoteOutcomeWaiters.Add((ownerNetId, cancel));
+    }
+
+    internal static void UnregisterRemoteWaiter(Action cancel)
+    {
+        OneOffSynchronizer? sync = RunManager.Instance?.OneOffSynchronizer;
+        if (sync == null || !States.TryGetValue(sync, out State? state))
+            return;
+        for (int i = state.RemoteOutcomeWaiters.Count - 1; i >= 0; i--)
+        {
+            if (ReferenceEquals(state.RemoteOutcomeWaiters[i].Cancel, cancel))
+                state.RemoteOutcomeWaiters.RemoveAt(i);
+        }
     }
 
     internal static void AttachCauldronSession(BronzeCauldronMinigame session)
@@ -641,10 +849,17 @@ internal static class ThingsEventMinigameSync
         if (sync == null || !States.TryGetValue(sync, out State? state))
             return;
 
+        state.EnsureRunLobbySubscribed();
+        if (state.LocalDisconnected)
+        {
+            session.CancelAllWaiters();
+            return;
+        }
+
         state.ActiveCauldron = session;
         if (session.IsHostAuthority)
         {
-            session.HostGrabResolved += (grabberId, gx, gy, mask, left) =>
+            session.HostGrabResolved += (grabberId, gx, gy, claimedIndices, left) =>
             {
                 state.GameService.SendMessage(new ThingsCauldronGrabAckMessage
                 {
@@ -652,7 +867,7 @@ internal static class ThingsEventMinigameSync
                     GrabberNetId = grabberId,
                     GrabX = gx,
                     GrabY = gy,
-                    ClaimedBitmask = mask,
+                    ClaimedIndices = claimedIndices,
                     GrabsRemaining = left,
                 });
             };
@@ -665,8 +880,10 @@ internal static class ThingsEventMinigameSync
         else if (state.BufferedCauldronFinal != null)
         {
             List<ThingsBronzeCauldronPlayerOutcome> buffered = state.BufferedCauldronFinal;
+            RunLocation bufferedLocation = state.BufferedCauldronFinalLocation;
             state.BufferedCauldronFinal = null;
-            session.ApplyFinalOutcomes(buffered);
+            if (bufferedLocation == state.Buffer.CurrentLocation)
+                session.ApplyFinalOutcomes(buffered);
         }
     }
 
@@ -676,7 +893,19 @@ internal static class ThingsEventMinigameSync
         if (sync == null || !States.TryGetValue(sync, out State? state))
             return;
         if (ReferenceEquals(state.ActiveCauldron, session))
+        {
             state.ActiveCauldron = null;
+            state.BufferedCauldronFinal = null;
+        }
+    }
+
+    internal static void ClearStaleCauldronBuffer()
+    {
+        OneOffSynchronizer? sync = RunManager.Instance?.OneOffSynchronizer;
+        if (sync == null || !States.TryGetValue(sync, out State? state))
+            return;
+        if (state.ActiveCauldron == null)
+            state.BufferedCauldronFinal = null;
     }
 
     internal static void SendCauldronHandUpdate(float x, float y, bool isClenched)
@@ -804,4 +1033,11 @@ internal static class ThingsEventMinigameSyncUnbindPatch
 {
     private static void Prefix(OneOffSynchronizer __instance)
         => ThingsEventMinigameSync.Unbind(__instance);
+}
+
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.CleanUp))]
+internal static class ThingsEventMinigameSyncRunCleanUpPatch
+{
+    private static void Prefix(RunManager __instance)
+        => ThingsEventMinigameSync.OnRunCleanUp(__instance);
 }

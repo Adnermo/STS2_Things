@@ -23,7 +23,7 @@ public partial class SilkMothProbeNode
             var moths=s.Room.CombatState.Enemies.Select(c=>c.Monster).OfType<ThingsSilkMoth>().ToArray();
             Assert(moths.Length==3 && moths[1] is ThingsGreatSilkMoth,"Small / great / small production roster.");
             Assert(moths.Select(m=>m.OpeningPhase).SequenceEqual(new[]{1,0,2}),"Three distinct opening phases.");
-            Assert(moths[1].MinInitialHp==(asc==0?56:63),"Great moth's deliberate endurance.");
+            Assert(moths[1].MinInitialHp==(asc==0?46:52),"Great moth's deliberate endurance.");
             foreach(var p in s.Players){p.Creature.SetMaxHpInternal(10000);p.Creature.SetCurrentHpInternal(10000);}
             for(int round=0;round<9;round++)
             {

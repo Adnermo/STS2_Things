@@ -73,6 +73,7 @@ public partial class ThingsConfigProbeNode : Node
             VerifyTypedConfigMigration();
             VerifyConflictRule();
             VerifyForceImpliesEnabled();
+            VerifyGuaranteedDepths();
             VerifyCatalogGating();
             VerifyBossForcing();
             VerifyActualBossSelection();
@@ -102,8 +103,15 @@ public partial class ThingsConfigProbeNode : Node
             $"Expected CurrentSchemaVersion=3, got {ThingsModConfig.CurrentSchemaVersion}.");
         Assert(ThingsConfigSnapshotMessage.Protocol == 2,
             $"Expected ThingsConfigSnapshotMessage.Protocol=2, got {ThingsConfigSnapshotMessage.Protocol}.");
-        Assert(ThingsModConfig.Entries.Count == 78,
-            $"Expected 78 config entries, got {ThingsModConfig.Entries.Count}.");
+        Assert(ThingsModConfig.Entries.Count == 79,
+            $"Expected 79 config entries, got {ThingsModConfig.Entries.Count}.");
+        Assert(ThingsModConfig.Entries.Any(entry =>
+                   entry.Key == ThingsModConfig.FeatureGuaranteedDepthsEnabled &&
+                   entry.Category == ThingsModConfig.Category.Act &&
+                   entry.Default is false),
+            "Missing FeatureGuaranteedDepthsEnabled entry in Category.Act.");
+        Assert(!ThingsModConfig.GuaranteedDepthsEnabled,
+            "GuaranteedDepthsEnabled hot cache must default to false.");
         Assert(ThingsModConfig.Entries.Any(entry =>
                    entry.Key == ThingsModConfig.FeatureDefensiveEngineGuardsEnabled &&
                    entry.Category == ThingsModConfig.Category.Stability &&
@@ -231,6 +239,35 @@ public partial class ThingsConfigProbeNode : Node
                ThingsModConfig.BossGravetideSlugForced,
             "Underdocks slot reports the wrong forced boss.");
         ResetAll();
+
+        // P2 回归：同槽位两个 Boss 同时 Forced=true 且后者 Enabled=false 时，
+        // 降级后者的 Forced 不得顺带把其 Enabled=false 翻成 true。
+        ThingsModConfig.SetValues(new Dictionary<string, object?>
+        {
+            [ThingsModConfig.BossOriginFogmogForced] = true,
+            [ThingsModConfig.BossScaleBeetleEnabled] = false,
+            [ThingsModConfig.BossScaleBeetleForced] = true,
+        });
+        Assert(ThingsModConfig.IsForced(ThingsModConfig.BossOriginFogmogForced) &&
+               ThingsModConfig.IsEnabled(ThingsModConfig.BossOriginFogmogEnabled),
+            "First forced boss (Origin Fogmog) must remain forced and enabled.");
+        Assert(!ThingsModConfig.IsForced(ThingsModConfig.BossScaleBeetleForced),
+            "Second forced boss (Scale Beetle) must be demoted.");
+        Assert(!ThingsModConfig.IsEnabled(ThingsModConfig.BossScaleBeetleEnabled),
+            "Demoted duplicate forced boss must preserve Enabled=false instead of flipping to true.");
+
+        File.WriteAllText(ThingsModConfig.ConfigPath,
+            "{\"SchemaVersion\":\"3\",\"BossOriginFogmogForced\":\"True\",\"BossOriginFogmogEnabled\":\"False\"," +
+            "\"BossScaleBeetleForced\":\"True\",\"BossScaleBeetleEnabled\":\"False\"}");
+        ThingsModConfig.Load();
+        Assert(ThingsModConfig.IsForced(ThingsModConfig.BossOriginFogmogForced) &&
+               ThingsModConfig.IsEnabled(ThingsModConfig.BossOriginFogmogEnabled),
+            "Load() must promote the winning forced boss to Enabled=true.");
+        Assert(!ThingsModConfig.IsForced(ThingsModConfig.BossScaleBeetleForced) &&
+               !ThingsModConfig.IsEnabled(ThingsModConfig.BossScaleBeetleEnabled),
+            "Load() must demote the duplicate forced boss without flipping its Enabled=false to true.");
+        ResetAll();
+        ThingsModConfig.Save();
     }
 
     private static void VerifyForceImpliesEnabled()
@@ -240,6 +277,64 @@ public partial class ThingsConfigProbeNode : Node
         Assert(ThingsModConfig.IsEnabled(ThingsModConfig.BossCaveGodEnabled),
             "Forcing Cave God must imply enabled.");
         ResetAll();
+    }
+
+    private static void VerifyGuaranteedDepths()
+    {
+        // 1) Stale ModelDb._actsByIndex cache invalidation (if another mod populated it before our patch).
+        FieldInfo actsByIndexField = typeof(ModelDb).GetField("_actsByIndex", BindingFlags.NonPublic | BindingFlags.Static)!;
+        actsByIndexField.SetValue(null, new List<List<ActModel>>
+        {
+            new() { ModelDb.Act<Overgrowth>(), ModelDb.Act<Underdocks>() },
+            new() { ModelDb.Act<Hive>() },
+            new() { ModelDb.Act<Glory>() },
+        });
+        typeof(STS2_ThingsInit).Assembly
+            .GetType("STS2_Things.Hooks.DepthsActCatalogPatch", throwOnError: true)!
+            .GetMethod("InvalidateActsByIndexCache", BindingFlags.NonPublic | BindingFlags.Static)!
+            .Invoke(null, null);
+        Assert(ModelDb.ActsByIndex[1].Any(act => act is ThingsDepths),
+            "InvalidateActsByIndexCache did not restore ThingsDepths to ModelDb.ActsByIndex[1].");
+
+        // 2) Default false: Act 2 still rolls both Hive and ThingsDepths across seeds.
+        ResetAll();
+        var seenDefaultAct2 = new HashSet<Type>();
+        var baselineBySeed = new Dictionary<uint, (List<ActModel> Acts, int NextRng)>();
+        for (uint seed = 1; seed <= 64; seed++)
+        {
+            var rng = new Rng(seed);
+            List<ActModel> acts = ActModel.GetRandomList(rng, UnlockState.all, isMultiplayer: true).ToList();
+            Assert(acts.Count >= 3, $"Expected at least 3 acts from GetRandomList, got {acts.Count}.");
+            seenDefaultAct2.Add(acts[1].GetType());
+            baselineBySeed[seed] = (acts, rng.NextInt());
+        }
+        Assert(seenDefaultAct2.Contains(typeof(Hive)) && seenDefaultAct2.Contains(typeof(ThingsDepths)),
+            "Default ActModel.GetRandomList did not roll both Hive and ThingsDepths for Act 2.");
+
+        // 3) Enabled true: Act 2 is ALWAYS ThingsDepths while preserving Act 1, Act 3, and exact RNG consumption.
+        ThingsModConfig.SetValue(ThingsModConfig.FeatureGuaranteedDepthsEnabled, true);
+        Assert(ThingsModConfig.GuaranteedDepthsEnabled &&
+               ThingsModConfig.IsEnabled(ThingsModConfig.FeatureGuaranteedDepthsEnabled),
+            "FeatureGuaranteedDepthsEnabled did not update hot cache.");
+        for (uint seed = 1; seed <= 64; seed++)
+        {
+            var rng = new Rng(seed);
+            List<ActModel> acts = ActModel.GetRandomList(rng, UnlockState.all, isMultiplayer: true).ToList();
+            int nextRng = rng.NextInt();
+            var (baselineActs, baselineNextRng) = baselineBySeed[seed];
+            Assert(acts.Count == baselineActs.Count,
+                $"Guaranteed Depths altered act count for seed {seed}: {acts.Count} != {baselineActs.Count}.");
+            Assert(acts[1] is ThingsDepths,
+                $"Guaranteed Depths failed to force Act 2 to ThingsDepths for seed {seed} (got {acts[1].Id}).");
+            Assert(acts[0].Id == baselineActs[0].Id && acts[2].Id == baselineActs[2].Id,
+                $"Guaranteed Depths altered Act 1 or Act 3 for seed {seed}.");
+            Assert(nextRng == baselineNextRng,
+                $"Guaranteed Depths drifted downstream RNG consumption for seed {seed}.");
+        }
+
+        ResetAll();
+        Assert(!ThingsModConfig.GuaranteedDepthsEnabled,
+            "ResetAll did not restore GuaranteedDepthsEnabled to false.");
     }
 
 

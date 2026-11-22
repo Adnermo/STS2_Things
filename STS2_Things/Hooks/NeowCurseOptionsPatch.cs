@@ -36,9 +36,12 @@ public static class NeowCurseOptionsPatch
         if (ThingsModConfig.IsEnabled(ThingsModConfig.NeowRelicMagicGloveEnabled))
             AddRelicToList<ThingsMagicGlove>(__instance, list);
 
-        // This conflict belongs to our Neow options, not every relic picker.
-        if (list.Any(option => option.Relic is ThingsMagicGlove))
+        // This conflict belongs to live Neow runs, not canonical AllPossibleOptions (Relic Collection / NeowsBones).
+        if (__instance.IsMutable && __instance.Owner != null &&
+            list.Any(option => option.Relic is ThingsMagicGlove))
+        {
             list.RemoveAll(option => option.Relic?.Id.Entry == "PRECARIOUS_SHEARS");
+        }
 
         __result = list;
     }

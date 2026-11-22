@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Models.Powers;
 using STS2_Things.Core.Models;
 using STS2_Things.Monsters;
+using STS2_Things.Platform;
 
 namespace STS2_Things.Cards;
 
@@ -50,8 +51,16 @@ public sealed class ThingsLeechParasite : ThingsCardModel
         // Hand here would suppress the effect in an actual turn-end sequence.
         if (Owner.Creature.IsDead || CombatState == null)
             return;
+        bool isExtendedParty = MultiplayerCompat.IsExtendedParty(CombatState);
+        int roundNumber = CombatState.RoundNumber;
         foreach (var leech in CombatState.Enemies.Where(c => c.IsAlive && c.Monster is ThingsSanguineLeech).ToArray())
         {
+            if (isExtendedParty &&
+                leech.Monster is ThingsSanguineLeech sanguineLeech &&
+                !sanguineLeech.TryConsumeParasiteFeedThisRound(roundNumber))
+            {
+                continue;
+            }
             decimal regeneration = DynamicVars["RegenPower"].BaseValue;
             // Native Regen multiplies its first application in multiplayer, while subsequent
             // stacks are unscaled. Each parasite already resolves per player: grant exactly

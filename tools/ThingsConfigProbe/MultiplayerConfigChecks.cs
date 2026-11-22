@@ -22,6 +22,7 @@ public static class MultiplayerConfigChecks
         typeof(MessageTypes).GetMethod("Initialize")?.Invoke(null, null);
         MultiplayerConfig.Clear();
         Reset();
+        ThingsModConfig.SetValue(ThingsModConfig.FeatureGuaranteedDepthsEnabled, true);
         ThingsModConfig.SetValue(ThingsModConfig.BossOnlyModBosses, true);
         ThingsModConfig.SetValue(ThingsModConfig.BossOriginFogmogWeightPercent, 900);
         ThingsModConfig.SetValue(ThingsModConfig.EncounterSoulRoesWeightPercent, 10);
@@ -72,8 +73,10 @@ public static class MultiplayerConfigChecks
         Assert(MultiplayerConfig.PrepareRun(client), "Client did not accept the final host snapshot.");
         Assert(hostRooms == Rooms(), "Host and client generated different bosses, elites, events or RNG states.");
         ThingsModConfig.SetValue(ThingsModConfig.BossOnlyModBosses, false);
+        ThingsModConfig.SetValue(ThingsModConfig.FeatureGuaranteedDepthsEnabled, false);
         ThingsModConfig.SetValue(ThingsModConfig.FeatureCustomBgmEnabled, true);
         Assert(ThingsModConfig.GetBool(ThingsModConfig.BossOnlyModBosses) &&
+               ThingsModConfig.GuaranteedDepthsEnabled &&
                !ThingsModConfig.GetBool(ThingsModConfig.FeatureCustomBgmEnabled), "Client overrode host settings.");
         ThingsModConfig.Save();
         ThingsModConfig.Load();
@@ -93,7 +96,9 @@ public static class MultiplayerConfigChecks
         rejoinWire.Deliver(RoundTrip(music));
         Assert(MultiplayerConfig.PrepareRun(rejoin) && Rooms() == hostRooms, "Rejoin did not restore the active host configuration.");
         var illegal = music with { Revision = music.Revision + 1, Values = (int[])music.Values.Clone() };
-        illegal.Values[1] = 0;
+        int guaranteedIndex = ThingsModConfig.Entries.ToList()
+            .FindIndex(entry => entry.Key == ThingsModConfig.FeatureGuaranteedDepthsEnabled);
+        illegal.Values[guaranteedIndex] = 0;
         rejoinWire.Deliver(RoundTrip(illegal));
         Assert(rejoinWire.DisconnectReason == NetError.ModMismatch && !MultiplayerConfig.IsActive,
             "A gameplay change after start was accepted.");
@@ -138,6 +143,9 @@ public static class MultiplayerConfigChecks
     public static string Rooms()
     {
         var parts = new List<string>();
+        var actRng = new Rng(319);
+        parts.AddRange(ActModel.GetRandomList(actRng, UnlockState.all, isMultiplayer: true).Select(act => act.Id.ToString()));
+        parts.Add(actRng.NextInt().ToString());
         foreach (ActModel model in new ActModel[] { ModelDb.Act<Overgrowth>(), ModelDb.Act<Underdocks>(), ModelDb.Act<Hive>() })
         {
             ActModel act = model.ToMutable();

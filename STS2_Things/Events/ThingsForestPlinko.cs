@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
@@ -37,6 +38,7 @@ public sealed class ThingsForestPlinko : ThingsEventModel
     private bool _settling;
     private ThingsForestPlinkoOutcome? _bufferedRemoteOutcome;
     private TaskCompletionSource<ThingsForestPlinkoOutcome>? _remoteOutcomeWaiter;
+    private Action? _remoteWaiterCancelRegistration;
 
     /// <summary>
     /// Optional driver used exclusively by headless probes/tests when NOverlayStack is absent.
@@ -51,7 +53,14 @@ public sealed class ThingsForestPlinko : ThingsEventModel
         _settling = false;
         _bufferedRemoteOutcome = null;
         _remoteOutcomeWaiter = null;
+        _remoteWaiterCancelRegistration = null;
         MinigameTestDriver = null;
+    }
+
+    protected override void OnEventFinished()
+    {
+        base.OnEventFinished();
+        CancelPendingRemoteWaiter();
     }
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
@@ -116,12 +125,23 @@ public sealed class ThingsForestPlinko : ThingsEventModel
 
     internal void ReceiveRemoteOutcome(ThingsForestPlinkoOutcome outcome)
     {
-        if (_remoteOutcomeWaiter != null)
-        {
-            _remoteOutcomeWaiter.TrySetResult(outcome);
+        TaskCompletionSource<ThingsForestPlinkoOutcome>? waiter = _remoteOutcomeWaiter;
+        _remoteOutcomeWaiter = null;
+        if (waiter != null && waiter.TrySetResult(outcome))
             return;
-        }
         _bufferedRemoteOutcome = outcome;
+    }
+
+    private void CancelPendingRemoteWaiter()
+    {
+        Action? cancel = _remoteWaiterCancelRegistration;
+        _remoteWaiterCancelRegistration = null;
+        if (cancel != null)
+            ThingsEventMinigameSync.UnregisterRemoteWaiter(cancel);
+
+        TaskCompletionSource<ThingsForestPlinkoOutcome>? waiter = _remoteOutcomeWaiter;
+        _remoteOutcomeWaiter = null;
+        waiter?.TrySetCanceled();
     }
 
     private Task Drop1Async() => RunPlinkoTierAsync(Tier1HpCost, Tier1Drops);
@@ -144,7 +164,9 @@ public sealed class ThingsForestPlinko : ThingsEventModel
         ThingsForestPlinkoOutcome outcome;
         if (LocalContext.IsMe(player))
         {
-            var minigame = new ForestPlinkoMinigame(player, Rng, drops);
+            // Use an isolated derived RNG for local-only board/drop rolls so EventModel.Rng
+            // stays bit-for-bit synchronized with remote peers for ApplyOutcomeAsync card upgrades.
+            var minigame = new ForestPlinkoMinigame(player, CreateLocalMinigameRng(player, drops), drops);
             NForestPlinkoScreen? screen = null;
             try
             {
@@ -165,7 +187,7 @@ public sealed class ThingsForestPlinko : ThingsEventModel
                     outcome = minigame.BuildOutcome();
                 }
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
                 return;
             }
@@ -175,6 +197,9 @@ public sealed class ThingsForestPlinko : ThingsEventModel
                     NOverlayStack.Instance.Remove(screen);
             }
 
+            if (!ThingsEventMinigameSync.IsRunActive)
+                return;
+
             ThingsEventMinigameSync.SendForestPlinkoResult(outcome);
         }
         else
@@ -183,25 +208,51 @@ public sealed class ThingsForestPlinko : ThingsEventModel
             {
                 outcome = await WaitForRemoteOutcomeAsync();
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
                 return;
             }
+
+            if (!ThingsEventMinigameSync.IsRunActive)
+                return;
         }
 
         await ApplyOutcomeAsync(player, outcome);
     }
 
-    private Task<ThingsForestPlinkoOutcome> WaitForRemoteOutcomeAsync()
+    private async Task<ThingsForestPlinkoOutcome> WaitForRemoteOutcomeAsync()
     {
         if (_bufferedRemoteOutcome != null)
         {
             ThingsForestPlinkoOutcome buffered = _bufferedRemoteOutcome;
             _bufferedRemoteOutcome = null;
-            return Task.FromResult(buffered);
+            return buffered;
         }
-        _remoteOutcomeWaiter = new TaskCompletionSource<ThingsForestPlinkoOutcome>();
-        return _remoteOutcomeWaiter.Task;
+
+        var waiter = new TaskCompletionSource<ThingsForestPlinkoOutcome>();
+        _remoteOutcomeWaiter = waiter;
+        Action cancel = () =>
+        {
+            if (ReferenceEquals(_remoteOutcomeWaiter, waiter))
+                _remoteOutcomeWaiter = null;
+            waiter.TrySetCanceled();
+        };
+        _remoteWaiterCancelRegistration = cancel;
+        ThingsEventMinigameSync.RegisterRemoteWaiter(EventOwner.NetId, cancel);
+        try
+        {
+            return await waiter.Task;
+        }
+        finally
+        {
+            if (ReferenceEquals(_remoteOutcomeWaiter, waiter))
+                _remoteOutcomeWaiter = null;
+            if (ReferenceEquals(_remoteWaiterCancelRegistration, cancel))
+            {
+                _remoteWaiterCancelRegistration = null;
+                ThingsEventMinigameSync.UnregisterRemoteWaiter(cancel);
+            }
+        }
     }
 
     internal async Task ApplyOutcomeAsync(Player player, ThingsForestPlinkoOutcome outcome)
@@ -280,6 +331,29 @@ public sealed class ThingsForestPlinko : ThingsEventModel
             return Task.CompletedTask;
         Finish("LEAVE.description");
         return Task.CompletedTask;
+    }
+
+    private static Rng CreateLocalMinigameRng(Player player, int drops)
+    {
+        IRunState runState = player.RunState;
+        unchecked
+        {
+            ulong h = 14695981039346656037UL;
+            string seedStr = runState.Rng.StringSeed ?? "things_forest_plinko";
+            foreach (char ch in seedStr)
+            {
+                h ^= ch;
+                h *= 1099511628211UL;
+            }
+            h ^= (ulong)(uint)runState.TotalFloor * 7919UL;
+            h *= 1099511628211UL;
+            h ^= (ulong)(uint)runState.CurrentActIndex * 313UL;
+            h *= 1099511628211UL;
+            h ^= player.NetId;
+            h *= 1099511628211UL;
+            h ^= (ulong)(uint)drops * 131UL;
+            return new Rng(h == 0UL ? 1337UL : h, "things_forest_plinko");
+        }
     }
 
     private void Finish(string pageSuffix)

@@ -17,6 +17,7 @@ using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Enchantments;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
 using STS2_Things.Core.Localization;
 using STS2_Things.Core.Models;
@@ -38,6 +39,7 @@ public sealed class ThingsMossRuneLoom : ThingsEventModel
     private bool _settling;
     private ThingsRuneLoomOutcome? _bufferedRemoteOutcome;
     private TaskCompletionSource<ThingsRuneLoomOutcome>? _remoteOutcomeWaiter;
+    private Action? _remoteWaiterCancelRegistration;
 
     /// <summary>
     /// Optional driver used exclusively by headless probes/tests when NOverlayStack is absent.
@@ -52,7 +54,14 @@ public sealed class ThingsMossRuneLoom : ThingsEventModel
         _settling = false;
         _bufferedRemoteOutcome = null;
         _remoteOutcomeWaiter = null;
+        _remoteWaiterCancelRegistration = null;
         MinigameTestDriver = null;
+    }
+
+    protected override void OnEventFinished()
+    {
+        base.OnEventFinished();
+        CancelPendingRemoteWaiter();
     }
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
@@ -123,6 +132,7 @@ public sealed class ThingsMossRuneLoom : ThingsEventModel
     private void CancelToInitial()
     {
         _settling = false;
+        CancelPendingRemoteWaiter();
         if (EventOwner.Creature.IsDead)
             Finish("ABORTED.description");
         else
@@ -131,12 +141,23 @@ public sealed class ThingsMossRuneLoom : ThingsEventModel
 
     internal void ReceiveRemoteOutcome(ThingsRuneLoomOutcome outcome)
     {
-        if (_remoteOutcomeWaiter != null)
-        {
-            _remoteOutcomeWaiter.TrySetResult(outcome);
+        TaskCompletionSource<ThingsRuneLoomOutcome>? waiter = _remoteOutcomeWaiter;
+        _remoteOutcomeWaiter = null;
+        if (waiter != null && waiter.TrySetResult(outcome))
             return;
-        }
         _bufferedRemoteOutcome = outcome;
+    }
+
+    private void CancelPendingRemoteWaiter()
+    {
+        Action? cancel = _remoteWaiterCancelRegistration;
+        _remoteWaiterCancelRegistration = null;
+        if (cancel != null)
+            ThingsEventMinigameSync.UnregisterRemoteWaiter(cancel);
+
+        TaskCompletionSource<ThingsRuneLoomOutcome>? waiter = _remoteOutcomeWaiter;
+        _remoteOutcomeWaiter = null;
+        waiter?.TrySetCanceled();
     }
 
     private async Task WeaveCardAsync()
@@ -172,7 +193,9 @@ public sealed class ThingsMossRuneLoom : ThingsEventModel
 
         if (LocalContext.IsMe(player))
         {
-            var minigame = new RuneLoomMinigame(player, selected, deckIndex, Rng);
+            // Use an isolated derived RNG for local-only loom generation so EventModel.Rng
+            // is never mutated out of sync with remote peers.
+            var minigame = new RuneLoomMinigame(player, selected, deckIndex, CreateLocalMinigameRng(player, deckIndex));
             NRuneLoomScreen? screen = null;
             try
             {
@@ -194,7 +217,7 @@ public sealed class ThingsMossRuneLoom : ThingsEventModel
                     outcome = minigame.BuildOutcome(cancelled: true);
                 }
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
                 return;
             }
@@ -204,6 +227,9 @@ public sealed class ThingsMossRuneLoom : ThingsEventModel
                     NOverlayStack.Instance.Remove(screen);
             }
 
+            if (!ThingsEventMinigameSync.IsRunActive)
+                return;
+
             ThingsEventMinigameSync.SendRuneLoomResult(outcome);
         }
         else
@@ -212,10 +238,13 @@ public sealed class ThingsMossRuneLoom : ThingsEventModel
             {
                 outcome = await WaitForRemoteOutcomeAsync();
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
                 return;
             }
+
+            if (!ThingsEventMinigameSync.IsRunActive)
+                return;
         }
 
         if (outcome.Cancelled)
@@ -227,16 +256,39 @@ public sealed class ThingsMossRuneLoom : ThingsEventModel
         await ApplyOutcomeAsync(player, selected, outcome);
     }
 
-    private Task<ThingsRuneLoomOutcome> WaitForRemoteOutcomeAsync()
+    private async Task<ThingsRuneLoomOutcome> WaitForRemoteOutcomeAsync()
     {
         if (_bufferedRemoteOutcome != null)
         {
             ThingsRuneLoomOutcome buffered = _bufferedRemoteOutcome;
             _bufferedRemoteOutcome = null;
-            return Task.FromResult(buffered);
+            return buffered;
         }
-        _remoteOutcomeWaiter = new TaskCompletionSource<ThingsRuneLoomOutcome>();
-        return _remoteOutcomeWaiter.Task;
+
+        var waiter = new TaskCompletionSource<ThingsRuneLoomOutcome>();
+        _remoteOutcomeWaiter = waiter;
+        Action cancel = () =>
+        {
+            if (ReferenceEquals(_remoteOutcomeWaiter, waiter))
+                _remoteOutcomeWaiter = null;
+            waiter.TrySetCanceled();
+        };
+        _remoteWaiterCancelRegistration = cancel;
+        ThingsEventMinigameSync.RegisterRemoteWaiter(EventOwner.NetId, cancel);
+        try
+        {
+            return await waiter.Task;
+        }
+        finally
+        {
+            if (ReferenceEquals(_remoteOutcomeWaiter, waiter))
+                _remoteOutcomeWaiter = null;
+            if (ReferenceEquals(_remoteWaiterCancelRegistration, cancel))
+            {
+                _remoteWaiterCancelRegistration = null;
+                ThingsEventMinigameSync.UnregisterRemoteWaiter(cancel);
+            }
+        }
     }
 
     internal async Task ApplyOutcomeAsync(Player player, CardModel? selected, ThingsRuneLoomOutcome outcome)
@@ -352,6 +404,29 @@ public sealed class ThingsMossRuneLoom : ThingsEventModel
             return;
         await CreatureCmd.Heal(EventOwner.Creature, GatherSapHeal);
         Finish("GATHER_SAP.description");
+    }
+
+    private static Rng CreateLocalMinigameRng(Player player, int deckIndex)
+    {
+        IRunState runState = player.RunState;
+        unchecked
+        {
+            ulong h = 14695981039346656037UL;
+            string seedStr = runState.Rng.StringSeed ?? "things_moss_rune_loom";
+            foreach (char ch in seedStr)
+            {
+                h ^= ch;
+                h *= 1099511628211UL;
+            }
+            h ^= (ulong)(uint)runState.TotalFloor * 7919UL;
+            h *= 1099511628211UL;
+            h ^= (ulong)(uint)runState.CurrentActIndex * 313UL;
+            h *= 1099511628211UL;
+            h ^= player.NetId;
+            h *= 1099511628211UL;
+            h ^= (ulong)(uint)deckIndex * 131UL;
+            return new Rng(h == 0UL ? 1337UL : h, "things_moss_rune_loom");
+        }
     }
 
     private void Finish(string pageSuffix)

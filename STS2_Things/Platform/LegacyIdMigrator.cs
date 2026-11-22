@@ -248,12 +248,11 @@ public static class LegacyIdMigrator
             _active = false;
         }
 
-        private static void Postfix(Type type, bool __state)
+        private static Exception? Finalizer(Exception? __exception, bool __state)
         {
             if (__state)
                 RebuildAndActivate();
-            else
-                _ = type;
+            return __exception;
         }
     }
 

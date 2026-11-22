@@ -1,6 +1,7 @@
 using MegaCrit.Sts2.Core.Animation;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -75,6 +76,7 @@ public abstract class MycorrhizalTwin : ThingsSpineMonster
                 else await FinishPose(animation,.73f,.25f);
             })
             .WithAttackerFx(null, AttackSfx).WithHitFx("vfx/vfx_attack_blunt").Execute(null);
+        if (!Creature.IsAlive || CombatManager.Instance.IsOverOrEnding) return;
         await FinishPose(animation,count==1?1.28f:1.52f,0);
     }
 
@@ -92,18 +94,22 @@ public abstract class MycorrhizalTwin : ThingsSpineMonster
 
     protected async Task Strengthen(bool solo = false)
     {
+        if (!Creature.IsAlive || CombatManager.Instance.IsOverOrEnding) return;
         SfxCmd.Play("event:/sfx/enemy/enemy_attacks/fogmog/fogmog_summon");
         foreach (var ally in solo ? new[] { Creature } : LivingTwins)
-            await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), ally, StrengthGift, Creature, null);
+            if (ally.IsAlive)
+                await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), ally, StrengthGift, Creature, null);
     }
 
     protected async Task Armor(bool solo = false)
     {
+        if (!Creature.IsAlive || CombatManager.Instance.IsOverOrEnding) return;
         int plating = solo ? 2 : ArmorGift;
         foreach (var ally in solo ? new[] { Creature } : LivingTwins)
         {
+            if (!ally.IsAlive) continue;
             await PowerCmd.Apply<PlatingPower>(new ThrowingPlayerChoiceContext(), ally, plating, Creature, null);
-            if (solo) await CreatureCmd.GainBlock(ally, Guard, ValueProp.Move, null);
+            if (solo && ally.IsAlive) await CreatureCmd.GainBlock(ally, Guard, ValueProp.Move, null);
         }
     }
 

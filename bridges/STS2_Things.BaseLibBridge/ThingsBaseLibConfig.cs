@@ -62,6 +62,10 @@ public sealed class ThingsBaseLibConfig : SimpleModConfig
     [ConfigHoverTip]
     public static bool FeatureCustomBgmEnabled { get; set; } = true;
 
+    [ConfigSection("Acts")]
+    [ConfigHoverTip]
+    public static bool FeatureGuaranteedDepthsEnabled { get; set; }
+
     // ---- 遭遇战：Boss ----
 
     [ConfigSection("Bosses")]

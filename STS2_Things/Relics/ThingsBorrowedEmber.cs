@@ -132,12 +132,17 @@ public sealed class ThingsBorrowedEmber : ThingsRelicModel
         }
         if (IsSpentCampHere && LocalContext.IsMe(Owner) && NRestSiteRoom.Instance is { } node)
         {
-            if (node.GetNode<Control>("BgContainer").FindChild("RestSiteLighting", true, false) is CanvasItem light)
+            if (node.GetNodeOrNull<Control>("BgContainer")?.FindChild("RestSiteLighting", true, false) is CanvasItem light)
                 light.Visible = false;
-            foreach (var character in node.Characters) character.HideFlameGlow();
-            for (int i = 1; i <= Owner.RunState.Players.Count; i++)
-                if (node.GetNodeOrNull<CanvasItem>($"BgContainer/Character_{i}") is { } character)
-                    character.Modulate = Colors.DarkGray;
+            // Dim every NRestSiteCharacter directly rather than by hard-coded Character_1..N names so
+            // all 1–32+ players dim uniformly across every >4-player mod without double-darkening.
+            foreach (var character in node.Characters)
+            {
+                if (!GodotObject.IsInstanceValid(character))
+                    continue;
+                character.HideFlameGlow();
+                character.Modulate = Colors.DarkGray;
+            }
             node.SetText(new LocString("rest_site_ui", "OPTION_THINGS_SPENT_EMBER.description").GetFormattedText());
         }
     }

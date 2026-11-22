@@ -143,6 +143,29 @@ public partial class DepthsProbeNode
                 $"Lethal AoE breaks original bottom cleanly and leaves dropped middle at 22 HP stunned without self-damage (hp={middle.Creature.CurrentHp}).");
             DeactivateSyntheticCombat();
 
+            // Regression (live report bd2f76d5): AoE breaks Bottom's Block while Middle/Top's redirect kills & removes Bottom
+            // before outer CreatureCmd.Damage dispatches Hook.AfterBlockBroken(bottom.CombatState /* null */).
+            b=await ColumnBattle(count,asc);original=Discs(b);bottom=original[0];middle=original[1];top=original[2];
+            bottom.Creature.SetMaxHpInternal(20);bottom.Creature.SetCurrentHpInternal(20);
+            middle.Creature.SetMaxHpInternal(40);middle.Creature.SetCurrentHpInternal(40);
+            top.Creature.SetMaxHpInternal(40);top.Creature.SetCurrentHpInternal(40);
+            await CreatureCmd.GainBlock(bottom.Creature,5,ValueProp.Unpowered,null);
+            Assert(bottom.Creature.Block==5,$"Unpowered test block must stay exact across 1P/4P (block={bottom.Creature.Block}).");
+            await CreatureCmd.Damage(Choice,[bottom.Creature,middle.Creature,top.Creature],20,ValueProp.Move,b.Players[0].Creature);
+            alive=Discs(b);
+            Assert(bottom.Creature.CombatState==null && !CombatManager.Instance.IsOverOrEnding && alive.Length==3 && alive[0]==middle && alive.All(c=>c.RemainingLayers==5),
+                $"AoE Block-break + lethal redirect onto bottom must not throw NRE in Hook.AfterBlockBroken (combatStateNull={bottom.Creature.CombatState==null}, alive={alive.Length}, layers={alive.FirstOrDefault()?.RemainingLayers}).");
+            DeactivateSyntheticCombat();
+
+            // Regression: Simultaneous 3-disc lethal AoE wipe while Reserve > 0 must NOT prematurely end combat;
+            // ShouldStopCombatFromEnding keeps combat alive until reserve replacements spawn.
+            b=await ColumnBattle(count,asc);original=Discs(b);
+            await HitColumn(b,original[0],original[1],original[2]);
+            alive=Discs(b);
+            Assert(!CombatManager.Instance.IsOverOrEnding && alive.Length==3 && alive.All(c=>c.IsReplacement && c.RemainingLayers==3),
+                $"Simultaneous 3-disc wipe with reserve must spawn 3 replacements without ending combat (over={CombatManager.Instance.IsOverOrEnding}, alive={alive.Length}).");
+            DeactivateSyntheticCombat();
+
             b=await ColumnBattle(count,asc);original=Discs(b);top=original[2];bottom=original[0];
             b.State.CurrentSide=CombatSide.Enemy;
             int hp=b.Players[0].Creature.CurrentHp;await top.PerformMove();

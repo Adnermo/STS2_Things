@@ -4,6 +4,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using STS2_Things.Platform;
 
 namespace STS2_Things.Events.Minigames;
 
@@ -17,14 +18,6 @@ namespace STS2_Things.Events.Minigames;
 public partial class NBronzeCauldronScreen : Control, IOverlayScreen
 {
     private const string BackdropPath = "res://images/events/minigames/things_bronze_cauldron_bg.png";
-
-    private static readonly Color[] SeatColors =
-    [
-        new Color("#ffd458"), // Slot 0: Warm Gold
-        new Color("#6ee89a"), // Slot 1: Emerald
-        new Color("#6cd8ff"), // Slot 2: Sky Cyan
-        new Color("#ff8a7a"), // Slot 3: Coral
-    ];
 
     private sealed partial class CauldronArenaCanvas : Control
     {
@@ -139,7 +132,10 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                 CauldronTreasureKind.Gold => item.VisualVariant == 1 ? 45f : 38f,
                 _ => 46f,
             };
-            float dim = baseDim * scale;
+            float densityScale = Minigame == null || Minigame.Hands.Count <= 8
+                ? 1.0f
+                : (Minigame.Hands.Count >= 17 ? 0.80f : 0.88f);
+            float dim = baseDim * densityScale * scale;
 
             if (!item.IsClaimed)
             {
@@ -238,61 +234,174 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                 BronzeCauldronMinigame.StageOriginX + BronzeCauldronMinigame.Center,
                 BronzeCauldronMinigame.StageOriginY + BronzeCauldronMinigame.Center);
 
-            Color seatCol = SeatColors[hand.SlotIndex % SeatColors.Length];
-            int slot = hand.SlotIndex % 4;
-
+            int totalPlayers = Minigame?.Hands.Count ?? 1;
+            bool extendedParty = MultiplayerCompat.IsExtendedParty(totalPlayers);
+            Color seatCol = MultiplayerCompat.GetSeatColor(hand.SlotIndex);
             bool isLive = Minigame?.Phase == CauldronPhase.Scramble;
-            Color ringCol = new(seatCol.R, seatCol.G, seatCol.B, isLocal ? (isLive ? 0.80f : 0.38f) : 0.42f);
-            Color fillCol = new(seatCol.R, seatCol.G, seatCol.B, isLocal ? (isLive ? 0.12f : 0.04f) : 0.06f);
 
-            DrawCircle(screenPos, BronzeCauldronMinigame.PalmCaptureRadius, fillCol);
-            DrawArc(screenPos, BronzeCauldronMinigame.PalmCaptureRadius, 0f, MathF.Tau, 40, ringCol, isLocal ? 3.0f : 2.0f, true);
-
-            HandTextures.TryGetValue(hand.Player.NetId, out var texPair);
-            Texture2D? tex = hand.IsClenched ? (texPair.Rock ?? texPair.Paper) : (texPair.Paper ?? texPair.Rock);
-            if (tex != null)
+            if (!extendedParty)
             {
-                float baseRot = slot switch
+                // Preserve 100% identical 1–4 player arm visuals, angles, and badges.
+                int slot = hand.SlotIndex % 4;
+                Color ringCol = new(seatCol.R, seatCol.G, seatCol.B, isLocal ? (isLive ? 0.80f : 0.38f) : 0.42f);
+                Color fillCol = new(seatCol.R, seatCol.G, seatCol.B, isLocal ? (isLive ? 0.12f : 0.04f) : 0.06f);
+
+                DrawCircle(screenPos, BronzeCauldronMinigame.PalmCaptureRadius, fillCol);
+                DrawArc(screenPos, BronzeCauldronMinigame.PalmCaptureRadius, 0f, MathF.Tau, 40, ringCol, isLocal ? 3.0f : 2.0f, true);
+
+                HandTextures.TryGetValue(hand.Player.NetId, out var texPair);
+                Texture2D? tex = hand.IsClenched ? (texPair.Rock ?? texPair.Paper) : (texPair.Paper ?? texPair.Rock);
+                if (tex != null)
                 {
-                    0 => 0f,
-                    1 => MathF.PI,
-                    2 => MathF.PI * 0.5f,
-                    _ => -MathF.PI * 0.5f,
-                };
+                    float baseRot = slot switch
+                    {
+                        0 => 0f,
+                        1 => MathF.PI,
+                        2 => MathF.PI * 0.5f,
+                        _ => -MathF.PI * 0.5f,
+                    };
 
-                float shoulderTilt = slot switch
+                    float shoulderTilt = slot switch
+                    {
+                        0 => Math.Clamp((screenPos.X - cauldronCenter.X) / 1800f, -0.30f, 0.30f),
+                        1 => Math.Clamp(-(screenPos.X - cauldronCenter.X) / 1800f, -0.30f, 0.30f),
+                        2 => Math.Clamp((screenPos.Y - cauldronCenter.Y) / 1100f, -0.30f, 0.30f),
+                        _ => Math.Clamp(-(screenPos.Y - cauldronCenter.Y) / 1100f, -0.30f, 0.30f),
+                    };
+
+                    float slamScale = hand.IsClenched ? 0.94f : 1.0f;
+                    float armW = VanillaArmWidth * slamScale;
+                    float armH = VanillaArmHeight * slamScale;
+                    Color mod = isLocal
+                        ? new Color(1f, 1f, 1f, hand.IsClenched ? 0.96f : 0.84f)
+                        : new Color(0.86f, 0.88f, 0.92f, hand.IsClenched ? 0.82f : 0.62f);
+
+                    DrawSetTransform(screenPos, baseRot + shoulderTilt, Vector2.One);
+                    DrawTextureRect(
+                        tex,
+                        new Rect2(-armW * PalmAnchorX, -armH * PalmAnchorY, armW, armH),
+                        false,
+                        mod);
+                    DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
+                }
+
+                if (BodyFont != null)
                 {
-                    0 => Math.Clamp((screenPos.X - cauldronCenter.X) / 1800f, -0.30f, 0.30f),
-                    1 => Math.Clamp(-(screenPos.X - cauldronCenter.X) / 1800f, -0.30f, 0.30f),
-                    2 => Math.Clamp((screenPos.Y - cauldronCenter.Y) / 1100f, -0.30f, 0.30f),
-                    _ => Math.Clamp(-(screenPos.Y - cauldronCenter.Y) / 1100f, -0.30f, 0.30f),
-                };
+                    string badge = $"P{hand.SlotIndex + 1} · {hand.Player.Character.Title.GetFormattedText()} ({hand.GrabsRemaining})";
+                    float labelY = slot == 1
+                        ? Math.Clamp(screenPos.Y + BronzeCauldronMinigame.PalmCaptureRadius + 22f, 28f, 1054f)
+                        : Math.Clamp(screenPos.Y - BronzeCauldronMinigame.PalmCaptureRadius - 10f, 28f, 1054f);
+                    float labelX = Math.Clamp(screenPos.X - 96f, 16f, 1180f);
+                    DrawStringOutline(BodyFont, new Vector2(labelX, labelY), badge, HorizontalAlignment.Center, 192f, 15, 6, new Color("#030a0f"));
+                    DrawString(BodyFont, new Vector2(labelX, labelY), badge, HorizontalAlignment.Center, 192f, 15, seatCol);
+                }
+                return;
+            }
 
-                float slamScale = hand.IsClenched ? 0.94f : 1.0f;
-                float armW = VanillaArmWidth * slamScale;
-                float armH = VanillaArmHeight * slamScale;
-                Color mod = isLocal
-                    ? new Color(1f, 1f, 1f, hand.IsClenched ? 0.96f : 0.84f)
-                    : new Color(0.86f, 0.88f, 0.92f, hand.IsClenched ? 0.82f : 0.62f);
+            // 5–32+ players: radial perimeter entry angles + tiered remote de-occlusion so the cauldron stays legible.
+            float startAngle = MathF.PI * 0.5f + hand.SlotIndex * (MathF.Tau / Math.Max(1, totalPlayers));
+            Vector2 startDir = new(MathF.Cos(startAngle), MathF.Sin(startAngle));
+            Vector2 tangent = new(startDir.Y, -startDir.X);
+            float radialRot = startAngle - MathF.PI * 0.5f;
+            float radialTilt = Math.Clamp((screenPos - cauldronCenter).Dot(tangent) / 1600f, -0.28f, 0.28f);
 
-                DrawSetTransform(screenPos, baseRot + shoulderTilt, Vector2.One);
-                DrawTextureRect(
-                    tex,
-                    new Rect2(-armW * PalmAnchorX, -armH * PalmAnchorY, armW, armH),
-                    false,
-                    mod);
-                DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
+            bool drawRemoteArm = isLocal || totalPlayers <= 16;
+            float ringAlpha = isLocal
+                ? (isLive ? 0.84f : 0.40f)
+                : (totalPlayers >= 17
+                    ? (hand.IsClenched ? 0.84f : 0.44f)
+                    : (totalPlayers >= 9
+                        ? (hand.IsClenched ? 0.72f : 0.36f)
+                        : 0.40f));
+            float fillAlpha = isLocal
+                ? (isLive ? 0.13f : 0.04f)
+                : (hand.IsClenched ? 0.14f : 0.04f);
+            float ringWidth = isLocal
+                ? 3.2f
+                : (totalPlayers >= 17 && hand.IsClenched ? 3.0f : 1.8f);
+
+            DrawCircle(screenPos, BronzeCauldronMinigame.PalmCaptureRadius, new Color(seatCol.R, seatCol.G, seatCol.B, fillAlpha));
+            DrawArc(screenPos, BronzeCauldronMinigame.PalmCaptureRadius, 0f, MathF.Tau, 36, new Color(seatCol.R, seatCol.G, seatCol.B, ringAlpha), ringWidth, true);
+
+            if (!isLocal && !drawRemoteArm)
+            {
+                // 17–32+ players: crisp directional perimeter tick + grab-clench flash ring instead of overlapping giant arms.
+                Vector2 tickInner = screenPos + startDir * (BronzeCauldronMinigame.PalmCaptureRadius - 4f);
+                Vector2 tickOuter = screenPos + startDir * (BronzeCauldronMinigame.PalmCaptureRadius + 10f);
+                DrawLine(tickInner, tickOuter, new Color(seatCol.R, seatCol.G, seatCol.B, hand.IsClenched ? 0.90f : 0.55f), 2.5f, true);
+                if (hand.IsClenched)
+                {
+                    DrawArc(
+                        screenPos,
+                        BronzeCauldronMinigame.PalmCaptureRadius * 0.78f,
+                        0f,
+                        MathF.Tau,
+                        28,
+                        new Color(seatCol.R, seatCol.G, seatCol.B, 0.85f),
+                        3.0f,
+                        true);
+                }
+            }
+            else
+            {
+                HandTextures.TryGetValue(hand.Player.NetId, out var texPair);
+                Texture2D? tex = hand.IsClenched ? (texPair.Rock ?? texPair.Paper) : (texPair.Paper ?? texPair.Rock);
+                if (tex != null)
+                {
+                    float tierScale = isLocal ? 1.0f : (totalPlayers <= 8 ? 0.72f : 0.48f);
+                    float slamScale = (hand.IsClenched ? 0.94f : 1.0f) * tierScale;
+                    float armW = VanillaArmWidth * slamScale;
+                    float armH = VanillaArmHeight * slamScale;
+                    float armAlpha = isLocal
+                        ? (hand.IsClenched ? 0.96f : 0.84f)
+                        : (totalPlayers <= 8
+                            ? (hand.IsClenched ? 0.60f : 0.38f)
+                            : (hand.IsClenched ? 0.46f : 0.24f));
+                    Color mod = isLocal
+                        ? new Color(1f, 1f, 1f, armAlpha)
+                        : new Color(0.86f, 0.88f, 0.92f, armAlpha);
+
+                    DrawSetTransform(screenPos, radialRot + radialTilt, Vector2.One);
+                    DrawTextureRect(
+                        tex,
+                        new Rect2(-armW * PalmAnchorX, -armH * PalmAnchorY, armW, armH),
+                        false,
+                        mod);
+                    DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
+                }
             }
 
             if (BodyFont != null)
             {
-                string badge = $"P{hand.SlotIndex + 1} · {hand.Player.Character.Title.GetFormattedText()} ({hand.GrabsRemaining})";
-                float labelY = slot == 1
-                    ? Math.Clamp(screenPos.Y + BronzeCauldronMinigame.PalmCaptureRadius + 22f, 28f, 1054f)
+                string badge;
+                int badgeFontSize;
+                float badgeWidth;
+                if (isLocal || totalPlayers <= 8)
+                {
+                    badge = $"P{hand.SlotIndex + 1} · {hand.Player.Character.Title.GetFormattedText()} ({hand.GrabsRemaining})";
+                    badgeFontSize = isLocal ? 15 : 14;
+                    badgeWidth = 192f;
+                }
+                else if (totalPlayers <= 16)
+                {
+                    badge = $"P{hand.SlotIndex + 1} ({hand.GrabsRemaining})";
+                    badgeFontSize = 13;
+                    badgeWidth = 112f;
+                }
+                else
+                {
+                    badge = $"P{hand.SlotIndex + 1}";
+                    badgeFontSize = 12;
+                    badgeWidth = 72f;
+                }
+
+                bool isUpperHalf = MathF.Sin(startAngle) < -0.25f;
+                float labelY = isUpperHalf
+                    ? Math.Clamp(screenPos.Y + BronzeCauldronMinigame.PalmCaptureRadius + 20f, 28f, 1054f)
                     : Math.Clamp(screenPos.Y - BronzeCauldronMinigame.PalmCaptureRadius - 10f, 28f, 1054f);
-                float labelX = Math.Clamp(screenPos.X - 96f, 16f, 1180f);
-                DrawStringOutline(BodyFont, new Vector2(labelX, labelY), badge, HorizontalAlignment.Center, 192f, 15, 6, new Color("#030a0f"));
-                DrawString(BodyFont, new Vector2(labelX, labelY), badge, HorizontalAlignment.Center, 192f, 15, seatCol);
+                float labelX = Math.Clamp(screenPos.X - badgeWidth * 0.5f, 16f, 1340f - badgeWidth);
+                DrawStringOutline(BodyFont, new Vector2(labelX, labelY), badge, HorizontalAlignment.Center, badgeWidth, badgeFontSize, 5, new Color("#030a0f"));
+                DrawString(BodyFont, new Vector2(labelX, labelY), badge, HorizontalAlignment.Center, badgeWidth, badgeFontSize, seatCol);
             }
         }
     }
@@ -310,6 +419,10 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
     private Font? _bodyFont;
     private Font? _numberFont;
     private float _handSyncTimer;
+    private float _handHeartbeatTimer;
+    private float _lastSentHandX = float.NaN;
+    private float _lastSentHandY = float.NaN;
+    private bool _lastSentClenched;
     private bool _hasOpened;
     private string _lastFeedbackKey = string.Empty;
     private string _lastFeedbackActor = string.Empty;
@@ -338,6 +451,18 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
     }
 
+    private float GetHandSyncInterval()
+    {
+        int playerCount = _minigame.Hands.Count;
+        if (playerCount <= MultiplayerCompat.VanillaMaxPlayers)
+            return 0.05f; // 20 Hz (unchanged for 1–4 players)
+        if (playerCount <= 8)
+            return 0.10f; // 10 Hz
+        if (playerCount <= 16)
+            return 0.18f; // ~5.5 Hz
+        return 0.30f;     // ~3.3 Hz for 17+ players
+    }
+
     public override void _Process(double delta)
     {
         if (!Visible || _minigame == null)
@@ -346,12 +471,33 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         _minigame.Advance(dt);
 
         _handSyncTimer += dt;
-        if (_handSyncTimer >= 0.05f && !_minigame.IsComplete)
+        _handHeartbeatTimer += dt;
+        if (_handSyncTimer >= GetHandSyncInterval() && !_minigame.IsComplete)
         {
             _handSyncTimer = 0f;
             CauldronHandState? local = _minigame.LocalHand;
             if (local != null)
-                ThingsEventMinigameSync.SendCauldronHandUpdate(local.X, local.Y, local.IsClenched);
+            {
+                bool shouldSend = true;
+                if (MultiplayerCompat.IsExtendedParty(_minigame.Hands.Count) && !float.IsNaN(_lastSentHandX))
+                {
+                    float dx = local.X - _lastSentHandX;
+                    float dy = local.Y - _lastSentHandY;
+                    bool moved = dx * dx + dy * dy >= 36f; // >= 6px displacement
+                    bool clenchChanged = local.IsClenched != _lastSentClenched;
+                    bool heartbeatDue = _handHeartbeatTimer >= 0.8f;
+                    shouldSend = moved || clenchChanged || heartbeatDue;
+                }
+
+                if (shouldSend)
+                {
+                    _lastSentHandX = local.X;
+                    _lastSentHandY = local.Y;
+                    _lastSentClenched = local.IsClenched;
+                    _handHeartbeatTimer = 0f;
+                    ThingsEventMinigameSync.SendCauldronHandUpdate(local.X, local.Y, local.IsClenched);
+                }
+            }
         }
 
         _arenaCanvas.QueueRedraw();
@@ -612,8 +758,25 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
             fontSize: 22,
             align: HorizontalAlignment.Left));
 
-        _standingsRtl = ThingsMinigameUiTheme.MakeVanillaPlaqueBody(string.Empty, _bodyFont, fontSize: 17);
-        plaqueBox.AddChild(_standingsRtl);
+        bool extendedStandings = MultiplayerCompat.IsExtendedParty(_minigame.Hands.Count);
+        var standingsScroll = new ScrollContainer
+        {
+            Name = "StandingsScroll",
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            VerticalScrollMode = extendedStandings
+                ? ScrollContainer.ScrollMode.Auto
+                : ScrollContainer.ScrollMode.Disabled,
+            CustomMinimumSize = extendedStandings
+                ? new Vector2(320f, MathF.Min(460f, 28f * _minigame.Hands.Count + 12f))
+                : Vector2.Zero,
+            SizeFlagsVertical = SizeFlags.ShrinkBegin,
+            MouseFilter = extendedStandings ? MouseFilterEnum.Pass : MouseFilterEnum.Ignore,
+        };
+        plaqueBox.AddChild(standingsScroll);
+
+        _standingsRtl = ThingsMinigameUiTheme.MakeVanillaPlaqueBody(string.Empty, _bodyFont, fontSize: extendedStandings ? 15 : 17);
+        _standingsRtl.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        standingsScroll.AddChild(_standingsRtl);
 
         plaqueBox.AddChild(ThingsMinigameUiTheme.MakeVanillaPlaqueBody(
             $"[color=#c8d6e4]{ThingsMinigameUiTheme.Tr("THINGS_BRONZE_CAULDRON.ui.rules", ("Grabs", BronzeCauldronMinigame.GrabsPerPlayer))}[/color]",
@@ -657,14 +820,26 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
         };
         _bottomStatusRtl.Text = $"{grabsLine}\n[font_size=20]{timerLine}[/font_size]";
 
-        var standingLines = new List<string>();
+        bool extendedStandings = MultiplayerCompat.IsExtendedParty(_minigame.Hands.Count);
+        bool pinLocalFirst = _minigame.Hands.Count > 6;
+        var orderedHands = new List<CauldronHandState>(_minigame.Hands.Count);
+        if (pinLocalFirst && local != null)
+            orderedHands.Add(local);
         foreach (CauldronHandState hand in _minigame.Hands)
         {
+            if (pinLocalFirst && local != null && hand.Player.NetId == local.Player.NetId)
+                continue;
+            orderedHands.Add(hand);
+        }
+
+        var standingLines = new List<string>(orderedHands.Count);
+        foreach (CauldronHandState hand in orderedHands)
+        {
             ThingsBronzeCauldronPlayerOutcome po = _minigame.BuildPlayerOutcome(hand.Player.NetId);
-            Color sc = SeatColors[hand.SlotIndex % SeatColors.Length];
+            Color sc = MultiplayerCompat.GetSeatColor(hand.SlotIndex);
             string hex = "#" + sc.ToHtml(false);
             int totalRelics = po.RareRelicCount + po.UncommonRelicCount + po.CommonRelicCount;
-            standingLines.Add(ThingsMinigameUiTheme.Tr(
+            string row = ThingsMinigameUiTheme.Tr(
                 "THINGS_BRONZE_CAULDRON.ui.standingRow",
                 ("Color", hex),
                 ("Slot", hand.SlotIndex + 1),
@@ -672,7 +847,10 @@ public partial class NBronzeCauldronScreen : Control, IOverlayScreen
                 ("Items", po.ItemsGrabbed),
                 ("Relics", totalRelics),
                 ("Gold", po.GoldAmount),
-                ("Left", hand.GrabsRemaining)));
+                ("Left", hand.GrabsRemaining));
+            if (extendedStandings && hand.Player.NetId == _minigame.LocalPlayerNetId)
+                row = $"[color=#ffd15c]▶[/color] [b]{row}[/b]";
+            standingLines.Add(row);
         }
         _standingsRtl.Text = string.Join("\n", standingLines);
 

@@ -59,7 +59,10 @@ public sealed class ThingsSoulfyshDisease : ThingsCardModel
 
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
-        bool wasPlayedWithSly = _slyDiscardPending;
+        if (cardPlay.IsFirstInSeries)
+            _wasPlayedWithSly = false;
+
+        bool wasPlayedWithSly = _slyDiscardPending && cardPlay.IsAutoPlay;
         _slyDiscardPending = false;
 
         await CreatureCmd.TriggerAnim(Owner.Creature, "Cast", Owner.Character.CastAnimDelay);
@@ -68,29 +71,33 @@ public sealed class ThingsSoulfyshDisease : ThingsCardModel
         {
             var combatState = CombatState
                 ?? throw new InvalidOperationException("Soulfysh Disease was played outside combat.");
-            _wasPlayedWithSly = true;
-            // 奇巧时：复制本牌（保留升级与附魔）到弃牌堆 + 放入带消散的Beckon
-            CardModel copy;
-            if (Pile == null || Pile.Type.IsCombatPile())
+            // 奇巧时：仅当本牌本次打出将消耗（例如未被灵魂之力移除消耗）时才复制本牌到弃牌堆并由消耗钩子移除本体；
+            // 若消耗已被移除或重定向，本体会自然进入弃牌堆，无需再克隆以免指数复制。
+            if (cardPlay.ResultPile == PileType.Exhaust)
             {
-                copy = CreateClone();
-                copy.FinalizeUpgradeInternal();
-            }
-            else
-            {
-                copy = combatState.CreateCard<ThingsSoulfyshDisease>(Owner);
-                for (int i = 0; i < CurrentUpgradeLevel; i++)
+                _wasPlayedWithSly = true;
+                CardModel copy;
+                if (Pile == null || Pile.Type.IsCombatPile())
                 {
-                    copy.UpgradeInternal();
+                    copy = CreateClone();
                     copy.FinalizeUpgradeInternal();
                 }
-                if (Enchantment != null)
+                else
                 {
-                    var clonedEnchantment = (EnchantmentModel)Enchantment.ClonePreservingMutability();
-                    CardCmd.Enchant(clonedEnchantment, copy, clonedEnchantment.Amount);
+                    copy = combatState.CreateCard<ThingsSoulfyshDisease>(Owner);
+                    for (int i = 0; i < CurrentUpgradeLevel; i++)
+                    {
+                        copy.UpgradeInternal();
+                        copy.FinalizeUpgradeInternal();
+                    }
+                    if (Enchantment != null)
+                    {
+                        var clonedEnchantment = (EnchantmentModel)Enchantment.ClonePreservingMutability();
+                        CardCmd.Enchant(clonedEnchantment, copy, clonedEnchantment.Amount);
+                    }
                 }
+                await CardPileCmd.AddGeneratedCardToCombat(copy, PileType.Discard, Owner);
             }
-            await CardPileCmd.AddGeneratedCardToCombat(copy, PileType.Discard, Owner);
 
             int beckonCount = DynamicVars["BeckonCount"].IntValue;
             for (int i = 0; i < beckonCount; i++)
@@ -109,6 +116,16 @@ public sealed class ThingsSoulfyshDisease : ThingsCardModel
     {
         base.EnergyCost.UpgradeBy(-1);
         DynamicVars["BeckonCount"].UpgradeValueBy(-1);
+    }
+
+    public override Task AfterCardChangedPiles(CardModel card, PileType oldPileType, AbstractModel? clonedBy)
+    {
+        if (card == this && Pile?.Type is not (PileType.Play or PileType.Exhaust))
+        {
+            _slyDiscardPending = false;
+            _wasPlayedWithSly = false;
+        }
+        return Task.CompletedTask;
     }
 
     public override async Task AfterCardExhausted(PlayerChoiceContext choiceContext, CardModel card, bool causedByEthereal)

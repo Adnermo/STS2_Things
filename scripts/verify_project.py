@@ -137,6 +137,7 @@ def verify_config_contract(errors: list[str]) -> None:
     #    STS2_THINGS-<SLUG>.title（eng 与 zhs）。
     section_names = {
         "Audio",
+        "Acts",
         "Bosses",
         "Other Encounters",
         "Events",
@@ -3446,8 +3447,10 @@ def main() -> int:
     require_snippets(
         "Powers/ThingsQuirkPower.cs",
         [
-            "private const int PotionStateOffset = 500_000_000;",
-            "protected override bool IsVisibleInternal => !IsPotionState;",
+            "private const int PotionStateFlag = 1 << 29;",
+            "private const int PlayerRadix = 64;",
+            "public bool IsPotionState => Amount >= PotionStateFlag;",
+            "protected override bool IsVisibleInternal",
             "PotionModel? potion = _stolenPotion",
             "public int ConfigureCardState(Player player, CardModel? deckCard, PotionModel? potion)",
             "if (!IsMutable || _resolved)",

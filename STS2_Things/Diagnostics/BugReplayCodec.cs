@@ -63,6 +63,9 @@ internal static class BugReplayCodec
             ["sha256"] = Convert.ToHexString(SHA256.HashData(plain)).ToLowerInvariant(),
         };
 
+        // Keep Schema-2 player_count emission <= 8 so uploads stay backward-compatible with
+        // any live Cloudflare Worker still enforcing <= 8 before redeployment. Checkpoint Schema 2
+        // permits omitting player_count (and checkpoint.js preserves all 9–32 players inside `data`).
         if (playerCount is >= 1 and <= 8)
         {
             result["player_count"] = playerCount;

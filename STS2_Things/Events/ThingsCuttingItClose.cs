@@ -34,8 +34,8 @@ public sealed class ThingsCuttingItClose : ThingsEventModel
         var split = ModelDb.Enchantment<ThingsSplit>();
         bool canSplit = EventOwner.Deck.Cards.Any(card => IsSplitCandidate(split, card));
         bool canThrow = EventOwner.Deck.Cards.Any(card => card.IsRemovable);
-        return
-        [
+        var options = new List<EventOption>
+        {
             new EventOption(
                 this,
                 canSplit ? Improvise : null,
@@ -45,7 +45,18 @@ public sealed class ThingsCuttingItClose : ThingsEventModel
                 this,
                 canThrow ? Throw : null,
                 InitialOptionKey(canThrow ? "THROW" : "THROW_LOCKED"))
-        ];
+        };
+        if (!canSplit && !canThrow)
+        {
+            options.Add(new EventOption(this, Leave, "THINGS_POLITE_MAW.pages.INITIAL.options.LEAVE"));
+        }
+        return options;
+    }
+
+    private Task Leave()
+    {
+        FinishWithoutCard();
+        return Task.CompletedTask;
     }
 
     private async Task Improvise()

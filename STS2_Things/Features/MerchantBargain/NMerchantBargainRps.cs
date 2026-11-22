@@ -45,8 +45,22 @@ internal partial class NMerchantBargainRps : Control
         return overlay;
     }
 
-    public async Task PlayEntrance()
+    private bool IsAliveInTree() => GodotObject.IsInstanceValid(this) && IsInsideTree();
+
+    private async Task<bool> AwaitTweenFinished(Tween tween)
     {
+#if STS2_V113_1
+        return await tween.AwaitFinished(this) == TweenOutcome.Finished && IsAliveInTree();
+#else
+        return await tween.AwaitFinished(this) && IsAliveInTree();
+#endif
+    }
+
+    public async Task<bool> PlayEntrance()
+    {
+        if (!IsAliveInTree())
+            return false;
+
         _playerHand.Modulate = Colors.White;
         _merchantHand.Modulate = Colors.White;
         Tween tween = CreateTween().SetParallel();
@@ -64,13 +78,16 @@ internal partial class NMerchantBargainRps : Control
                 EntranceDuration)
             .SetTrans(Tween.TransitionType.Cubic)
             .SetEase(Tween.EaseType.Out);
-        await tween.AwaitFinished(this);
+        return await AwaitTweenFinished(tween);
     }
 
-    public async Task PlayRound(
+    public async Task<bool> PlayRound(
         RelicPickingFightMove playerMove,
         RelicPickingFightMove merchantMove)
     {
+        if (!IsAliveInTree())
+            return false;
+
         _playerHand.Modulate = Colors.White;
         _merchantHand.Modulate = Colors.White;
         _playerHand.Texture = _playerRock;
@@ -86,27 +103,35 @@ internal partial class NMerchantBargainRps : Control
             Mathf.Pi,
             1f,
             GetMerchantTexture(merchantMove));
-        await Task.WhenAll(
-            playerTween.AwaitFinished(this),
-            merchantTween.AwaitFinished(this));
+        bool[] results = await Task.WhenAll(
+            AwaitTweenFinished(playerTween),
+            AwaitTweenFinished(merchantTween));
+        return results[0] && results[1] && IsAliveInTree();
     }
 
-    public async Task PlayTie()
+    public async Task<bool> PlayTie()
     {
+        if (!IsAliveInTree())
+            return false;
+
         Color dimmed = new Color(0.7f, 0.7f, 0.7f, 0.75f);
         Tween dimTween = CreateTween().SetParallel();
         dimTween.TweenProperty(_playerHand, "modulate", dimmed, 0.15f);
         dimTween.TweenProperty(_merchantHand, "modulate", dimmed, 0.15f);
-        await dimTween.AwaitFinished(this);
+        if (!await AwaitTweenFinished(dimTween))
+            return false;
 
         Tween restoreTween = CreateTween().SetParallel();
         restoreTween.TweenProperty(_playerHand, "modulate", Colors.White, 0.2f);
         restoreTween.TweenProperty(_merchantHand, "modulate", Colors.White, 0.2f);
-        await restoreTween.AwaitFinished(this);
+        return await AwaitTweenFinished(restoreTween);
     }
 
-    public async Task PlayOutcome(bool playerWon)
+    public async Task<bool> PlayOutcome(bool playerWon)
     {
+        if (!IsAliveInTree())
+            return false;
+
         TextureRect loser = playerWon ? _merchantHand : _playerHand;
         Vector2 restingPosition = loser.Position;
 
@@ -121,14 +146,21 @@ internal partial class NMerchantBargainRps : Control
         }
         shakeTween.TweenProperty(loser, "position", restingPosition, 0.055f);
 
-        await Task.WhenAll(
-            fadeTween.AwaitFinished(this),
-            shakeTween.AwaitFinished(this));
-        await GetTree().CreateTimer(0.3).AwaitSignal(SceneTreeTimer.SignalName.Timeout, this);
+        bool[] results = await Task.WhenAll(
+            AwaitTweenFinished(fadeTween),
+            AwaitTweenFinished(shakeTween));
+        if (!results[0] || !results[1] || !IsAliveInTree() || GetTree() is not { } tree)
+            return false;
+
+        await tree.CreateTimer(0.3).AwaitSignal(SceneTreeTimer.SignalName.Timeout, this);
+        return IsAliveInTree();
     }
 
-    public async Task PlayExit()
+    public async Task<bool> PlayExit()
     {
+        if (!IsAliveInTree())
+            return false;
+
         Tween tween = CreateTween().SetParallel();
         tween.TweenProperty(
                 _playerHand,
@@ -146,7 +178,7 @@ internal partial class NMerchantBargainRps : Control
             .SetEase(Tween.EaseType.In);
         tween.TweenProperty(_playerHand, "modulate:a", 0f, ExitDuration);
         tween.TweenProperty(_merchantHand, "modulate:a", 0f, ExitDuration);
-        await tween.AwaitFinished(this);
+        return await AwaitTweenFinished(tween);
     }
 
     private static readonly MethodInfo? ArmRockPathGetter =
@@ -250,7 +282,11 @@ internal partial class NMerchantBargainRps : Control
                 .SetTrans(Tween.TransitionType.Expo)
                 .SetEase(Tween.EaseType.In);
         }
-        tween.TweenCallback(Callable.From(() => hand.Texture = finalTexture));
+        tween.TweenCallback(Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(hand))
+                hand.Texture = finalTexture;
+        }));
         return tween;
     }
 

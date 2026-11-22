@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Godot;
@@ -164,23 +165,90 @@ public partial class NBlindCardVeil : Node
 
     public static void DetachFromCard(NCard card, bool restorePortraitMaterials)
     {
-        if (ActiveVeils.Count == 0 || !GodotObject.IsInstanceValid(card))
+        if (!GodotObject.IsInstanceValid(card))
             return;
-        if (FindVeil(card) is { } veil)
-            veil.DetachAndFree(restorePortraitMaterials);
+
+        if (VeilsByCard.TryGetValue(card, out NBlindCardVeil? mapped))
+        {
+            VeilsByCard.Remove(card);
+            if (GodotObject.IsInstanceValid(mapped) && !mapped._detaching)
+                mapped.DetachAndFree(restorePortraitMaterials);
+        }
+
+        // Always scan direct children without relying on ActiveVeils/VeilsByCard:
+        // _ExitTree() clears both registries before deferred NCard.OnFreedToPool() executes.
+        for (int i = card.GetChildCount() - 1; i >= 0; i--)
+        {
+            Node child = card.GetChild(i);
+            if (child is not NBlindCardVeil veil || !GodotObject.IsInstanceValid(veil))
+                continue;
+
+            if (!veil._detaching)
+            {
+                veil.DetachAndFree(restorePortraitMaterials);
+            }
+            else
+            {
+                ActiveVeils.Remove(veil);
+                if (veil._card != null && VeilsByCard.TryGetValue(veil._card, out NBlindCardVeil? current) && ReferenceEquals(current, veil))
+                    VeilsByCard.Remove(veil._card);
+                if (ReferenceEquals(veil.GetParent(), card))
+                {
+                    if (NGame.IsMainThread() && (card.IsNodeReady() || !card.IsInsideTree()))
+                        card.RemoveChild(veil);
+                    else
+                        card.CallDeferred(Node.MethodName.RemoveChild, veil);
+                }
+                if (!veil.IsQueuedForDeletion())
+                    veil.QueueFree();
+            }
+        }
+
+        // Scrub any stray BlindStatic overlays attached under %Portrait / %AncientPortrait.
+        foreach (string portraitName in PortraitNodeNames)
+        {
+            if (card.GetNodeOrNull<TextureRect>(portraitName) is not { } portrait ||
+                !GodotObject.IsInstanceValid(portrait))
+            {
+                continue;
+            }
+
+            for (int i = portrait.GetChildCount() - 1; i >= 0; i--)
+            {
+                Node child = portrait.GetChild(i);
+                if (child is ColorRect rect && GodotObject.IsInstanceValid(rect) &&
+                    rect.Name.ToString().StartsWith("BlindStatic", StringComparison.Ordinal))
+                {
+                    rect.Visible = false;
+                    if (NGame.IsMainThread() && (portrait.IsNodeReady() || !portrait.IsInsideTree()))
+                        portrait.RemoveChild(rect);
+                    else
+                        portrait.CallDeferred(Node.MethodName.RemoveChild, rect);
+                    if (!rect.IsQueuedForDeletion())
+                        rect.QueueFree();
+                }
+            }
+        }
     }
 
     public override void _EnterTree()
     {
         base._EnterTree();
+        if (_detaching ||
+            !GodotObject.IsInstanceValid(_card) ||
+            _card.Model == null ||
+            !ReferenceEquals(_card.Model, _boundModel) ||
+            !LanternBlindness.IsVeiled(_card.Model))
+        {
+            DetachAndFree(restorePortraitMaterials: false, deferRemoveChild: true);
+            return;
+        }
+
         ActiveVeils.Add(this);
         CombatManager.Instance.CombatEnded += OnCombatEnded;
-        if (GodotObject.IsInstanceValid(_card))
-        {
-            VeilsByCard.AddOrUpdate(_card, this);
-            _card.ModelChanged -= OnCardModelChanged;
-            _card.ModelChanged += OnCardModelChanged;
-        }
+        VeilsByCard.AddOrUpdate(_card, this);
+        _card.ModelChanged -= OnCardModelChanged;
+        _card.ModelChanged += OnCardModelChanged;
     }
 
     public override void _ExitTree()
@@ -196,7 +264,7 @@ public partial class NBlindCardVeil : Node
 
     public override void _Ready()
     {
-        if (!GodotObject.IsInstanceValid(_card))
+        if (_detaching || !GodotObject.IsInstanceValid(_card))
             return;
 
         _title = _card.GetNodeOrNull<MegaLabel>("%TitleLabel");
@@ -266,7 +334,7 @@ public partial class NBlindCardVeil : Node
         }
     }
 
-    private void DetachAndFree(bool restorePortraitMaterials)
+    private void DetachAndFree(bool restorePortraitMaterials, bool deferRemoveChild = false)
     {
         if (_detaching)
             return;
@@ -289,10 +357,12 @@ public partial class NBlindCardVeil : Node
                 continue;
             rect.Visible = false;
             Node? parent = rect.GetParent();
-            if (parent != null && GodotObject.IsInstanceValid(parent) && NGame.IsMainThread() &&
-                (parent.IsNodeReady() || !parent.IsInsideTree()))
+            if (parent != null && GodotObject.IsInstanceValid(parent))
             {
-                parent.RemoveChild(rect);
+                if (!deferRemoveChild && NGame.IsMainThread() && (parent.IsNodeReady() || !parent.IsInsideTree()))
+                    parent.RemoveChild(rect);
+                else
+                    parent.CallDeferred(Node.MethodName.RemoveChild, rect);
             }
             rect.QueueFree();
         }
@@ -309,10 +379,12 @@ public partial class NBlindCardVeil : Node
         _savedPortraits.Clear();
 
         Node? veilParent = GetParent();
-        if (veilParent != null && GodotObject.IsInstanceValid(veilParent) && NGame.IsMainThread() &&
-            (veilParent.IsNodeReady() || !veilParent.IsInsideTree()))
+        if (veilParent != null && GodotObject.IsInstanceValid(veilParent))
         {
-            veilParent.RemoveChild(this);
+            if (!deferRemoveChild && NGame.IsMainThread() && (veilParent.IsNodeReady() || !veilParent.IsInsideTree()))
+                veilParent.RemoveChild(this);
+            else
+                veilParent.CallDeferred(Node.MethodName.RemoveChild, this);
         }
         QueueFree();
     }
@@ -395,7 +467,6 @@ internal static class LanternBlindnessPoolCleanupPatch
 {
     private static void Postfix(NCard __instance)
     {
-        if (NBlindCardVeil.HasActiveVeils)
-            NBlindCardVeil.DetachFromCard(__instance, restorePortraitMaterials: true);
+        NBlindCardVeil.DetachFromCard(__instance, restorePortraitMaterials: true);
     }
 }

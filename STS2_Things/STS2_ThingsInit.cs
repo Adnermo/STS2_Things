@@ -13,6 +13,7 @@ using STS2_Things.Cards;
 using STS2_Things.Compatibility;
 using STS2_Things.Config;
 using STS2_Things.Diagnostics;
+using STS2_Things.Hooks;
 using STS2_Things.Modifiers;
 using STS2_Things.Platform;
 using STS2_Things.Relics;
@@ -21,7 +22,7 @@ using STS2_Things.Relics;
 public static class STS2_ThingsInit
 {
     public const string HarmonyId = "Adnermo.STS2_Things";
-    public const string ModVersion = "2.0.5";
+    public const string ModVersion = "2.0.6";
     private static bool _initialized;
     private static AbstractModel[]? _quirkyHopperPolicy;
     private static AbstractModel[]? _spentEmberPolicy;
@@ -40,6 +41,7 @@ public static class STS2_ThingsInit
             ScriptManagerBridge.LookupScriptsInAssembly(assembly);
             Sts2VersionSeam.InitializeBeforeModelDatabase();
             ModCompatibility.Initialize();
+            PckIntegrityGuard.TryPinModPck();
 
             ThingsModConfig.Load();
             MultiplayerConfig.Initialize();
@@ -93,6 +95,7 @@ public static class STS2_ThingsInit
             // ---- Harmony Patch Installation & Legacy ID Migration ----
             var harmony = new Harmony(HarmonyId);
             harmony.PatchAll(assembly);
+            DepthsActCatalogPatch.InvalidateActsByIndexCache();
             LegacyIdMigrator.ActivateIfModelDbReady();
 
             _initialized = true;

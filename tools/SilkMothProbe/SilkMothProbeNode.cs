@@ -134,7 +134,7 @@ public partial class SilkMothProbeNode : Node
             var s=await Scenario(players:players);
             Assert(s.Encounter.MonstersWithSlots.Count==3,"One moth, one rock snail and one slime snail.");
             Assert(!s.Encounter.IsWeak,"Native regular pool category.");
-            Assert(s.Moth.MinInitialHp==36 && s.Moth.MaxInitialHp==40,"Base HP range.");
+            Assert(s.Moth.MinInitialHp==29 && s.Moth.MaxInitialHp==33,"Base HP range.");
             Assert(s.Encounter.MonstersWithSlots.All(e=>s.Encounter.Slots.Contains(e.Item2!)),"All slots exist.");
             Assert(s.Moth.NextMove.Id=="WEAVE_MOVE" && s.Moth.NextMove.Intents.Single() is CardDebuffIntent,"Queen's native card-debuff intention.");
             await s.Moth.PerformMove();
@@ -142,13 +142,13 @@ public partial class SilkMothProbeNode : Node
             s.Moth.RollMove(s.Players.Select(p=>p.Creature));
             Assert(s.Moth.NextMove.Id=="SWOOP_MOVE" && s.Moth.NextMove.Intents.Single() is SingleAttackIntent,"Swoop follows weave.");
             int hp=s.Player.Creature.CurrentHp;await s.Moth.PerformMove();
-            Assert(s.Player.Creature.CurrentHp==hp-11,"Swoop native damage.");
+            Assert(s.Player.Creature.CurrentHp==hp-12,"Swoop native damage.");
             s.Moth.RollMove(s.Players.Select(p=>p.Creature));
             Assert(s.Moth.NextMove.Id=="FLUTTER_MOVE" && s.Moth.NextMove.Intents.Single() is MultiAttackIntent,"Native multi-hit intent.");
             hp=s.Player.Creature.CurrentHp;await s.Moth.PerformMove();Assert(s.Player.Creature.CurrentHp==hp-8,"Two flutter hits.");
             s.Moth.RollMove(s.Players.Select(p=>p.Creature));Assert(s.Moth.NextMove.Id=="WEAVE_MOVE","Repeating cycle.");
         }
-        var tough=await Scenario(ascension:20);Assert(tough.Moth.MinInitialHp==40 && tough.Moth.MaxInitialHp==44,"Ascension HP.");
+        var tough=await Scenario(ascension:20);Assert(tough.Moth.MinInitialHp==33 && tough.Moth.MaxInitialHp==37,"Ascension HP.");
         GD.Print("PASS strong moth pools, multiplayer targets, native intents, damage and cycle.");
     }
 

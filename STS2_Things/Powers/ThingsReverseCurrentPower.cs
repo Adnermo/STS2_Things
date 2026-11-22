@@ -15,13 +15,19 @@ using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Afflictions;
 using STS2_Things.Monsters;
 using STS2_Things.Core.Models;
+using STS2_Things.Platform;
 
 namespace STS2_Things.Powers;
 
 /// <summary>Native history supplies the real card; native afflictions carry the visible offer.</summary>
 public sealed class ThingsReverseCurrentPower : ThingsPowerModel
 {
+    private const int MaxExtendedStrengthTriggersPerRound = 4;
+
     private int _pendingCarryBlock;
+    private int _lastRecallPoseRound = -1;
+    private int _strengthTriggersRound = -1;
+    private int _strengthTriggersThisRound;
 
     public override PowerType Type => PowerType.Buff;
     public override PowerStackType StackType => PowerStackType.None;
@@ -32,6 +38,9 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
     {
         base.AfterCloned();
         _pendingCarryBlock = 0;
+        _lastRecallPoseRound = -1;
+        _strengthTriggersRound = -1;
+        _strengthTriggersThisRound = 0;
     }
 
     public override Task AfterApplied(Creature? applier, CardModel? cardSource)
@@ -97,7 +106,7 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
         bool posed=false;
         if(returned!=null&&(returned.Pile?.Type==PileType.Hand||player.PlayerCombatState.Hand.Cards.Count<CardPile.MaxCardsInHand))
         {
-            Flash();
+            FlashRecallOncePerExtendedRound();
             if(Owner.Monster is ThingsReverseSalamander monster)await monster.RecallPose();
             posed=true;
             if(!Owner.IsAlive||!player.Creature.IsAlive)return;
@@ -123,7 +132,7 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
 
         if(!posed)
         {
-            Flash();
+            FlashRecallOncePerExtendedRound();
             if(Owner.Monster is ThingsReverseSalamander monster)await monster.RecallPose();
             if(!Owner.IsAlive||!player.Creature.IsAlive)return;
             targets=targets
@@ -136,6 +145,32 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
         foreach(var card in targets)
             if(card.Affliction is ThingsUpstreamRecall)
                 card.InvokeEnergyCostChanged();
+    }
+
+    private void FlashRecallOncePerExtendedRound()
+    {
+        if (MultiplayerCompat.IsExtendedParty(CombatState))
+        {
+            int round = CombatState.RoundNumber;
+            if (_lastRecallPoseRound == round) return;
+            _lastRecallPoseRound = round;
+        }
+        Flash();
+    }
+
+    private bool TryConsumeExtendedStrengthTrigger(int roundNumber)
+    {
+        if (_strengthTriggersRound != roundNumber)
+        {
+            _strengthTriggersRound = roundNumber;
+            _strengthTriggersThisRound = 0;
+        }
+
+        if (_strengthTriggersThisRound >= MaxExtendedStrengthTriggersPerRound)
+            return false;
+
+        _strengthTriggersThisRound++;
+        return true;
     }
 
     private static bool IsReturnEligible(CardModel card) =>
@@ -166,9 +201,14 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
             CardCmd.ClearAffliction(cardPlay.Card);
             cardPlay.Card.InvokeEnergyCostChanged();
         }
+        bool isExtendedParty=MultiplayerCompat.IsExtendedParty(CombatState);
+        int roundNumber=CombatState.RoundNumber;
         foreach(var enemy in CombatState.Enemies.Where(c=>c.IsAlive&&c.GetPower<ThingsReverseCurrentPower>()!=null).ToArray())
         {
-            var current=enemy.GetPower<ThingsReverseCurrentPower>()!;current.Flash();
+            var current=enemy.GetPower<ThingsReverseCurrentPower>()!;
+            if(isExtendedParty&&!current.TryConsumeExtendedStrengthTrigger(roundNumber))
+                continue;
+            current.Flash();
             await PowerCmd.Apply<StrengthPower>(choiceContext,enemy,current.Amount,enemy,null);
             if(enemy.IsAlive)await CreatureCmd.TriggerAnim(enemy,"PowerUp",.18f);
         }
@@ -195,6 +235,19 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
                 unplayedOffers++;
             ClearFor(player);
         }
+        if(unplayedOffers<=0)return;
+        if(MultiplayerCompat.IsExtendedParty(CombatState))
+        {
+            int rawPlayers=MultiplayerCompat.GetRawPlayerCount(CombatState);
+            int effectivePlayers=MultiplayerCompat.GetEffectivePlayerCount(CombatState);
+            int effectiveUnplayed=Math.Max(1,(unplayedOffers*effectivePlayers+rawPlayers-1)/rawPlayers);
+            foreach(var enemy in CombatState.Enemies.Where(c=>c.IsAlive&&c.GetPower<ThingsReverseCurrentPower>()!=null).ToArray())
+            {
+                if(CombatManager.Instance.IsOverOrEnding)return;
+                await enemy.GetPower<ThingsReverseCurrentPower>()!.GrantUnplayedRecallBlockAsync(effectiveUnplayed);
+            }
+            return;
+        }
         for(int i=0;i<unplayedOffers;i++)
         {
             foreach(var enemy in CombatState.Enemies.Where(c=>c.IsAlive&&c.GetPower<ThingsReverseCurrentPower>()!=null).ToArray())
@@ -205,11 +258,11 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
         }
     }
 
-    private async Task GrantUnplayedRecallBlockAsync()
+    private async Task GrantUnplayedRecallBlockAsync(int offerCount = 1)
     {
         int unplayedBlock=Owner.Monster is ThingsReverseSalamander m?m.UnplayedRecallBlock:DynamicVars["UnplayedBlock"].IntValue;
         Flash();
-        decimal gained=await CreatureCmd.GainBlock(Owner,unplayedBlock,ValueProp.Unpowered,null);
+        decimal gained=await CreatureCmd.GainBlock(Owner,unplayedBlock*offerCount,ValueProp.Unpowered,null);
         _pendingCarryBlock+=(int)gained;
     }
 

@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Afflictions;
+using STS2_Things.Platform;
 using STS2_Things.Powers;
 using static STS2_Things.Platform.Sts2VersionSeam;
 
@@ -21,6 +22,14 @@ namespace STS2_Things.Monsters;
 
 public sealed class ThingsReverseSalamander : ThingsSpineMonster
 {
+    private int _lastRecallPoseRound = -1;
+
+    protected override void AfterCloned()
+    {
+        base.AfterCloned();
+        _lastRecallPoseRound = -1;
+    }
+
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies,173,155);
     public override int MaxInitialHp => MinInitialHp;
     public override float HpBarSizeReduction => 10f;
@@ -98,6 +107,12 @@ public sealed class ThingsReverseSalamander : ThingsSpineMonster
     public async Task RecallPose()
     {
         if(!Creature.IsAlive)return;
+        if(CombatState is { } combatState && MultiplayerCompat.IsExtendedParty(combatState))
+        {
+            int round = combatState.RoundNumber;
+            if(_lastRecallPoseRound == round) return;
+            _lastRecallPoseRound = round;
+        }
         await CreatureCmd.TriggerAnim(Creature,"Recall",0);
         await WaitForPose("recall",.54f,.54f);
     }

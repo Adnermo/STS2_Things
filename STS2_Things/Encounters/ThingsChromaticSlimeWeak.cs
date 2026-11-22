@@ -6,8 +6,8 @@ using STS2_Things.Monsters;
 namespace STS2_Things.Encounters;
 
 /// <summary>
-/// Depths Act 2 Regular Encounter: opens with one Large Prismatic Slime that splits twice
-/// (Large -&gt; 2 Medium -&gt; 4 Small) according to each lethal blow.
+/// Depths Act 2 Regular Encounter: opens with one Large Prismatic Slime that interrupts into a half-HP
+/// inherited-HP split (Large -&gt; 2 asymmetric Mediums -&gt; up to 4 same-color Smalls).
 /// </summary>
 public sealed class ThingsChromaticSlimeWeak : EncounterModel
 {

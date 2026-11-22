@@ -117,6 +117,8 @@ public partial class BaseLibBridgeProbeNode : Node
                     "BaseLib bridge probe: Bridge was not loaded into the game ALC.");
 
             // 桥属性默认值（与 ThingsModConfig 默认一致）。
+            Assert(!GetBridgeBool(bridge, "FeatureGuaranteedDepthsEnabled"),
+                "Bridge FeatureGuaranteedDepthsEnabled default is true.");
             Assert(GetBridgeBool(bridge, "BossOriginFogmogEnabled"),
                 "Bridge BossOriginFogmogEnabled default is false.");
             Assert(!GetBridgeBool(bridge, "BossOriginFogmogForced"),
@@ -154,16 +156,19 @@ public partial class BaseLibBridgeProbeNode : Node
             // the new properties immediately instead of reloading stale disk state.
             SetBridgeValue(bridge, "BossScaleBeetleWeightPercent", 370);
             SetBridgeBool(bridge, "FeatureCustomBgmEnabled", true);
+            SetBridgeBool(bridge, "FeatureGuaranteedDepthsEnabled", true);
             SetBridgeBool(bridge, "BossOnlyModBosses", true);
             SetBridgeBool(bridge, "CardCollisionEnabled", false);
             InvokeBridge(config!, "Changed");
             Assert((int)thingsConfig.GetMethod("GetInt")!.Invoke(null, ["BossScaleBeetleWeightPercent"])! == 370,
                 "Slider change did not reach the live model before Save.");
             Assert((bool)thingsConfig.GetMethod("GetBool")!.Invoke(null, ["FeatureCustomBgmEnabled"])! &&
+                   (bool)thingsConfig.GetMethod("GetBool")!.Invoke(null, ["FeatureGuaranteedDepthsEnabled"])! &&
                    (bool)thingsConfig.GetMethod("GetBool")!.Invoke(null, ["BossOnlyModBosses"])! &&
                    !(bool)thingsConfig.GetMethod("GetBool")!.Invoke(null, ["CardCollisionEnabled"])!,
                 "New toggle changes did not reach the live model before Save.");
             SetBridgeBool(bridge, "CardCollisionEnabled", true);
+            SetBridgeBool(bridge, "FeatureGuaranteedDepthsEnabled", false);
             InvokeBridge(config!, "Changed");
             // RitsuLib/main writes must also update the mirror before a delayed
             // BaseLib save, or switching pages would silently discard the edit.
@@ -218,6 +223,7 @@ public partial class BaseLibBridgeProbeNode : Node
             int[] values = settings.Select(entry => Convert.ToInt32(thingsConfig.GetMethod("GetValue")!.Invoke(null, [Key(entry)]))).ToArray();
             values[Array.FindIndex(settings, entry => Key(entry) == "BossScaleBeetleWeightPercent")] = 900;
             values[Array.FindIndex(settings, entry => Key(entry) == "FeatureCustomBgmEnabled")] = 0;
+            values[Array.FindIndex(settings, entry => Key(entry) == "FeatureGuaranteedDepthsEnabled")] = 1;
             Type messageType = implementation.GetType("STS2_Things.Config.ThingsConfigSnapshotMessage", true)!;
             int protocolVersion = (int)messageType.GetField("Protocol")!.GetValue(null)!;
             Assert(protocolVersion == 2, $"Expected ThingsConfigSnapshotMessage.Protocol=2, got {protocolVersion}.");
@@ -227,18 +233,22 @@ public partial class BaseLibBridgeProbeNode : Node
                        ["Revision"] = 1u, ["Locked"] = true, ["Values"] = values })
                 messageType.GetField(pair.Key)!.SetValue(snapshot, pair.Value);
             wire.Deliver((INetMessage)snapshot);
-            Assert((int)GetBridgeValue(bridge, "BossScaleBeetleWeightPercent") == 900,
+            Assert((int)GetBridgeValue(bridge, "BossScaleBeetleWeightPercent") == 900 &&
+                   GetBridgeBool(bridge, "FeatureGuaranteedDepthsEnabled"),
                 "BaseLib did not display the host snapshot.");
             SetBridgeValue(bridge, "BossScaleBeetleWeightPercent", 0);
+            SetBridgeBool(bridge, "FeatureGuaranteedDepthsEnabled", false);
             InvokeBridge(config!, "Changed");
-            Assert((int)GetBridgeValue(bridge, "BossScaleBeetleWeightPercent") == 900,
+            Assert((int)GetBridgeValue(bridge, "BossScaleBeetleWeightPercent") == 900 &&
+                   GetBridgeBool(bridge, "FeatureGuaranteedDepthsEnabled"),
                 "Client BaseLib edit overrode the host.");
             InvokeBridge(config!, "Save");
             config!.GetType().GetMethod("SaveDebounced", BindingFlags.Public | BindingFlags.Instance, [typeof(int)])!
                 .Invoke(config, [0]);
             Assert(File.ReadAllText(sharedPath) == personalFile, "BaseLib persisted the host's temporary values.");
             multiplayer.GetMethod("Clear")!.Invoke(null, null);
-            Assert((int)GetBridgeValue(bridge, "BossScaleBeetleWeightPercent") == 100,
+            Assert((int)GetBridgeValue(bridge, "BossScaleBeetleWeightPercent") == 100 &&
+                   !GetBridgeBool(bridge, "FeatureGuaranteedDepthsEnabled"),
                 "BaseLib did not restore personal values after leaving.");
 
             GD.Print("BaseLib bridge probe: PASS");

@@ -134,7 +134,7 @@ public sealed class ThingsBowlbugProgenitor : ThingsSpineMonster
 
     // ========== 招式实现 ==========
 
-    private int PlayerCount => CombatState.Players.Count;
+    private int PlayerCount => MultiplayerCompat.GetEffectivePlayerCount(CombatState);
 
     private int LiveBowlbugCount => CountLiveBowlbugs(CombatState);
 
@@ -268,13 +268,18 @@ public sealed class ThingsBowlbugProgenitor : ThingsSpineMonster
         if (!summoned)
             await CreatureCmd.TriggerAnim(Creature, "PowerUp", 0.45f);
         // 全体怪物获得+3力量
-        foreach (var enemy in CombatState.Enemies.Where(e => e.IsAlive))
+        foreach (var enemy in CombatState.Enemies.Where(e => e.IsAlive).ToArray())
         {
+            if (!enemy.IsAlive || CombatManager.Instance.IsOverOrEnding)
+                continue;
             await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(),
                 enemy, 3m, Creature, null);
         }
-        await PowerCmd.Apply<ThingsBowlbugSiphonPower>(new ThrowingPlayerChoiceContext(),
-            Creature, SiphonVigorPerBug, Creature, null);
+        if (Creature.IsAlive && !CombatManager.Instance.IsOverOrEnding)
+        {
+            await PowerCmd.Apply<ThingsBowlbugSiphonPower>(new ThrowingPlayerChoiceContext(),
+                Creature, SiphonVigorPerBug, Creature, null);
+        }
     }
 
     /// <summary>4. 重击：单体猛砸（0.45s 对应 attack 骨骼前冲峰值帧），随后施加1回合虫群护甲并按虫群数量起甲</summary>

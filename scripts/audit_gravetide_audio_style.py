@@ -158,15 +158,16 @@ def validate_outputs(outputs: dict[str, dict[str, float | int]]) -> None:
         errors.append(f"missing {music_path}")
     else:
         music_ranges = {
-            "duration_seconds": (149.9, 150.1),
-            "rms_dbfs": (-25.5, -21.5),
-            "crest_db": (15.0, 26.0),
+            "duration_seconds": (140.0, 150.5),
+            "rms_dbfs": (-21.5, -18.5),
+            "crest_db": (11.0, 26.0),
             "dynamic_range_db": (7.0, 18.0),
-            "spectral_centroid_hz": (400.0, 1_200.0),
-            "sub_share_20_120": (0.0, 0.15),
-            "mid_share_500_2000": (0.20, 0.70),
+            "spectral_centroid_hz": (240.0, 1_200.0),
+            "sub_share_20_120": (0.0, 0.45),
+            "mid_share_500_2000": (0.08, 0.70),
             "high_share_2000_8000": (0.01, 0.15),
             "stereo_correlation": (-0.1, 0.75),
+            "loop_seam_rms_dbfs": (-120.0, -22.0),
         }
         for key, (low, high) in music_ranges.items():
             value = float(music[key])

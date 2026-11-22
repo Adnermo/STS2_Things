@@ -31,22 +31,22 @@ public sealed class ThingsScalePeeler : ThingsSpineMonster
     private const float SiphonPeakMoment = 0.72f;
     private const string StoneImpactSfx = "event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone";
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 60, 56);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 52, 48);
     public override int MaxInitialHp => MinInitialHp + 4;
 
     public int OpeningBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, 6);
-    private int ChiselDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9);
+    private int ChiselDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 11);
     private int ChiselBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, 6);
-    private int SlamBaseDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6);
+    private int SlamBaseDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 9, 8);
 
     public int PlatedSlamBonus => (int)Math.Ceiling(
-        (decimal)Creature.Block / Math.Max(1, CombatState?.Players.Count ?? 1));
+        (decimal)Creature.Block / MultiplayerCompat.GetEffectivePlayerCount(CombatState));
 
     public int PlatedSlamDamage => SlamBaseDamage + PlatedSlamBonus;
 
-    private int ScrapeDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
+    private int ScrapeDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
     private int ScrapeHits => 2;
-    private int ScrapeBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 10, 8);
+    private int ScrapeBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, 6);
 
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/burrowing_bug/burrowing_bug_attack";
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/burrowing_bug/burrowing_bug_burrow";
@@ -171,7 +171,7 @@ public sealed class ThingsScalePeeler : ThingsSpineMonster
                 if (hit == 0)
                     await CreatureCmd.TriggerAnim(Creature, trigger, 0f);
                 float moment = contacts[Math.Min(hit, contacts.Length - 1)];
-                float wait = hit == 0 ? moment : Math.Max(0.18f, moment - contacts[hit - 1]);
+                float wait = hit == 0 ? moment : (hit < contacts.Length ? Math.Max(0.18f, moment - contacts[hit - 1]) : 0.18f);
                 await WaitForPose(animation, moment, wait);
                 hit++;
             })

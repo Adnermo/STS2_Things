@@ -19,6 +19,7 @@ using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using HarmonyLib;
 using STS2_Things.Core.Models;
+using STS2_Things.Platform;
 using STS2_Things.Powers;
 using static STS2_Things.Platform.Sts2VersionSeam;
 
@@ -163,7 +164,7 @@ public sealed class ThingsOriginEyeWithTeeth : ThingsMonsterModel
         if (boss != null)
         {
             // 多人游戏时回血按玩家数 scaling，与 OriginFogmog 的 HealMove 保持一致
-            var healAmount = HealAmountPerPlayer * combatState.Players.Count;
+            var healAmount = HealAmountPerPlayer * MultiplayerCompat.GetEffectivePlayerCount(combatState);
             await CreatureCmd.Heal(boss, healAmount);
         }
 

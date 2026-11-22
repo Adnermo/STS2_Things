@@ -15,6 +15,7 @@ using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Cards;
+using STS2_Things.Platform;
 using STS2_Things.Powers;
 using static STS2_Things.Platform.Sts2VersionSeam;
 
@@ -25,11 +26,14 @@ public sealed class ThingsSanguineLeech : ThingsSpineMonster
     public const float BiteContact = .46f;
     public const float ParasiteRelease = .62f;
     public const float CurlContact = .38f;
-    public const int CurlBlock = 6;
+    public const int CurlBlock = 5;
+    public const int MaxExtendedParasiteFeedsPerRound = 4;
     public const string ReinfestMoveId = "REINFEST_MOVE";
     private int _openingPhase;
     private MoveState? _reinfest;
     private bool _reinfestPending;
+    private int _parasiteFeedRound = -1;
+    private int _parasiteEndTurnTriggersThisRound;
     private HashSet<ulong> _openingParasitePlayers = [];
     public int OpeningPhase => _openingPhase;
     public void SuppressOpeningParasites(IEnumerable<Player> players)
@@ -39,18 +43,36 @@ public sealed class ThingsSanguineLeech : ThingsSpineMonster
     }
     public void SetOpeningPhase(int phase) { AssertMutable(); _openingPhase = Math.Clamp(phase, 0, 3); }
 
+    internal bool TryConsumeParasiteFeedThisRound(int roundNumber)
+    {
+        AssertMutable();
+        if (_parasiteFeedRound != roundNumber)
+        {
+            _parasiteFeedRound = roundNumber;
+            _parasiteEndTurnTriggersThisRound = 0;
+        }
+
+        if (_parasiteEndTurnTriggersThisRound >= MaxExtendedParasiteFeedsPerRound)
+            return false;
+
+        _parasiteEndTurnTriggersThisRound++;
+        return true;
+    }
+
     protected override void AfterCloned()
     {
         base.AfterCloned();
         _openingPhase = 0;
         _reinfest = null;
         _reinfestPending = false;
+        _parasiteFeedRound = -1;
+        _parasiteEndTurnTriggersThisRound = 0;
         _openingParasitePlayers.Clear();
     }
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 32, 29);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 27, 24);
     public override int MaxInitialHp => MinInitialHp + 4;
     public override float HpBarSizeReduction => 130f;
-    private int BiteDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6);
+    private int BiteDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 9);
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_attack_light";
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_devour";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/gravetide_slug/gravetide_slug_die";
@@ -174,6 +196,11 @@ public sealed class ThingsSanguineLeech : ThingsSpineMonster
             }
             if (LocalContext.IsMe(player))
                 await Cmd.Wait(0.1f);
+        }
+        if (MultiplayerCompat.IsExtendedParty(CombatState))
+        {
+            _reinfestPending = false;
+            Creature.GetPower<ThingsLeechInfestationPower>()?.ResetExtendedExhaustTracking();
         }
         await WaitForPose("cast", 1.45f, 0);
     }

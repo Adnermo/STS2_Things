@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.ValueProps;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes;
@@ -101,11 +102,14 @@ public sealed class ThingsBackrooms : ThingsEventModel
 
     private void ShowExitPage()
     {
+        var disperse = ModelDb.Enchantment<ThingsDisperse>();
+        bool canEnchant = EventOwner.Deck.Cards.Any(c => disperse.CanEnchant(c));
+        bool ownsAlmondWater = EventOwner.Relics.Any(r => r is ThingsAlmondWater);
         SetEventState(
             L10NLookup($"{Id.Entry}.pages.EXIT.description"),
             [
-                new EventOption(this, EnchantDissolve, $"{Id.Entry}.pages.EXIT.options.ENCHANT_DISSOLVE"),
-                new EventOption(this, TakeAlmondWater, $"{Id.Entry}.pages.EXIT.options.TAKE_ALMOND_WATER"),
+                new EventOption(this, canEnchant ? EnchantDissolve : null, $"{Id.Entry}.pages.EXIT.options.ENCHANT_DISSOLVE"),
+                new EventOption(this, ownsAlmondWater ? null : TakeAlmondWater, $"{Id.Entry}.pages.EXIT.options.TAKE_ALMOND_WATER"),
                 new EventOption(this, Leave, $"{Id.Entry}.pages.EXIT.options.LEAVE")
             ]
         );
@@ -113,18 +117,23 @@ public sealed class ThingsBackrooms : ThingsEventModel
 
     private async Task EnchantDissolve()
     {
-        var selected = (await CardSelectCmd.FromDeckForEnchantment(
-            EventOwner, ModelDb.Enchantment<ThingsDisperse>(), 1,
-            new CardSelectorPrefs(CardSelectorPrefs.EnchantSelectionPrompt,
-                (int)DynamicVars["Cards"].BaseValue))).ToList();
-
-        foreach (var card in selected)
+        var disperse = ModelDb.Enchantment<ThingsDisperse>();
+        int eligibleCount = EventOwner.Deck.Cards.Count(c => disperse.CanEnchant(c));
+        int selectCount = Math.Min((int)DynamicVars["Cards"].BaseValue, eligibleCount);
+        if (selectCount > 0)
         {
-            CardCmd.Enchant<ThingsDisperse>(card, 1m);
-            var vfx = NCardEnchantVfx.Create(card);
-            if (vfx != null)
+            var selected = (await CardSelectCmd.FromDeckForEnchantment(
+                EventOwner, disperse, 1,
+                new CardSelectorPrefs(CardSelectorPrefs.EnchantSelectionPrompt, selectCount))).ToList();
+
+            foreach (var card in selected)
             {
-                NRun.Instance?.GlobalUi.CardPreviewContainer.AddChildSafely(vfx);
+                CardCmd.Enchant<ThingsDisperse>(card, 1m);
+                var vfx = NCardEnchantVfx.Create(card);
+                if (vfx != null)
+                {
+                    NRun.Instance?.GlobalUi.CardPreviewContainer.AddChildSafely(vfx);
+                }
             }
         }
 
@@ -133,7 +142,9 @@ public sealed class ThingsBackrooms : ThingsEventModel
 
     private async Task TakeAlmondWater()
     {
-        var relic = ModelDb.Relic<ThingsAlmondWater>().ToMutable();
+        RelicModel relic = EventOwner.Relics.Any(r => r is ThingsAlmondWater)
+            ? ModelDb.Relic<Circlet>().ToMutable()
+            : ModelDb.Relic<ThingsAlmondWater>().ToMutable();
         await RelicCmd.Obtain(relic, EventOwner);
         SetEventFinished(L10NLookup($"{Id.Entry}.pages.TAKE_ALMOND_WATER.description"));
     }

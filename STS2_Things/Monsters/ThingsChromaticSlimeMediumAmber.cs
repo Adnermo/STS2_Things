@@ -6,17 +6,20 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.ValueProps;
+using STS2_Things.Powers;
 
 namespace STS2_Things.Monsters;
 
 /// <summary>
-/// Medium Amber Chromatic Slime (spawned on precision Attack Overkill &lt; 5). Enters combat armored
-/// with mineral Block and reinforces itself while trading blows, splitting into 2 Smalls on death.
+/// Medium Amber Chromatic Slime. Enters combat armored with mineral Block and reinforces itself
+/// while trading blows, interrupting into a half-HP split into 2 Small Amber slimes inheriting its remaining HP.
 /// </summary>
 public sealed class ThingsChromaticSlimeMediumAmber : ThingsChromaticSlimeMediumBase
 {
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 22, 20);
-    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 25, 23);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 50, 46);
+    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 56, 52);
+
+    public override ChromaticStrain? OwnStrain => ChromaticStrain.Amber;
 
     internal override int OpeningBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 9, 8);
     protected override string? PreferredSkinName => "amber";
@@ -25,10 +28,10 @@ public sealed class ThingsChromaticSlimeMediumAmber : ThingsChromaticSlimeMedium
     protected override Vector2? VariantIntentPos => new(-4f, -214f);
     protected override string? PreferredAttackAnimation => "attack_amber";
     protected override string? PreferredPowerUpAnimation => "power_amber";
-    private int BashDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
+    private int BashDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 8, 7);
     private int BashBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 6, 5);
-    private int ShellDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
-    private int ShellBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 10, 9);
+    private int ShellDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6);
+    private int ShellBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 9, 8);
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
     {
@@ -42,11 +45,12 @@ public sealed class ThingsChromaticSlimeMediumAmber : ThingsChromaticSlimeMedium
             StoneShellMove,
             new SingleAttackIntent(ShellDamage),
             new DefendIntent());
+        MoveState splitState = CreateSplitMoveState();
 
         amberBash.FollowUpState = stoneShell;
         stoneShell.FollowUpState = amberBash;
         var initial = StartMovePhase % 2 == 0 ? amberBash : stoneShell;
-        return new MonsterMoveStateMachine([amberBash, stoneShell], initial);
+        return new MonsterMoveStateMachine([amberBash, stoneShell, splitState], initial);
     }
 
     private async Task AmberBashMove(IReadOnlyList<Creature> targets)

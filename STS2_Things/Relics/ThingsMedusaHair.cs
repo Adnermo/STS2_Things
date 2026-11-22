@@ -43,6 +43,7 @@ public sealed class ThingsMedusaHair : ThingsRelicModel
             var stoneArmor = combatState.CreateCard<StoneArmor>(Owner);
             stoneArmor.EnergyCost.SetThisCombat(0);
             stoneArmor.UpgradeInternal();
+            stoneArmor.FinalizeUpgradeInternal();
             await CardPileCmd.AddGeneratedCardToCombat(stoneArmor, PileType.Hand, Owner);
 
             // 0费带消耗的巨石+
@@ -50,6 +51,7 @@ public sealed class ThingsMedusaHair : ThingsRelicModel
             giantRock.EnergyCost.SetThisCombat(0);
             giantRock.AddKeyword(CardKeyword.Exhaust);
             giantRock.UpgradeInternal();
+            giantRock.FinalizeUpgradeInternal();
             await CardPileCmd.AddGeneratedCardToCombat(giantRock, PileType.Hand, Owner);
         }
     }

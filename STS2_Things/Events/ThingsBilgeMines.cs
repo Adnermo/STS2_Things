@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using STS2_Things.Core.Models;
@@ -35,6 +36,7 @@ public sealed class ThingsBilgeMines : ThingsEventModel
     private bool _settling;
     private ThingsBilgeSweepOutcome? _bufferedRemoteOutcome;
     private TaskCompletionSource<ThingsBilgeSweepOutcome>? _remoteOutcomeWaiter;
+    private Action? _remoteWaiterCancelRegistration;
 
     /// <summary>
     /// Optional driver used exclusively by headless probes/tests when NOverlayStack is absent.
@@ -49,7 +51,14 @@ public sealed class ThingsBilgeMines : ThingsEventModel
         _settling = false;
         _bufferedRemoteOutcome = null;
         _remoteOutcomeWaiter = null;
+        _remoteWaiterCancelRegistration = null;
         MinigameTestDriver = null;
+    }
+
+    protected override void OnEventFinished()
+    {
+        base.OnEventFinished();
+        CancelPendingRemoteWaiter();
     }
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
@@ -108,12 +117,23 @@ public sealed class ThingsBilgeMines : ThingsEventModel
 
     internal void ReceiveRemoteOutcome(ThingsBilgeSweepOutcome outcome)
     {
-        if (_remoteOutcomeWaiter != null)
-        {
-            _remoteOutcomeWaiter.TrySetResult(outcome);
+        TaskCompletionSource<ThingsBilgeSweepOutcome>? waiter = _remoteOutcomeWaiter;
+        _remoteOutcomeWaiter = null;
+        if (waiter != null && waiter.TrySetResult(outcome))
             return;
-        }
         _bufferedRemoteOutcome = outcome;
+    }
+
+    private void CancelPendingRemoteWaiter()
+    {
+        Action? cancel = _remoteWaiterCancelRegistration;
+        _remoteWaiterCancelRegistration = null;
+        if (cancel != null)
+            ThingsEventMinigameSync.UnregisterRemoteWaiter(cancel);
+
+        TaskCompletionSource<ThingsBilgeSweepOutcome>? waiter = _remoteOutcomeWaiter;
+        _remoteOutcomeWaiter = null;
+        waiter?.TrySetCanceled();
     }
 
     private Task SweepFreeAsync() => RunSweepOptionAsync(FreeProbes, paid: false);
@@ -140,7 +160,9 @@ public sealed class ThingsBilgeMines : ThingsEventModel
         ThingsBilgeSweepOutcome outcome;
         if (LocalContext.IsMe(player))
         {
-            var minigame = new BilgeSweepMinigame(player, Rng, probes);
+            // Use an isolated derived RNG for local-only board generation so EventModel.Rng
+            // is never mutated out of sync with remote peers.
+            var minigame = new BilgeSweepMinigame(player, CreateLocalMinigameRng(player, probes), probes);
             NBilgeSweepScreen? screen = null;
             try
             {
@@ -161,7 +183,7 @@ public sealed class ThingsBilgeMines : ThingsEventModel
                     outcome = minigame.BuildOutcome();
                 }
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
                 return;
             }
@@ -171,6 +193,9 @@ public sealed class ThingsBilgeMines : ThingsEventModel
                     NOverlayStack.Instance.Remove(screen);
             }
 
+            if (!ThingsEventMinigameSync.IsRunActive)
+                return;
+
             ThingsEventMinigameSync.SendBilgeSweepResult(outcome);
         }
         else
@@ -179,25 +204,51 @@ public sealed class ThingsBilgeMines : ThingsEventModel
             {
                 outcome = await WaitForRemoteOutcomeAsync();
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
                 return;
             }
+
+            if (!ThingsEventMinigameSync.IsRunActive)
+                return;
         }
 
         await ApplyOutcomeAsync(player, outcome);
     }
 
-    private Task<ThingsBilgeSweepOutcome> WaitForRemoteOutcomeAsync()
+    private async Task<ThingsBilgeSweepOutcome> WaitForRemoteOutcomeAsync()
     {
         if (_bufferedRemoteOutcome != null)
         {
             ThingsBilgeSweepOutcome buffered = _bufferedRemoteOutcome;
             _bufferedRemoteOutcome = null;
-            return Task.FromResult(buffered);
+            return buffered;
         }
-        _remoteOutcomeWaiter = new TaskCompletionSource<ThingsBilgeSweepOutcome>();
-        return _remoteOutcomeWaiter.Task;
+
+        var waiter = new TaskCompletionSource<ThingsBilgeSweepOutcome>();
+        _remoteOutcomeWaiter = waiter;
+        Action cancel = () =>
+        {
+            if (ReferenceEquals(_remoteOutcomeWaiter, waiter))
+                _remoteOutcomeWaiter = null;
+            waiter.TrySetCanceled();
+        };
+        _remoteWaiterCancelRegistration = cancel;
+        ThingsEventMinigameSync.RegisterRemoteWaiter(EventOwner.NetId, cancel);
+        try
+        {
+            return await waiter.Task;
+        }
+        finally
+        {
+            if (ReferenceEquals(_remoteOutcomeWaiter, waiter))
+                _remoteOutcomeWaiter = null;
+            if (ReferenceEquals(_remoteWaiterCancelRegistration, cancel))
+            {
+                _remoteWaiterCancelRegistration = null;
+                ThingsEventMinigameSync.UnregisterRemoteWaiter(cancel);
+            }
+        }
     }
 
     internal async Task ApplyOutcomeAsync(Player player, ThingsBilgeSweepOutcome outcome)
@@ -258,6 +309,29 @@ public sealed class ThingsBilgeMines : ThingsEventModel
             return;
         await PlayerCmd.GainGold(EdgeSkimGold, EventOwner);
         Finish("SKIM_EDGE.description");
+    }
+
+    private static Rng CreateLocalMinigameRng(Player player, int probes)
+    {
+        IRunState runState = player.RunState;
+        unchecked
+        {
+            ulong h = 14695981039346656037UL;
+            string seedStr = runState.Rng.StringSeed ?? "things_bilge_mines";
+            foreach (char ch in seedStr)
+            {
+                h ^= ch;
+                h *= 1099511628211UL;
+            }
+            h ^= (ulong)(uint)runState.TotalFloor * 7919UL;
+            h *= 1099511628211UL;
+            h ^= (ulong)(uint)runState.CurrentActIndex * 313UL;
+            h *= 1099511628211UL;
+            h ^= player.NetId;
+            h *= 1099511628211UL;
+            h ^= (ulong)(uint)probes * 131UL;
+            return new Rng(h == 0UL ? 1337UL : h, "things_bilge_mines");
+        }
     }
 
     private void Finish(string pageSuffix)

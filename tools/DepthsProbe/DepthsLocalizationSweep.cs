@@ -173,6 +173,10 @@ public partial class DepthsProbeNode
                     "THINGS_TOWER_PIVOT_POWER.activeCycleDescription",
                     "THINGS_TOWER_PIVOT_POWER.activeComboDescription",
                     "THINGS_BASTION_SEAL_POWER.boltedDescription",
+                    "THINGS_CHROMATIC_FISSION_POWER.largeDescription",
+                    "THINGS_CHROMATIC_FISSION_POWER.mediumDescription",
+                    "THINGS_CHROMATIC_FISSION_POWER.pendingSplitDescription",
+                    "THINGS_CHROMATIC_FISSION_POWER.pendingMediumSplitDescription",
                 })
                 {
                     Assert(LocString.Exists("powers", extraKey), $"Missing power localization key {extraKey} ({lang}).");
@@ -184,6 +188,10 @@ public partial class DepthsProbeNode
                     loc.Add("NextFace", "TestFace");
                     loc.Add("EntryBlock", 14);
                     loc.Add("VulnerableTurns", 2);
+                    loc.Add("ExcessThreshold", 5);
+                    loc.Add("InheritedHp", 32);
+                    loc.Add("Child1", "TestChild1");
+                    loc.Add("Child2", "TestChild2");
                     AssertLocClean(loc.GetFormattedText(), $"Power.ExtraKey:{extraKey} ({lang})");
                 }
 

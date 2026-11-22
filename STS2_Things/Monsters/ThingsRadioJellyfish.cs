@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.ValueProps;
+using STS2_Things.Platform;
 using STS2_Things.Powers;
 using STS2_Things.Visuals;
 using static STS2_Things.Platform.Sts2VersionSeam;
@@ -161,12 +162,13 @@ public sealed class ThingsRadioJellyfish : ThingsSpineMonster
                 var channel = program.Channel(beat);
                 if (channel.Skills > 0)
                 {
+                    int effectiveSkills = ComputeEffectiveSkillTriggers(channel.Skills);
                     SfxCmd.Play(CastSfx);
                     NRadioWaveVfx.Shield(Creature);
-                    await CreatureCmd.GainBlock(Creature, ShieldPerSkill * channel.Skills, ValueProp.Unpowered, null);
+                    await CreatureCmd.GainBlock(Creature, ShieldPerSkill * effectiveSkills, ValueProp.Unpowered, null);
                 }
                 if (!CanContinue) return;
-                if (channel.Attacks > 0) await Echo(false);
+                if (channel.HasAttack) await Echo(false);
             }
             await WaitForPose(animation, 1.55f, .55f);
             if (!CanContinue) return;
@@ -180,6 +182,18 @@ public sealed class ThingsRadioJellyfish : ThingsSpineMonster
             ActiveProgram = null;
             Creature.GetPower<ThingsRadioReceptionPower>()?.PlaybackFinished();
         }
+    }
+
+    private int ComputeEffectiveSkillTriggers(int skillCount)
+    {
+        if (!MultiplayerCompat.IsExtendedParty(CombatState))
+            return skillCount;
+
+        int rawPlayers = MultiplayerCompat.GetRawPlayerCount(CombatState);
+        int effectivePlayers = MultiplayerCompat.GetEffectivePlayerCount(CombatState);
+        int normalized = Math.Max(1, (skillCount * effectivePlayers + rawPlayers - 1) / rawPlayers);
+        int cap = Math.Max(MultiplayerCompat.VanillaMaxPlayers, effectivePlayers);
+        return Math.Min(normalized, cap);
     }
 
     private bool CanContinue => Creature.IsAlive && !CombatManager.Instance.IsOverOrEnding;

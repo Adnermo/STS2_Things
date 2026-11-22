@@ -419,8 +419,21 @@ public sealed class BilgeSweepMinigame
 
     public void ForceEnd()
     {
-        if (!_completion.Task.IsCompleted)
-            _completion.TrySetCanceled();
+        if (_completion.Task.IsCompleted)
+            return;
+
+        if (ThingsEventMinigameSync.IsRunActive)
+        {
+            if (!IsComplete)
+            {
+                IsComplete = true;
+                CashedOut = true;
+            }
+            _completion.TrySetResult(BuildOutcome());
+            return;
+        }
+
+        _completion.TrySetCanceled();
     }
 
     public ThingsBilgeSweepOutcome BuildOutcome() => new(

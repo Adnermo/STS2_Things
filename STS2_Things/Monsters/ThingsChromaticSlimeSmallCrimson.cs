@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
+using STS2_Things.Powers;
 
 namespace STS2_Things.Monsters;
 
@@ -16,8 +17,10 @@ namespace STS2_Things.Monsters;
 /// </summary>
 public sealed class ThingsChromaticSlimeSmallCrimson : ThingsChromaticSlimeSmallBase
 {
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 10, 9);
-    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 12, 11);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 20, 18);
+    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 24, 22);
+
+    public override ChromaticStrain? OwnStrain => ChromaticStrain.Crimson;
 
     protected override string? PreferredSkinName => "crimson";
     protected override float? VariantBoundsTop => -142f;
@@ -26,7 +29,7 @@ public sealed class ThingsChromaticSlimeSmallCrimson : ThingsChromaticSlimeSmall
 
     protected override string? PreferredAttackAnimation => "attack_crimson";
 
-    private int PrickDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 4, 3);
+    private int PrickDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
     {

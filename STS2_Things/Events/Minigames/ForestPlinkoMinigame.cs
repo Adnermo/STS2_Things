@@ -485,7 +485,13 @@ public sealed class ForestPlinkoMinigame
 
     public void ForceEnd()
     {
-        _completion.TrySetResult(BuildOutcome());
+        if (_completion.Task.IsCompleted)
+            return;
+
+        if (ThingsEventMinigameSync.IsRunActive)
+            _completion.TrySetResult(BuildOutcome());
+        else
+            _completion.TrySetCanceled();
     }
 
     public ThingsForestPlinkoOutcome BuildOutcome() => new(

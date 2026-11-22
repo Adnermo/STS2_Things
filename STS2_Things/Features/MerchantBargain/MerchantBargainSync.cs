@@ -59,8 +59,14 @@ internal static class MerchantBargainSync
                 return;
             var entry = synchronizer.GetInventoryFor(player).AllEntries
                 .FirstOrDefault(e => e.Id == message.EntryId);
-            if (entry is null || entry is BlitzMerchantEntry || !entry.IsStocked || message.Price < 0 ||
-                message.Price > entry.Cost || message.Price > player.Gold)
+            if (entry is null || entry is BlitzMerchantEntry)
+                return;
+            if (message.Price < 0)
+            {
+                MerchantBargainManager.ClearPriceOverride(entry);
+                return;
+            }
+            if (!entry.IsStocked || message.Price > entry.Cost || message.Price > player.Gold)
                 return;
             MerchantBargainManager.SetPriceOverride(entry, message.Price);
         }
@@ -92,6 +98,18 @@ internal static class MerchantBargainSync
             Location = state.Buffer.CurrentLocation,
             EntryId = entry.Id.Value,
             Price = price
+        });
+    }
+
+    internal static void ClearAnnouncedPrice(MerchantSynchronizer synchronizer, MerchantEntry entry)
+    {
+        if (!entry.Id.HasValue || !States.TryGetValue(synchronizer, out var state))
+            return;
+        state.Service.SendMessage(new ThingsMerchantBargainPriceMessage
+        {
+            Location = state.Buffer.CurrentLocation,
+            EntryId = entry.Id.Value,
+            Price = -1
         });
     }
 }

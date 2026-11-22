@@ -7,17 +7,20 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
+using STS2_Things.Powers;
 
 namespace STS2_Things.Monsters;
 
 /// <summary>
-/// Medium Crimson Chromatic Slime (spawned on Overkill Attack &gt;= 5). Aggressive glass-cannon
-/// that multi-strikes and escalates Strength, splitting into 2 Smalls on death.
+/// Medium Crimson Chromatic Slime. Aggressive glass-cannon that multi-strikes and escalates Strength,
+/// interrupting into a half-HP split into 2 Small Crimson slimes inheriting its remaining HP.
 /// </summary>
 public sealed class ThingsChromaticSlimeMediumCrimson : ThingsChromaticSlimeMediumBase
 {
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 17, 16);
-    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 20, 18);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 46, 42);
+    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 52, 48);
+
+    public override ChromaticStrain? OwnStrain => ChromaticStrain.Crimson;
 
     protected override string? PreferredSkinName => "crimson";
     protected override float? VariantBoundsTop => -198f;
@@ -27,7 +30,7 @@ public sealed class ThingsChromaticSlimeMediumCrimson : ThingsChromaticSlimeMedi
     protected override string? PreferredAttackAnimation => "attack_crimson";
     protected override string? PreferredPowerUpAnimation => "power_crimson";
 
-    private int RendDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 4, 3);
+    private int RendDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
     private const int RendHits = 2;
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
@@ -40,11 +43,12 @@ public sealed class ThingsChromaticSlimeMediumCrimson : ThingsChromaticSlimeMedi
             "CRYSTAL_SURGE_MOVE",
             CrystalSurgeMove,
             new BuffIntent());
+        MoveState splitState = CreateSplitMoveState();
 
         crimsonRend.FollowUpState = crystalSurge;
         crystalSurge.FollowUpState = crimsonRend;
         var initial = StartMovePhase % 2 == 0 ? crimsonRend : crystalSurge;
-        return new MonsterMoveStateMachine([crimsonRend, crystalSurge], initial);
+        return new MonsterMoveStateMachine([crimsonRend, crystalSurge, splitState], initial);
     }
 
     private async Task CrimsonRendMove(IReadOnlyList<Creature> targets)

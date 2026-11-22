@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rooms;
+using MegaCrit.Sts2.Core.Runs;
 using STS2_Things.Config;
 using STS2_Things.Platform;
 
@@ -39,7 +40,19 @@ internal static class MerchantBargainManager
     {
         result = Task.FromResult(false);
         if (!ThingsModConfig.IsEnabled(ThingsModConfig.FeatureMerchantBargainEnabled) ||
-            ignoreCost || inventory is null || entry is MerchantCardRemovalEntry ||
+            ignoreCost || inventory is null)
+        {
+            return false;
+        }
+
+        if (InventoryStates.TryGetValue(inventory, out InventoryState? activeState) &&
+            activeState.Session.FightInProgress &&
+            !TryGetPriceOverride(entry, out _))
+        {
+            return true;
+        }
+
+        if (entry is MerchantCardRemovalEntry ||
 #if STS2_V113_1
             entry is BlitzMerchantEntry ||
 #endif
@@ -103,6 +116,12 @@ internal static class MerchantBargainManager
         return false;
     }
 
+    private static bool IsMerchantContextAlive(NMerchantInventory merchantUi, Player player) =>
+        GodotObject.IsInstanceValid(merchantUi) &&
+        merchantUi.IsInsideTree() &&
+        RunManager.Instance is { IsInProgress: true, IsCleaningUp: false } &&
+        player.RunState.CurrentRoom is MerchantRoom;
+
     private static async Task<bool> ResolveFightAndPurchaseAsync(
         MerchantEntry entry,
         MerchantInventory inventory,
@@ -114,14 +133,30 @@ internal static class MerchantBargainManager
         try
         {
             Player player = inventory.Player;
+            if (!IsMerchantContextAlive(merchantUi, player) || merchantUi.GetTree() is not { } tree)
+            {
+                state.Session.ResetFightAfterError(entry);
+                return false;
+            }
+
             merchantUi.MerchantHand.StopPointing(0f);
-            await merchantUi.GetTree()
+            await tree
                 .CreateTimer(0.7)
                 .AwaitSignal(SceneTreeTimer.SignalName.Timeout, merchantUi);
 
+            if (!IsMerchantContextAlive(merchantUi, player))
+            {
+                state.Session.ResetFightAfterError(entry);
+                return false;
+            }
+
             overlay = NMerchantBargainRps.Create(player, merchantUi.GetViewportRect().Size);
             merchantUi.AddChild(overlay);
-            await overlay.PlayEntrance();
+            if (!await overlay.PlayEntrance() || !IsMerchantContextAlive(merchantUi, player))
+            {
+                state.Session.ResetFightAfterError(entry);
+                return false;
+            }
 
             Rng rng = CreateFightRng(player);
             MerchantBargainRoundResult roundResult;
@@ -129,18 +164,34 @@ internal static class MerchantBargainManager
             {
                 RelicPickingFightMove playerMove = (RelicPickingFightMove)rng.NextInt(3);
                 RelicPickingFightMove merchantMove = (RelicPickingFightMove)rng.NextInt(3);
-                await overlay.PlayRound(playerMove, merchantMove);
+                if (!await overlay.PlayRound(playerMove, merchantMove) || !IsMerchantContextAlive(merchantUi, player))
+                {
+                    state.Session.ResetFightAfterError(entry);
+                    return false;
+                }
                 roundResult = MerchantBargainRules.EvaluateRound(playerMove, merchantMove);
                 if (roundResult == MerchantBargainRoundResult.Tie)
                 {
-                    await overlay.PlayTie();
+                    if (!await overlay.PlayTie() || !IsMerchantContextAlive(merchantUi, player))
+                    {
+                        state.Session.ResetFightAfterError(entry);
+                        return false;
+                    }
                 }
             }
             while (roundResult == MerchantBargainRoundResult.Tie);
 
             bool playerWon = roundResult == MerchantBargainRoundResult.PlayerWon;
-            await overlay.PlayOutcome(playerWon);
-            await overlay.PlayExit();
+            if (!await overlay.PlayOutcome(playerWon) || !IsMerchantContextAlive(merchantUi, player))
+            {
+                state.Session.ResetFightAfterError(entry);
+                return false;
+            }
+            if (!await overlay.PlayExit() || !IsMerchantContextAlive(merchantUi, player))
+            {
+                state.Session.ResetFightAfterError(entry);
+                return false;
+            }
             if (!playerWon)
             {
                 state.Session.MarkFightLost();
@@ -160,13 +211,19 @@ internal static class MerchantBargainManager
         {
             state.Session.ResetFightAfterError(entry);
             Log.Error($"[STS2_Things] Merchant bargain fight failed: {exception}");
-            entry.InvokePurchaseFailed(PurchaseStatus.FailureGold);
+            if (IsMerchantContextAlive(merchantUi, inventory.Player))
+            {
+                entry.InvokePurchaseFailed(PurchaseStatus.FailureGold);
+            }
             return false;
         }
         finally
         {
             state.Session.EndFight();
-            overlay?.QueueFree();
+            if (overlay != null && GodotObject.IsInstanceValid(overlay))
+            {
+                overlay.QueueFree();
+            }
             if (GodotObject.IsInstanceValid(merchantUi) && merchantUi.IsInsideTree())
             {
                 merchantUi.UnblockInput();
@@ -185,9 +242,27 @@ internal static class MerchantBargainManager
         try
         {
 #if STS2_V113_1
-            var synchronizer = MegaCrit.Sts2.Core.Runs.RunManager.Instance.MerchantSynchronizer;
-            MerchantBargainSync.AnnouncePrice(synchronizer, entry, negotiatedPrice);
-            success = await synchronizer.PurchaseLocalEntry(entry);
+            var synchronizer = RunManager.Instance.MerchantSynchronizer;
+            bool announced = false;
+            try
+            {
+                MerchantBargainSync.AnnouncePrice(synchronizer, entry, negotiatedPrice);
+                announced = true;
+                success = await synchronizer.PurchaseLocalEntry(entry);
+                if (!success)
+                {
+                    MerchantBargainSync.ClearAnnouncedPrice(synchronizer, entry);
+                    announced = false;
+                }
+            }
+            catch (Exception)
+            {
+                if (announced)
+                {
+                    MerchantBargainSync.ClearAnnouncedPrice(synchronizer, entry);
+                }
+                throw;
+            }
 #else
             success = await entry.OnTryPurchaseWrapper(inventory);
 #endif

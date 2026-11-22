@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import math
+import shutil
 import wave
 from pathlib import Path
 
@@ -12,7 +13,10 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE_RATE = 48_000
-MUSIC_DURATION = 150.0
+MUSIC_MASTER = ROOT / "source_assets/music/gravetide_slug/gravetide_slug_boss_master.wav"
+MUSIC_START_S = 0.35
+MUSIC_END_S = 144.60
+MUSIC_TAIL_FOLD_S = 1.60
 
 
 def rms(samples: np.ndarray) -> float:
@@ -212,97 +216,44 @@ def bone_bell(frequency: float, duration: float, phase: float) -> np.ndarray:
     return (tone * attack * decay).astype(np.float32)
 
 
-def build_music(duration: float = MUSIC_DURATION) -> np.ndarray:
-    length = round(duration * SAMPLE_RATE)
-    t = np.arange(length, dtype=np.float64) / SAMPLE_RATE
-    mix = np.zeros((length, 2), dtype=np.float32)
+def build_mastered_boss_music() -> np.ndarray:
+    MUSIC_MASTER.parent.mkdir(parents=True, exist_ok=True)
+    if not MUSIC_MASTER.is_file():
+        candidate = Path.home() / "Downloads" / "Dockyard Rot.wav"
+        if candidate.is_file():
+            shutil.copy2(candidate, MUSIC_MASTER)
+    if not MUSIC_MASTER.is_file():
+        raise FileNotFoundError(f"Gravetide Boss BGM master WAV not found: {MUSIC_MASTER}")
 
-    for frequency, amplitude, pan, phase, lfo_period in (
-        (55.0, 0.004, -0.25, 0.2, 50.0),
-        (73.42, 0.007, 0.18, 1.7, 30.0),
-        (110.0, 0.012, -0.12, 2.4, 25.0),
-        (146.84, 0.012, 0.31, 0.8, 50.0),
-        (220.0, 0.008, -0.37, 1.1, 75.0),
-    ):
-        hz = round(frequency * duration) / duration
-        motion = 0.72 + 0.28 * np.sin(2.0 * math.pi * t / lfo_period + phase)
-        wave = (
-            np.sin(2.0 * math.pi * hz * t + phase)
-            + 0.23 * np.sin(2.0 * math.pi * hz * 2.0 * t + phase * 1.7)
-            + 0.09 * np.sin(2.0 * math.pi * hz * 3.0 * t + phase * 2.1)
-        ) * amplitude * motion
-        mix[:, 0] += wave * math.sqrt((1.0 - pan) * 0.5)
-        mix[:, 1] += wave * math.sqrt((1.0 + pan) * 0.5)
-
-    chords = (
-        (110.00, 293.66, 880.00),
-        (116.54, 293.66, 932.32),
-        (98.00, 261.63, 783.99),
-        (110.00, 329.63, 880.00),
-        (87.31, 261.63, 698.46),
-        (98.00, 293.66, 783.99),
-        (110.00, 293.66, 1_046.50),
-        (82.41, 246.94, 659.26),
-        (98.00, 261.63, 880.00),
-        (110.00, 293.66, 880.00),
-    )
-    for chord_index, chord in enumerate(chords):
-        start = round(chord_index * 15.0 * SAMPLE_RATE)
-        for voice, frequency in enumerate(chord):
-            add_wrapped(
-                mix,
-                start - round(1.25 * SAMPLE_RATE),
-                pad_note(frequency, 17.5, phase=0.4 + voice * 1.3),
-                pan=(-0.46, 0.05, 0.42)[voice],
-                gain=(0.015, 0.055, 0.045)[voice],
+    with wave.open(str(MUSIC_MASTER), "rb") as source:
+        channels = source.getnchannels()
+        sampwidth = source.getsampwidth()
+        rate = source.getframerate()
+        nframes = source.getnframes()
+        if channels != 2 or sampwidth != 2 or rate != SAMPLE_RATE:
+            raise RuntimeError(
+                f"Expected 48kHz stereo PCM16 WAV for {MUSIC_MASTER}, got ch={channels}, sw={sampwidth}, sr={rate}"
             )
+        pcm = np.frombuffer(source.readframes(nframes), dtype="<i2").reshape(-1, 2).astype(np.float64) / 32768.0
 
-    motif = (293.66, 349.23, 440.00, 392.00, 293.66, 261.63, 349.23, 220.00)
-    for index in range(30):
-        frequency = motif[index % len(motif)]
-        add_wrapped(
-            mix,
-            round((index * 5.0 + (2.5 if index % 4 == 3 else 0.0)) * SAMPLE_RATE),
-            bone_bell(frequency, 4.2, phase=0.19 * index),
-            pan=-0.55 + (index % 5) * 0.275,
-            gain=0.029 if index % 3 else 0.043,
-        )
+    s0 = int(round(MUSIC_START_S * SAMPLE_RATE))
+    s1 = int(round(MUSIC_END_S * SAMPLE_RATE))
+    nf = min(int(round(MUSIC_TAIL_FOLD_S * SAMPLE_RATE)), len(pcm) - s1)
+    if s0 < 0 or s1 > len(pcm) or s1 <= s0 + SAMPLE_RATE:
+        raise ValueError(f"Invalid trim window [{s0}, {s1}] for {MUSIC_MASTER} (len={len(pcm)})")
 
-    for index in range(60):
-        duration_seconds = 1.05
-        beat_t = np.arange(round(duration_seconds * SAMPLE_RATE), dtype=np.float32) / SAMPLE_RATE
-        drum = swept_sine(duration_seconds, 118.0, 54.0) * np.exp(-beat_t * 5.2)
-        skin = band_noise(len(drum), 540.0, 0.85, 8_000 + index)
-        drum += skin * np.exp(-beat_t * 8.0) * 0.23
-        add_wrapped(
-            mix,
-            round(index * 2.5 * SAMPLE_RATE),
-            drum,
-            pan=(-0.18 if index % 2 == 0 else 0.18),
-            gain=0.018 if index % 4 == 0 else 0.010,
-        )
-
-    tide_left = band_noise(length, 1_150.0, 0.82, 0x47524156)
-    tide_right = band_noise(length, 1_380.0, 0.78, 0x47524157)
-    tide_motion_left = 0.05 + 0.95 * (
-        0.5 + 0.5 * np.sin(2.0 * math.pi * t / 25.0)
-    ) ** 2
-    tide_motion_right = 0.05 + 0.95 * (
-        0.5 + 0.5 * np.sin(2.0 * math.pi * t / 30.0 + 1.4)
-    ) ** 2
-    mix[:, 0] += tide_left * tide_motion_left.astype(np.float32) * 0.065
-    mix[:, 1] += tide_right * tide_motion_right.astype(np.float32) * 0.065
-
-    dry = mix.copy()
-    mix[:, 0] += np.roll(dry[:, 0], round(0.173 * SAMPLE_RATE)) * 0.13
-    mix[:, 1] += np.roll(dry[:, 1], round(0.241 * SAMPLE_RATE)) * 0.13
-    mix[:, 0] += np.roll(dry[:, 0], round(0.619 * SAMPLE_RATE)) * 0.07
-    mix[:, 1] += np.roll(dry[:, 1], round(0.733 * SAMPLE_RATE)) * 0.07
-    dramatic_arc = 0.28 + 0.72 * (
-        0.5 + 0.5 * np.sin(2.0 * math.pi * t / 75.0 - math.pi / 2.0)
-    )
-    mix *= dramatic_arc.astype(np.float32)[:, np.newaxis]
-    return mix
+    # Trim 350ms leading digital pad and fold the 1.60s echoing dark dockyard tail smoothly
+    # into the opening subterranean low-brass swell for a continuous zero-gap loop.
+    loop = pcm[s0:s1].copy()
+    loop -= np.mean(loop, axis=0, keepdims=True)
+    r0 = int(round(0.006 * SAMPLE_RATE))
+    loop[:r0] *= (0.5 - 0.5 * np.cos(np.linspace(0.0, math.pi, r0, dtype=np.float64)))[:, np.newaxis]
+    if nf > 0:
+        tail = pcm[s1 : s1 + nf].copy()
+        tail -= np.mean(tail, axis=0, keepdims=True)
+        t = np.linspace(0.0, 1.0, nf, endpoint=False, dtype=np.float64)[:, np.newaxis]
+        loop[:nf] += tail * (0.5 + 0.5 * np.cos(math.pi * t))
+    return loop
 
 
 def main() -> int:
@@ -352,9 +303,9 @@ def main() -> int:
 
     write_wav(
         music / "gravetide_slug_boss_theme.wav",
-        build_music(),
-        target_rms_dbfs=-23.5,
-        peak_dbfs=-3.0,
+        build_mastered_boss_music(),
+        target_rms_dbfs=-20.0,
+        peak_dbfs=-2.0,
     )
     print("GRAVETIDE_AUDIO_ASSET_BUILD_PASS")
     return 0

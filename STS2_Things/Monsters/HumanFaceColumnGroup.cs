@@ -22,6 +22,7 @@ internal sealed class HumanFaceColumnGroup
     private bool _resolving;
     public int Remaining { get; private set; } = ThingsHumanFaceColumn.InitialLayers;
     public int Reserve { get; private set; } = ThingsHumanFaceColumn.InitialLayers - 3;
+    public bool ShouldPreventCombatEnd => Reserve > 0 || _resolving;
 
     private void InvalidateLivingCache() => _livingCache = null;
 

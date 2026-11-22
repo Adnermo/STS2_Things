@@ -44,6 +44,7 @@ public sealed class ThingsHumanFaceColumn : ThingsSpineMonster
     public override int MaxInitialHp => MinInitialHp + 6;
     public override float HpBarSizeReduction => 24f;
     public override bool CanChangeScale => false;
+    public override bool ShouldStopCombatFromEnding() => _group?.ShouldPreventCombatEnd == true;
     // Budget for the complete column: at most three Knock attacks per turn (33 A0 / 36 A9+).
     private int KnockDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 11);
     private int RattleDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
