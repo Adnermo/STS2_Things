@@ -58,26 +58,26 @@ public partial class DepthsProbeNode
                     "Two confirmations deduct two layers and add exactly two replacements.");
                 DeactivateSyntheticCombat();
             }
-            // Breaking only a middle disc with moderate damage (redirected half does not kill bottom) causes no bottom-break stun.
+            // Breaking only a middle disc with moderate damage (redirected 25% does not kill bottom) causes no bottom-break stun.
             b=await ColumnBattle(count,asc);original=Discs(b);bottom=original[0];middle=original[1];top=original[2];
-            middle.Creature.SetCurrentHpInternal(10);
+            middle.Creature.SetCurrentHpInternal(15);
             int bottomHpBeforeMiddleBreak=bottom.Creature.CurrentHp;
             await CreatureCmd.Damage(Choice,middle.Creature,20,ValueProp.Unpowered,b.Players[0].Creature);
             alive=Discs(b);
             Assert(alive[0]==bottom && alive[1]==top && alive.All(c=>!c.IsDizzy),
                 "Breaking only a middle disc causes no bottom-break stun.");
-            Assert(bottomHpBeforeMiddleBreak-bottom.Creature.CurrentHp==10,
-                "Middle break still redirects its negated 50% (10) onto the surviving bottom disc.");
+            Assert(bottomHpBeforeMiddleBreak-bottom.Creature.CurrentHp==5,
+                "Middle break still redirects its negated 25% (5) onto the surviving bottom disc.");
             DeactivateSyntheticCombat();
 
-            // Massive overkill on middle (99999) redirects 50000 to bottom and shatters both simultaneously without transferring stun to top.
+            // Massive overkill on middle (99999) redirects 25000 to bottom and shatters both simultaneously without transferring stun to top.
             b=await ColumnBattle(count,asc);original=Discs(b);top=original[2];
             await HitColumn(b,original[1]);alive=Discs(b);
             Assert(alive.Length==3 && alive[0]==top && alive.All(c=>!c.IsDizzy) && alive.All(c=>c.RemainingLayers==4),
                 "Overkilling middle redirects lethal damage to bottom and resolves both breaks cleanly without stunning top.");
             DeactivateSyntheticCombat();
 
-            // Verify upper/middle negated damage redirection (single-target, odd split, block, unblockable, AoE, lethal AoE).
+            // Verify upper (50% DR) / middle (25% DR) negated damage redirection (single-target, odd split, block, unblockable, AoE, lethal AoE).
             b=await ColumnBattle(count,asc);original=Discs(b);bottom=original[0];middle=original[1];top=original[2];
             Assert(ModelDb.Encounter<ThingsHumanFaceColumnEncounter>().RoomType==MegaCrit.Sts2.Core.Rooms.RoomType.Elite,
                 "Human-Faced Column encounter is classified as an Elite.");
@@ -85,58 +85,62 @@ public partial class DepthsProbeNode
             int topHp=top.Creature.CurrentHp;
             int bottomHp=bottom.Creature.CurrentHp;
             await CreatureCmd.Damage(Choice,top.Creature,10,ValueProp.Move,b.Players[0].Creature);
-            Assert(top.Creature.CurrentHp==topHp,"Top immunity retained.");
-            Assert(bottomHp-bottom.Creature.CurrentHp==10,"Top redirects 100% of negated damage (10) to bottom.");
+            Assert(topHp-top.Creature.CurrentHp==5,"Top 50% damage reduction retained (10 -> 5).");
+            Assert(bottomHp-bottom.Creature.CurrentHp==5,"Top redirects 50% negated damage (5) to bottom.");
 
             int midHp=middle.Creature.CurrentHp;
             bottomHp=bottom.Creature.CurrentHp;
-            await CreatureCmd.Damage(Choice,middle.Creature,10,ValueProp.Move,b.Players[0].Creature);
-            Assert(midHp-middle.Creature.CurrentHp==5,"Middle half damage retained.");
-            Assert(bottomHp-bottom.Creature.CurrentHp==5,"Middle redirects its negated 50% (5) to bottom.");
+            await CreatureCmd.Damage(Choice,middle.Creature,12,ValueProp.Move,b.Players[0].Creature);
+            Assert(midHp-middle.Creature.CurrentHp==9,"Middle 25% damage reduction retained (12 -> 9).");
+            Assert(bottomHp-bottom.Creature.CurrentHp==3,"Middle redirects its negated 25% (3) to bottom.");
 
-            // Odd damage (9) on middle: middle takes 4, bottom receives the negated 5 (4 + 5 = 9, zero rounding loss).
+            // Odd damage (9) on middle: middle takes floor(9*0.75)=6, bottom receives the negated 3 (6 + 3 = 9, zero rounding loss).
             bottom.Creature.SetCurrentHpInternal(bottom.Creature.MaxHp);
             midHp=middle.Creature.CurrentHp;
             bottomHp=bottom.Creature.CurrentHp;
             await CreatureCmd.Damage(Choice,middle.Creature,9,ValueProp.Move,b.Players[0].Creature);
-            Assert(midHp-middle.Creature.CurrentHp==4 && bottomHp-bottom.Creature.CurrentHp==5,
-                "Odd damage (9) on middle splits cleanly as 4 to middle + 5 negated to bottom.");
+            Assert(midHp-middle.Creature.CurrentHp==6 && bottomHp-bottom.Creature.CurrentHp==3,
+                "Odd damage (9) on middle splits cleanly as 6 to middle + 3 negated to bottom.");
 
-            // Top Block is untouched by immune hits; redirected damage respects Bottom Block unless Unblockable.
+            // Top Block absorbs Top's 50% share; redirected 50% respects Bottom Block unless Unblockable.
             await CreatureCmd.GainBlock(top.Creature,10,ValueProp.Move,null);
             await CreatureCmd.GainBlock(bottom.Creature,6,ValueProp.Move,null);
             int topBlockBefore=top.Creature.Block;
             int bottomBlockBefore=bottom.Creature.Block;
+            int expectedHalf=bottomBlockBefore+4;
+            topHp=top.Creature.CurrentHp;
             bottomHp=bottom.Creature.CurrentHp;
-            await CreatureCmd.Damage(Choice,top.Creature,bottomBlockBefore+4,ValueProp.Move,b.Players[0].Creature);
-            Assert(top.Creature.Block==topBlockBefore,"Top Block is untouched when Top negates damage.");
+            await CreatureCmd.Damage(Choice,top.Creature,expectedHalf*2,ValueProp.Move,b.Players[0].Creature);
+            Assert(top.Creature.Block==Math.Max(0,topBlockBefore-expectedHalf) && top.Creature.CurrentHp==topHp,"Top Block absorbs Top's 50% share.");
             Assert(bottom.Creature.Block==0 && bottomHp-bottom.Creature.CurrentHp==4,
-                "Redirected blockable damage respects Bottom Block (breaks Bottom Block and deals 4 excess HP).");
+                "Redirected blockable 50% respects Bottom Block (breaks Bottom Block and deals 4 excess HP).");
 
-            // Unblockable damage (e.g. Poison) on Top redirects as Unblockable onto Bottom.
+            // Unblockable damage (e.g. Poison) on Top splits 50/50 and redirects as Unblockable onto Bottom.
             await CreatureCmd.GainBlock(bottom.Creature,10,ValueProp.Move,null);
             bottomBlockBefore=bottom.Creature.Block;
+            topHp=top.Creature.CurrentHp;
             bottomHp=bottom.Creature.CurrentHp;
-            await CreatureCmd.Damage(Choice,top.Creature,7,ValueProp.Unblockable|ValueProp.Unpowered,null,null,null);
-            Assert(bottom.Creature.Block==bottomBlockBefore && bottomHp-bottom.Creature.CurrentHp==7,
-                "Unblockable damage negated by Top redirects as Unblockable onto Bottom.");
+            await CreatureCmd.Damage(Choice,top.Creature,8,ValueProp.Unblockable|ValueProp.Unpowered,null,null,null);
+            Assert(topHp-top.Creature.CurrentHp==4,"Top takes 50% of unblockable damage (8 -> 4).");
+            Assert(bottom.Creature.Block==bottomBlockBefore && bottomHp-bottom.Creature.CurrentHp==4,
+                "Unblockable damage negated by Top (4) redirects as Unblockable onto Bottom.");
 
-            // AoE (10 across [Top, Middle, Bottom]): Top=0, Middle=5, Bottom=10 + 10 + 5 = 25!
+            // AoE (10 across [Top, Middle, Bottom]): Top=5 (+5 redirect), Middle=7 (+3 redirect), Bottom=10 + 5 + 3 = 18!
             DeactivateSyntheticCombat();
             b=await ColumnBattle(count,asc);original=Discs(b);bottom=original[0];middle=original[1];top=original[2];
             topHp=top.Creature.CurrentHp;midHp=middle.Creature.CurrentHp;bottomHp=bottom.Creature.CurrentHp;
             await CreatureCmd.Damage(Choice,[top.Creature,middle.Creature,bottom.Creature],10,ValueProp.Move,b.Players[0].Creature);
-            Assert(top.Creature.CurrentHp==topHp && midHp-middle.Creature.CurrentHp==5 && bottomHp-bottom.Creature.CurrentHp==25,
-                $"AoE 10 deals 0 to top, 5 to middle, and 25 (10+10+5) to bottom; got top={topHp-top.Creature.CurrentHp}, mid={midHp-middle.Creature.CurrentHp}, bot={bottomHp-bottom.Creature.CurrentHp}.");
+            Assert(topHp-top.Creature.CurrentHp==5 && midHp-middle.Creature.CurrentHp==7 && bottomHp-bottom.Creature.CurrentHp==18,
+                $"AoE 10 deals 5 to top, 7 to middle, and 18 (10+5+3) to bottom; got top={topHp-top.Creature.CurrentHp}, mid={midHp-middle.Creature.CurrentHp}, bot={bottomHp-bottom.Creature.CurrentHp}.");
 
-            // Lethal AoE order-independence: [Top, Middle, Bottom] hit for 20 on 40 HP discs kills Bottom without Middle hurting itself.
+            // Lethal AoE order-independence: [Top, Middle, Bottom] hit for 24 on 40 HP discs deals 12 to top (+12), 18 to middle (+6), 42 to bottom -> kills Bottom cleanly without Middle hurting itself.
             DeactivateSyntheticCombat();
             b=await ColumnBattle(count,asc);original=Discs(b);bottom=original[0];middle=original[1];top=original[2];
             foreach(var d in original){d.Creature.SetMaxHpInternal(40);d.Creature.SetCurrentHpInternal(40);}
-            await CreatureCmd.Damage(Choice,[top.Creature,middle.Creature,bottom.Creature],20,ValueProp.Move,b.Players[0].Creature);
+            await CreatureCmd.Damage(Choice,[top.Creature,middle.Creature,bottom.Creature],24,ValueProp.Move,b.Players[0].Creature);
             alive=Discs(b);
-            Assert(alive[0]==middle && middle.Creature.CurrentHp==30 && middle.IsDizzy && alive.All(c=>c.RemainingLayers==5),
-                $"Lethal AoE breaks original bottom cleanly and leaves dropped middle at 30 HP stunned without self-damage (hp={middle.Creature.CurrentHp}).");
+            Assert(alive[0]==middle && middle.Creature.CurrentHp==22 && middle.IsDizzy && alive.All(c=>c.RemainingLayers==5),
+                $"Lethal AoE breaks original bottom cleanly and leaves dropped middle at 22 HP stunned without self-damage (hp={middle.Creature.CurrentHp}).");
             DeactivateSyntheticCombat();
 
             b=await ColumnBattle(count,asc);original=Discs(b);top=original[2];bottom=original[0];

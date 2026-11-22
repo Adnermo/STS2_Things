@@ -17,7 +17,7 @@ namespace STS2_Things.Powers;
 
 /// <summary>
 /// One native counter displays shared column layers and height-dependent protection.
-/// All damage negated by the top (100%) and middle (50%) layers is redirected to the bottom layer.
+/// All damage negated by the top (50%) and middle (25%) layers is redirected to the bottom layer.
 /// </summary>
 public sealed class ThingsHumanFaceColumnPower : ThingsPowerModel
 {
@@ -80,15 +80,7 @@ public sealed class ThingsHumanFaceColumnPower : ThingsPowerModel
     {
         if (target != Owner || IsBypassingReduction)
             return 1m;
-        return Level >= 2 ? 0m : Level == 1 ? .5m : 1m;
-    }
-
-    protected override decimal OnModifyDamageCap(
-        Creature? target, ValueProp props, Creature? dealer, CardModel? cardSource, CardPlay? cardPlay)
-    {
-        if (target != Owner || IsBypassingReduction)
-            return decimal.MaxValue;
-        return Level >= 2 ? 0m : decimal.MaxValue;
+        return Level >= 2 ? 0.5m : Level == 1 ? 0.75m : 1m;
     }
 
     public override Task BeforeDamageReceived(
@@ -119,24 +111,6 @@ public sealed class ThingsHumanFaceColumnPower : ThingsPowerModel
         data.PendingRedirects.Enqueue(entry);
         data.LastEnqueuedRedirect = entry;
         return Task.CompletedTask;
-    }
-
-    public override decimal ModifyHpLostAfterOsty(Creature target, decimal amount, ValueProp props,
-        Creature? dealer, CardModel? cardSource)
-    {
-        if (target != Owner || Level < 2)
-            return amount;
-
-        // If direct/unmodified HP loss reached AfterOsty without being negated in ModifyDamage,
-        // fold the prevented amount into the active redirect entry for this hit.
-        if (IsMutable && amount > 0m)
-        {
-            RedirectData data = GetInternalData<RedirectData>();
-            if (data.LastEnqueuedRedirect != null && data.LastEnqueuedRedirect.Amount <= 0m)
-                data.LastEnqueuedRedirect.Amount = decimal.Truncate(amount);
-        }
-
-        return 0m;
     }
 
     public override async Task AfterDamageGiven(

@@ -1911,6 +1911,25 @@ public partial class CaveGodProbeNode : Node
             DeactivateSyntheticCombat();
         }
 
-        GD.Print("PASS half-HP Phase 2 transition: 50% clamp, WaterfallGiant ∞ bar + ?, 0-damage lock, mid-grab release, arm-break upgrade & 113/122 restoration");
+        // Path D: DoomKill on Phase 1 Body both before and while already enrage-locked must never recurse in KillWithoutCheckingWinCondition
+        {
+            var s = Scenario();
+            await PowerCmd.Apply<DoomPower>(Choice, s.Body.Creature, s.Body.Creature.MaxHp + 50m, s.State.Players[0].Creature, null);
+            await DoomPower.DoomKill([s.Body.Creature]);
+            Assert(s.Body.Creature.IsAlive && s.Body.IsEnrageLocked && s.Body.Creature.CurrentHp == s.Body.Creature.MaxHp,
+                "Phase 1 DoomKill must enter enrage lock alive at MaxHp without recursion.");
+
+            // Trigger DoomKill a second time while already enrage-locked (previously returned early with CurrentHp == 0 -> recursion crash!)
+            await DoomPower.DoomKill([s.Body.Creature]);
+            Assert(s.Body.Creature.IsAlive && s.Body.IsEnrageLocked && s.Body.Creature.CurrentHp == s.Body.Creature.MaxHp,
+                "Repeated DoomKill while already enrage-locked must keep Body alive at MaxHp without recursion.");
+
+            await Act(s);
+            Assert(s.Body.Phase == 2 && !s.Body.IsEnrageLocked && s.Body.Creature.CurrentHp == 113,
+                "Enrage turn after Doom must awaken cleanly into Phase 2 at 113/226 HP.");
+            DeactivateSyntheticCombat();
+        }
+
+        GD.Print("PASS half-HP Phase 2 transition: 50% clamp, WaterfallGiant ∞ bar + ?, 0-damage lock, mid-grab release, arm-break upgrade, Doom lock safety & 113/122 restoration");
     }
 }

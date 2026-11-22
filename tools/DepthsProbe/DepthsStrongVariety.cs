@@ -690,13 +690,23 @@ public partial class DepthsProbeNode
             Assert(boss.Creature.Block == blockBeforeSpawn + carapacePerBug,
                 "Spawning a Bowlbug while Swarm Carapace is active grants +6/+8 Block.");
 
-            // Deal unblocked damage past Block -> instinct ticks down by UnblockedDamage only!
+            // Deal powered attack while Bowlbug lives -> Protect the Master reduces player Attack damage by 25% (20 -> 15)!
             int currentBlock = (int)boss.Creature.Block;
+            int hpBeforePoweredHit = boss.Creature.CurrentHp;
+            await CreatureCmd.Damage(Choice, boss.Creature, currentBlock + 20m, MegaCrit.Sts2.Core.ValueProps.ValueProp.Move, player.Creature);
+            int expectedReducedTotal = (int)((currentBlock + 20) * 0.75m);
+            int expectedPoweredUnblocked = Math.Max(0, expectedReducedTotal - currentBlock);
+            Assert(hpBeforePoweredHit - boss.Creature.CurrentHp == expectedPoweredUnblocked,
+                $"Protect the Master must reduce powered player Attack by 25% (expected {expectedPoweredUnblocked}, got {hpBeforePoweredHit - boss.Creature.CurrentHp}).");
+            int thresholdAfterPowered = instinct.Amount;
+
+            // Deal unblocked damage past Block -> instinct ticks down by UnblockedDamage only!
+            currentBlock = (int)boss.Creature.Block;
             int hpBeforeHit = boss.Creature.CurrentHp;
             await CreatureCmd.Damage(Choice, boss.Creature, currentBlock + 10m, MegaCrit.Sts2.Core.ValueProps.ValueProp.Unpowered, player.Creature);
             int actualUnblocked = hpBeforeHit - boss.Creature.CurrentHp;
-            Assert(actualUnblocked == 10 && instinct.Amount == threshold - actualUnblocked,
-                $"Nest-Protecting Instinct decrements strictly by unblocked damage ({instinct.Amount} vs {threshold - actualUnblocked}).");
+            Assert(actualUnblocked == 10 && instinct.Amount == thresholdAfterPowered - actualUnblocked,
+                $"Nest-Protecting Instinct decrements strictly by unblocked damage ({instinct.Amount} vs {thresholdAfterPowered - actualUnblocked}).");
 
             // Enemy Turn 5: REST_MOVE & Swarm Carapace expires at BeforeSideTurnStart(CombatSide.Enemy)!
             boss.RollMove(targets);

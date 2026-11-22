@@ -324,11 +324,21 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         return base.ShouldDie(creature);
     }
 
-    public override Task AfterPreventingDeath(Creature creature)
+    public override async Task AfterPreventingDeath(Creature creature)
     {
         if (creature == Creature && Phase == 1 && !_deathHandled)
+        {
+            // Direct kill paths such as DoomPower.DoomKill bypass ModifyHpLostAfterOstyLate
+            // and drop CurrentHp to 0 via LoseHpInternal before calling ShouldDie/AfterPreventingDeath.
+            // CreatureCmd.KillWithoutCheckingWinCondition recurses and throws InvalidOperationException
+            // if the creature is still dead (CurrentHp <= 0) after AfterPreventingDeath returns.
+            if (Creature.CurrentHp <= 0)
+            {
+                int restoreHp = Math.Clamp(Phase2HpThreshold, 1, Math.Max(1, Creature.MaxHp));
+                await CreatureCmd.SetCurrentHp(Creature, restoreHp);
+            }
             TriggerPhase2Pending();
-        return Task.CompletedTask;
+        }
     }
 
     public override Task AfterDamageReceived(
@@ -801,7 +811,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         if (!Creature.IsAlive || CombatState == null)
             return;
 
-        int desiredPercent = LivingTentacleCount * ThingsAbyssalCoverPower.ReductionPerTentaclePercent;
+        int desiredPercent = LivingTentacleCount > 0 ? ThingsAbyssalCoverPower.ActiveReductionPercent : 0;
         ThingsAbyssalCoverPower? existing = Creature.GetPower<ThingsAbyssalCoverPower>();
         if (desiredPercent <= 0)
         {

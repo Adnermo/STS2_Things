@@ -141,9 +141,9 @@ try
     }
     if (implementationAssembly.GetName().Version != bootstrapAssembly.GetName().Version)
         throw new InvalidOperationException("Bootstrap and implementation versions differ.");
-    if (implementationAssembly.GetName().Version != new Version(2, 0, 4, 0))
+    if (implementationAssembly.GetName().Version != new Version(2, 0, 5, 0))
         throw new InvalidOperationException(
-            $"Expected STS2_Things assembly version 2.0.4.0, got {implementationAssembly.GetName().Version}.");
+            $"Expected STS2_Things assembly version 2.0.5.0, got {implementationAssembly.GetName().Version}.");
 
     var implementationTypes = GetLoadableTypes(implementationAssembly);
     var initializer = implementationAssembly.GetType(

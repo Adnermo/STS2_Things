@@ -331,7 +331,11 @@ public abstract class ThingsCaveGodHand : ThingsMonsterModel
         if (IsDown)
         {
             if (Creature.CurrentHp <= 0)
+            {
                 await CreatureCmd.Heal(Creature, 1m, playAnim: false);
+                if (Creature.CurrentHp <= 0)
+                    await CreatureCmd.SetCurrentHp(Creature, 1);
+            }
             await Sts2VersionSeam.DislodgeImpaledArrowsAsync(Creature);
             await ReleaseStolenCards();
             return;
@@ -342,7 +346,11 @@ public abstract class ThingsCaveGodHand : ThingsMonsterModel
         await Sts2VersionSeam.DislodgeImpaledArrowsAsync(Creature);
         Disable();
         if (Creature.CurrentHp <= 0)
+        {
             await CreatureCmd.Heal(Creature, 1m, playAnim: false);
+            if (Creature.CurrentHp <= 0)
+                await CreatureCmd.SetCurrentHp(Creature, 1);
+        }
         await ClearDebuffs(Creature);
         await EnsureAgingPower();
         if (Creature.GetPower<ThingsCaveGodAgingPower>() is { } aging)

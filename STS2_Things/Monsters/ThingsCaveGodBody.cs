@@ -276,7 +276,26 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
     public override async Task AfterPreventingDeath(Creature creature)
     {
         if (creature == Creature && Phase == 1 && !IsDefeated)
+        {
+            if (_isEnrageLocked)
+            {
+                if (Creature.CurrentHp <= 0)
+                {
+                    int restoreHp = Math.Max(1, _savedEnrageMaxHp > 0 ? _savedEnrageMaxHp : Creature.MaxHp);
+                    _applyingEnrageHp = true;
+                    try
+                    {
+                        await CreatureCmd.SetCurrentHp(Creature, restoreHp);
+                    }
+                    finally
+                    {
+                        _applyingEnrageHp = false;
+                    }
+                }
+                return;
+            }
             await EnterEnrageLockAsync();
+        }
     }
 
     public override async Task AfterDamageReceived(

@@ -12,8 +12,8 @@ namespace STS2_Things.Powers;
 
 /// <summary>
 /// 护主 — 盛碗虫族母的常驻Buff。
-/// 当场上有任意盛碗虫存活时，玩家对族母造成的伤害减半。
-/// 此减半效果不叠加（Power只在族母身上有一份）。
+/// 当场上有任意盛碗虫存活时，玩家对族母造成的攻击伤害减少 25%。
+/// 此减伤效果不叠加（Power只在族母身上有一份）。
 /// </summary>
 public sealed class ThingsProtectTheMasterPower : ThingsPowerModel
 {
@@ -21,7 +21,7 @@ public sealed class ThingsProtectTheMasterPower : ThingsPowerModel
     public override PowerStackType StackType => PowerStackType.Single;
 
     /// <summary>
-    /// 当目标为族母自身、伤害来源为玩家方、且场上有盛碗虫存活时，伤害×0.5
+    /// 当目标为族母自身、伤害来源为玩家方、且场上有盛碗虫存活时，伤害×0.75
     /// </summary>
     protected override decimal OnModifyDamageMultiplicative(
         Creature? target, decimal amount, ValueProp props, Creature? dealer, CardModel? cardSource, CardPlay? cardPlay)
@@ -37,6 +37,6 @@ public sealed class ThingsProtectTheMasterPower : ThingsPowerModel
             (e.Monster is BowlbugSilk || e.Monster is BowlbugRock ||
              e.Monster is BowlbugNectar || e.Monster is BowlbugEgg));
 
-        return hasBowlbug ? 0.5m : 1m;
+        return hasBowlbug ? 0.75m : 1m;
     }
 }

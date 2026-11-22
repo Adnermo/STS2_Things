@@ -18,12 +18,12 @@ namespace STS2_Things.Powers;
 
 /// <summary>
 /// 触腕庇护 (Tentacle Cover) — 渊墨巨蛸本体的联动庇护能力。
-/// 每有一条主触腕存活，提供 25% 减伤（双腕 50%，直接显示于层数）；
-/// 斩断任意触腕对本体造成 20 点反伤、施加 2 层易伤并冲净全部染黑手牌。
+/// 只要场上有存活的主触腕，即提供 25% 攻击减伤（不按触腕数叠加，直接显示于层数）；
+/// 斩断任意主触腕对本体造成 20 点反伤、施加 2 层易伤并冲净全部染黑手牌。
 /// </summary>
 public sealed class ThingsAbyssalCoverPower : ThingsPowerModel
 {
-    public const int ReductionPerTentaclePercent = 25;
+    public const int ActiveReductionPercent = 25;
     public const int SeverRecoilDamage = 20;
     public const int SeverVulnerableStacks = 2;
 
@@ -59,12 +59,12 @@ public sealed class ThingsAbyssalCoverPower : ThingsPowerModel
     {
         ICombatState? combatState = Owner.CombatState;
         if (combatState == null)
-            return Math.Clamp(Amount, 0, 75);
+            return Math.Clamp(Amount, 0, ActiveReductionPercent);
 
-        int livingTentacles = combatState.Enemies.Count(e =>
+        bool hasLivingMajorTentacle = combatState.Enemies.Any(e =>
             e.IsAlive && e != Owner &&
             (e.Monster is ThingsAbyssalCrushingTentacle || e.Monster is ThingsAbyssalInkTentacle));
 
-        return Math.Clamp(livingTentacles * ReductionPerTentaclePercent, 0, 75);
+        return hasLivingMajorTentacle ? ActiveReductionPercent : 0;
     }
 }
