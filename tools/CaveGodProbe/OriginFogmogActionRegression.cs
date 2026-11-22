@@ -15,6 +15,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Models.Powers;
+using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Rooms;
@@ -141,10 +142,10 @@ public partial class CaveGodProbeNode
 
                 var illusion1 = eyes[0].GetPower<IllusionPower>();
                 var illusion2 = eyes[1].GetPower<IllusionPower>();
-                Assert(illusion1?.FollowUpStateId == ThingsOriginEyeWithTeeth.DistractMoveId,
-                    $"illusion1 FollowUpStateId expected {ThingsOriginEyeWithTeeth.DistractMoveId}, got {illusion1?.FollowUpStateId}");
-                Assert(illusion2?.FollowUpStateId == ThingsOriginEyeWithTeeth.BiteMoveId,
-                    $"illusion2 FollowUpStateId expected {ThingsOriginEyeWithTeeth.BiteMoveId}, got {illusion2?.FollowUpStateId}");
+                Assert(illusion1?.FollowUpStateId == ThingsOriginEyeWithTeeth.StunAfterReviveMoveId,
+                    $"illusion1 FollowUpStateId expected {ThingsOriginEyeWithTeeth.StunAfterReviveMoveId}, got {illusion1?.FollowUpStateId}");
+                Assert(illusion2?.FollowUpStateId == ThingsOriginEyeWithTeeth.StunAfterReviveMoveId,
+                    $"illusion2 FollowUpStateId expected {ThingsOriginEyeWithTeeth.StunAfterReviveMoveId}, got {illusion2?.FollowUpStateId}");
                 Assert(eyes[0].GetPowerAmount<ThingsOriginGainEnergyPower>() == 1
                     && eyes[1].GetPowerAmount<ThingsOriginGainEnergyPower>() == 1,
                     "Summoned Eyes missing ThingsOriginGainEnergyPower(1)");
@@ -200,7 +201,7 @@ public partial class CaveGodProbeNode
                         $"A{ascension}/{count}p buffed Bite damage mismatch on P{i}: {hpBeforeBuffedBite[i] - targets[i].CurrentHp} != {(expectedBiteSingle + 1) * 2}");
                 }
 
-                // 5) Killing eye1 triggers REVIVE_MOVE -> immediate DISTRACT_MOVE (no STUN_AFTER_REVIVE coma)
+                // 5) Killing eye1 triggers REVIVE_MOVE -> 1-turn STUN_AFTER_REVIVE -> DISTRACT_MOVE
                 //    AND grants +1 Energy to all players while preserving StrengthPower across revive.
                 var energyBefore = state.Players.Select(p => p.PlayerCombatState!.Energy).ToArray();
                 await CreatureCmd.Kill(eyes[0]);
@@ -211,14 +212,45 @@ public partial class CaveGodProbeNode
                 }
                 Assert(eye1.NextMove.StateId == "REVIVE_MOVE",
                     $"Killed Eye expected REVIVE_MOVE, got {eye1.NextMove.StateId}");
-                Assert(eye1.NextMove.FollowUpStateId == ThingsOriginEyeWithTeeth.DistractMoveId,
-                    $"Killed Eye REVIVE_MOVE follow-up expected {ThingsOriginEyeWithTeeth.DistractMoveId}, got {eye1.NextMove.FollowUpStateId}");
+                Assert(eye1.NextMove.FollowUpStateId == ThingsOriginEyeWithTeeth.StunAfterReviveMoveId,
+                    $"Killed Eye REVIVE_MOVE follow-up expected {ThingsOriginEyeWithTeeth.StunAfterReviveMoveId}, got {eye1.NextMove.FollowUpStateId}");
                 await eye1.PerformMove();
                 Assert(eyes[0].CurrentHp == eyes[0].MaxHp && eyes[0].GetPowerAmount<StrengthPower>() == 1,
                     "Revived Eye did not restore full HP while preserving StrengthPower");
                 eye1.RollMove(state.PlayerCreatures);
+                Assert(eye1.NextMove.StateId == ThingsOriginEyeWithTeeth.StunAfterReviveMoveId
+                    && eye1.NextMove.Intents.Any(intent => intent is StunIntent),
+                    $"Revived Eye did not enter 1-turn Stun ({ThingsOriginEyeWithTeeth.StunAfterReviveMoveId}), got {eye1.NextMove.StateId}");
+                var hpBeforeStun = targets.Select(c => c.CurrentHp).ToArray();
+                await eye1.PerformMove();
+                for (int i = 0; i < targets.Length; i++)
+                {
+                    Assert(targets[i].CurrentHp == hpBeforeStun[i],
+                        $"Stunned revived Eye dealt unexpected damage on P{i}");
+                }
+                eye1.RollMove(state.PlayerCreatures);
                 Assert(eye1.NextMove.StateId == ThingsOriginEyeWithTeeth.DistractMoveId,
-                    $"Revived Eye did not resume {ThingsOriginEyeWithTeeth.DistractMoveId}, got {eye1.NextMove.StateId}");
+                    $"Eye1 after post-revive stun did not resume {ThingsOriginEyeWithTeeth.DistractMoveId}, got {eye1.NextMove.StateId}");
+
+                // 6) Killing eye2 -> revive -> stunned -> killed AGAIN while stunned still transitions to REVIVE_MOVE -> STUN_AFTER_REVIVE -> BITE_MOVE.
+                await CreatureCmd.Kill(eyes[1]);
+                Assert(eye2.NextMove.StateId == "REVIVE_MOVE",
+                    $"Killed Eye2 expected REVIVE_MOVE, got {eye2.NextMove.StateId}");
+                await eye2.PerformMove();
+                eye2.RollMove(state.PlayerCreatures);
+                Assert(eye2.NextMove.StateId == ThingsOriginEyeWithTeeth.StunAfterReviveMoveId,
+                    $"Revived Eye2 expected {ThingsOriginEyeWithTeeth.StunAfterReviveMoveId}, got {eye2.NextMove.StateId}");
+                await CreatureCmd.Kill(eyes[1]);
+                Assert(eye2.NextMove.StateId == "REVIVE_MOVE",
+                    $"Killing Eye2 while in STUN_AFTER_REVIVE must force REVIVE_MOVE, got {eye2.NextMove.StateId}");
+                await eye2.PerformMove();
+                eye2.RollMove(state.PlayerCreatures);
+                Assert(eye2.NextMove.StateId == ThingsOriginEyeWithTeeth.StunAfterReviveMoveId,
+                    $"Re-revived Eye2 expected {ThingsOriginEyeWithTeeth.StunAfterReviveMoveId}, got {eye2.NextMove.StateId}");
+                await eye2.PerformMove();
+                eye2.RollMove(state.PlayerCreatures);
+                Assert(eye2.NextMove.StateId == ThingsOriginEyeWithTeeth.BiteMoveId,
+                    $"Eye2 after post-revive stun did not resume {ThingsOriginEyeWithTeeth.BiteMoveId}, got {eye2.NextMove.StateId}");
             }
             finally
             {

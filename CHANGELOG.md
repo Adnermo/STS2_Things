@@ -6,6 +6,9 @@
 
 ## 2.x 系列（`v0.111.0 / v0.111.1` + `v0.113.1` 统一包时代）
 
+### [2.0.7](docs/releases/release-2.0.7.md)
+- **始源雾菇召唤物复活后眩晕一回合**：召唤物「始源利齿之眼」经 `IllusionPower` 复活后先进入 1 回合眩晕（`STUN_AFTER_REVIVE`），再恢复各自错峰起手招式（`illusion1` 接「牵制」，`illusion2` 接「双噬」），图鉴隐藏该过渡态且眩晕中再被击杀仍稳定衔接复活。
+
 ### [2.0.6](docs/releases/release-2.0.6.md)
 - **新增「必定遇到深处（第二幕）」总开关**：在 BaseLib / RitsuLib 配置页与联机房主同步新增「章节（Acts）」分区及 `FeatureGuaranteedDepthsEnabled`（默认关闭），覆盖全部模式且不改变原版 RNG 消耗；同步修复 `ModelDb._actsByIndex` 懒缓存刷新。
 - **全面适配多人人数上限解除模组（支持 5–32 人大房间）**：完整适配大房间战斗与巨物 Boss 站位、活体巨岩接触点、深处营地多角色站位、核心能力与特效、5 款联机小游戏同步及 F2 诊断快照校验。

@@ -22,7 +22,7 @@ using STS2_Things.Relics;
 public static class STS2_ThingsInit
 {
     public const string HarmonyId = "Adnermo.STS2_Things";
-    public const string ModVersion = "2.0.6";
+    public const string ModVersion = "2.0.7";
     private static bool _initialized;
     private static AbstractModel[]? _quirkyHopperPolicy;
     private static AbstractModel[]? _spentEmberPolicy;

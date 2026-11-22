@@ -30,6 +30,7 @@ public sealed class ThingsOriginEyeWithTeeth : ThingsMonsterModel
     public const string DistractMoveId = "DISTRACT_MOVE";
     public const string BiteMoveId = "BITE_MOVE";
     public const string HealBossMoveId = "HEAL_BOSS_MOVE";
+    public const string StunAfterReviveMoveId = "STUN_AFTER_REVIVE";
     private const int BiteRepeat = 2;
     private const int NourishStrength = 1;
     private bool _startsWithBite;
@@ -55,8 +56,6 @@ public sealed class ThingsOriginEyeWithTeeth : ThingsMonsterModel
             _startsWithBite = value;
         }
     }
-
-    private string InitialMoveId => StartsWithBite ? BiteMoveId : DistractMoveId;
 
     protected override string AttackSfx =>
         "event:/sfx/enemy/enemy_attacks/eye_with_teeth/eye_with_teeth_attack";
@@ -85,7 +84,7 @@ public sealed class ThingsOriginEyeWithTeeth : ThingsMonsterModel
     }
 
     /// <summary>
-    /// 施加 IllusionPower 并设定复活后立即衔接对应起手招式（不再额外浪费眩晕回合）。
+    /// 施加 IllusionPower 并设定复活后先眩晕一回合，再衔接对应起手招式。
     /// CreatureCmd.Add 会调用 AfterAddedToRoom，因此动态召唤无需重复施加。
     /// </summary>
     private async Task ApplyIllusionPower()
@@ -94,9 +93,12 @@ public sealed class ThingsOriginEyeWithTeeth : ThingsMonsterModel
         var illusion = Creature.GetPower<IllusionPower>();
         if (illusion != null)
         {
-            illusion.FollowUpStateId = InitialMoveId;
+            illusion.FollowUpStateId = StunAfterReviveMoveId;
         }
     }
+
+    protected override bool ShouldShowMoveInBestiary(string moveStateId) =>
+        moveStateId != StunAfterReviveMoveId && base.ShouldShowMoveInBestiary(moveStateId);
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
     {
@@ -120,12 +122,24 @@ public sealed class ThingsOriginEyeWithTeeth : ThingsMonsterModel
         bite.FollowUpState = healBoss;
         healBoss.FollowUpState = distract;
 
+        // 二阶段召唤的 illusion2 从双噬起步，与开场 illusion1 错峰配合。
+        // 留空 MustPerformOnceBeforeTransitioning，确保玩家在复活眩晕回合再次击杀幻象时
+        // 原生 IllusionPower.AfterDeath 可直接切换回 REVIVE_MOVE。
+        var initialMove = StartsWithBite ? bite : distract;
+        var stunAfterRevive = new MoveState(
+            StunAfterReviveMoveId,
+            _ => Task.CompletedTask,
+            new StunIntent())
+        {
+            FollowUpState = initialMove
+        };
+
         list.Add(distract);
         list.Add(bite);
         list.Add(healBoss);
+        list.Add(stunAfterRevive);
 
-        // 二阶段召唤的 illusion2 从双噬起步，与开场 illusion1 错峰配合。
-        return new MonsterMoveStateMachine(list, StartsWithBite ? bite : distract);
+        return new MonsterMoveStateMachine(list, initialMove);
     }
 
     private async Task DistractMove(IReadOnlyList<Creature> targets)
