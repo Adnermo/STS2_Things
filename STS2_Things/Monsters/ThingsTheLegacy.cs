@@ -28,16 +28,16 @@ using STS2_Things.Powers;
 namespace STS2_Things.Monsters;
 
 /// <summary>
-///     腐化之遗 — Underdocks Boss
-///     开局: LegacyBeatOfDeathPower (玩家出牌扣2血) + HardenedShellPower (HP/3 层)
+///     腐化之遗 — Underdocks 高难 Boss（一层“真·小王”）
+///     开局: LegacyBeatOfDeathPower (固定 2 层，玩家出牌 Boss 扣 2 血，不再叠加) + HardenedShellPower (HP/5 层)
 ///     意图循环:
-///     衰竭 → 回音 → 血弹 → 强化 → 循环
-///     强化阶段:
-///     第1次: 1层人工制品
-///     第2次: 1层死亡律动 + 硬化外壳改成HP/4
-///     第3次: 眩晕戳刺(ThingsDazedPower)
-///     第4次: 2点力量 + 1层死亡律动
-///     之后循环: n+1层人工制品 + 外壳HP/(n+1) + 2点力量 + 1层死亡律动
+///     衰竭(仅开局: 易伤+脆弱 + 灼伤/晕眩/黏液各2张) → 回音 → 血弹 → 强化 → 循环
+///     强化阶段(均不再追加自伤律动，每轮稳定加力量):
+///     第1次: 1层人工制品 + 2(恐惧3)力量
+///     第2次: 硬化外壳收紧至 HP/6 + 2(恐惧3)力量
+///     第3次: 晕眩打击(ThingsDazedPower) + 2(恐惧3)力量
+///     第4次: 2层人工制品 + 硬化外壳收紧至 HP/7 + 2(恐惧3)力量
+///     之后循环: (n+2)层人工制品 + 外壳收紧至 HP/(n+7) + 2(恐惧3)力量
 /// </summary>
 public sealed class ThingsTheLegacy : ThingsSpineMonster
 {
@@ -45,8 +45,7 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
     // already loaded by the native Act music lifecycle.
     private const string _trackName = "waterfall_giant_progress";
     private const int BloodDamage = 3;
-
-    private const int BloodCount = 4;
+    private const int MinShellCap = 20;
 
     // 复用Vantom（暗黑Boss）的原版音效
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/vantom/vantom_inky_lance";
@@ -79,18 +78,26 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
         ModelDb.Power<ThingsDazedPower>().ResolvedBigIconPath,
         ModelDb.Power<HardenedShellPower>().ResolvedBigIconPath,
         ModelDb.Power<ArtifactPower>().ResolvedBigIconPath,
-        ModelDb.Power<StrengthPower>().ResolvedBigIconPath
+        ModelDb.Power<StrengthPower>().ResolvedBigIconPath,
+        ModelDb.Power<VulnerablePower>().ResolvedBigIconPath,
+        ModelDb.Power<FrailPower>().ResolvedBigIconPath
     ]).Distinct();
 
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 298, 285) + (Sts2VersionSeam.IsDread() ? 40 : 0);
+        AscensionLevel.ToughEnemies, 320, 300) + (Sts2VersionSeam.IsDread() ? 40 : 0);
 
     public override int MaxInitialHp => MinInitialHp;
 
     private int EchoDamage => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.DeadlyEnemies, 13, 12);
+        AscensionLevel.DeadlyEnemies, 20, 18) + (Sts2VersionSeam.IsDread() ? 2 : 0);
 
-    private decimal OpeningBeatOfDeathAmount => 2m + (Sts2VersionSeam.IsDread() ? 1m : 0m);
+    private int BloodCount => AscensionHelper.GetValueIfAscension(
+        AscensionLevel.DeadlyEnemies, 6, 5);
+
+    private int ExhaustDebuffTurns => AscensionHelper.GetValueIfAscension(
+        AscensionLevel.DeadlyEnemies, 2, 1);
+
+    private decimal OpeningBeatOfDeathAmount => 2m;
 
     private decimal StrengthenStrengthAmount => 2m + (Sts2VersionSeam.IsDread() ? 1m : 0m);
 
@@ -104,14 +111,14 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
         StartHeartbeat();
         // 隐藏 Power 保存下一次强化阶段，使进度进入多人 checksum/full-state。
         await PowerCmd.Apply<ThingsLegacyProgressPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
-        // 死亡律动: 玩家每出一张牌扣 2 血（恐惧模式下为 3 血）
+        // 死亡律动: 保留反向特色并固定为 2 层（强化与恐惧模式不再增加自伤）
         await PowerCmd.Apply<ThingsLegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, OpeningBeatOfDeathAmount, Creature, null);
-        // 硬化外壳: 层数 = 最大 HP / 3
+        // 硬化外壳: 开局即收紧至最大 HP / 5（约 60/64，恐惧 68/72）
         // 注意：HardenedShellPower 的 ShouldScaleInMultiplayer=true，PowerCmd.Apply 会自动缩放。
         // 必须用缩放前的原始 HP（MonsterMaxHpBeforeModification）计算，否则会双重缩放导致层数超过 MaxHp。
         var baseHp = Creature.MonsterMaxHpBeforeModification ?? Creature.MaxHp;
         await PowerCmd.Apply<HardenedShellPower>(new ThrowingPlayerChoiceContext(), Creature,
-            baseHp / 3m, Creature, null);
+            baseHp / 5m, Creature, null);
     }
 
     // ========== 状态机 ==========
@@ -119,15 +126,16 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
     {
         List<MonsterState> list = new();
 
-        // 衰竭: 给玩家 Burn + Dazed + Slimed 各一张
+        // 衰竭: 1(2) 层易伤+脆弱 + Burn/Dazed/Slimed 各 2 张
         var exhaustMove = new MoveState("EXHAUST_MOVE", ExhaustMove,
+            new DebuffIntent(),
             new StatusIntent(6));
 
-        // 回音: 12/14 伤害
+        // 回音: 18/20 (+2 恐惧) 单段重击
         var echoMove = new MoveState("ECHO_MOVE", EchoMove,
             new SingleAttackIntent(EchoDamage));
 
-        // 血弹: 3×4
+        // 血弹: 3×5 / 3×6 高频连击
         var bloodMove = new MoveState("BLOOD_MOVE", BloodMove,
             new MultiAttackIntent(BloodDamage, BloodCount));
 
@@ -156,6 +164,9 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
         SfxCmd.Play(CastSfx);
         await CreatureCmd.TriggerAnim(Creature, "Cast", 0.5f);
 
+        var ctx = new ThrowingPlayerChoiceContext();
+        await PowerCmd.Apply<VulnerablePower>(ctx, targets, ExhaustDebuffTurns, Creature, null);
+        await PowerCmd.Apply<FrailPower>(ctx, targets, ExhaustDebuffTurns, Creature, null);
         await CardPileCmd.AddToCombatAndPreview<Burn>(targets, PileType.Discard, 2, null);
         await CardPileCmd.AddToCombatAndPreview<Dazed>(targets, PileType.Discard, 2, null);
         await CardPileCmd.AddToCombatAndPreview<Slimed>(targets, PileType.Discard, 2, null);
@@ -188,35 +199,37 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
         var progress = Creature.GetPower<ThingsLegacyProgressPower>()
             ?? throw new InvalidOperationException("Legacy progress power is missing.");
         int strengthenStage = progress.NextStage;
+        var ctx = new ThrowingPlayerChoiceContext();
 
         switch (strengthenStage)
         {
             case 1:
-                // 第1次强化：1层人工制品
-                await PowerCmd.Apply<ArtifactPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                // 第1次强化：1层人工制品 + 力量
+                await PowerCmd.Apply<ArtifactPower>(ctx, Creature, 1m, Creature, null);
+                await PowerCmd.Apply<StrengthPower>(ctx, Creature, StrengthenStrengthAmount, Creature, null);
                 break;
             case 2:
-                // 第2次强化：1层死亡律动 + 硬化外壳改成HP/4
-                await PowerCmd.Apply<ThingsLegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
-                await SetShellDivisor(4);
+                // 第2次强化：硬化外壳收紧至 HP/6 + 力量
+                await SetShellDivisor(6);
+                await PowerCmd.Apply<StrengthPower>(ctx, Creature, StrengthenStrengthAmount, Creature, null);
                 break;
             case 3:
-                // 第3次强化：眩晕戳刺(ThingsDazedPower)
-                await PowerCmd.Apply<ThingsDazedPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                // 第3次强化：晕眩打击 + 力量
+                await PowerCmd.Apply<ThingsDazedPower>(ctx, Creature, 1m, Creature, null);
+                await PowerCmd.Apply<StrengthPower>(ctx, Creature, StrengthenStrengthAmount, Creature, null);
                 break;
             case 4:
-                // 第4次强化：2点力量 + 1层死亡律动
-                await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, StrengthenStrengthAmount, Creature, null);
-                await PowerCmd.Apply<ThingsLegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
+                // 第4次强化：2层人工制品 + 硬化外壳收紧至 HP/7 + 力量
+                await PowerCmd.Apply<ArtifactPower>(ctx, Creature, 2m, Creature, null);
+                await SetShellDivisor(7);
+                await PowerCmd.Apply<StrengthPower>(ctx, Creature, StrengthenStrengthAmount, Creature, null);
                 break;
             default:
-                // 之后循环：第1次循环=2层人工制品+HP/5, 第2次=3层+HP/6, ...
+                // 之后循环：持续加人工制品 + 收紧外壳 + 力量
                 var n = strengthenStage - 4;
-                // 先施死亡律动再施人工制品，避免人工制品抵消死亡律动
-                await PowerCmd.Apply<ThingsLegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
-                await PowerCmd.Apply<ArtifactPower>(new ThrowingPlayerChoiceContext(), Creature, n + 1m, Creature, null);
-                await SetShellDivisor(n + 4);
-                await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), Creature, StrengthenStrengthAmount, Creature, null);
+                await PowerCmd.Apply<ArtifactPower>(ctx, Creature, n + 2m, Creature, null);
+                await SetShellDivisor(n + 7);
+                await PowerCmd.Apply<StrengthPower>(ctx, Creature, StrengthenStrengthAmount, Creature, null);
                 break;
         }
 
@@ -231,6 +244,8 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
             // PowerCmd.ModifyAmount truncates decimal offsets. Compute the desired
             // shell as an integer first so every divisor reaches the exact floor.
             var target = Creature.MaxHp / divisor;
+            if (target < MinShellCap)
+                target = MinShellCap;
             await PowerCmd.ModifyAmount(new ThrowingPlayerChoiceContext(), shell,
                 target - shell.Amount, Creature, null);
         }

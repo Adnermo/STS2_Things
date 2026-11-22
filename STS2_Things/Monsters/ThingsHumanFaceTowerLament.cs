@@ -35,11 +35,11 @@ public sealed class ThingsHumanFaceTowerLament : ThingsHumanFaceTowerFace
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 113, 104) + (Sts2VersionSeam.IsDread() ? 14 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
-    public int WeatheredWailDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 9, 7);
+    public int WeatheredWailDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9) + (Sts2VersionSeam.IsDread() ? 2 : 0);
     public int WeatheredWailWeak => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 2, 1);
-    public int BloodRainDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
-    public override int ComboStarterDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 9, 7);
-    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 8);
+    public int BloodRainDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
+    public override int ComboStarterDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10) + (Sts2VersionSeam.IsDread() ? 2 : 0);
 
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([
         ModelDb.Card<ThingsLamentTear>().PortraitPath,

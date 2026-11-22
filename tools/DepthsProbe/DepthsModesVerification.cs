@@ -25,6 +25,8 @@ using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models.Blitz;
 using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Dread;
+using MegaCrit.Sts2.Core.Models.Dread.Dominions;
+using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Nodes.Audio;
@@ -271,7 +273,7 @@ public partial class DepthsProbeNode
             DeactivateSyntheticCombat();
         }
 
-        // 3b. ThingsScaleBeetleDominion: enemies +10 ThingsScaleUpPower, player +10 ThingsScaleDownPower.
+        // 3b. ThingsScaleBeetleDominion: enemies +10 ThingsScaleUpPower, no player ScaleDown debuff.
         {
             Battle b = await EnterDreadDominionBattle(
                 ModelDb.Dominion<ThingsScaleBeetleDominion>(),
@@ -280,12 +282,12 @@ public partial class DepthsProbeNode
             Assert(b.Enemies.Length == 2 &&
                    b.Enemies.All(e => e.GetPower<ThingsScaleUpPower>()?.Amount == 10),
                 "ThingsScaleBeetleDominion must grant 10 ThingsScaleUpPower to all enemies.");
-            Assert(b.Players[0].Creature.GetPower<ThingsScaleDownPower>()?.Amount == 10,
-                "ThingsScaleBeetleDominion must apply 10 ThingsScaleDownPower to the player.");
+            Assert(!b.Players[0].Creature.HasPower<ThingsScaleDownPower>(),
+                "ThingsScaleBeetleDominion must NOT apply ThingsScaleDownPower to the player.");
             DeactivateSyntheticCombat();
         }
 
-        // 3c. ThingsBowlbugProgenitorDominion: 1-enemy room +2 Strength at start; multi-enemy room +2 Strength on enemy death.
+        // 3c. ThingsBowlbugProgenitorDominion: 1-enemy room +2 Strength at start; multi-enemy room +1 Strength on enemy death.
         {
             Battle soloBattle = await EnterDreadDominionBattle(
                 ModelDb.Dominion<ThingsBowlbugProgenitorDominion>(),
@@ -307,8 +309,8 @@ public partial class DepthsProbeNode
             Creature survivor = multiBattle.Enemies[1];
             await CreatureCmd.Damage(Choice, victim, 99999, ValueProp.Unpowered, multiBattle.Players[0].Creature);
             Assert(!victim.IsAlive && survivor.IsAlive &&
-                   survivor.GetPower<StrengthPower>()?.Amount == 2,
-                "ThingsBowlbugProgenitorDominion must grant +2 Strength to surviving enemies when an enemy dies.");
+                   survivor.GetPower<StrengthPower>()?.Amount == 1,
+                "ThingsBowlbugProgenitorDominion must grant +1 Strength to surviving enemies when an enemy dies.");
             DeactivateSyntheticCombat();
         }
 
@@ -324,7 +326,7 @@ public partial class DepthsProbeNode
             DeactivateSyntheticCombat();
         }
 
-        // 3e. ThingsHumanFaceTowerDominion: 3 consecutive Attacks grant +6 Block to living enemies; Attack->Skill->Attack does not.
+        // 3e. ThingsHumanFaceTowerDominion: 1st 3-in-a-row same-type streak per turn grants +4 Block (max once/turn).
         {
             Battle b = await EnterDreadDominionBattle(
                 ModelDb.Dominion<ThingsHumanFaceTowerDominion>(),
@@ -338,7 +340,7 @@ public partial class DepthsProbeNode
                 ClearCreatureBlock(enemy);
             }
 
-            // Alternating Attack -> Skill -> Attack must NOT trigger +6 Block.
+            // Alternating Attack -> Skill -> Attack must NOT trigger +4 Block.
             CardModel altA1 = b.State.CreateCard<StrikeIronclad>(player);
             CardModel altS1 = b.State.CreateCard<DefendIronclad>(player);
             CardModel altA2 = b.State.CreateCard<StrikeIronclad>(player);
@@ -349,20 +351,23 @@ public partial class DepthsProbeNode
             Assert(b.Enemies.All(e => e.Block == 0),
                 "ThingsHumanFaceTowerDominion must not grant Block on alternating Attack -> Skill -> Attack.");
 
-            // New player turn resets streak from 1 to 0, then 3 consecutive Attacks trigger +6 Block on the 3rd Attack.
+            // New player turn resets streak, then 3 consecutive Attacks trigger +4 Block ONCE; 3 consecutive Skills same turn must NOT re-trigger.
             await Hook.AfterSideTurnStart(b.State, CombatSide.Player, [player.Creature]);
-            CardModel atk1 = b.State.CreateCard<StrikeIronclad>(player);
-            CardModel atk2 = b.State.CreateCard<StrikeIronclad>(player);
-            CardModel atk3 = b.State.CreateCard<StrikeIronclad>(player);
-            await CardPileCmd.AddGeneratedCardsToCombat([atk1, atk2, atk3], PileType.Hand, player);
-            await CardCmd.AutoPlay(Choice, atk1, b.Enemies[0], skipCardPileVisuals: true);
+            CardModel[] threeAttacks = Enumerable.Range(0, 3).Select(_ => b.State.CreateCard<StrikeIronclad>(player)).ToArray();
+            CardModel[] threeSkills = Enumerable.Range(0, 3).Select(_ => b.State.CreateCard<DefendIronclad>(player)).ToArray();
+            await CardPileCmd.AddGeneratedCardsToCombat([..threeAttacks, ..threeSkills], PileType.Hand, player);
+            await CardCmd.AutoPlay(Choice, threeAttacks[0], b.Enemies[0], skipCardPileVisuals: true);
             Assert(b.Enemies.All(e => e.Block == 0), "1st consecutive Attack must not grant Block.");
-            await CardCmd.AutoPlay(Choice, atk2, b.Enemies[0], skipCardPileVisuals: true);
+            await CardCmd.AutoPlay(Choice, threeAttacks[1], b.Enemies[0], skipCardPileVisuals: true);
             Assert(b.Enemies.All(e => e.Block == 0),
                 "2nd consecutive Attack after turn reset must not grant Block prematurely.");
-            await CardCmd.AutoPlay(Choice, atk3, b.Enemies[0], skipCardPileVisuals: true);
-            Assert(b.Enemies.Length == 2 && b.Enemies.All(e => e.Block == 6),
-                "3rd consecutive Attack in a turn must grant +6 Block to all living enemies.");
+            await CardCmd.AutoPlay(Choice, threeAttacks[2], b.Enemies[0], skipCardPileVisuals: true);
+            Assert(b.Enemies.Length == 2 && b.Enemies.All(e => e.Block == 4),
+                "3rd consecutive Attack in a turn must grant +4 Block to all living enemies.");
+            foreach (CardModel skill in threeSkills)
+                await CardCmd.AutoPlay(Choice, skill, null, skipCardPileVisuals: true);
+            Assert(b.Enemies.All(e => e.Block == 4),
+                "ThingsHumanFaceTowerDominion must trigger at most once per turn per player.");
             DeactivateSyntheticCombat();
         }
 
@@ -382,22 +387,21 @@ public partial class DepthsProbeNode
             DeactivateSyntheticCombat();
         }
 
-        // 3f. ThingsGravetideSlugDominion: enemies +3 Regen AND 2 Slimed shuffled into Draw Pile.
+        // 3f. ThingsGravetideSlugDominion: pure 2 Slimed shuffled into Draw Pile (no Regen stacking).
         {
             Battle b = await EnterDreadDominionBattle(
                 ModelDb.Dominion<ThingsGravetideSlugDominion>(),
                 ModelDb.Encounter<ThingsLanternFishWeak>(),
                 "dread-gravetide-slug");
             int slimedInDraw = PileType.Draw.GetPile(b.Players[0]).Cards.Count(c => c is Slimed);
-            Assert(b.Enemies.Length == 2 &&
-                   b.Enemies.All(e => e.GetPower<RegenPower>()?.Amount == 3),
-                "ThingsGravetideSlugDominion must grant 3 Regen to all enemies.");
+            Assert(b.Enemies.Length == 2 && b.Enemies.All(e => !e.HasPower<RegenPower>()),
+                "ThingsGravetideSlugDominion must NOT apply RegenPower to enemies.");
             Assert(slimedInDraw == 2,
                 $"ThingsGravetideSlugDominion must shuffle 2 Slimed into Draw Pile, got {slimedInDraw}.");
             DeactivateSyntheticCombat();
         }
 
-        // 3g. ThingsTheLegacyDominion: playing a card deals 1 blockable unpowered damage to player.
+        // 3g. ThingsTheLegacyDominion: cards 1-3 per turn are free; 4th+ card deals 1 blockable unpowered damage, resetting each turn.
         {
             Battle b = await EnterDreadDominionBattle(
                 ModelDb.Dominion<ThingsTheLegacyDominion>(),
@@ -413,20 +417,213 @@ public partial class DepthsProbeNode
             player.Creature.SetCurrentHpInternal(80);
             ClearCreatureBlock(player.Creature);
 
-            // Without Block -> -1 HP.
-            CardModel strikeUnblocked = b.State.CreateCard<StrikeIronclad>(player);
-            await CardPileCmd.AddGeneratedCardToCombat(strikeUnblocked, PileType.Hand, player);
-            await CardCmd.AutoPlay(Choice, strikeUnblocked, b.Enemies[0], skipCardPileVisuals: true);
-            Assert(player.Creature.CurrentHp == 79 && player.Creature.Block == 0,
-                $"ThingsTheLegacyDominion unblocked card play must deal 1 HP damage (got HP={player.Creature.CurrentHp}, Block={player.Creature.Block}).");
+            // Cards 1-3 in a turn -> 0 damage.
+            CardModel[] freeThree = Enumerable.Range(0, 3).Select(_ => b.State.CreateCard<StrikeIronclad>(player)).ToArray();
+            await CardPileCmd.AddGeneratedCardsToCombat(freeThree, PileType.Hand, player);
+            foreach (CardModel card in freeThree)
+                await CardCmd.AutoPlay(Choice, card, b.Enemies[0], skipCardPileVisuals: true);
+            Assert(player.Creature.CurrentHp == 80 && player.Creature.Block == 0,
+                $"ThingsTheLegacyDominion first 3 cards per turn must deal 0 damage (got HP={player.Creature.CurrentHp}).");
 
-            // With Block -> absorbed by Block (-1 Block, 0 HP loss).
+            // Card 4 without Block -> -1 HP.
+            CardModel fourthUnblocked = b.State.CreateCard<StrikeIronclad>(player);
+            await CardPileCmd.AddGeneratedCardToCombat(fourthUnblocked, PileType.Hand, player);
+            await CardCmd.AutoPlay(Choice, fourthUnblocked, b.Enemies[0], skipCardPileVisuals: true);
+            Assert(player.Creature.CurrentHp == 79 && player.Creature.Block == 0,
+                $"ThingsTheLegacyDominion 4th unblocked card play must deal 1 HP damage (got HP={player.Creature.CurrentHp}, Block={player.Creature.Block}).");
+
+            // Card 5 with Block -> absorbed by Block (-1 Block, 0 HP loss).
             await CreatureCmd.GainBlock(player.Creature, 5, ValueProp.Unpowered, null);
-            CardModel strikeBlocked = b.State.CreateCard<StrikeIronclad>(player);
-            await CardPileCmd.AddGeneratedCardToCombat(strikeBlocked, PileType.Hand, player);
-            await CardCmd.AutoPlay(Choice, strikeBlocked, b.Enemies[0], skipCardPileVisuals: true);
+            CardModel fifthBlocked = b.State.CreateCard<StrikeIronclad>(player);
+            await CardPileCmd.AddGeneratedCardToCombat(fifthBlocked, PileType.Hand, player);
+            await CardCmd.AutoPlay(Choice, fifthBlocked, b.Enemies[0], skipCardPileVisuals: true);
             Assert(player.Creature.CurrentHp == 79 && player.Creature.Block == 4,
-                $"ThingsTheLegacyDominion blocked card play must be absorbed by Block (got HP={player.Creature.CurrentHp}, Block={player.Creature.Block}).");
+                $"ThingsTheLegacyDominion 5th blocked card play must be absorbed by Block (got HP={player.Creature.CurrentHp}, Block={player.Creature.Block}).");
+
+            // New player turn resets counter -> next 3 cards deal 0 damage again.
+            ClearCreatureBlock(player.Creature);
+            await Hook.AfterSideTurnStart(b.State, CombatSide.Player, [player.Creature]);
+            CardModel nextTurnFirst = b.State.CreateCard<StrikeIronclad>(player);
+            await CardPileCmd.AddGeneratedCardToCombat(nextTurnFirst, PileType.Hand, player);
+            await CardCmd.AutoPlay(Choice, nextTurnFirst, b.Enemies[0], skipCardPileVisuals: true);
+            Assert(player.Creature.CurrentHp == 79,
+                $"ThingsTheLegacyDominion must reset card count on new player turn (got HP={player.Creature.CurrentHp}).");
+            DeactivateSyntheticCombat();
+        }
+
+        // 3h. Underdocks Dread regression: WaterfallGiantDominion x ThingsSoulRoesEncounter & secondary enemies.
+        //     Mother ThingsSoulRoes keeps Explosive(7) on room entry, while spawned ThingsSoulRoe fragments and
+        //     secondary minions (including ThingsGravetideMinionPower) do NOT receive ExplosivePower.
+        {
+            Battle b = await EnterDreadDominionBattle(
+                ModelDb.Dominion<WaterfallGiantDominion>(),
+                ModelDb.Encounter<ThingsSoulRoesEncounter>(),
+                "dread-waterfall-soul-roes");
+            Creature mother = b.Enemies.Single(e => e.Monster is ThingsSoulRoes);
+            await mother.AfterAddedToRoom();
+            Assert(mother.GetPower<ExplosivePower>()?.Amount == 7,
+                $"WaterfallGiantDominion must still grant Explosive(7) to mother ThingsSoulRoes (got {mother.GetPower<ExplosivePower>()?.Amount}).");
+
+            Player player = b.Players[0];
+            player.Creature.SetMaxHpInternal(100);
+            player.Creature.SetCurrentHpInternal(80);
+            ClearCreatureBlock(player.Creature);
+
+            // Kill mother -> explodes ONCE for 7 damage, spawns 6 ThingsSoulRoes with ZERO ExplosivePower.
+            await CreatureCmd.Damage(Choice, mother, 9999, ValueProp.Unpowered, player.Creature);
+            Assert(player.Creature.CurrentHp == 73,
+                $"Mother ThingsSoulRoes Explosive(7) must deal 7 damage on death (got HP={player.Creature.CurrentHp}).");
+            Creature[] spawnedRoes = b.Enemies.Where(e => e.IsAlive && e.Monster is ThingsSoulRoe).ToArray();
+            Assert(spawnedRoes.Length == 6,
+                $"Mother death must spawn 6 ThingsSoulRoe fragments (got {spawnedRoes.Length}).");
+            Assert(spawnedRoes.All(r => !r.HasPower<ExplosivePower>()),
+                "Spawned ThingsSoulRoe fragments must NOT inherit WaterfallGiantDominion ExplosivePower.");
+
+            // Killing all 6 fragments deals 0 additional explosive damage.
+            foreach (Creature roe in spawnedRoes)
+            {
+                await PowerCmd.Remove<IntangiblePower>(roe);
+                await CreatureCmd.Damage(Choice, roe, 999, ValueProp.Unpowered, player.Creature);
+            }
+            Assert(player.Creature.CurrentHp == 73,
+                $"Killing all 6 ThingsSoulRoe fragments must deal 0 extra explosive damage (got HP={player.Creature.CurrentHp}).");
+
+            // Secondary enemy using custom ThingsGravetideMinionPower must also be skipped by WaterfallGiantDominion,
+            // while a regular primary spawn still receives ExplosivePower normally.
+            Creature gravetideMinion = await CreatureCmd.Add<ThingsGravetideCorpseSlug>(b.State);
+            Assert(gravetideMinion.IsSecondaryEnemy && !gravetideMinion.HasPower<ExplosivePower>(),
+                "Secondary enemies with ThingsGravetideMinionPower must NOT receive WaterfallGiantDominion ExplosivePower.");
+            Creature regularPrimarySpawn = await CreatureCmd.Add<ThingsLanternFish>(b.State);
+            Assert(regularPrimarySpawn.IsPrimaryEnemy && regularPrimarySpawn.GetPower<ExplosivePower>()?.Amount == 7,
+                "Normal non-minion primary spawns under WaterfallGiantDominion must still receive ExplosivePower.");
+            DeactivateSyntheticCombat();
+        }
+
+        // 3i. ThingsOriginFogmogDominion minion Regen guard (and verify ThingsGravetideSlugDominion grants zero Regen to SoulRoes).
+        {
+            Battle b = await EnterDreadDominionBattle(
+                ModelDb.Dominion<ThingsGravetideSlugDominion>(),
+                ModelDb.Encounter<ThingsSoulRoesEncounter>(),
+                "dread-gravetide-soul-roes");
+            Creature mother = b.Enemies.Single(e => e.Monster is ThingsSoulRoes);
+            await mother.AfterAddedToRoom();
+            Assert(!mother.HasPower<RegenPower>(),
+                "ThingsGravetideSlugDominion (pure Slimed) must NOT grant Regen to mother ThingsSoulRoes.");
+            Assert(PileType.Draw.GetPile(b.Players[0]).Cards.Count(c => c is Slimed) == 2,
+                "ThingsGravetideSlugDominion must shuffle 2 Slimed into Draw Pile.");
+
+            await CreatureCmd.Damage(Choice, mother, 9999, ValueProp.Unpowered, b.Players[0].Creature);
+            Creature[] spawnedRoes = b.Enemies.Where(e => e.IsAlive && e.Monster is ThingsSoulRoe).ToArray();
+            Assert(spawnedRoes.Length == 6 && spawnedRoes.All(r => !r.HasPower<RegenPower>()),
+                "ThingsGravetideSlugDominion must NOT grant Regen to ThingsSoulRoe fragments.");
+            DeactivateSyntheticCombat();
+
+            Battle fogmogBattle = await EnterDreadDominionBattle(
+                ModelDb.Dominion<ThingsOriginFogmogDominion>(),
+                ModelDb.Encounter<ThingsLanternFishWeak>(),
+                "dread-fogmog-minion-filter");
+            Creature fogmogGasBomb = await CreatureCmd.Add<GasBomb>(fogmogBattle.State);
+            Assert(fogmogGasBomb.IsSecondaryEnemy && !fogmogGasBomb.HasPower<RegenPower>(),
+                "ThingsOriginFogmogDominion must NOT grant Regen to secondary MinionPower spawns.");
+            DeactivateSyntheticCombat();
+        }
+
+        // 3j. ThingsTheLegacy (Corrupt Heart remnant) buffed combat cycle & tightened Hardened Shell verification.
+        {
+            Battle b = await EnterDreadDominionBattle(
+                ModelDb.Dominion<ThingsTheLegacyDominion>(),
+                ModelDb.Encounter<ThingsTheLegacyBossEncounter>(),
+                "dread-the-legacy-boss-check");
+            Creature legacy = b.Enemies.Single(e => e.Monster is ThingsTheLegacy);
+            await legacy.AfterAddedToRoom();
+            Player player = b.Players[0];
+            player.Creature.SetMaxHpInternal(500);
+            player.Creature.SetCurrentHpInternal(500);
+            ClearCreatureBlock(player.Creature);
+
+            Assert(legacy.MaxHp == 360,
+                $"Dread A10 ThingsTheLegacy HP must be 360 (320 + 40 Dread), got {legacy.MaxHp}.");
+            Assert(legacy.GetPower<ThingsLegacyBeatOfDeathPower>()?.Amount == 2,
+                $"ThingsTheLegacy Beat of Death must stay fixed at 2 even in Dread (got {legacy.GetPower<ThingsLegacyBeatOfDeathPower>()?.Amount}).");
+            Assert(legacy.GetPower<HardenedShellPower>()?.Amount == 72,
+                $"ThingsTheLegacy opening HardenedShell must be HP/5 = 72 in Dread A10 (got {legacy.GetPower<HardenedShellPower>()?.Amount}).");
+
+            // T1 Exhaust: Debuff + 6 Statuses (2 Vuln, 2 Frail, 2 Burn, 2 Dazed, 2 Slimed)
+            Assert(legacy.Monster!.NextMove.Id == "EXHAUST_MOVE", "T1 opens with EXHAUST_MOVE.");
+            await legacy.Monster.PerformMove();
+            Assert(player.Creature.GetPower<VulnerablePower>()?.Amount == 2 &&
+                   player.Creature.GetPower<FrailPower>()?.Amount == 2,
+                "A10 EXHAUST_MOVE must inflict 2 Vulnerable and 2 Frail.");
+            Assert(PileType.Discard.GetPile(player).Cards.Count(c => c is Burn or Dazed or Slimed) == 6,
+                "EXHAUST_MOVE must add 6 status cards (2 Burn, 2 Dazed, 2 Slimed) to Discard.");
+
+            // T2 Echo: 20 + 2 Dread = 22 base -> 33 with Vulnerable
+            legacy.Monster.RollMove([player.Creature]);
+            Assert(legacy.Monster.NextMove.Id == "ECHO_MOVE", "T2 rolls ECHO_MOVE.");
+            int hpBeforeEcho = player.Creature.CurrentHp;
+            await legacy.Monster.PerformMove();
+            Assert(hpBeforeEcho - player.Creature.CurrentHp == 33,
+                $"Dread A10 ECHO_MOVE under Vulnerable must deal 33 dmg (22 * 1.5), got {hpBeforeEcho - player.Creature.CurrentHp}.");
+
+            // T3 Blood: 3 * 6 under Vulnerable -> 4 * 6 = 24
+            legacy.Monster.RollMove([player.Creature]);
+            Assert(legacy.Monster.NextMove.Id == "BLOOD_MOVE", "T3 rolls BLOOD_MOVE.");
+            int hpBeforeBlood = player.Creature.CurrentHp;
+            await legacy.Monster.PerformMove();
+            Assert(hpBeforeBlood - player.Creature.CurrentHp == 24,
+                $"A10 BLOOD_MOVE (3x6) under Vulnerable must deal 24 dmg (4 * 6), got {hpBeforeBlood - player.Creature.CurrentHp}.");
+
+            // T4 Strengthen 1: +1 Artifact + 3 Strength (Dread), BeatOfDeath remains 2
+            legacy.Monster.RollMove([player.Creature]);
+            Assert(legacy.Monster.NextMove.Id == "STRENGTHEN_MOVE", "T4 rolls STRENGTHEN_MOVE.");
+            await legacy.Monster.PerformMove();
+            Assert(legacy.GetPower<ArtifactPower>()?.Amount == 1 &&
+                   legacy.GetPower<StrengthPower>()?.Amount == 3 &&
+                   legacy.GetPower<ThingsLegacyBeatOfDeathPower>()?.Amount == 2,
+                "Strengthen Stage 1 must grant 1 Artifact + 3 Dread Strength without increasing Beat of Death.");
+
+            // Advance to Stage 2 -> Shell tightens to HP/6 (60) + 3 more Strength (total 6), BeatOfDeath still 2
+            for (int i = 0; i < 3; i++)
+            {
+                legacy.Monster.RollMove([player.Creature]);
+                if (legacy.Monster.NextMove.Id == "STRENGTHEN_MOVE")
+                    await legacy.Monster.PerformMove();
+                else
+                    legacy.Monster.MoveStateMachine!.OnMovePerformed(legacy.Monster.NextMove);
+            }
+            Assert(legacy.GetPower<HardenedShellPower>()?.Amount == 60 &&
+                   legacy.GetPower<StrengthPower>()?.Amount == 6 &&
+                   legacy.GetPower<ThingsLegacyBeatOfDeathPower>()?.Amount == 2,
+                $"Strengthen Stage 2 must tighten HardenedShell to HP/6=60 and stack Strength to 6 (got Shell={legacy.GetPower<HardenedShellPower>()?.Amount}, Str={legacy.GetPower<StrengthPower>()?.Amount}).");
+
+            // Advance to Stage 3 -> ThingsDazedPower + 3 more Strength (total 9)
+            for (int i = 0; i < 3; i++)
+            {
+                legacy.Monster.RollMove([player.Creature]);
+                if (legacy.Monster.NextMove.Id == "STRENGTHEN_MOVE")
+                    await legacy.Monster.PerformMove();
+                else
+                    legacy.Monster.MoveStateMachine!.OnMovePerformed(legacy.Monster.NextMove);
+            }
+            Assert(legacy.GetPower<ThingsDazedPower>()?.Amount == 1 &&
+                   legacy.GetPower<StrengthPower>()?.Amount == 9,
+                "Strengthen Stage 3 must grant ThingsDazedPower(1) and stack Strength to 9.");
+
+            // Advance to Stage 4 -> Shell tightens to HP/7 (51) + 2 more Artifact + 3 more Strength (total 12), BeatOfDeath still 2
+            for (int i = 0; i < 3; i++)
+            {
+                legacy.Monster.RollMove([player.Creature]);
+                if (legacy.Monster.NextMove.Id == "STRENGTHEN_MOVE")
+                    await legacy.Monster.PerformMove();
+                else
+                    legacy.Monster.MoveStateMachine!.OnMovePerformed(legacy.Monster.NextMove);
+            }
+            Assert(legacy.GetPower<HardenedShellPower>()?.Amount == 51 &&
+                   legacy.GetPower<ArtifactPower>()?.Amount == 3 &&
+                   legacy.GetPower<StrengthPower>()?.Amount == 12 &&
+                   legacy.GetPower<ThingsLegacyBeatOfDeathPower>()?.Amount == 2,
+                $"Strengthen Stage 4 must tighten HardenedShell to HP/7=51, add 2 Artifact, stack Strength to 12, and keep BeatOfDeath at 2.");
+
             DeactivateSyntheticCombat();
         }
 

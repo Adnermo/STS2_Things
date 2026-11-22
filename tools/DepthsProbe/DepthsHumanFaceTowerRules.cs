@@ -111,22 +111,28 @@ public partial class DepthsProbeNode
                    mockery.Creature.CurrentHp == mockery.Creature.MaxHp,
                 "Random player attacks hit only the centered active face.");
 
-            // Wrath passive: blocked attack gives 0 Strength; unblocked attack gives +2 Strength.
+            // Wrath passive: blocked attack gives 0 Strength; unblocked attack gives +2 Strength to ALL 4 living faces.
             await CreatureCmd.GainBlock(b.Players[0].Creature, 999, ValueProp.Unpowered, null);
             foreach (var p in b.Players.Skip(1))
                 await CreatureCmd.GainBlock(p.Creature, 999, ValueProp.Unpowered, null);
             Assert(wrath.NextMove.Id == "HEAVY_MALLET_MOVE", "Wrath opens with Heavy Mallet.");
             await RunTowerEnemyRoundAsync(b);
-            Assert((wrath.Creature.GetPower<StrengthPower>()?.Amount ?? 0) == 0,
-                "Fully blocked Wrath attack grants no Strength.");
+            Assert((wrath.Creature.GetPower<StrengthPower>()?.Amount ?? 0) == 0 &&
+                   (lament.Creature.GetPower<StrengthPower>()?.Amount ?? 0) == 0 &&
+                   (bastion.Creature.GetPower<StrengthPower>()?.Amount ?? 0) == 0 &&
+                   (mockery.Creature.GetPower<StrengthPower>()?.Amount ?? 0) == 0,
+                "Fully blocked Wrath attack grants no Strength to any face.");
             Assert(ctrl.ActiveFace == wrath && ctrl.StayTurnIndex == 1 && wrath.NextMove.Id == "DOUBLE_JAW_MOVE",
                 "Wrath stays for Turn 2 and rolls Double Jaw.");
 
             foreach (var p in b.Players)
                 ClearCreatureBlock(p.Creature);
             await RunTowerEnemyRoundAsync(b);
-            Assert(wrath.Creature.GetPower<StrengthPower>()?.Amount == 2,
-                "Unblocked Wrath attack grants +2 Strength.");
+            Assert(wrath.Creature.GetPower<StrengthPower>()?.Amount == 2 &&
+                   lament.Creature.GetPower<StrengthPower>()?.Amount == 2 &&
+                   bastion.Creature.GetPower<StrengthPower>()?.Amount == 2 &&
+                   mockery.Creature.GetPower<StrengthPower>()?.Amount == 2,
+                "Unblocked Wrath attack grants +2 Strength to ALL 4 living faces.");
             Assert(ctrl.ActiveFace == lament && ctrl.StayTurnIndex == 0 && lament.NextMove.Id == "WEATHERED_WAIL_MOVE",
                 "After 2 turns, tower rotates 90° from Wrath to Lament.");
 
@@ -154,37 +160,40 @@ public partial class DepthsProbeNode
             var extraHandTear = b.State.CreateCard<ThingsLamentTear>(b.Players[0]);
             await CardPileCmd.AddGeneratedCardToCombat(extraHandTear, PileType.Hand, null);
             int p0HpBeforeTurnEnd = b.Players[0].Creature.CurrentHp;
+            int lamentStrBeforeTears = lament.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
             foreach (var tear in PileType.Hand.GetPile(b.Players[0]).Cards.OfType<ThingsLamentTear>().ToArray())
             {
                 await tear.OnTurnEndInHandWrapper(Choice);
             }
             Assert(p0HpBeforeTurnEnd == b.Players[0].Creature.CurrentHp &&
                    b.Players[0].Creature.GetPower<ThingsLamentSorrowPower>()?.Amount == 2 &&
-                   !lament.Creature.HasPower<StrengthPower>() &&
+                   (lament.Creature.GetPower<StrengthPower>()?.Amount ?? 0) == lamentStrBeforeTears &&
                    !lament.Creature.HasPower<PlatingPower>(),
                 "Holding 2 Lament Tears at Turn End grants +2 permanent Lamentation on player without direct damage or buffing Lament Strength/Plating.");
             int bloodRainIntent = lament.NextMove.Intents.OfType<MultiAttackIntent>().Single()
                 .GetTotalDamage([b.Players[0].Creature], lament.Creature);
-            Assert(bloodRainIntent == (lament.BloodRainDamage + 2) * 3,
-                $"Blood Rain intent previews Lamentation +2 per hit ({bloodRainIntent} vs {(lament.BloodRainDamage + 2) * 3}).");
+            int expectedBloodRainP0 = (lament.BloodRainDamage + lamentStrBeforeTears + 2) * 3;
+            Assert(bloodRainIntent == expectedBloodRainP0,
+                $"Blood Rain intent previews shared Strength ({lamentStrBeforeTears}) + Lamentation +2 per hit ({bloodRainIntent} vs {expectedBloodRainP0}).");
 
             foreach (var p in b.Players) ClearCreatureBlock(p.Creature);
             int p0HpBeforeRain = b.Players[0].Creature.CurrentHp;
             int p1HpBeforeRain = players > 1 ? b.Players[1].Creature.CurrentHp : 0;
             await RunTowerEnemyRoundAsync(b);
-            Assert(p0HpBeforeRain - b.Players[0].Creature.CurrentHp == (lament.BloodRainDamage + 2) * 3,
-                $"Blood Rain 3 hits dealt {(lament.BloodRainDamage + 2) * 3} with 2 Lamentation stacks (got {p0HpBeforeRain - b.Players[0].Creature.CurrentHp}).");
+            Assert(p0HpBeforeRain - b.Players[0].Creature.CurrentHp == expectedBloodRainP0,
+                $"Blood Rain 3 hits dealt {expectedBloodRainP0} with {lamentStrBeforeTears} Strength + 2 Lamentation stacks (got {p0HpBeforeRain - b.Players[0].Creature.CurrentHp}).");
             if (players > 1)
             {
+                int expectedBloodRainP1 = (lament.BloodRainDamage + lamentStrBeforeTears) * 3;
                 Assert(!b.Players[1].Creature.HasPower<ThingsLamentSorrowPower>() &&
-                       p1HpBeforeRain - b.Players[1].Creature.CurrentHp == lament.BloodRainDamage * 3,
+                       p1HpBeforeRain - b.Players[1].Creature.CurrentHp == expectedBloodRainP1,
                     "In multiplayer, Lamentation only amplifies damage for players who held Lament Tears.");
             }
             Assert(b.Players[0].Creature.GetPower<ThingsLamentSorrowPower>()?.Amount == 2,
                 "Lamentation persists after Lament Enemy Turn ends and rotation completes.");
             Assert(ctrl.ActiveFace == bastion && ctrl.StayTurnIndex == 0, "After Turn 4, tower rotates to Bastion.");
 
-            // Off-center check: rotated-away Lament still lets held Lament Tear add Lamentation, and Bastion attacks do NOT trigger Lamentation.
+            // Off-center check: rotated-away Lament still lets held Lament Tear add Lamentation, AND Lamentation amplifies ALL tower faces' attacks (including Bastion!).
             var offCenterTear = b.State.CreateCard<ThingsLamentTear>(b.Players[0]);
             await CardPileCmd.AddGeneratedCardToCombat(offCenterTear, PileType.Hand, null);
             await offCenterTear.OnTurnEndInHandWrapper(Choice);
@@ -196,17 +205,19 @@ public partial class DepthsProbeNode
             Assert(bastion.IsBolted && bastion.EntrySealBlock == (asc == 0 ? 14 : 18) && bastion.Creature.Block == expectedEntryBlock,
                 $"Bastion enters center bolted with EntrySealBlock {expectedEntryBlock} ({players}p, A{asc}, got {bastion.Creature.Block}).");
             ClearCreatureBlock(b.Players[0].Creature);
+            int bastionStrBeforePress = bastion.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
             int hpBeforeBastionPress = b.Players[0].Creature.CurrentHp;
             await RunTowerEnemyRoundAsync(b); // Turn 5: Bulwark Press
-            Assert(hpBeforeBastionPress - b.Players[0].Creature.CurrentHp == bastion.BulwarkPressDamage,
-                $"Bastion attack does NOT gain Lamentation bonus damage (dealt {hpBeforeBastionPress - b.Players[0].Creature.CurrentHp}, expected {bastion.BulwarkPressDamage}).");
+            int expectedBastionPressDamage = bastion.BulwarkPressDamage + bastionStrBeforePress + 3;
+            Assert(hpBeforeBastionPress - b.Players[0].Creature.CurrentHp == expectedBastionPressDamage,
+                $"Bastion attack gains both shared Strength ({bastionStrBeforePress}) and Lamentation (+3) bonus damage (dealt {hpBeforeBastionPress - b.Players[0].Creature.CurrentHp}, expected {expectedBastionPressDamage}).");
             Assert(ctrl.ActiveFace == bastion && bastion.NextMove.Id == "COLOSSUS_DROP_MOVE",
                 "Bastion Turn 2 rolls Colossus Drop.");
-            Assert(bastion.ColossusDropDamage == (asc == 0 ? 18 : 21), "Bolted Colossus Drop uses full damage 18(21).");
+            Assert(bastion.ColossusDropDamage == (asc == 0 ? 21 : 24), "Bolted Colossus Drop uses full damage 21(24).");
             await CreatureCmd.Damage(Choice, bastion.Creature, bastion.Creature.Block + 5, ValueProp.Move, b.Players[0].Creature);
             Assert(!bastion.IsBolted && bastion.Creature.GetPower<VulnerablePower>()?.Amount == 2 &&
-                   bastion.ColossusDropDamage == (asc == 0 ? 10 : 12),
-                "Breaking Bastion Block triggers Unbolted (+2 Vulnerable and reduced Colossus Drop damage 10(12)).");
+                   bastion.ColossusDropDamage == (asc == 0 ? 12 : 14),
+                "Breaking Bastion Block triggers Unbolted (+2 Vulnerable and reduced Colossus Drop damage 12(14)).");
             string unboltedTip = bastion.Creature.GetPower<ThingsBastionSealPower>()!.HoverTips.OfType<MegaCrit.Sts2.Core.HoverTips.HoverTip>().First().Description;
             Assert(unboltedTip.Contains($"[blue]{bastion.EntrySealBlock}[/blue]") || unboltedTip.Contains($"[blue]{expectedEntryBlock}[/blue]"),
                 $"Bastion unbolted tooltip should reflect {bastion.EntrySealBlock} (or scaled {expectedEntryBlock}) EntrySealBlock: {unboltedTip}");
@@ -214,23 +225,31 @@ public partial class DepthsProbeNode
             Assert(ctrl.ActiveFace == mockery && ctrl.StayTurnIndex == 0 && mockery.NextMove.Id == "SNEER_STAB_MOVE",
                 "After Turn 6, tower rotates to Mockery.");
 
-            // Round 7: Mockery card-type echo check (Attack -> Skill = 0; Skill -> Skill = +Block & +1 permanent Strength).
+            // Round 7: Mockery card-type echo check (Attack -> Skill = 0; Skill -> Skill = +Block on Mockery & +1 permanent Strength to ALL 4 living faces).
             b.State.CurrentSide = CombatSide.Player;
+            int wrathStrBeforeMockery = wrath.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            int lamentStrBeforeMockery = lament.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            int bastionStrBeforeMockery = bastion.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            int mockeryStrBeforeMockery = mockery.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
             var strike = b.State.CreateCard<StrikeIronclad>(b.Players[0]);
             var defend1 = b.State.CreateCard<DefendIronclad>(b.Players[0]);
             var defend2 = b.State.CreateCard<DefendIronclad>(b.Players[0]);
             await CardPileCmd.AddGeneratedCardsToCombat([strike, defend1, defend2], PileType.Hand, b.Players[0]);
             await CardCmd.AutoPlay(Choice, strike, mockery.Creature, skipCardPileVisuals: true);
             await CardCmd.AutoPlay(Choice, defend1, null, skipCardPileVisuals: true);
-            Assert((mockery.Creature.GetPower<StrengthPower>()?.Amount ?? 0) == 0 && mockery.Creature.Block == 0,
+            Assert((mockery.Creature.GetPower<StrengthPower>()?.Amount ?? 0) == mockeryStrBeforeMockery && mockery.Creature.Block == 0,
                 "Alternating Attack -> Skill does not trigger Mockery.");
             await CardCmd.AutoPlay(Choice, defend2, null, skipCardPileVisuals: true);
-            Assert(mockery.Creature.GetPower<StrengthPower>()?.Amount == 1 && mockery.Creature.Block >= mockery.TauntBlock,
-                "Consecutive Skill -> Skill triggers Mockery Block + 1 permanent Strength.");
+            Assert(wrath.Creature.GetPower<StrengthPower>()?.Amount == wrathStrBeforeMockery + 1 &&
+                   lament.Creature.GetPower<StrengthPower>()?.Amount == lamentStrBeforeMockery + 1 &&
+                   bastion.Creature.GetPower<StrengthPower>()?.Amount == bastionStrBeforeMockery + 1 &&
+                   mockery.Creature.GetPower<StrengthPower>()?.Amount == mockeryStrBeforeMockery + 1 &&
+                   mockery.Creature.Block >= mockery.TauntBlock,
+                "Consecutive Skill -> Skill triggers Mockery Block + 1 permanent Strength to ALL 4 living faces.");
             await SideEnded(b, CombatSide.Player, b.Players.Select(p => p.Creature).ToArray());
 
             await RunTowerEnemyRoundAsync(b); // Turn 7 finishes -> Permanent Strength persists, Turn 8 rolls CYCLE_CLIMAX_MOVE!
-            Assert(mockery.Creature.GetPower<StrengthPower>()?.Amount == 1,
+            Assert(mockery.Creature.GetPower<StrengthPower>()?.Amount == mockeryStrBeforeMockery + 1,
                 "Mockery retains permanent Strength after Enemy Turn ends.");
             Assert(ctrl.ActiveFace == mockery && ctrl.StayTurnIndex == 1 && mockery.NextMove.Id == "CYCLE_CLIMAX_MOVE",
                 "Turn 8 (full 4-face cycle completion) rolls CYCLE_CLIMAX_MOVE!");
@@ -239,26 +258,34 @@ public partial class DepthsProbeNode
                 "Mockery Turn 7 Sneer Stab applied 1 Vulnerable ahead of Turn 8.");
             int wrathStrBeforeClimax = wrath.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
             int lamentStrBeforeClimax = lament.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            int bastionStrBeforeClimax = bastion.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
             int mockeryStrBeforeClimax = mockery.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            int sorrowBeforeClimax = b.Players[0].Creature.GetPower<ThingsLamentSorrowPower>()?.Amount ?? 0;
             int p0HpBeforeClimax = b.Players[0].Creature.CurrentHp;
             foreach (var p in b.Players) ClearCreatureBlock(p.Creature);
+            ClearCreatureBlock(wrath.Creature);
+            ClearCreatureBlock(mockery.Creature);
             await RunTowerEnemyRoundAsync(b); // Turn 8 executes Climax + rotates back to Wrath!
             int expectedClimaxGain = asc == 0 ? 2 : 3;
-            int expectedVulnerableClimaxDamage = (int)((mockery.ClimaxDamage + mockeryStrBeforeClimax) * 1.5m);
+            int rawClimaxBlock = asc == 0 ? 10 : 12;
+            int expectedClimaxBlock = players == 1 ? rawClimaxBlock : (int)(rawClimaxBlock * players * 1.2m);
+            int expectedVulnerableClimaxDamage = (int)((mockery.ClimaxDamage + mockeryStrBeforeClimax + sorrowBeforeClimax) * 1.5m);
             Assert(p0HpBeforeClimax - b.Players[0].Creature.CurrentHp == expectedVulnerableClimaxDamage,
                 $"Full-cycle climax dealt {p0HpBeforeClimax - b.Players[0].Creature.CurrentHp}, expected {expectedVulnerableClimaxDamage}.");
             Assert(!b.Players[0].Creature.HasPower<VulnerablePower>(),
                 "Turn 7 Vulnerable expires after Turn 8 Enemy Turn.");
             Assert((wrath.Creature.GetPower<StrengthPower>()?.Amount ?? 0) == wrathStrBeforeClimax + expectedClimaxGain &&
                    lament.Creature.GetPower<StrengthPower>()?.Amount == lamentStrBeforeClimax + expectedClimaxGain &&
-                   bastion.Creature.GetPower<StrengthPower>()?.Amount == expectedClimaxGain &&
+                   bastion.Creature.GetPower<StrengthPower>()?.Amount == bastionStrBeforeClimax + expectedClimaxGain &&
                    mockery.Creature.GetPower<StrengthPower>()?.Amount == mockeryStrBeforeClimax + expectedClimaxGain,
                 "Full-cycle climax buffs all 4 living faces (including rotated-away faces).");
+            Assert(wrath.Creature.Block == expectedClimaxBlock && mockery.Creature.Block == 0,
+                $"Turn 8 Climax grants {expectedClimaxBlock} Block to incoming Wrath (got Wrath={wrath.Creature.Block}, Mockery={mockery.Creature.Block}).");
             Assert(ctrl.ActiveFace == wrath && ctrl.CycleActiveTurns == 0 && ctrl.StayTurnIndex == 0,
                 "After Turn 8 Climax, tower wraps back to Wrath for the next cycle.");
             DeactivateSyntheticCombat();
 
-            // 2) Mid-turn shatter -> emergency whip-rotate + 1-turn Stun -> Post-break Rotational 2-Hit Combo -> Final Stand!
+            // 2) Mid-turn shatter -> emergency whip-rotate + 1-turn Stun + Shatter Enrage -> Post-break Rotational 2-Hit Combo (+Combo Strength) -> Final Stand (+Final Stand Strength)!
             b = await TowerBattle(players, asc, $"tower-combo-{players}-{asc}");
             wrath = b.Monster<ThingsHumanFaceTowerWrath>();
             lament = b.Monster<ThingsHumanFaceTowerLament>();
@@ -266,12 +293,20 @@ public partial class DepthsProbeNode
             mockery = b.Monster<ThingsHumanFaceTowerMockery>();
             ctrl = wrath.Controller!;
 
-            // Shatter Wrath on Player Turn -> Lament emergency-rotates in and is STUNNED!
+            int expectedShatterGain = asc == 0 ? 2 : 3;
+            int expectedComboGain = asc == 0 ? 1 : 2;
+            int expectedFinalStandGain = asc == 0 ? 2 : 3;
+
+            // Shatter Wrath on Player Turn -> Lament emergency-rotates in STUNNED, and all 3 surviving faces gain Shatter Strength!
             b.State.CurrentSide = CombatSide.Player;
             await CreatureCmd.Damage(Choice, wrath.Creature, 99999, ValueProp.Unpowered, b.Players[0].Creature);
             Assert(!wrath.Creature.IsAlive && ctrl.LivingCount == 3 && ctrl.ActiveFace == lament,
                 "Shattering Wrath immediately rotates Lament into center.");
             Assert(lament.NextMove.Id == "STUNNED", "Emergency-rotated Lament is stunned for the upcoming Enemy Turn.");
+            Assert(lament.Creature.GetPower<StrengthPower>()?.Amount == expectedShatterGain &&
+                   bastion.Creature.GetPower<StrengthPower>()?.Amount == expectedShatterGain &&
+                   mockery.Creature.GetPower<StrengthPower>()?.Amount == expectedShatterGain,
+                $"Shattering Wrath grants +{expectedShatterGain} Strength to all 3 surviving faces.");
 
             int hpBeforeStunTurn = b.Players[0].Creature.CurrentHp;
             await RunTowerEnemyRoundAsync(b);
@@ -282,41 +317,61 @@ public partial class DepthsProbeNode
             await RunTowerEnemyRoundAsync(b); // Lament Turn 1 -> Turn 2 should now be COMBO_ROTATE_MOVE!
             Assert(ctrl.ActiveFace == lament && ctrl.StayTurnIndex == 1 && lament.NextMove.Id == "COMBO_ROTATE_MOVE",
                 "Once 1 face is defeated, remaining faces roll COMBO_ROTATE_MOVE on Turn 2.");
-            Assert(lament.NextMove.Intents.Count == 2 && lament.NextMove.Intents[1] is NextFaceComboAttackIntent,
-                "COMBO_ROTATE_MOVE exposes dual attack intents including NextFaceComboAttackIntent.");
+            Assert(lament.NextMove.Intents.Count == 3 &&
+                   lament.NextMove.Intents[1] is NextFaceComboAttackIntent &&
+                   lament.NextMove.Intents[2] is BuffIntent,
+                "COMBO_ROTATE_MOVE exposes dual attack intents (including NextFaceComboAttackIntent) plus BuffIntent.");
 
             // Clear player Block before combo damage check.
             foreach (var p in b.Players) ClearCreatureBlock(p.Creature);
+            int lamentStrBeforeCombo = lament.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            int bastionStrBeforeCombo = bastion.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            int mockeryStrBeforeCombo = mockery.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
             int hpBeforeCombo = b.Players[0].Creature.CurrentHp;
-            await RunTowerEnemyRoundAsync(b); // Lament strikes -> whip-rotates to Bastion -> Bastion follows up!
-            int expectedComboTotal = lament.ComboStarterDamage + bastion.ComboFollowUpDamage;
+            await RunTowerEnemyRoundAsync(b); // Lament strikes -> whip-rotates to Bastion -> Bastion follows up -> +Combo Strength to all living faces!
+            int expectedComboTotal = (lament.ComboStarterDamage + lamentStrBeforeCombo) + (bastion.ComboFollowUpDamage + bastionStrBeforeCombo);
             Assert(hpBeforeCombo - b.Players[0].Creature.CurrentHp == expectedComboTotal,
                 $"Rotational 2-hit combo dealt {hpBeforeCombo - b.Players[0].Creature.CurrentHp}, expected {expectedComboTotal}.");
+            Assert(lament.Creature.GetPower<StrengthPower>()?.Amount == lamentStrBeforeCombo + expectedComboGain &&
+                   bastion.Creature.GetPower<StrengthPower>()?.Amount == bastionStrBeforeCombo + expectedComboGain &&
+                   mockery.Creature.GetPower<StrengthPower>()?.Amount == mockeryStrBeforeCombo + expectedComboGain,
+                $"Rotational 2-hit combo grants +{expectedComboGain} Strength to all 3 living faces.");
             Assert(ctrl.ActiveFace == bastion && ctrl.StayTurnIndex == 0 && bastion.NextMove.Id == "BULWARK_PRESS_MOVE",
                 "After combo follow-up, Bastion stays centered for its Turn 1 move.");
 
-            // Shatter Bastion AND Lament -> only Mockery remains (Final Stand: LivingCount == 1, no rotation!).
+            // Shatter Bastion -> remaining 2 faces gain Shatter Strength; Mockery rotates in stunned.
             b.State.CurrentSide = CombatSide.Player;
+            int mockeryStrBeforeBastionShatter = mockery.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
+            int lamentStrBeforeBastionShatter = lament.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
             await CreatureCmd.Damage(Choice, bastion.Creature, 99999, ValueProp.Unpowered, b.Players[0].Creature);
             Assert(ctrl.ActiveFace == mockery && mockery.NextMove.Id == "STUNNED", "Mockery emergency-rotates in stunned.");
+            Assert(mockery.Creature.GetPower<StrengthPower>()?.Amount == mockeryStrBeforeBastionShatter + expectedShatterGain &&
+                   lament.Creature.GetPower<StrengthPower>()?.Amount == lamentStrBeforeBastionShatter + expectedShatterGain,
+                $"Shattering Bastion grants +{expectedShatterGain} Strength to both surviving faces.");
             await RunTowerEnemyRoundAsync(b); // Mockery recovers from stun -> Turn 1
             await RunTowerEnemyRoundAsync(b); // Mockery Turn 1 -> Turn 2 should combo into Lament (2 alive)
             Assert(mockery.NextMove.Id == "COMBO_ROTATE_MOVE" && mockery.PeekComboFollowUpFace() == lament,
                 "With 2 faces alive, Mockery skips shattered Wrath/Bastion (270°/180°) and combos into Lament.");
 
-            // Kill Mockery on Player Turn -> Lament is the LAST surviving face (LivingCount == 1)!
+            // Kill Mockery on Player Turn -> Lament is the LAST surviving face (LivingCount == 1) and gains Shatter Strength!
             b.State.CurrentSide = CombatSide.Player;
+            int lamentStrBeforeMockeryShatter = lament.Creature.GetPower<StrengthPower>()?.Amount ?? 0;
             await CreatureCmd.Damage(Choice, mockery.Creature, 99999, ValueProp.Unpowered, b.Players[0].Creature);
             Assert(ctrl.LivingCount == 1 && ctrl.ActiveFace == lament && ctrl.TurnsUntilRotation == 0,
                 "Last surviving face reports TurnsUntilRotation == 0.");
+            int lamentFinalStandBaseStr = lamentStrBeforeMockeryShatter + expectedShatterGain;
+            Assert(lament.Creature.GetPower<StrengthPower>()?.Amount == lamentFinalStandBaseStr,
+                $"Shattering Mockery grants final face Lament +{expectedShatterGain} Strength.");
             await RunTowerEnemyRoundAsync(b); // Recover from stun
             Assert(lament.NextMove.Id == "WEATHERED_WAIL_MOVE", "Final face rolls Turn 1.");
-            await RunTowerEnemyRoundAsync(b);
-            Assert(ctrl.ActiveFace == lament && lament.NextMove.Id == "BLOOD_RAIN_MOVE",
-                "Final face rolls standard Turn 2 (no combo rotate when LivingCount == 1).");
-            await RunTowerEnemyRoundAsync(b);
-            Assert(ctrl.ActiveFace == lament && lament.NextMove.Id == "WEATHERED_WAIL_MOVE",
-                "Final face stays locked in center and loops back to Turn 1.");
+            await RunTowerEnemyRoundAsync(b); // Turn 1 complete (StayTurnIndex == 1, no Final Stand Strength yet)
+            Assert(ctrl.ActiveFace == lament && lament.NextMove.Id == "BLOOD_RAIN_MOVE" &&
+                   lament.Creature.GetPower<StrengthPower>()?.Amount == lamentFinalStandBaseStr,
+                "Final face rolls standard Turn 2 (no combo rotate when LivingCount == 1) and does not gain Final Stand Strength on Turn 1.");
+            await RunTowerEnemyRoundAsync(b); // Turn 2 complete -> loops to Turn 1 and gains Final Stand Strength!
+            Assert(ctrl.ActiveFace == lament && lament.NextMove.Id == "WEATHERED_WAIL_MOVE" &&
+                   lament.Creature.GetPower<StrengthPower>()?.Amount == lamentFinalStandBaseStr + expectedFinalStandGain,
+                $"Final face stays locked in center, loops back to Turn 1, and gains +{expectedFinalStandGain} Final Stand Strength every 2 turns.");
 
             // Kill final face -> encounter defeated!
             b.State.CurrentSide = CombatSide.Player;
@@ -377,10 +432,12 @@ public partial class DepthsProbeNode
                    (sighTip.Contains("哀泪") || sighTip.Contains("Lament Tear")) &&
                    (sighTip.Contains("悲叹") || sighTip.Contains("Lamentation")),
                 $"Lament passive tooltip should explain Lament Tear and Lamentation: {sighTip}");
-            Assert((sorrowDesc.Contains("悲叹面") || sorrowDesc.Contains("Lament Visage")) &&
+            Assert((sorrowDesc.Contains("人面塔") || sorrowDesc.Contains("Visage Tower")) &&
+                   (sorrowDesc.Contains("悲叹面") || sorrowDesc.Contains("Lament Visage")) &&
                    sorrowSmart.Contains("[blue]1[/blue]") &&
+                   (sorrowSmart.Contains("人面塔") || sorrowSmart.Contains("Visage Tower")) &&
                    (sorrowSmart.Contains("悲叹面") || sorrowSmart.Contains("Lament Visage")),
-                $"Lamentation power description should reference Lament Visage and +1 damage in SmartDescription: desc={sorrowDesc}; smart={sorrowSmart}");
+                $"Lamentation power description should reference Visage Tower, Lament Visage, and +1 damage in SmartDescription: desc={sorrowDesc}; smart={sorrowSmart}");
             Assert(tearDesc.Contains("1") &&
                    (tearDesc.Contains("悲叹") || tearDesc.Contains("Lamentation")),
                 $"Lament Tear card description should show 1 Lamentation: {tearDesc}");
@@ -396,12 +453,12 @@ public partial class DepthsProbeNode
             for (int t = 0; t < 8; t++)
                 await RunTowerEnemyRoundAsync(b);
             int total8TurnDamage = hpStart - b.Players[0].Creature.CurrentHp;
-            int expected8Turn = asc == 0 ? 101 : 118;
+            int expected8Turn = asc == 0 ? 161 : 180;
             Assert(total8TurnDamage == expected8Turn,
                 $"Human-Faced Tower 8-turn unmitigated damage at A{asc} was {total8TurnDamage}, expected {expected8Turn}.");
             DeactivateSyntheticCombat();
         }
 
-        GD.Print("PASS Human-Faced Tower rules: A0/A20, 1p/4p, Act 2 Boss 414/450 HP & 101/118 8-turn budget, 2-turn rotation, off-center immunity, all 4 passives, Turn-8 Climax, shatter stun, rotational 2-hit combo, and Final Stand.");
+        GD.Print("PASS Human-Faced Tower rules: A0/A20, 1p/4p, Act 2 Boss 414/450 HP & 161/180 8-turn budget, shared tower Strength/Lamentation, Turn-8 incoming-face Block, shatter enrage, combo scaling, and Final Stand escalation.");
     }
 }

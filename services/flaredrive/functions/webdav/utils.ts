@@ -19,6 +19,28 @@ export const ROOT_OBJECT = {
   etag: undefined,
 };
 
+const IMMUTABLE_RELEASE_PATH_RE =
+  /^STS2_Things\/v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\/.+$/i;
+
+export function getPublicReadCacheControl(
+  path: string,
+  request: Request
+): string {
+  if (request.headers.has("authorization")) {
+    return "private, no-store";
+  }
+  if (
+    path.startsWith("_$flaredrive$/thumbnails/") ||
+    IMMUTABLE_RELEASE_PATH_RE.test(path)
+  ) {
+    return "public, max-age=31536000, immutable";
+  }
+  if (path === "STS2_Things/_latest.json") {
+    return "public, max-age=60";
+  }
+  return "no-store";
+}
+
 export function notFound() {
   return new Response("Not found", { status: 404 });
 }

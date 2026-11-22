@@ -6,7 +6,7 @@
 
 原创第二章「深处」 · 8 位专属 Boss · 38 个跨章节事件与 5 款联机小游戏 · 单包双版本零依赖运行
 
-[![Version](https://img.shields.io/badge/Version-v2.0.7-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
+[![Version](https://img.shields.io/badge/Version-v2.0.8-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
 [![STS2 Support](https://img.shields.io/badge/STS2-v0.111.0%20%7C%20v0.111.1%20%7C%20v0.113.1%20Beta-1565c0?style=flat-square)](docs/DUAL_VERSION_SUPPORT.md)
 [![Steam Workshop](https://img.shields.io/badge/Steam-Workshop-1b2838?style=flat-square&logo=steam)](https://steamcommunity.com/sharedfiles/filedetails/?id=3747607944)
 [![Direct Mirror](https://img.shields.io/badge/国内直链-网盘下载-00838f?style=flat-square)](https://pan.adnermo.online/STS2_Things/latest)
@@ -211,6 +211,7 @@ STS2_Things/
 
 完整历史版本记录请参阅 **[CHANGELOG.md](CHANGELOG.md)** 或 **[`docs/releases/`](docs/releases/)**。
 
+- **`v2.0.8`**（[完整说明](docs/releases/release-2.0.8.md)）：完整适配 `ActLikeIt2`（Act Like It 2 v0.2.6）零硬依赖接入第二幕「深处」与「必定遇到深处」联动并修复 Blitz 深处房间生成；精调人面塔全石面力量联动与「悲叹」全石面增伤、活体巨岩一阶段破防倒地扩至 2 回合、腐化之遗重塑为一层暗渠高难 Boss（死亡律动固定 2 层不叠加、外壳收紧与攻防强化）；全面平衡多项恐惧模式章节支配（Dominion）并修复瀑布巨兽支配错误赋予灵鱼卵子体自爆的问题；开启个人网盘边缘缓存。
 - **`v2.0.7`**（[完整说明](docs/releases/release-2.0.7.md)）：始源雾菇召唤物「始源利齿之眼」经 `IllusionPower` 复活后先眩晕 1 回合再恢复错峰招式（`illusion1` 牵制 / `illusion2` 双噬），并同步包含 `v2.0.6` 全部更新。
 - **`v2.0.6`**（[完整说明](docs/releases/release-2.0.6.md)）：新增「必定遇到深处（第二幕）」总开关（BaseLib / RitsuLib / 联机同步，不改 RNG）；全面适配 5–32 人多人上限解除模组；新增运行期 PCK 句柄锁防止 Steam 后台热更新覆写引发资源解析崩溃；修复人面柱「彼岸咆哮」破盾转嫁卡屏、战后选卡血条穿透遮挡、灯笼鱼致盲误遮检索牌、狭小取景器免费升级商店牌、联机小游戏断线死锁等 30+ 项全库审计与线上反馈 Bug。
 - **`v2.0.5`**（[完整说明](docs/releases/release-2.0.5.md)）：紧急修复渊墨巨蛸一阶段受灾厄触发 `KillWithoutCheckingWinCondition` 递归异常导致战斗卡死（同步加固活体巨岩本体/双臂）；下调盛碗虫族母「护主」（`25%`）、人面柱「叠柱」（上层 `50%` / 中层 `25%`）与渊墨巨蛸「触腕庇护」（固定 `25%`）减伤。

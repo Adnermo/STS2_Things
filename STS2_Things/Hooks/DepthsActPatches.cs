@@ -79,13 +79,18 @@ internal static class DepthsGuaranteedActPatch
     [HarmonyPriority(Priority.Last)]
     private static void Postfix(ref IEnumerable<ActModel> __result)
     {
+        ApplyGuaranteedDepths(ref __result);
+    }
+
+    internal static void ApplyGuaranteedDepths(ref IEnumerable<ActModel> acts)
+    {
         if (!ThingsModConfig.IsEnabled(ThingsModConfig.FeatureGuaranteedDepthsEnabled))
             return;
 
-        if (__result is null)
+        if (acts is null)
             return;
 
-        List<ActModel> list = __result.ToList();
+        List<ActModel> list = acts.ToList();
         ThingsDepths depths = ModelDb.Act<ThingsDepths>();
 
         int targetIndex = list.FindIndex(act => act.Index == 1);
@@ -98,7 +103,7 @@ internal static class DepthsGuaranteedActPatch
             list[1] = depths;
         }
 
-        __result = list;
+        acts = list;
     }
 }
 

@@ -9,13 +9,14 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models.Powers;
 using STS2_Things.Core.Models;
+using STS2_Things.Monsters;
 
 namespace STS2_Things.Powers;
 
 /// <summary>
 /// 嗔怒面 passive: 【怒目威压】.
 /// Whenever an attack action from Wrath deals unblocked HP damage to at least one opponent,
-/// Wrath gains +2 Strength after the attack resolves.
+/// ALL living visages of the tower gain +2 permanent Strength after the attack resolves.
 /// </summary>
 public sealed class ThingsWrathGlarePower : ThingsPowerModel
 {
@@ -46,11 +47,14 @@ public sealed class ThingsWrathGlarePower : ThingsPowerModel
             return;
 
         Flash();
-        await PowerCmd.Apply<StrengthPower>(
-            choiceContext,
-            Owner,
-            DynamicVars["StrengthGain"].BaseValue,
-            Owner,
-            null);
+        decimal gain = DynamicVars["StrengthGain"].BaseValue;
+        if (Owner.Monster is ThingsHumanFaceTowerFace { Controller: { } ctrl })
+        {
+            await ctrl.ApplyStrengthToAllLivingFacesAsync(choiceContext, gain, Owner);
+        }
+        else
+        {
+            await PowerCmd.Apply<StrengthPower>(choiceContext, Owner, gain, Owner, null);
+        }
     }
 }

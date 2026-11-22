@@ -3,6 +3,10 @@ main = "worker.ts"
 compatibility_date = "2026-10-01"
 workers_dev = true
 
+[cache]
+enabled = true
+cross_version_cache = true
+
 [assets]
 directory = "./build"
 binding = "ASSETS"

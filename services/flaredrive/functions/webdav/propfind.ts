@@ -99,6 +99,9 @@ export async function handleRequestPropfind({
 
   return new Response(responseTemplate.replace("{{items}}", items.join("")), {
     status: 207,
-    headers: { "Content-Type": "application/xml" },
+    headers: {
+      "Content-Type": "application/xml",
+      "Cache-Control": "no-store",
+    },
   });
 }

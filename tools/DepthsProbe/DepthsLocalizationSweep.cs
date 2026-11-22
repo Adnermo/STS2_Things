@@ -172,6 +172,7 @@ public partial class DepthsProbeNode
                     "THINGS_SILK_THREAD_POWER.activeMultiDescription",
                     "THINGS_TOWER_PIVOT_POWER.activeCycleDescription",
                     "THINGS_TOWER_PIVOT_POWER.activeComboDescription",
+                    "THINGS_TOWER_PIVOT_POWER.finalStandDescription",
                     "THINGS_BASTION_SEAL_POWER.boltedDescription",
                     "THINGS_CHROMATIC_FISSION_POWER.largeDescription",
                     "THINGS_CHROMATIC_FISSION_POWER.mediumDescription",
@@ -185,6 +186,10 @@ public partial class DepthsProbeNode
                     loc.Add("ExtraTurns", 2);
                     loc.Add("RemainingTurns", 1);
                     loc.Add("CycleRemaining", 1);
+                    loc.Add("ShatterStrength", 2);
+                    loc.Add("ComboStrength", 1);
+                    loc.Add("FinalStandStrength", 2);
+                    loc.Add("OwnerName", "TestOwner");
                     loc.Add("NextFace", "TestFace");
                     loc.Add("EntryBlock", 14);
                     loc.Add("VulnerableTurns", 2);

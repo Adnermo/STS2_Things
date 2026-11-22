@@ -54,7 +54,7 @@ public partial class DepthsProbeNode
                 await doom.BeforeSideTurnEnd(Choice, CombatSide.Enemy, b.Enemies);
                 Assert(doom.Amount == 0, "Retired Doom snapshot cannot retrigger after cleansing");
             }
-            for (int turn = 0; turn < 2; turn++)
+            for (int turn = 0; turn < 3; turn++)
             {
                 foreach (var creature in b.Enemies.ToArray()) await creature.Monster!.PerformMove();
                 foreach (var creature in b.Enemies.ToArray()) creature.Monster!.RollMove(b.Players.Select(p => p.Creature));

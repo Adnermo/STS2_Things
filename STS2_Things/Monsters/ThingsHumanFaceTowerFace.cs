@@ -19,6 +19,7 @@ using MegaCrit.Sts2.Core.Nodes.Vfx.Utilities;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Core.Models;
 using STS2_Things.Intents;
+using STS2_Things.Platform;
 using STS2_Things.Powers;
 using STS2_Things.Visuals;
 
@@ -50,7 +51,7 @@ public abstract class ThingsHumanFaceTowerFace : ThingsMonsterModel
 
     public bool IsActiveFace => Controller == null || Controller.ActiveFace == this;
 
-    public int ClimaxDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 15, 14);
+    public int ClimaxDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 18, 16) + (Sts2VersionSeam.IsDread() ? 2 : 0);
 
     public string StoneAttackSfx => "event:/sfx/enemy/enemy_attacks/workbug_rock/workbug_rock_attack";
     public string StoneRoarSfx => "event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone";
@@ -190,7 +191,8 @@ public abstract class ThingsHumanFaceTowerFace : ThingsMonsterModel
             comboRotateMoveId,
             ExecuteComboStarterAndRotateAsync,
             new SingleAttackIntent(() => ComboStarterDamage),
-            new NextFaceComboAttackIntent(this));
+            new NextFaceComboAttackIntent(this),
+            new BuffIntent());
 
         var router = new ConditionalBranchState(MoveRouterId);
         router.AddState(hiddenMove, () => !IsActiveFace);

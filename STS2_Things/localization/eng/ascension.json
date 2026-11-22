@@ -1,10 +1,10 @@
 {
   "DREAD.THINGS_ORIGIN_FOGMOG.description": "Normal enemies gain [blue]2[/blue] [gold]Regen[/gold]. Elites gain [blue]3[/blue] [gold]Regen[/gold].",
-  "DREAD.THINGS_SCALE_BEETLE.description": "At the start of combat, all enemies gain [blue]10[/blue] [gold]Scale Up[/gold], and you gain [red]10[/red] [gold]Scale Down[/gold].",
-  "DREAD.THINGS_BOWLBUG_PROGENITOR.description": "Whenever an enemy dies, other enemies gain [blue]2[/blue] [gold]Strength[/gold]. If combat starts with only [blue]1[/blue] enemy, it gains [blue]2[/blue] [gold]Strength[/gold].",
+  "DREAD.THINGS_SCALE_BEETLE.description": "At the start of combat, all enemies gain [blue]10[/blue] [gold]Scale Up[/gold].",
+  "DREAD.THINGS_BOWLBUG_PROGENITOR.description": "Whenever an enemy dies, other enemies gain [blue]1[/blue] [gold]Strength[/gold]. If combat starts with only [blue]1[/blue] enemy, it gains [blue]2[/blue] [gold]Strength[/gold].",
   "DREAD.THINGS_CAVE_GOD.description": "At the start of each combat, shuffle [blue]2[/blue] [gold]Debris[/gold] into your [gold]Draw Pile[/gold].",
-  "DREAD.THINGS_HUMAN_FACE_TOWER.description": "Whenever you play [blue]3[/blue] consecutive cards of the same type in a turn, all enemies gain [blue]6[/blue] [gold]Block[/gold].",
+  "DREAD.THINGS_HUMAN_FACE_TOWER.description": "The first time you play [blue]3[/blue] consecutive cards of the same type each turn, all enemies gain [blue]4[/blue] [gold]Block[/gold].",
   "DREAD.THINGS_ABYSSAL_INKMAW.description": "At the start of each combat, you gain [red]1[/red] [gold]Weak[/gold] and [red]1[/red] [gold]Frail[/gold], and shuffle [blue]1[/blue] [gold]Slimed[/gold] into your [gold]Draw Pile[/gold].",
-  "DREAD.THINGS_GRAVETIDE_SLUG.description": "All enemies gain [blue]3[/blue] [gold]Regen[/gold]. At the start of each combat, shuffle [blue]2[/blue] [gold]Slimed[/gold] into your [gold]Draw Pile[/gold].",
-  "DREAD.THINGS_THE_LEGACY.description": "Whenever you play a card, take [red]1[/red] damage."
+  "DREAD.THINGS_GRAVETIDE_SLUG.description": "At the start of each combat, shuffle [blue]2[/blue] [gold]Slimed[/gold] into your [gold]Draw Pile[/gold].",
+  "DREAD.THINGS_THE_LEGACY.description": "Starting from the [blue]4th[/blue] card you play each turn, take [red]1[/red] damage whenever you play a card."
 }

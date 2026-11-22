@@ -70,6 +70,41 @@ public sealed class HumanFaceTowerController
     public bool ShouldUseComboRotateOnTurn2 =>
         LivingCount is >= 2 and < 4;
 
+    public int ShatterStrengthGain => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 3, 2);
+
+    public int ComboStrengthGain => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 2, 1);
+
+    public int FinalStandStrengthGain => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 3, 2);
+
+    public async Task ApplyStrengthToAllLivingFacesAsync(
+        PlayerChoiceContext choiceContext,
+        decimal amount,
+        Creature? applier)
+    {
+        if (amount <= 0m || CombatManager.Instance.IsOverOrEnding)
+            return;
+
+        foreach (ThingsHumanFaceTowerFace face in _faces.Where(f => f.IsRegisteredInCombat && f.Creature.IsAlive))
+        {
+            face.AllowInternalPowerApplication = true;
+            try
+            {
+                await PowerCmd.Apply<StrengthPower>(
+                    choiceContext,
+                    face.Creature,
+                    amount,
+                    applier ?? face.Creature,
+                    null);
+            }
+            finally
+            {
+                face.AllowInternalPowerApplication = false;
+            }
+        }
+
+        SyncPivotDisplays();
+    }
+
     private ThingsHumanFaceTowerFace? PrimaryLivingFace =>
         _faces.FirstOrDefault(f => f.IsRegisteredInCombat && f.Creature.IsAlive);
 
@@ -228,7 +263,14 @@ public sealed class HumanFaceTowerController
 
         if (LivingCount <= 1)
         {
-            StayTurnIndex %= 2;
+            if (StayTurnIndex >= 2)
+            {
+                StayTurnIndex = 0;
+                if (ActiveFace.Creature.IsAlive && !CombatManager.Instance.IsOverOrEnding)
+                {
+                    await ApplyStrengthToAllLivingFacesAsync(choiceContext, FinalStandStrengthGain, ActiveFace.Creature);
+                }
+            }
             SyncPivotDisplays();
             return;
         }
@@ -267,6 +309,12 @@ public sealed class HumanFaceTowerController
         if (!CombatManager.Instance.IsOverOrEnding && next.Creature.IsAlive && ActiveFace == next)
         {
             await next.ExecuteComboFollowUpAsync(targets);
+        }
+
+        if (!CombatManager.Instance.IsOverOrEnding && LivingCount > 0)
+        {
+            Creature? source = ActiveFace is { Creature.IsAlive: true } ? ActiveFace.Creature : PrimaryLivingFace?.Creature;
+            await ApplyStrengthToAllLivingFacesAsync(new ThrowingPlayerChoiceContext(), ComboStrengthGain, source);
         }
     }
 
@@ -308,8 +356,8 @@ public sealed class HumanFaceTowerController
     }
 
     /// <summary>
-    /// Isolated placeholder for the Full-Cycle Resonance enchantment (Q5).
-    /// Currently grants every living stone face permanent +2(+3) Strength and 10(12) Block.
+    /// Full-Cycle Resonance reward: grants every living stone face permanent +2(+3) Strength
+    /// and shields the incoming next face (rather than the outgoing caster) with 10(12) Block.
     /// </summary>
     public async Task ApplyFullCycleEnchantmentPlaceholderAsync(
         ThingsHumanFaceTowerFace casterFace,
@@ -319,27 +367,12 @@ public sealed class HumanFaceTowerController
         int blockBonus = AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 12, 10);
         var context = new ThrowingPlayerChoiceContext();
 
-        foreach (ThingsHumanFaceTowerFace face in _faces.Where(f => f.IsRegisteredInCombat && f.Creature.IsAlive))
-        {
-            face.AllowInternalPowerApplication = true;
-            try
-            {
-                await PowerCmd.Apply<StrengthPower>(
-                    context,
-                    face.Creature,
-                    strengthBonus,
-                    casterFace.Creature,
-                    null);
-            }
-            finally
-            {
-                face.AllowInternalPowerApplication = false;
-            }
+        await ApplyStrengthToAllLivingFacesAsync(context, strengthBonus, casterFace.Creature);
 
-            if (face == ActiveFace)
-            {
-                await CreatureCmd.GainBlock(face.Creature, blockBonus, ValueProp.Move, null);
-            }
+        ThingsHumanFaceTowerFace? blockRecipient = PeekNextLivingFace(casterFace) ?? ActiveFace;
+        if (blockRecipient is { IsRegisteredInCombat: true, Creature.IsAlive: true })
+        {
+            await CreatureCmd.GainBlock(blockRecipient.Creature, blockBonus, ValueProp.Move, null);
         }
     }
 
@@ -361,6 +394,11 @@ public sealed class HumanFaceTowerController
         }
 
         await Cmd.Wait(Math.Clamp(shatterDuration * 0.55f, 0.35f, 0.65f));
+        if (CombatManager.Instance.IsOverOrEnding)
+            return;
+
+        // Shatter Enrage: every shattered visage empowers all remaining living stone faces permanently.
+        await ApplyStrengthToAllLivingFacesAsync(choiceContext, ShatterStrengthGain, next.Creature);
         if (CombatManager.Instance.IsOverOrEnding)
             return;
 

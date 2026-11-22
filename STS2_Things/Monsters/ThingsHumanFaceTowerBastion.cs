@@ -35,17 +35,17 @@ public sealed class ThingsHumanFaceTowerBastion : ThingsHumanFaceTowerFace
     public override int MaxInitialHp => MinInitialHp;
 
     public int EntrySealBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 18, 14) + (Sts2VersionSeam.IsDread() ? 4 : 0);
-    public int BulwarkPressDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 8);
+    public int BulwarkPressDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10) + (Sts2VersionSeam.IsDread() ? 2 : 0);
     public int BulwarkPressBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 10, 8);
-    public int BoltedColossusDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 21, 18);
-    public int UnboltedColossusDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10);
+    public int BoltedColossusDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 24, 21) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public int UnboltedColossusDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12) + (Sts2VersionSeam.IsDread() ? 2 : 0);
     public int ColossusDropDamage => IsBolted ? BoltedColossusDamage : UnboltedColossusDamage;
 
     public override int ComboStarterDamage => IsBolted
-        ? AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 11)
-        : AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 8, 7);
+        ? AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 15, 13) + (Sts2VersionSeam.IsDread() ? 2 : 0)
+        : AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 9) + (Sts2VersionSeam.IsDread() ? 2 : 0);
 
-    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9);
+    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 11) + (Sts2VersionSeam.IsDread() ? 2 : 0);
 
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([
         ModelDb.Power<ThingsBastionSealPower>().ResolvedBigIconPath,

@@ -237,9 +237,14 @@ public partial class CaveGodProbeNode : Node
             "Exposed Body must take 100% full damage (20 -> 20).");
 
         await Act(s);
+        Assert(s.Body.IsWeakPhase && s.Body.NextMove.Id == ThingsCaveGodBody.Exposed2Id,
+            "Exposure turn 2 must remain prone (WEAK_PRONE_2).");
+        await Act(s);
+        Assert(s.Body.IsWeakPhase && s.Body.NextMove.Id == ThingsCaveGodBody.RecoverId,
+            "Exposure turn 3 must prepare recovery (WEAK_UNKNOWN_3).");
         await Act(s);
         Assert(!s.Body.IsWeakPhase && s.Body.BothArmsHealthy && s.Body.Creature.HasPower<ThingsCaveGodAncientCorePower>(),
-            "Awakening after 2 exposure turns must restore Granite Bulwark.");
+            "Awakening after 3 exposure turns must restore Granite Bulwark.");
 
         hpBefore = s.Body.Creature.CurrentHp;
         await CreatureCmd.Damage(Choice, s.Body.Creature, 20m, ValueProp.Move, s.State.Players[0].Creature);
@@ -334,10 +339,15 @@ public partial class CaveGodProbeNode : Node
             Assert(broken.Creature.GetPowerAmount<StrengthPower>() == 4, "Defeat must preserve positive strength.");
             Assert(!broken.ShouldAllowTargeting(broken.Creature) && s.Body.ShouldAllowTargeting(s.Body.Creature), "Exposure targeting mismatch.");
             await Act(s);
-            Assert(s.Body.NextMove.Id == ThingsCaveGodBody.RecoverId, "Exposure turn 2 must prepare recovery.");
+            Assert(s.Body.NextMove.Id == ThingsCaveGodBody.Exposed2Id, "Exposure turn 2 must remain prone (WEAK_PRONE_2).");
             Assert(survivor.NextMove.Id == ThingsCaveGodHand.MoveId(ThingsCaveGodHand.Action.WeakAttack), "Surviving arm must advertise weak attack on exposure turn 2.");
             Assert(!survivor.NextMove.Intents.OfType<StunIntent>().Any(), "Surviving arm must NOT be stunned on exposure turn 2.");
             Assert(survivor.NextMove.Intents.OfType<AttackIntent>().Any(), "Surviving arm must have attack intent on exposure turn 2.");
+            await Act(s);
+            Assert(s.Body.NextMove.Id == ThingsCaveGodBody.RecoverId, "Exposure turn 3 must prepare recovery.");
+            Assert(survivor.NextMove.Id == ThingsCaveGodHand.MoveId(ThingsCaveGodHand.Action.WeakAttack), "Surviving arm must advertise weak attack on exposure turn 3.");
+            Assert(!survivor.NextMove.Intents.OfType<StunIntent>().Any(), "Surviving arm must NOT be stunned on exposure turn 3.");
+            Assert(survivor.NextMove.Intents.OfType<AttackIntent>().Any(), "Surviving arm must have attack intent on exposure turn 3.");
             await PowerCmd.Apply<StrengthPower>(Choice, survivor.Creature, -4m, s.State.Players[0].Creature, null);
             await PowerCmd.Apply<DoomPower>(Choice, survivor.Creature, 2m, s.State.Players[0].Creature, null);
             await Hit(s, survivor.Creature);
@@ -347,13 +357,13 @@ public partial class CaveGodProbeNode : Node
             int before = s.State.Players[0].Creature.CurrentHp;
             await Act(s);
             Assert(s.State.Players[0].Creature.CurrentHp == before, "Downed second arm unexpectedly attacked during recovery.");
-            Assert(!s.Body.IsWeakPhase && s.Body.NextMove.Id == ThingsCaveGodBody.GrabId, "Two exposure turns must awaken and resume the interrupted opening move.");
+            Assert(!s.Body.IsWeakPhase && s.Body.NextMove.Id == ThingsCaveGodBody.GrabId, "Three exposure turns must awaken and resume the interrupted opening move.");
             Assert(s.Left.Creature.CurrentHp == s.Left.Creature.MaxHp && s.Right.Creature.CurrentHp == s.Right.Creature.MaxHp, "Recovery failed to heal arms.");
             Assert(s.Left.ShouldAllowTargeting(s.Left.Creature) && s.Right.ShouldAllowTargeting(s.Right.Creature), "Arms remain untargetable after recovery.");
             Assert(s.Body.Creature.HasPower<ThingsCaveGodAncientCorePower>(), "Awakening must restore Granite Bulwark.");
             DeactivateSyntheticCombat();
         }
-        GD.Print("PASS both arms: cleanse, retain buffs, negative Strength/Doom, second-arm knockdown cancels weak attack, two-window recovery");
+        GD.Print("PASS both arms: cleanse, retain buffs, negative Strength/Doom, second-arm knockdown cancels weak attack, three-window recovery");
     }
     private static async Task VerifyCyclesAndIntents()
     {
@@ -735,6 +745,7 @@ public partial class CaveGodProbeNode : Node
         Assert(!s.State.Enemies.Any(c => c.Monster is ThingsCaveGodCaptiveClaw && c.IsAlive), "Orphan claw after exposure.");
         await Act(s);
         await Act(s);
+        await Act(s);
         Assert(!s.Body.IsWeakPhase && s.Body.NextMove.Id == ThingsCaveGodBody.SweepId,
             "Recovery after interrupted P1 capture must skip AirSlam and resume at SweepId.");
         DeactivateSyntheticCombat();
@@ -748,11 +759,13 @@ public partial class CaveGodProbeNode : Node
         await Act(s);
         Assert(s.Body.NextMove.Id == ThingsCaveGodBody.Exposed1Id, "Enemy-turn defeat must not consume the first player exposure window.");
         await Act(s);
-        Assert(s.Body.IsWeakPhase && s.Body.NextMove.Id == ThingsCaveGodBody.RecoverId, "Second player exposure window must advertise recovery.");
+        Assert(s.Body.IsWeakPhase && s.Body.NextMove.Id == ThingsCaveGodBody.Exposed2Id, "Second player exposure window must stay prone (WEAK_PRONE_2).");
         await Act(s);
-        Assert(!s.Body.IsWeakPhase, "Deferred 2-turn exposure must end cleanly.");
+        Assert(s.Body.IsWeakPhase && s.Body.NextMove.Id == ThingsCaveGodBody.RecoverId, "Third player exposure window must advertise recovery.");
+        await Act(s);
+        Assert(!s.Body.IsWeakPhase, "Deferred 3-turn exposure must end cleanly.");
         DeactivateSyntheticCombat();
-        GD.Print("PASS enemy-turn defeat grants two complete player exposure windows");
+        GD.Print("PASS enemy-turn defeat grants three complete player exposure windows");
     }
     private static async Task VerifyFinalDefeat()
     {
@@ -818,6 +831,7 @@ public partial class CaveGodProbeNode : Node
             "Forced arm kill removed the arm or failed to expose the core.");
         await Act(armForced);
         await Act(armForced);
+        await Act(armForced);
         Assert(!armForced.Body.IsWeakPhase && !armForced.Left.IsDown && armForced.Left.Creature.CurrentHp > 0 &&
             armForced.Left.Creature.HasPower<ThingsCaveGodAgingPower>(),
             "Forced arm kill failed to recover cleanly with its aging power intact.");
@@ -866,7 +880,11 @@ public partial class CaveGodProbeNode : Node
             {
                 await Hit(s, s.Left.Creature);
                 await Act(s);
-                Assert(s.Body.NextMove.Intents.Any(i => i is HealIntent) && s.Body.NextMove.Intents.Any(i => i is BuffIntent),
+                Assert(s.Body.NextMove.Id == ThingsCaveGodBody.Exposed2Id, "Exposure turn 2 must remain prone (WEAK_PRONE_2).");
+                await Act(s);
+                Assert(s.Body.NextMove.Id == ThingsCaveGodBody.RecoverId &&
+                       s.Body.NextMove.Intents.Any(i => i is HealIntent) &&
+                       s.Body.NextMove.Intents.Any(i => i is BuffIntent),
                     "Recovery growth must be telegraphed.");
                 await Act(s);
                 foreach (var c in new[] { s.Body.Creature, s.Left.Creature, s.Right.Creature })
@@ -914,27 +932,40 @@ public partial class CaveGodProbeNode : Node
             Assert(survivor.NextMove.Intents.OfType<StunIntent>().Any(), "Surviving arm must have StunIntent on turn 1.");
             Assert(!survivor.NextMove.Intents.OfType<AttackIntent>().Any(), "Surviving arm must not attack on turn 1.");
 
-            // Exposure Turn 2: Body prepares recovery (WEAK_UNKNOWN_3), surviving arm advertises WeakAttack
+            // Exposure Turn 2: Body remains prone (WEAK_PRONE_2), broken arm stays Down, surviving arm advertises WeakAttack
             await Act(s);
             Assert(s.Body.IsWeakPhase, "Core must remain exposed on turn 2.");
-            Assert(s.Body.NextMove.Id == ThingsCaveGodBody.RecoverId, "Body must advance to WEAK_UNKNOWN_3.");
-            Assert(broken.IsDown && broken.NextMove.Id == ThingsCaveGodHand.MoveId(ThingsCaveGodHand.Action.Recover),
-                "Broken arm must remain IsDown on WEAK_RECOVER during Exposure Turn 2.");
+            Assert(s.Body.NextMove.Id == ThingsCaveGodBody.Exposed2Id, "Body must advance to WEAK_PRONE_2.");
+            Assert(broken.IsDown && broken.NextMove.Id == ThingsCaveGodHand.MoveId(ThingsCaveGodHand.Action.Down),
+                "Broken arm must remain IsDown on DOWN_STATE during Exposure Turn 2.");
             Assert(survivor.NextMove.Id == ThingsCaveGodHand.MoveId(ThingsCaveGodHand.Action.WeakAttack), "Surviving arm must be WeakAttack on turn 2.");
             Assert(!survivor.NextMove.Intents.OfType<StunIntent>().Any(), "Surviving arm must NOT have StunIntent on turn 2.");
             Assert(survivor.NextMove.Intents.OfType<AttackIntent>().Any(), "Surviving arm must advertise attack on turn 2.");
 
-            // Enemy Turn 2 executes: surviving arm attacks + Body awakens & restores both arms!
+            // Enemy Turn 2 executes: surviving arm attacks; Body advances to WEAK_UNKNOWN_3 (recovery omen)
+            int playerHpBeforeTurn2 = s.State.Players[0].Creature.CurrentHp;
+            await Act(s);
+            int damageTakenTurn2 = playerHpBeforeTurn2 - s.State.Players[0].Creature.CurrentHp;
+            Assert(damageTakenTurn2 > 0, "Surviving arm must have attacked on exposure turn 2.");
+            Assert(s.Body.IsWeakPhase, "Core must remain exposed on turn 3.");
+            Assert(s.Body.NextMove.Id == ThingsCaveGodBody.RecoverId, "Body must advance to WEAK_UNKNOWN_3.");
+            Assert(broken.IsDown && broken.NextMove.Id == ThingsCaveGodHand.MoveId(ThingsCaveGodHand.Action.Recover),
+                "Broken arm must remain IsDown on WEAK_RECOVER during Exposure Turn 3.");
+            Assert(survivor.NextMove.Id == ThingsCaveGodHand.MoveId(ThingsCaveGodHand.Action.WeakAttack), "Surviving arm must be WeakAttack on turn 3.");
+            Assert(!survivor.NextMove.Intents.OfType<StunIntent>().Any(), "Surviving arm must NOT have StunIntent on turn 3.");
+            Assert(survivor.NextMove.Intents.OfType<AttackIntent>().Any(), "Surviving arm must advertise attack on turn 3.");
+
+            // Enemy Turn 3 executes: surviving arm attacks + Body awakens & restores both arms!
             int playerHpBefore = s.State.Players[0].Creature.CurrentHp;
             await Act(s);
             int damageTaken = playerHpBefore - s.State.Players[0].Creature.CurrentHp;
-            Assert(damageTaken > 0, "Surviving arm must have attacked on exposure turn 2.");
-            Assert(!s.Body.IsWeakPhase, "2-turn exposure must end after recovery executes.");
+            Assert(damageTaken > 0, "Surviving arm must have attacked on exposure turn 3.");
+            Assert(!s.Body.IsWeakPhase, "3-turn exposure must end after recovery executes.");
             Assert(s.Left.Creature.CurrentHp == s.Left.Creature.MaxHp && s.Right.Creature.CurrentHp == s.Right.Creature.MaxHp, "Both arms must be healed to full.");
             Assert(s.Left.ShouldAllowTargeting(s.Left.Creature) && s.Right.ShouldAllowTargeting(s.Right.Creature), "Arms must be targetable after recovery.");
             DeactivateSyntheticCombat();
         }
-        GD.Print("PASS 2-turn weak phase surviving arm: turn 1 stun, turn 2 weak attack + recovery");
+        GD.Print("PASS 3-turn weak phase surviving arm: turn 1 stun, turn 2 weak attack, turn 3 weak attack + recovery");
     }
 
     private static CardModel AddTestCard<T>(Fixture s, Player player) where T : CardModel
@@ -1802,9 +1833,11 @@ public partial class CaveGodProbeNode : Node
         AssertLatestStoneArmor(p1, p1CardsBefore + 2, "Second knockdown P1");
         AssertLatestStoneArmor(p2, p2CardsBefore + 2, "Second knockdown P2");
 
-        // 3rd knockdown (after recovery): ALSO grants 0-cost Stone Armor!
+        // 3rd knockdown (after recovery on Exposure Turn 3): ALSO grants 0-cost Stone Armor!
         await Act(s);
-        Assert(!s.Body.IsWeakPhase, "Core must recover after Exposure Turn 2.");
+        Assert(s.Body.IsWeakPhase && s.Body.NextMove.Id == ThingsCaveGodBody.RecoverId, "Core must advertise recovery on Exposure Turn 3.");
+        await Act(s);
+        Assert(!s.Body.IsWeakPhase, "Core must recover after Exposure Turn 3.");
         await Hit(s, s.Left.Creature, 10000m);
         AssertLatestStoneArmor(p1, p1CardsBefore + 3, "Third knockdown P1");
         AssertLatestStoneArmor(p2, p2CardsBefore + 3, "Third knockdown P2");
@@ -1885,13 +1918,15 @@ public partial class CaveGodProbeNode : Node
             DeactivateSyntheticCombat();
         }
 
-        // Path C: Mid-exposure half-HP hit on Exposure Turn 2 immediately upgrades RecoverId -> EnrageRecoverId + ∞
+        // Path C: Mid-exposure half-HP hit on Exposure Turn 3 immediately upgrades RecoverId -> EnrageRecoverId + ∞
         {
             var s = Scenario();
             await Hit(s, s.Left.Creature);
             Assert(s.Body.NextMove.Id == ThingsCaveGodBody.Exposed1Id, "Exposure Turn 1 must start on WEAK_PRONE_1.");
             await Act(s);
-            Assert(s.Body.NextMove.Id == ThingsCaveGodBody.RecoverId, "Above-50% core on Exposure Turn 2 must prepare WEAK_UNKNOWN_3.");
+            Assert(s.Body.NextMove.Id == ThingsCaveGodBody.Exposed2Id, "Above-50% core on Exposure Turn 2 must stay prone (WEAK_PRONE_2).");
+            await Act(s);
+            Assert(s.Body.NextMove.Id == ThingsCaveGodBody.RecoverId, "Above-50% core on Exposure Turn 3 must prepare WEAK_UNKNOWN_3.");
 
             int damageToCrossHalf = s.Body.Creature.CurrentHp - s.Body.EnrageHpThreshold;
             await Hit(s, s.Body.Creature, damageToCrossHalf);

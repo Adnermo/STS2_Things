@@ -17,7 +17,7 @@ namespace STS2_Things.Powers;
 /// <summary>
 /// 悲叹 (Lamentation) player debuff inflicted by holding <see cref="Cards.ThingsLamentTear"/> at Turn End.
 /// Inspired by vanilla <c>TaintedPower</c>, each stack adds +1 damage per hit whenever its owner takes
-/// powered attack damage from <see cref="ThingsHumanFaceTowerLament"/>, persisting until Lament is defeated.
+/// powered attack damage from ANY <see cref="ThingsHumanFaceTowerFace"/> visage, persisting until Lament is defeated.
 /// </summary>
 public sealed class ThingsLamentSorrowPower : ThingsPowerModel
 {
@@ -34,7 +34,7 @@ public sealed class ThingsLamentSorrowPower : ThingsPowerModel
     {
         if (target != Owner || !props.IsPoweredAttack())
             return 0m;
-        if (dealer?.Monster is not ThingsHumanFaceTowerLament || !dealer.IsAlive)
+        if (dealer?.Monster is not ThingsHumanFaceTowerFace || !dealer.IsAlive)
             return 0m;
 
         return Amount;
@@ -92,7 +92,7 @@ public sealed class ThingsLamentSorrowPower : ThingsPowerModel
 
         foreach (Creature enemy in combatState.Enemies)
         {
-            if (enemy.IsAlive && enemy.Monster is ThingsHumanFaceTowerLament)
+            if (enemy.IsAlive && enemy.Monster is ThingsHumanFaceTowerFace)
                 Sts2VersionSeam.RefreshMonsterIntentsUi(enemy);
         }
     }

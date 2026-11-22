@@ -31,10 +31,10 @@ public sealed class ThingsHumanFaceTowerMockery : ThingsHumanFaceTowerFace
     public override int MaxInitialHp => MinInitialHp;
 
     public int TauntBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 5, 4) + (Sts2VersionSeam.IsDread() ? 2 : 0);
-    public int SneerStabDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
-    public int WhirlingFangDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 11);
-    public override int ComboStarterDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 9, 8);
-    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
+    public int SneerStabDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6) + (Sts2VersionSeam.IsDread() ? 1 : 0);
+    public int WhirlingFangDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 18, 15) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public override int ComboStarterDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5) + (Sts2VersionSeam.IsDread() ? 1 : 0);
     public override int ComboFollowUpHits => 2;
 
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([

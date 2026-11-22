@@ -50,6 +50,7 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
     public const string CrushId = "DOUBLE_FIST_CRUSH";
     public const string AngrySlamId = "P2_CENTRAL_SLAM";
     public const string Exposed1Id = "WEAK_PRONE_1";
+    public const string Exposed2Id = "WEAK_PRONE_2";
     public const string RecoverId = "WEAK_UNKNOWN_3";
     public const string EnrageId = "ENRAGE_ROAR";
     public const string EnrageRecoverId = "ENRAGE_RECOVER";
@@ -161,6 +162,7 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
         MoveState crush = new(CrushId, CrushMove, new MultiAttackIntent(CrushDamage, 2), new DebuffIntent());
         MoveState angrySlam = new(AngrySlamId, AngrySlamMove, new SingleAttackIntent(AngrySlamDamage), new BuffIntent());
         MoveState weak1 = new(Exposed1Id, RestMove);
+        MoveState weak2 = new(Exposed2Id, RestMove);
         MoveState recover = new(RecoverId, RecoverMove, new HealIntent(), new BuffIntent());
         MoveState enrage = new(EnrageId, EnrageMove, new UnknownIntent());
         MoveState enrageRecover = new(EnrageRecoverId, EnrageRecoverMove, new UnknownIntent());
@@ -211,10 +213,15 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
         crush.FollowUpState = heavyPunch;
         angrySlam.FollowUpState = crush;
 
+        ConditionalBranchState exposed1Next = new("EXPOSED_1_BRANCH");
+        exposed1Next.AddState(enrageRecover, () => ShouldTriggerEnrage);
+        exposed1Next.AddState(weak2, () => true);
+        weak1.FollowUpState = exposed1Next;
+
         ConditionalBranchState exposedNext = new("EXPOSED_RECOVER_BRANCH");
         exposedNext.AddState(enrageRecover, () => ShouldTriggerEnrage);
         exposedNext.AddState(recover, () => true);
-        weak1.FollowUpState = exposedNext;
+        weak2.FollowUpState = exposedNext;
 
         ConditionalBranchState resume = new("RESUME_CYCLE");
         resume.AddState(enrage, () => ShouldTriggerEnrage);
@@ -226,13 +233,14 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
         enrage.FollowUpState = crush;
         enrageRecover.FollowUpState = crush;
 
-        foreach (MoveState state in new[] { weak1, recover, enrage, enrageRecover })
+        foreach (MoveState state in new[] { weak1, weak2, recover, enrage, enrageRecover })
             state.MustPerformOnceBeforeTransitioning = true;
 
         List<MonsterState> allStates =
         [
             .. cycleStates,
             weak1,
+            weak2,
             recover,
             enrage,
             enrageRecover,
@@ -243,6 +251,7 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
             afterJabs,
             afterHeavyPunch,
             afterGuard,
+            exposed1Next,
             exposedNext,
             resume
         ];
@@ -704,7 +713,7 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
             await EnterEnrageLockAsync();
             return;
         }
-        if (IsWeakPhase && NextMove.Id == RecoverId && ShouldTriggerEnrage)
+        if (IsWeakPhase && NextMove.Id != EnrageRecoverId && ShouldTriggerEnrage)
         {
             SetMoveImmediate(Move(EnrageRecoverId), forceTransition: true);
             ProjectHandIntents();

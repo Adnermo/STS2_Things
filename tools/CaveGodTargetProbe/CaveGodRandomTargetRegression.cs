@@ -119,10 +119,10 @@ public partial class CaveGodProbeNode
                 Assert(s.Right.Creature.IsAlive && !s.Right.Creature.IsHittable, "Second downed arm cannot be hit.");
                 await CheckRandomAttack(s, card, bodyBulwarked: false, s.Body.Creature);
 
-                // Two exposure turns awaken the boss, restoring both arms and Granite Bulwark.
-                for (int i = 0; i < 2; i++) await Act(s);
+                // Three exposure turns awaken the boss, restoring both arms and Granite Bulwark.
+                for (int i = 0; i < 3; i++) await Act(s);
                 Assert(!s.Body.IsWeakPhase && s.Body.Creature.HasPower<ThingsCaveGodAncientCorePower>(),
-                    "Awakening after 2 exposure turns must restore both arms and Granite Bulwark.");
+                    "Awakening after 3 exposure turns must restore both arms and Granite Bulwark.");
                 await CheckRandomAttack(s, card, bodyBulwarked: true, s.Left.Creature, s.Right.Creature, s.Body.Creature);
 
                 await CreatureCmd.Stun(s.Left.Creature);

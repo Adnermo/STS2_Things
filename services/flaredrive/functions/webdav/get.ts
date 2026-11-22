@@ -1,4 +1,4 @@
-import { notFound } from "./utils";
+import { getPublicReadCacheControl, notFound } from "./utils";
 import { RequestHandlerParams } from "./utils";
 
 export async function handleRequestGet({
@@ -6,6 +6,7 @@ export async function handleRequestGet({
   path,
   request,
 }: RequestHandlerParams) {
+  const cacheControl = getPublicReadCacheControl(path, request);
   const obj = await bucket.get(path, {
     onlyIf: request.headers,
     range: request.headers,
@@ -20,6 +21,7 @@ export async function handleRequestGet({
       obj.writeHttpMetadata(notModifiedHeaders);
       notModifiedHeaders.set("etag", obj.httpEtag);
       notModifiedHeaders.set("Last-Modified", obj.uploaded.toUTCString());
+      notModifiedHeaders.set("Cache-Control", cacheControl);
       return new Response(null, { status: 304, headers: notModifiedHeaders });
     }
     return new Response("Preconditions failed", { status: 412 });
@@ -30,8 +32,7 @@ export async function handleRequestGet({
   headers.set("etag", obj.httpEtag);
   headers.set("Accept-Ranges", "bytes");
   headers.set("Last-Modified", obj.uploaded.toUTCString());
-  if (path.startsWith("_$flaredrive$/thumbnails/"))
-    headers.set("Cache-Control", "max-age=31536000");
+  headers.set("Cache-Control", cacheControl);
 
   if (request.headers.has("range") && obj.range) {
     let start = 0;

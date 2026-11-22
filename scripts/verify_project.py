@@ -351,8 +351,8 @@ def verify_cave_god_contract(errors: list[str]) -> None:
     constants = dict(re.findall(r'\b(\w+Id)\s*=\s*"([A-Z0-9_]+)"', body_text))
     body_moves = {constants[name] for name in re.findall(r"\bnew\(\s*(\w+Id)\s*,", body_text) if name in constants}
     hand_moves = set(re.findall(r'Action\.\w+\s*=>\s*"([A-Z0-9_]+)"', hand_text))
-    if len(body_moves) != 13:
-        fail(errors, f"cave_god: expected 13 body move states, parsed {len(body_moves)}: {sorted(body_moves)}")
+    if len(body_moves) != 14:
+        fail(errors, f"cave_god: expected 14 body move states, parsed {len(body_moves)}: {sorted(body_moves)}")
     if len(hand_moves) != 11:
         fail(errors, f"cave_god: ThingsCaveGodHand.MoveId must map all 11 actions, parsed {sorted(hand_moves)}")
     if "nameof(Action." in hand_text or "action.ToString()" in hand_text:

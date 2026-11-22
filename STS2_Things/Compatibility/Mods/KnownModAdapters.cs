@@ -38,5 +38,6 @@ internal static class KnownModAdapters
         new("PornographicBeautificationCardsV18", "cae_13a927d9decf", static (assembly, harmony) =>
             PortraitCacheGuard.Install(assembly, "cae_13a927d9decf", harmony)),
         new("MomoLib", "MomoLib", MomoLibCompatibility.Install),
+        new("ActLikeIt2", "ActLikeIt2", ActLikeIt2Compatibility.Install),
     ];
 }

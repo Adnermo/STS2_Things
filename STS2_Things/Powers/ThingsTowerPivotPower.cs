@@ -8,6 +8,7 @@ using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Core.Models;
 using STS2_Things.Monsters;
@@ -17,7 +18,8 @@ namespace STS2_Things.Powers;
 /// <summary>
 /// Shared core mechanism power for 人面塔 (The Visage Tower): 【塔枢轮转】.
 /// Tracks the 2-turn stay countdown, 8-turn full-cycle resonance countdown (while all 4 faces live),
-/// post-break rotational 2-hit combo preview, and complete damage immunity for rotated-away faces.
+/// shatter enrage (+2/+3 Strength to surviving faces), post-break rotational 2-hit combo scaling (+1/+2 Strength),
+/// final-stand escalation (+2/+3 Strength every 2 turns), and complete damage immunity for rotated-away faces.
 /// </summary>
 public sealed class ThingsTowerPivotPower : ThingsPowerModel
 {
@@ -32,12 +34,16 @@ public sealed class ThingsTowerPivotPower : ThingsPowerModel
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
         new IntVar("CycleRemaining", HumanFaceTowerController.FullCycleActiveTurns),
+        new IntVar("ShatterStrength", 2),
+        new IntVar("ComboStrength", 1),
+        new IntVar("FinalStandStrength", 2),
         new StringVar("NextFace", string.Empty)
     ];
 
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
     [
-        HoverTipFactory.Static(StaticHoverTip.Stun)
+        HoverTipFactory.Static(StaticHoverTip.Stun),
+        HoverTipFactory.FromPower<StrengthPower>()
     ];
 
     protected override string SmartDescriptionLocKey
@@ -68,6 +74,9 @@ public sealed class ThingsTowerPivotPower : ThingsPowerModel
     private void RefreshDynamicVars(HumanFaceTowerController ctrl)
     {
         DynamicVars["CycleRemaining"].BaseValue = ctrl.TurnsUntilFullCycleClimax;
+        DynamicVars["ShatterStrength"].BaseValue = ctrl.ShatterStrengthGain;
+        DynamicVars["ComboStrength"].BaseValue = ctrl.ComboStrengthGain;
+        DynamicVars["FinalStandStrength"].BaseValue = ctrl.FinalStandStrengthGain;
         if (DynamicVars["NextFace"] is StringVar nextVar)
         {
             nextVar.StringValue = ctrl.PeekNextLivingFace(OwnerFace)?.Title.GetFormattedText() ?? string.Empty;

@@ -127,7 +127,14 @@ public sealed class ThingsMockeryEchoPower : ThingsPowerModel
         }
         if (grantStrength && Owner.IsAlive)
         {
-            await PowerCmd.Apply<StrengthPower>(choiceContext, Owner, StrengthPerRepeat, Owner, null);
+            if (mockery.Controller is { } ctrl)
+            {
+                await ctrl.ApplyStrengthToAllLivingFacesAsync(choiceContext, StrengthPerRepeat, Owner);
+            }
+            else
+            {
+                await PowerCmd.Apply<StrengthPower>(choiceContext, Owner, StrengthPerRepeat, Owner, null);
+            }
         }
     }
 

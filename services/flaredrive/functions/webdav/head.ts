@@ -1,9 +1,10 @@
-import { notFound } from "./utils";
+import { getPublicReadCacheControl, notFound } from "./utils";
 import { RequestHandlerParams } from "./utils";
 
 export async function handleRequestHead({
   bucket,
   path,
+  request,
 }: RequestHandlerParams) {
   const obj = await bucket.head(path);
   if (obj === null) return notFound();
@@ -14,5 +15,6 @@ export async function handleRequestHead({
   headers.set("Content-Length", obj.size.toString());
   headers.set("Accept-Ranges", "bytes");
   headers.set("Last-Modified", obj.uploaded.toUTCString());
+  headers.set("Cache-Control", getPublicReadCacheControl(path, request));
   return new Response(null, { headers });
 }

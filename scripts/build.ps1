@@ -377,7 +377,7 @@ elseif (Test-Path -LiteralPath $fmodAudit) {
 
 Write-Host "Building STS2_Things ($Configuration, $TargetVersion) against $DataDir"
 Remove-Item Env:DOTNET_ROOT, Env:DOTNET_MULTILEVEL_LOOKUP -ErrorAction SilentlyContinue
-& dotnet build $Project -c $Configuration --nologo `
+& dotnet build $Project -t:Rebuild -c $Configuration --nologo `
     "/p:Sts2TargetVersion=$TargetVersion" `
     "/p:Sts2DataDir=$DataDir" `
     "/p:Sts2GameDir=$GameDir"
