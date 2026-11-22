@@ -23,11 +23,11 @@ public sealed class ThingsRockSnail : DepthsSnail
         _choose = null;
     }
     public int CrawlsRemaining => Creature.GetPower<ThingsRockCrawlStatePower>()?.Remaining ?? 2;
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 36, 32);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 32, 29);
     public override int MaxInitialHp => MinInitialHp + 3;
     private int OpeningShell => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 6, 5);
     private int CrawlShell => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 4, 3);
-    private int CrushDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 27, 24);
+    private int CrushDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 24, 22);
 
     public override async Task BeforeCombatStart()
     {

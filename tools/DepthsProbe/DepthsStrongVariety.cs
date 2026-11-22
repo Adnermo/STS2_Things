@@ -295,8 +295,8 @@ public partial class DepthsProbeNode
             var b = await StrongBattle(canonical, players, ascension);
             foreach (var player in b.Players) { player.Creature.SetMaxHpInternal(1000); player.Creature.SetCurrentHpInternal(1000); }
             var maw = b.Monster<ThingsCaveMaw>();
-            Assert(maw.MinInitialHp == (ascension == 0 ? 88 : 96) && maw.MaxInitialHp == (ascension == 0 ? 94 : 102),
-                "Cave Maw uses updated 88-94 (A0) / 96-102 (A8+) HP band.");
+            Assert(maw.MinInitialHp == (ascension == 0 ? 79 : 86) && maw.MaxInitialHp == (ascension == 0 ? 85 : 92),
+                "Cave Maw uses updated 79-85 (A0) / 86-92 (A8+) HP band.");
             Assert(ThingsCaveMaw.BlockPerCard == 10 && ThingsCaveMaw.StrengthPerMeal == 3 &&
                    maw.Creature.GetPower<ThingsCaveMawAppetitePower>()?.DynamicVars["BlockPerCard"].IntValue == 10,
                 "Cave Maw exposes BlockPerCard=10 and StrengthPerMeal=3.");
@@ -309,16 +309,16 @@ public partial class DepthsProbeNode
             }
             maw.RollMove(b.Players.Select(p => p.Creature));
             Assert(maw.NextMove.Id == "DEVOUR_MOVE", "Offer transitions to Devour.");
-            int expectedDevourDamage = ascension == 0 ? 6 : 8;
+            int expectedDevourDamage = ascension == 0 ? 5 : 7;
             Assert(maw.NextMove.Intents.OfType<SingleAttackIntent>().Single().GetTotalDamage([b.Players[0].Creature], maw.Creature) == expectedDevourDamage &&
                    maw.NextMove.Intents.OfType<BuffIntent>().Count() == 1 &&
                    maw.NextMove.Intents.OfType<DefendIntent>().Count() == 1,
-                "Devour advertises SingleAttackIntent(6/8) + BuffIntent + DefendIntent.");
+                "Devour advertises SingleAttackIntent(5/7) + BuffIntent + DefendIntent.");
             await maw.Creature.AfterTurnStart(CombatSide.Enemy);
             int playerHpBefore = b.Players[0].Creature.CurrentHp;
             await maw.PerformMove();
             Assert(playerHpBefore - b.Players[0].Creature.CurrentHp == expectedDevourDamage,
-                "Devour lands its 6/8 light attack before consuming Status cards.");
+                "Devour lands its 5/7 light attack before consuming Status cards.");
             int consumed = players * 2;
             decimal expectedMealBlock = consumed * 10;
             Assert(maw.Creature.Block == expectedMealBlock,
@@ -329,7 +329,7 @@ public partial class DepthsProbeNode
             DeactivateSyntheticCombat();
         }
         Assert(!ModelDb.Card<Debris>().Keywords.Contains(CardKeyword.Retain), "Canonical Debris remains unchanged.");
-        GD.Print("PASS both maw encounters, 88-94/96-102 HP, 6/8 Devour attack, 10 Block per Status card, multiplayer consumption and canonical-card isolation.");
+        GD.Print("PASS both maw encounters, 79-85/86-92 HP, 5/7 Devour attack, 10 Block per Status card, multiplayer consumption and canonical-card isolation.");
     }
 
     private static async Task VerifyEliteMechanics()
@@ -341,7 +341,7 @@ public partial class DepthsProbeNode
             var salamander = b.Monster<ThingsReverseSalamander>();
             int expectedBlockPerPlayer = ascension == 0 ? 10 : 14;
             int expectedGrowth = ascension == 0 ? 2 : 3;
-            Assert(salamander.MinInitialHp == (ascension == 0 ? 172 : 192), "Salamander HP is 172 (A0) / 192 (A8+).");
+            Assert(salamander.MinInitialHp == (ascension == 0 ? 155 : 173), "Salamander HP is 155 (A0) / 173 (A8+).");
             Assert(salamander.GrowthAmount == expectedGrowth, "Salamander GrowthAmount is 2 (A0) / 3 (A9+).");
             Assert(salamander.UnplayedRecallBlock == expectedBlockPerPlayer, "Salamander UnplayedRecallBlock is 10 (A0) / 14 (A8+).");
             var playerCreatures = b.Players.Select(p => p.Creature).ToArray();
@@ -554,10 +554,10 @@ public partial class DepthsProbeNode
             var player = b.Players[0];
             player.Creature.SetMaxHpInternal(1000);
             player.Creature.SetCurrentHpInternal(1000);
-            int expectedHit = ascension == 0 ? 11 : 12;
+            int expectedHit = ascension == 0 ? 10 : 11;
             int expectedSkillBlock = ascension == 0 ? 7 : 8;
             Assert(jelly.NextMove.Intents.OfType<SingleAttackIntent>().Single().GetTotalDamage([player.Creature], jelly.Creature) == expectedHit,
-                "Radio Jellyfish opening intent reflects 11 (A0) / 12 (A9+) damage.");
+                "Radio Jellyfish opening intent reflects 10 (A0) / 11 (A9+) damage.");
             Assert(jelly.ShieldPerSkill == expectedSkillBlock,
                 "Radio Jellyfish opening ShieldPerSkill reflects 7 (A0) / 8 (A8+) Block.");
 
@@ -585,7 +585,7 @@ public partial class DepthsProbeNode
                 $"Radio Jellyfish Playback deals {expectedHit}x2 damage for one recorded Attack plus finale.");
             DeactivateSyntheticCombat();
         }
-        GD.Print("PASS Reverse Salamander Surging Flow + Reflux (172/192 HP, 2/3 Str, 10/14 Block) & Radio Jellyfish 11/12 damage and 7/8 Skill Block.");
+        GD.Print("PASS Reverse Salamander Surging Flow + Reflux (155/173 HP, 2/3 Str, 10/14 Block) & Radio Jellyfish 10/11 damage and 7/8 Skill Block.");
     }
 
     private static async Task VerifyBowlbugProgenitorMechanics()

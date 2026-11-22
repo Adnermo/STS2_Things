@@ -125,7 +125,7 @@ public abstract class ThingsCaveGodHand : ThingsMonsterModel
         Body is { Phase: >= 2, IsWeakPhase: false, IsEnrageLocked: false } body &&
         body.RightHand is { IsDown: false, IsStunned: false };
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 83, 75) + (Sts2VersionSeam.IsDread() ? 20 : 0);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 75, 68) + (Sts2VersionSeam.IsDread() ? 18 : 0);
     public override int MaxInitialHp => MinInitialHp;
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Stone;
     public override string DeathSfx => "event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone";
@@ -148,12 +148,12 @@ public abstract class ThingsCaveGodHand : ThingsMonsterModel
         => target == Creature && IsDown ? 0m : 1m;
 
     private int Phase1SingleArmBonus => Body is { Phase: >= 2 } ? 0 : 3;
-    private int SweepDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9) + Phase1SingleArmBonus;
-    private int CleaveSweepDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10) + Phase1SingleArmBonus;
-    private int HeavyPunchDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12) + Phase1SingleArmBonus;
-    private int GrabDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 8, 7) + Phase1SingleArmBonus;
-    private int SlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 20, 18) + Phase1SingleArmBonus;
-    private int WeakDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 18, 16);
+    private int SweepDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 8) + Phase1SingleArmBonus;
+    private int CleaveSweepDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9) + Phase1SingleArmBonus;
+    private int HeavyPunchDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 11) + Phase1SingleArmBonus;
+    private int GrabDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6) + Phase1SingleArmBonus;
+    private int SlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 18, 16) + Phase1SingleArmBonus;
+    private int WeakDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 16, 14);
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
     {

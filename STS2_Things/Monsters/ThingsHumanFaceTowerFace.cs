@@ -50,7 +50,7 @@ public abstract class ThingsHumanFaceTowerFace : ThingsMonsterModel
 
     public bool IsActiveFace => Controller == null || Controller.ActiveFace == this;
 
-    public int ClimaxDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 17, 15);
+    public int ClimaxDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 15, 14);
 
     public string StoneAttackSfx => "event:/sfx/enemy/enemy_attacks/workbug_rock/workbug_rock_attack";
     public string StoneRoarSfx => "event:/sfx/enemy/enemy_impact_enemy_size/enemy_impact_stone";

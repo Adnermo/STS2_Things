@@ -8,6 +8,7 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
@@ -38,8 +39,27 @@ public sealed class ThingsGravetideDigestionPower : ThingsPowerModel
 
     public override PowerStackType StackType => PowerStackType.None;
 
+    protected override IEnumerable<DynamicVar> CanonicalVars =>
+        [new IntVar("StrengthGain", 1m)];
+
+    protected override string SmartDescriptionLocKey
+    {
+        get
+        {
+            if (IsMutable)
+                DynamicVars["StrengthGain"].BaseValue = Platform.Sts2VersionSeam.IsDread() ? 2m : 1m;
+            return base.SmartDescriptionLocKey;
+        }
+    }
+
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         [HoverTipFactory.FromPower<StrengthPower>()];
+
+    public override Task AfterApplied(Creature? applier, CardModel? cardSource)
+    {
+        DynamicVars["StrengthGain"].BaseValue = Platform.Sts2VersionSeam.IsDread() ? 2m : 1m;
+        return Task.CompletedTask;
+    }
 
     public override async Task AfterSideTurnEnd(
         PlayerChoiceContext choiceContext,

@@ -428,13 +428,13 @@ public partial class CaveGodProbeNode : Node
                 AttackIntent p1Intent = attacker.Monster!.NextMove.Intents.OfType<AttackIntent>().Single();
                 int expectedBase = slot switch
                 {
-                    0 => ascension == 0 ? 10 : 11,
-                    1 => ascension == 0 ? 21 : 23,
-                    2 => ascension == 0 ? 12 : 14,
-                    3 => ascension == 0 ? 13 : 15,
-                    4 => ascension == 0 ? 6 : 7,
-                    5 => ascension == 0 ? 15 : 17,
-                    6 => ascension == 0 ? 13 : 15,
+                    0 => ascension == 0 ? 9 : 10,
+                    1 => ascension == 0 ? 19 : 21,
+                    2 => ascension == 0 ? 11 : 13,
+                    3 => ascension == 0 ? 12 : 14,
+                    4 => ascension == 0 ? 5 : 6,
+                    5 => ascension == 0 ? 14 : 16,
+                    6 => ascension == 0 ? 12 : 14,
                     _ => throw new InvalidOperationException(),
                 };
                 Assert(p1Intent.DamageCalc!() == expectedBase,
@@ -472,7 +472,7 @@ public partial class CaveGodProbeNode : Node
 
             // 1) Crush (Body) -> HeavyPunch (Left + Right 2-segment!)
             Assert(p2.Body.NextMove.Id == ThingsCaveGodBody.CrushId, "Expected CrushId at P2 start.");
-            Assert(p2.Body.NextMove.Intents.OfType<AttackIntent>().Single().DamageCalc!() == 9m, "P2 Crush base per-hit damage must remain 9 on A0.");
+            Assert(p2.Body.NextMove.Intents.OfType<AttackIntent>().Single().DamageCalc!() == 8m, "P2 Crush base per-hit damage must remain 8 on A0.");
             await Act(p2);
 
             foreach (string expectedMove in new[]
@@ -492,12 +492,12 @@ public partial class CaveGodProbeNode : Node
                     $"P2 move {expectedMove}: expected {(isCombo ? 2 : 1)} advertised attackers, got {attackers.Length}.");
                 int expectedP2Base = expectedMove switch
                 {
-                    ThingsCaveGodBody.HeavyPunchId => 12,
-                    ThingsCaveGodBody.GrabId => 7,
-                    ThingsCaveGodBody.AirSlamId => 18,
-                    ThingsCaveGodBody.RockSweepId => 10,
-                    ThingsCaveGodBody.SweepId => 9,
-                    ThingsCaveGodBody.AngrySlamId => 19,
+                    ThingsCaveGodBody.HeavyPunchId => 11,
+                    ThingsCaveGodBody.GrabId => 6,
+                    ThingsCaveGodBody.AirSlamId => 16,
+                    ThingsCaveGodBody.RockSweepId => 9,
+                    ThingsCaveGodBody.SweepId => 8,
+                    ThingsCaveGodBody.AngrySlamId => 17,
                     _ => throw new InvalidOperationException(),
                 };
                 Assert(attackers.All(a => a.Monster!.NextMove.Intents.OfType<AttackIntent>().Single().DamageCalc!() == expectedP2Base),
@@ -561,30 +561,30 @@ public partial class CaveGodProbeNode : Node
         {
             var s = Scenario(count, ascension);
             int Scale(int hp) => (int)Creature.ScaleHpForMultiplayer(hp, s.State.Encounter, count, s.State.RunState.CurrentActIndex);
-            Assert(s.Body.Creature.MaxHp == Scale(ascension == 0 ? 250 : 270),
+            Assert(s.Body.Creature.MaxHp == Scale(ascension == 0 ? 226 : 244),
                 $"Core MaxHp mismatch ({count}p A{ascension}): got {s.Body.Creature.MaxHp}.");
-            Assert(s.Left.Creature.MaxHp == Scale(ascension == 0 ? 75 : 83) && s.Right.Creature.MaxHp == s.Left.Creature.MaxHp,
+            Assert(s.Left.Creature.MaxHp == Scale(ascension == 0 ? 68 : 75) && s.Right.Creature.MaxHp == s.Left.Creature.MaxHp,
                 $"Arm 1.5x MaxHp mismatch ({count}p A{ascension}): got {s.Left.Creature.MaxHp}.");
 
             await Act(s); // Turn 1 Grab spawns Phase 1 CaptiveClaw
             var clawP1 = s.State.Enemies.Single(c => c.Monster is ThingsCaveGodCaptiveClaw && c.IsAlive);
-            Assert(clawP1.MaxHp == Scale(ascension == 0 ? 25 : 30),
+            Assert(clawP1.MaxHp == Scale(ascension == 0 ? 22 : 27),
                 $"Phase 1 CaptiveClaw MaxHp mismatch ({count}p A{ascension}): got {clawP1.MaxHp}.");
             await Hit(s, clawP1);
 
             await Phase2(s);
-            Assert(s.Body.Phase == 2 && s.Body.Creature.MaxHp == Scale(ascension == 0 ? 250 : 270),
+            Assert(s.Body.Phase == 2 && s.Body.Creature.MaxHp == Scale(ascension == 0 ? 226 : 244),
                 "Single honest Boss HP bar must keep its MaxHp across half-HP Phase 2 transition.");
             Assert(!s.Body.ShouldTremble,
                 $"Body must NOT tremble at 50% HP ({s.Body.Creature.CurrentHp}/{s.Body.Creature.MaxHp}).");
-            Assert(s.Left.Creature.MaxHp == Scale(ascension == 0 ? 75 : 83) && s.Right.Creature.MaxHp == s.Left.Creature.MaxHp,
-                "Arms retain 75/83 scaled MaxHp in Phase 2.");
+            Assert(s.Left.Creature.MaxHp == Scale(ascension == 0 ? 68 : 75) && s.Right.Creature.MaxHp == s.Left.Creature.MaxHp,
+                "Arms retain 68/75 scaled MaxHp in Phase 2.");
 
             await Act(s); // Crush -> HeavyPunch
             await Act(s); // HeavyPunch -> Grab
             await Act(s); // Phase 2 Grab spawns Phase 2 CaptiveClaw
             var clawP2 = s.State.Enemies.Single(c => c.Monster is ThingsCaveGodCaptiveClaw && c.IsAlive);
-            Assert(clawP2.MaxHp == Scale(ascension == 0 ? 30 : 35),
+            Assert(clawP2.MaxHp == Scale(ascension == 0 ? 27 : 32),
                 $"Phase 2 CaptiveClaw MaxHp mismatch ({count}p A{ascension}): got {clawP2.MaxHp}.");
             await Hit(s, clawP2);
             await Hit(s, s.Right.Creature); // Expose core so unpowered damage is 1:1
@@ -601,7 +601,7 @@ public partial class CaveGodProbeNode : Node
                 $"Body must stop trembling when healed above 20% HP ({s.Body.Creature.CurrentHp}/{s.Body.Creature.MaxHp}).");
             DeactivateSyntheticCombat();
         }
-        GD.Print("PASS Core (250/270), Arm 1.5x (75/83), Claw P1 (25/30) & P2 (30/35) HP scaling, and <=20% HP critical tremor gate");
+        GD.Print("PASS Core (226/244), Arm 1.5x (68/75), Claw P1 (22/27) & P2 (27/32) HP scaling, and <=20% HP critical tremor gate");
     }
     private static async Task StartCapture(Fixture s, bool phase2 = false)
     {
@@ -1820,7 +1820,7 @@ public partial class CaveGodProbeNode : Node
         foreach (int ascension in new[] { 0, 10 })
         {
             var s = Scenario(ascension: ascension);
-            int expectedThreshold = ascension == 0 ? 125 : 135;
+            int expectedThreshold = ascension == 0 ? 113 : 122;
             Assert(s.Body.EnrageHpThreshold == expectedThreshold,
                 $"Expected EnrageHpThreshold={expectedThreshold} at A{ascension}, got {s.Body.EnrageHpThreshold}.");
 
@@ -1879,9 +1879,9 @@ public partial class CaveGodProbeNode : Node
             await Act(s);
             Assert(s.Body.Phase == 2 && !s.Body.IsWeakPhase && !s.Body.IsEnrageLocked &&
                    s.Body.Creature.HpDisplay == HpDisplay.Normal &&
-                   s.Body.Creature.CurrentHp == 125 &&
+                   s.Body.Creature.CurrentHp == 113 &&
                    s.Body.NextMove.Id == ThingsCaveGodBody.CrushId,
-                "EnrageRecoverId must awaken on that same turn into Phase 2 at 125/250 HP.");
+                "EnrageRecoverId must awaken on that same turn into Phase 2 at 113/226 HP.");
             DeactivateSyntheticCombat();
         }
 
@@ -1903,14 +1903,14 @@ public partial class CaveGodProbeNode : Node
             await Act(s);
             Assert(s.Body.Phase == 2 && !s.Body.IsWeakPhase && !s.Body.IsEnrageLocked &&
                    s.Body.Creature.HpDisplay == HpDisplay.Normal &&
-                   s.Body.Creature.CurrentHp == 125 &&
+                   s.Body.Creature.CurrentHp == 113 &&
                    s.Body.NextMove.Id == ThingsCaveGodBody.CrushId,
-                "ENRAGE_RECOVER must awaken into Phase 2 DOUBLE_FIST_CRUSH at 125/250 HP.");
+                "ENRAGE_RECOVER must awaken into Phase 2 DOUBLE_FIST_CRUSH at 113/226 HP.");
             Assert(s.Left.Creature.CurrentHp == s.Left.Creature.MaxHp && s.Body.Creature.HasPower<ThingsCaveGodAncientCorePower>(),
                 "ENRAGE_RECOVER must restore downed arm and Granite Bulwark.");
             DeactivateSyntheticCombat();
         }
 
-        GD.Print("PASS half-HP Phase 2 transition: 50% clamp, WaterfallGiant ∞ bar + ?, 0-damage lock, mid-grab release, arm-break upgrade & 125/135 restoration");
+        GD.Print("PASS half-HP Phase 2 transition: 50% clamp, WaterfallGiant ∞ bar + ?, 0-damage lock, mid-grab release, arm-break upgrade & 113/122 restoration");
     }
 }

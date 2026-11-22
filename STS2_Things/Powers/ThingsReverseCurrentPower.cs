@@ -36,8 +36,20 @@ public sealed class ThingsReverseCurrentPower : ThingsPowerModel
 
     public override Task AfterApplied(Creature? applier, CardModel? cardSource)
     {
-        DynamicVars["StrengthAmount"].BaseValue = Owner.Monster is ThingsReverseSalamander monster ? monster.GrowthAmount : 2;
+        DynamicVars["StrengthAmount"].BaseValue = Owner.Monster is ThingsReverseSalamander monster ? monster.GrowthAmount : Math.Max(1, Amount);
         DynamicVars["UnplayedBlock"].BaseValue = Owner.Monster is ThingsReverseSalamander m ? m.UnplayedRecallBlock : 10;
+        return Task.CompletedTask;
+    }
+
+    public override Task AfterPowerAmountChanged(
+        PlayerChoiceContext choiceContext,
+        PowerModel power,
+        decimal amount,
+        Creature? applier,
+        CardModel? cardSource)
+    {
+        if (ReferenceEquals(power, this))
+            DynamicVars["StrengthAmount"].BaseValue = Math.Max(0, Amount);
         return Task.CompletedTask;
     }
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>

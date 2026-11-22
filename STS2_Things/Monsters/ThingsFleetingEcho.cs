@@ -20,7 +20,10 @@ public sealed class ThingsFleetingEcho : ThingsSpineMonster
     public override int MinInitialHp => 999;
     public override int MaxInitialHp => 999;
     public override float HpBarSizeReduction => 80f;
-    private int OpeningDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 28, 24);
+    private static readonly int[] NormalDamages = [22, 25, 29, 32, 36];
+    private static readonly int[] DeadlyDamages = [25, 29, 32, 36, 40];
+    private int PhaseDamage(int phase) =>
+        AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, DeadlyDamages[phase], NormalDamages[phase]);
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Magic;
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/soul_fysh/soul_fysh_wave";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/soul_fysh/soul_fysh_intangible";
@@ -52,7 +55,7 @@ public sealed class ThingsFleetingEcho : ThingsSpineMonster
         for (int i = 0; i < moves.Length; i++)
         {
             int phase = i;
-            int damage = OpeningDamage + phase * 4;
+            int damage = PhaseDamage(phase);
             moves[i] = new MoveState(ids[i], _ => Strike(damage, clips[phase], contacts[phase], durations[phase]),
                 new SingleAttackIntent(damage));
         }

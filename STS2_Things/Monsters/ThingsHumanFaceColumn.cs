@@ -40,13 +40,13 @@ public sealed class ThingsHumanFaceColumn : ThingsSpineMonster
         _deathHandled = false;
     }
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 44, 38);
-    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 50, 44);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 40, 34);
+    public override int MaxInitialHp => MinInitialHp + 6;
     public override float HpBarSizeReduction => 24f;
     public override bool CanChangeScale => false;
-    // Budget for the complete column: at most three Knock attacks per turn (36 A0 / 39 A9+).
-    private int KnockDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 12);
-    private int RattleDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
+    // Budget for the complete column: at most three Knock attacks per turn (33 A0 / 36 A9+).
+    private int KnockDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 11);
+    private int RattleDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
     private int SealBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 14, 10);
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/workbug_rock/workbug_rock_attack";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/workbug_rock/workbug_rock_die";

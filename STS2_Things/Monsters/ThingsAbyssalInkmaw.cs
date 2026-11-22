@@ -92,7 +92,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     public bool IsChargingInk => NextMove?.Id == InkChargeId;
     public bool IsPostSprayStunned => NextMove?.Id == PostSprayStunId;
 
-    public int UndertowDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5) + (Sts2VersionSeam.IsDread() ? 1 : 0);
+    public int UndertowDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4) + (Sts2VersionSeam.IsDread() ? 1 : 0);
     public const int UndertowHits = 2;
     public int UndertowBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 10, 8) + (Sts2VersionSeam.IsDread() ? 2 : 0);
 
@@ -101,14 +101,14 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     public const int PressureSlimedCount = 1;
 
     public int InkSprayDamage => Phase >= 2
-        ? AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12) + (Sts2VersionSeam.IsDread() ? 2 : 0)
-        : AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9) + (Sts2VersionSeam.IsDread() ? 1 : 0);
+        ? AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 11) + (Sts2VersionSeam.IsDread() ? 2 : 0)
+        : AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 8) + (Sts2VersionSeam.IsDread() ? 1 : 0);
 
     public int InkBlackoutTurns => 1;
 
     public int TidalCrashDamage => Phase >= 2
-        ? AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 22, 19) + (Sts2VersionSeam.IsDread() ? 2 : 0)
-        : AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 18, 15) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+        ? AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 20, 17) + (Sts2VersionSeam.IsDread() ? 2 : 0)
+        : AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 16, 14) + (Sts2VersionSeam.IsDread() ? 2 : 0);
 
     public int TidalDebuffStacks => Phase >= 2 ? 2 : 1;
 
@@ -116,7 +116,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     public int Phase2Strength => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 2, 1) + (Sts2VersionSeam.IsDread() ? 1 : 0);
     public int Phase2Block => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 24, 18) + (Sts2VersionSeam.IsDread() ? 6 : 0);
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 350, 320) + (Sts2VersionSeam.IsDread() ? 30 : 0);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 316, 288) + (Sts2VersionSeam.IsDread() ? 28 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
     protected override string VisualsPath => "res://scenes/creature_visuals/things_abyssal_inkmaw.tscn";

@@ -42,11 +42,11 @@ public sealed class ThingsAbyssalCrushingTentacle : ThingsMonsterModel, IAbyssal
 
     public bool IsFloorBreachMode => _floorBreachMode;
 
-    public int HeavySlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 11) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public int HeavySlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10) + (Sts2VersionSeam.IsDread() ? 2 : 0);
     public int GuardBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 12, 9) + (Sts2VersionSeam.IsDread() ? 2 : 0);
     public int ChargeBossBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 18, 15) + (Sts2VersionSeam.IsDread() ? 3 : 0);
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 65, 58) + (Sts2VersionSeam.IsDread() ? 10 : 0);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 58, 52) + (Sts2VersionSeam.IsDread() ? 9 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
     protected override string VisualsPath => "res://scenes/creature_visuals/things_abyssal_crushing_tentacle.tscn";

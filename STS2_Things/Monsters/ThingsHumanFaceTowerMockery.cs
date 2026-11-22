@@ -27,14 +27,14 @@ public sealed class ThingsHumanFaceTowerMockery : ThingsHumanFaceTowerFace
     public override string IdleAnimationName => "mockery_idle";
     public override string StarterAttackAnimName => "mockery_attack_twin";
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 120, 110) + (Sts2VersionSeam.IsDread() ? 15 : 0);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 108, 99) + (Sts2VersionSeam.IsDread() ? 13 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
     public int TauntBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 5, 4) + (Sts2VersionSeam.IsDread() ? 2 : 0);
-    public int SneerStabDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6);
-    public int WhirlingFangDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12);
-    public override int ComboStarterDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 9);
-    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
+    public int SneerStabDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
+    public int WhirlingFangDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 11);
+    public override int ComboStarterDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 9, 8);
+    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
     public override int ComboFollowUpHits => 2;
 
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([

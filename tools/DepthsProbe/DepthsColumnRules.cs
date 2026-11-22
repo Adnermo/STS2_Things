@@ -81,7 +81,7 @@ public partial class DepthsProbeNode
             b=await ColumnBattle(count,asc);original=Discs(b);bottom=original[0];middle=original[1];top=original[2];
             Assert(ModelDb.Encounter<ThingsHumanFaceColumnEncounter>().RoomType==MegaCrit.Sts2.Core.Rooms.RoomType.Elite,
                 "Human-Faced Column encounter is classified as an Elite.");
-            Assert(top.MinInitialHp==(asc==0?38:44) && top.MaxInitialHp==(asc==0?44:50) && !top.CanChangeScale,"Both HP endpoints (38-44 A0 / 44-50 A20) and fixed-scale contract match.");
+            Assert(top.MinInitialHp==(asc==0?34:40) && top.MaxInitialHp==(asc==0?40:46) && !top.CanChangeScale,"Both HP endpoints (34-40 A0 / 40-46 A20) and fixed-scale contract match.");
             int topHp=top.Creature.CurrentHp;
             int bottomHp=bottom.Creature.CurrentHp;
             await CreatureCmd.Damage(Choice,top.Creature,10,ValueProp.Move,b.Players[0].Creature);
@@ -142,7 +142,7 @@ public partial class DepthsProbeNode
             b=await ColumnBattle(count,asc);original=Discs(b);top=original[2];bottom=original[0];
             b.State.CurrentSide=CombatSide.Enemy;
             int hp=b.Players[0].Creature.CurrentHp;await top.PerformMove();
-            Assert(hp-b.Players[0].Creature.CurrentHp==(asc==0?12:13),"Knock deals 12 on A0 and 13 on A20.");
+            Assert(hp-b.Players[0].Creature.CurrentHp==(asc==0?11:12),"Knock deals 11 on A0 and 12 on A20.");
             top.RollMove(b.Players.Select(p=>p.Creature));await top.PerformMove();
             Assert(b.Players.All(p=>p.Creature.GetPower<WeakPower>()?.Amount==1),"Rebuke applies one Weak to each player.");
             int block=bottom.Creature.Block;await bottom.PerformMove();
@@ -151,10 +151,10 @@ public partial class DepthsProbeNode
                 $"Seal reduced base Block and multiplayer uses native scaling. players={count}, gained={bottom.Creature.Block-block}");
             bottom.RollMove(b.Players.Select(p=>p.Creature));hp=b.Players[0].Creature.CurrentHp;
             await bottom.PerformMove();
-            Assert(hp-b.Players[0].Creature.CurrentHp==(asc==0?10:12),"Rattle deals 5x2 on A0 and 6x2 on A20.");
+            Assert(hp-b.Players[0].Creature.CurrentHp==(asc==0?8:10),"Rattle deals 4x2 on A0 and 5x2 on A20.");
             DeactivateSyntheticCombat();
         }
-        GD.Print("PASS column rules: A0/A20, 1/4 players, 12/13 Knock, 10/12 Rattle, 38-44/44-50 HP, fixed scale, middle-only stun, AoE order and recovery.");
+        GD.Print("PASS column rules: A0/A20, 1/4 players, 11/12 Knock, 8/10 Rattle, 34-40/40-46 HP, fixed scale, middle-only stun, AoE order and recovery.");
     }
 
     private static async Task VerifyColumnAttackBudget()
@@ -162,10 +162,10 @@ public partial class DepthsProbeNode
         foreach (int players in new[] { 1, 4 })
         foreach (int asc in new[] { 0, 20 })
         {
-            int knockPeak = asc == 0 ? 36 : 39;
-            int rattlePeak = asc == 0 ? 30 : 36;
-            int intactMin = asc == 0 ? 10 : 12;
-            int intactMax = asc == 0 ? 22 : 25;
+            int knockPeak = asc == 0 ? 33 : 36;
+            int rattlePeak = asc == 0 ? 24 : 30;
+            int intactMin = asc == 0 ? 8 : 10;
+            int intactMax = asc == 0 ? 19 : 22;
             var b = await ColumnBattle(players, asc);
             var totals = new List<int>();
             b.State.CurrentSide = CombatSide.Enemy;

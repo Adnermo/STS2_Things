@@ -100,9 +100,9 @@ public partial class DepthsProbeNode
 
             if (players == 1)
             {
-                Assert(boss.Creature.MaxHp == (asc == 0 ? 320 : 350), $"Boss HP mismatch: {boss.Creature.MaxHp}");
-                Assert(left.Creature.MaxHp == (asc == 0 ? 58 : 65), $"Left tentacle HP mismatch: {left.Creature.MaxHp}");
-                Assert(right.Creature.MaxHp == (asc == 0 ? 48 : 54), $"Right tentacle HP mismatch: {right.Creature.MaxHp}");
+                Assert(boss.Creature.MaxHp == (asc == 0 ? 288 : 316), $"Boss HP mismatch: {boss.Creature.MaxHp}");
+                Assert(left.Creature.MaxHp == (asc == 0 ? 52 : 58), $"Left tentacle HP mismatch: {left.Creature.MaxHp}");
+                Assert(right.Creature.MaxHp == (asc == 0 ? 43 : 49), $"Right tentacle HP mismatch: {right.Creature.MaxHp}");
             }
 
             Assert(left.Creature.GetPower<MinionPower>() != null && right.Creature.GetPower<MinionPower>() != null,
@@ -144,7 +144,7 @@ public partial class DepthsProbeNode
             var small1 = boss.LivingSmallTentacles[0];
             if (players == 1)
             {
-                Assert(small1.Creature.MaxHp == (asc == 0 ? 24 : 28),
+                Assert(small1.Creature.MaxHp == (asc == 0 ? 22 : 25),
                     $"Small tentacle HP mismatch: {small1.Creature.MaxHp}.");
             }
             Assert(boss.Creature.GetPower<ThingsAbyssalCoverPower>()?.Amount == 50,

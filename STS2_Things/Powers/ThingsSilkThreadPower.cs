@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Rooms;
@@ -42,9 +43,26 @@ public sealed class ThingsSilkThreadPower : ThingsPowerModel
     }
     private void ClampLayers() { if (Amount > MaxLayers) SetAmount(MaxLayers); }
     protected override object InitInternalData() => new Data();
-    protected override string SmartDescriptionLocKey => IsMutable && !IsPending
-        ? HasLivePair ? "THINGS_SILK_THREAD_POWER.activeDescription" : "THINGS_SILK_THREAD_POWER.unboundDescription"
-        : base.SmartDescriptionLocKey;
+    protected override IEnumerable<DynamicVar> CanonicalVars => [new IntVar("RemainingTurns", 0m)];
+    protected override string SmartDescriptionLocKey
+    {
+        get
+        {
+            if (!IsMutable || IsPending)
+                return base.SmartDescriptionLocKey;
+
+            if (HasLivePair)
+            {
+                int remaining = Math.Max(0, Amount - 1);
+                DynamicVars["RemainingTurns"].BaseValue = remaining;
+                return remaining > 0
+                    ? "THINGS_SILK_THREAD_POWER.activeMultiDescription"
+                    : "THINGS_SILK_THREAD_POWER.activeDescription";
+            }
+
+            return "THINGS_SILK_THREAD_POWER.unboundDescription";
+        }
+    }
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         HoverTipFactory.FromAffliction<ThingsSilkLead>().Concat(HoverTipFactory.FromAffliction<ThingsSilkBound>());
 

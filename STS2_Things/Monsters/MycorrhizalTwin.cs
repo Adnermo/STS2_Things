@@ -22,21 +22,20 @@ public abstract class MycorrhizalTwin : ThingsSpineMonster
     public abstract bool IsVanguard { get; }
     public bool IsFurious => Creature.GetPower<ThingsMycorrhizalFuryPower>() != null;
     public bool IsRobust => IsFurious || Creature.GetPower<ThingsMycorrhizalBondPower>()?.IsRobust == true;
-    public int StrengthGift => IsRobust ? 3 : 2;
-    public int ArmorGift => IsRobust ? 4 : 2;
-    public int FrailGift => IsRobust ? 2 : 1;
-    public int SwapStrengthGain => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 2, 1);
-    public int SwapNourishHeal => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, 6);
-    public int DeathStrengthGain => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
-    public int DeathBlockGain => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 18, 15);
+    public int StrengthGift => IsRobust ? 2 : 1;
+    public int ArmorGift => IsRobust ? 3 : 2;
+    public int FrailGift => 1;
+    public int SwapNourishHeal => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 4, 3);
+    public int DeathStrengthGain => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 4, 3);
+    public int DeathBlockGain => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 12, 10);
     public int ScaleProtection(int value) => (int)Math.Round(value * (IsRobust ? 1.25m : .75m), MidpointRounding.AwayFromZero);
     public MycorrhizalTwin? Partner => Creature.CombatState?.Enemies.Select(c => c.Monster)
         .OfType<MycorrhizalTwin>().FirstOrDefault(m => m != this && m.IsVanguard != IsVanguard && m.Creature.IsAlive);
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 100, 92);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 84, 76);
     public override int MaxInitialHp => MinInitialHp;
     public override float HpBarSizeReduction => 75f;
     protected int Damage(int normal, int hard) => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, hard, normal);
-    protected int Guard => ScaleProtection(AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 14, 12));
+    protected int Guard => ScaleProtection(AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 12, 10));
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/fogmog/fogmog_attack";
     public override string DeathSfx => ModelDb.Monster<Fogmog>().DeathSfx;
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Plant;
@@ -100,7 +99,7 @@ public abstract class MycorrhizalTwin : ThingsSpineMonster
 
     protected async Task Armor(bool solo = false)
     {
-        int plating = solo ? 3 : ArmorGift;
+        int plating = solo ? 2 : ArmorGift;
         foreach (var ally in solo ? new[] { Creature } : LivingTwins)
         {
             await PowerCmd.Apply<PlatingPower>(new ThrowingPlayerChoiceContext(), ally, plating, Creature, null);

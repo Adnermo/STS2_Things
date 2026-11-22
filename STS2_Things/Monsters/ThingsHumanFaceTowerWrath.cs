@@ -24,13 +24,13 @@ public sealed class ThingsHumanFaceTowerWrath : ThingsHumanFaceTowerFace
     public override string IdleAnimationName => "wrath_idle";
     public override string StarterAttackAnimName => "wrath_attack_heavy";
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 120, 110) + (Sts2VersionSeam.IsDread() ? 15 : 0);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 108, 99) + (Sts2VersionSeam.IsDread() ? 13 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
-    public int HeavyMalletDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12) + (Sts2VersionSeam.IsDread() ? 2 : 0);
-    public int DoubleJawDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6);
-    public override int ComboStarterDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9) + (Sts2VersionSeam.IsDread() ? 2 : 0);
-    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public int HeavyMalletDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 11) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public int DoubleJawDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
+    public override int ComboStarterDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 8) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9) + (Sts2VersionSeam.IsDread() ? 2 : 0);
 
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([
         ModelDb.Power<ThingsWrathGlarePower>().ResolvedBigIconPath

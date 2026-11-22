@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using STS2_Things.Cards;
 using STS2_Things.Core.Models;
@@ -29,6 +30,24 @@ public sealed class ThingsInkBlackoutPower : ThingsPowerModel
 
     public override PowerType Type => PowerType.Debuff;
     public override PowerStackType StackType => PowerStackType.Counter;
+
+    protected override IEnumerable<DynamicVar> CanonicalVars =>
+        [new IntVar("ExtraTurns", 0m)];
+
+    protected override string SmartDescriptionLocKey
+    {
+        get
+        {
+            if (!IsMutable || !_activeThisTurn)
+                return base.SmartDescriptionLocKey;
+
+            int extraTurns = System.Math.Max(0, Amount - 1);
+            DynamicVars["ExtraTurns"].BaseValue = extraTurns;
+            return extraTurns > 0
+                ? "THINGS_INK_BLACKOUT_POWER.activeMultiDescription"
+                : "THINGS_INK_BLACKOUT_POWER.activeDescription";
+        }
+    }
 
     public bool IsActiveThisTurn => _activeThisTurn;
 

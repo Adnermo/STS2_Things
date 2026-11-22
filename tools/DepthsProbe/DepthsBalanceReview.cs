@@ -45,32 +45,32 @@ public partial class DepthsProbeNode
                     string text = reflux.HoverTips.OfType<HoverTip>().First().Description;
                     Assert(text.Contains($"[blue]{salamander.GrowthAmount}[/blue]"),
                         "Native Reflux tooltip displays the actual A0/A20 Strength gift.");
-                    Assert(salamander.MinInitialHp == (ascension == 0 ? 172 : 192) &&
+                    Assert(salamander.MinInitialHp == (ascension == 0 ? 155 : 173) &&
                            salamander.GrowthAmount == (ascension == 0 ? 2 : 3) &&
                            salamander.UnplayedRecallBlock == (ascension == 0 ? 10 : 14) &&
                            reflux.DynamicVars["StrengthAmount"].IntValue == salamander.GrowthAmount &&
                            reflux.DynamicVars["UnplayedBlock"].IntValue == salamander.UnplayedRecallBlock,
-                        "Reverse Salamander exposes 172/192 HP, 2/3 Strength, and 10/14 UnplayedBlock.");
+                        "Reverse Salamander exposes 155/173 HP, 2/3 Strength, and 10/14 UnplayedBlock.");
                 }
                 if (creature.Monster is ThingsRadioJellyfish jelly && creature.GetPower<ThingsRadioReceptionPower>() is { } reception)
                 {
                     string text = reception.HoverTips.OfType<HoverTip>().First().Description;
                     Assert(text.Contains("[blue]2[/blue]"), "Native Reception tooltip displays two points per opening stack.");
-                    Assert(ThingsRadioJellyfish.BaseEchoDamage == 9 && ThingsRadioJellyfish.BaseSkillBlock == 5,
-                        "Radio Jellyfish base constants updated to 9 damage / 5 skill block.");
-                    Assert(jelly.EchoDamage == (ascension == 0 ? 9 : 10) &&
+                    Assert(ThingsRadioJellyfish.BaseEchoDamage == 8 && ThingsRadioJellyfish.BaseSkillBlock == 5,
+                        "Radio Jellyfish base constants updated to 8 damage / 5 skill block.");
+                    Assert(jelly.EchoDamage == (ascension == 0 ? 8 : 9) &&
                            jelly.ShieldPerSkill == (ascension == 0 ? 7 : 8) &&
-                           reception.DynamicVars["EchoDamage"].IntValue == (ascension == 0 ? 11 : 12) &&
+                           reception.DynamicVars["EchoDamage"].IntValue == (ascension == 0 ? 10 : 11) &&
                            reception.DynamicVars["ShieldPerSkill"].IntValue == (ascension == 0 ? 7 : 8),
-                        "Radio Jellyfish opening stack yields 11/12 hit damage and 7/8 Block per Skill.");
+                        "Radio Jellyfish opening stack yields 10/11 hit damage and 7/8 Block per Skill.");
                 }
                 if (creature.Monster is ThingsCaveMaw maw && creature.GetPower<ThingsCaveMawAppetitePower>() is { } appetite)
                 {
-                    Assert(maw.MinInitialHp == (ascension == 0 ? 88 : 96) &&
-                           maw.MaxInitialHp == (ascension == 0 ? 94 : 102) &&
+                    Assert(maw.MinInitialHp == (ascension == 0 ? 79 : 86) &&
+                           maw.MaxInitialHp == (ascension == 0 ? 85 : 92) &&
                            ThingsCaveMaw.BlockPerCard == 10 &&
                            appetite.DynamicVars["BlockPerCard"].IntValue == 10,
-                        "Cave Maw balance contract reflects 88-94/96-102 HP and 10 Block per consumed Status card.");
+                        "Cave Maw balance contract reflects 79-85/86-92 HP and 10 Block per consumed Status card.");
                 }
             }
             var roster = b.Enemies.Select(c => new { monster = c.Monster!.Id.Entry, hp = c.MaxHp,

@@ -21,7 +21,7 @@ namespace STS2_Things.Monsters;
 
 /// <summary>
 /// 抓取模式下的活体巨岩石爪（岩之手）。
-/// 第一阶段拥有 25 点生命值（进阶 30 点）；第二阶段（熔岩形态）拥有 30 点生命值（进阶 35 点），多人使用原版遭遇血量缩放。
+/// 第一阶段拥有 22 点生命值（进阶 27 点）；第二阶段（熔岩形态）拥有 27 点生命值（进阶 32 点），多人使用原版遭遇血量缩放。
 /// 玩家打空此血条即可打碎石爪，中断凌空暴扣并安全落回地面。
 /// </summary>
 public sealed class ThingsCaveGodCaptiveClaw : ThingsMonsterModel
@@ -43,8 +43,8 @@ public sealed class ThingsCaveGodCaptiveClaw : ThingsMonsterModel
         set => _isLeftSide = value;
     }
     public override int MinInitialHp => IsPhase2
-        ? AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 35, 30)
-        : AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 30, 25);
+        ? AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 32, 27)
+        : AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 27, 22);
     public override int MaxInitialHp => MinInitialHp;
 
     public bool IsSlamResolved { get; set; }

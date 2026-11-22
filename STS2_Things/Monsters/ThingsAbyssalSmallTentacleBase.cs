@@ -49,7 +49,7 @@ public abstract class ThingsAbyssalSmallTentacleBase : ThingsMonsterModel, IAbys
         ? _isOuterLeft
         : string.Equals(Creature?.SlotName, ThingsAbyssalInkmawBossEncounter.OuterLeftTentacleSlot, StringComparison.Ordinal);
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 28, 24) + (Sts2VersionSeam.IsDread() ? 6 : 0);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 25, 22) + (Sts2VersionSeam.IsDread() ? 5 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Slime;

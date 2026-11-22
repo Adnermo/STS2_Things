@@ -16,8 +16,8 @@ namespace STS2_Things.Monsters;
 /// </summary>
 public sealed class ThingsChromaticSlimeMediumCrimson : ThingsChromaticSlimeMediumBase
 {
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 19, 18);
-    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 22, 20);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 17, 16);
+    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 20, 18);
 
     protected override string? PreferredSkinName => "crimson";
     protected override float? VariantBoundsTop => -198f;
@@ -27,7 +27,7 @@ public sealed class ThingsChromaticSlimeMediumCrimson : ThingsChromaticSlimeMedi
     protected override string? PreferredAttackAnimation => "attack_crimson";
     protected override string? PreferredPowerUpAnimation => "power_crimson";
 
-    private int RendDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
+    private int RendDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 4, 3);
     private const int RendHits = 2;
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()

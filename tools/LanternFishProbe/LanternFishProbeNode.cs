@@ -118,7 +118,7 @@ public partial class LanternFishProbeNode : Node
         Assert(!s.Encounter.IsWeak, "Three fish belong to the strong hallway pool.");
         var fish = s.Encounter.MonstersWithSlots.Select(x => (ThingsLanternFish)x.Item1).ToArray();
         Assert(fish.Length == 3 && fish.Select(f => f.OpeningPhase).SequenceEqual([0,1,3]), "Three staggered fish.");
-        Assert(fish.All(f => f.MinInitialHp == 42 && f.MaxInitialHp == 46), "A0 HP.");
+        Assert(fish.All(f => f.MinInitialHp == 38 && f.MaxInitialHp == 42), "A0 HP.");
         string[] cycle = ["BITE_MOVE", "FLASH_MOVE", "TAIL_MOVE", "GUARD_MOVE"];
         for (int turn = 0; turn < 8; turn++)
         {
@@ -135,7 +135,7 @@ public partial class LanternFishProbeNode : Node
         GD.Print($"Encounter ID: {s.Encounter.Id.Entry}; monster ID: {fish[0].Id.Entry}; power ID: {ModelDb.Power<ThingsLanternBlindnessPower>().Id.Entry}");
         DeactivateSyntheticCombat();
         var high = Scenario(ascension: 20);
-        Assert(high.Encounter.MonstersWithSlots.All(x => x.Item1.MinInitialHp == 46 && x.Item1.MaxInitialHp == 50), "High ascension HP.");
+        Assert(high.Encounter.MonstersWithSlots.All(x => x.Item1.MinInitialHp == 42 && x.Item1.MaxInitialHp == 46), "High ascension HP.");
         DeactivateSyntheticCombat();
     }
 
@@ -283,13 +283,13 @@ public partial class LanternFishProbeNode : Node
             Assert(fish.Creature.Block == 9, "Native guard grants nine block.");
             int hp = s.Player.Creature.CurrentHp;
             await ((MoveState)moves["BITE_MOVE"]).PerformMove([s.Player.Creature]);
-            Assert(s.Player.Creature.CurrentHp == hp - (ascension == 0 ? 13 : 15), "Native bite damage (13 A0 / 15 A20).");
+            Assert(s.Player.Creature.CurrentHp == hp - (ascension == 0 ? 12 : 14), "Native bite damage (12 A0 / 14 A20).");
             hp = s.Player.Creature.CurrentHp;
             await ((MoveState)moves["TAIL_MOVE"]).PerformMove([s.Player.Creature]);
-            Assert(s.Player.Creature.CurrentHp == hp - (ascension == 0 ? 12 : 14), "Native two-hit tail damage (6x2 A0 / 7x2 A20).");
+            Assert(s.Player.Creature.CurrentHp == hp - (ascension == 0 ? 10 : 12), "Native two-hit tail damage (5x2 A0 / 6x2 A20).");
             DeactivateSyntheticCombat();
         }
-        GD.Print("PASS native flash, guard, bite (13/15) and double tail swipe (6x2/7x2) commands.");
+        GD.Print("PASS native flash, guard, bite (12/14) and double tail swipe (5x2/6x2) commands.");
     }
 
     private static void Assert(bool ok, string message) { if (!ok) throw new Exception(message); _assertions++; }

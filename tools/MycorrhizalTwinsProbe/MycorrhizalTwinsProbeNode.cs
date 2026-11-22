@@ -92,7 +92,7 @@ public partial class MycorrhizalTwinsProbeNode : Node
             var s=await Scenario(count,asc);
             Assert(s.Encounter.MonstersWithSlots.Count==2&&s.Encounter.RoomType==RoomType.Elite,"Two elite monsters.");
             Assert(s.Tall.Creature.MaxHp==s.Short.Creature.MaxHp,"Equal scaled pools.");
-            Assert(s.Tall.MinInitialHp==(asc==0?92:100),"Hive-scale HP and ascension.");
+            Assert(s.Tall.MinInitialHp==(asc==0?76:84),"Hive-scale HP and ascension.");
             Assert(s.Tall.IsRobust&&!s.Short.IsRobust,"Exactly one robust form starts combat.");
             Assert(s.Tall.NextMove.Intents.Single() is SingleAttackIntent&&
                    s.Short.NextMove.Intents.OfType<DefendIntent>().Count()==1&&
@@ -101,7 +101,7 @@ public partial class MycorrhizalTwinsProbeNode : Node
             int hp=s.Player.Creature.CurrentHp;await s.Tall.PerformMove();Assert(hp-s.Player.Creature.CurrentHp==expected,"Native intent matches robust damage, multiplayer and ascension.");
             await s.Short.PerformMove();
             Assert(s.Tall.Creature.Block>0&&s.Short.Creature.Block==s.Tall.Creature.Block,"Guard protects both with native multiplayer scaling.");
-            Assert(s.Players.All(p=>p.Creature.GetPower<FrailPower>()?.Amount==1),"Withered shelter applies 1 Frail to all players.");
+            Assert(s.Players.All(p=>p.Creature.GetPower<FrailPower>()?.Amount==1),"Shelter applies 1 Frail to all players.");
         }
     }
     private static async Task CheckExchange()
@@ -112,49 +112,49 @@ public partial class MycorrhizalTwinsProbeNode : Node
         await s.Tall.Creature.GetPower<ThingsMycorrhizalBondPower>()!.AfterSideTurnEnd(Choice,CombatSide.Player,s.Players.Select(p=>p.Creature));
         Assert(s.Tall.Creature.CurrentHp==21,"Player-side end never swaps HP.");
         await EndRound(s);
-        // Uneven pre-swap HP (21 vs 67) swaps to (67, 21), grants +1 Strength each (Plan A), and heals +6 each (Plan B -> 73, 27).
-        Assert(s.Tall.Creature.CurrentHp==73&&s.Short.Creature.CurrentHp==27,
-            $"Atomic swap plus uneven nutrient heal (+6 each): expected (73,27), got ({s.Tall.Creature.CurrentHp},{s.Short.Creature.CurrentHp}).");
+        // Uneven pre-swap HP (21 vs 67) swaps to (67, 21), grants no free swap Strength, and heals +3 each (-> 70, 24).
+        Assert(s.Tall.Creature.CurrentHp==70&&s.Short.Creature.CurrentHp==24,
+            $"Atomic swap plus uneven nutrient heal (+3 each): expected (70,24), got ({s.Tall.Creature.CurrentHp},{s.Short.Creature.CurrentHp}).");
         Assert(s.Tall.IsRobust&&!s.Short.IsRobust,"Higher pool is robust for this round.");
-        Assert(s.Tall.Creature.Block==9&&s.Tall.Creature.GetPower<StrengthPower>()?.Amount==3&&s.Short.Creature.GetPower<StrengthPower>()?.Amount==1,
-            "Block does not move, and each swap grants +1 Strength to both twins (A0).");
-        await EndRound(s);Assert(s.Tall.Creature.CurrentHp==73,"Repeated callback cannot swap twice in a round.");
+        Assert(s.Tall.Creature.Block==9&&s.Tall.Creature.GetPower<StrengthPower>()?.Amount==2&&s.Short.Creature.GetPower<StrengthPower>()==null,
+            "Block and Strength do not move, and swap no longer grants free Strength.");
+        await EndRound(s);Assert(s.Tall.Creature.CurrentHp==70,"Repeated callback cannot swap twice in a round.");
         s.State.RoundNumber++;await EndRound(s);
-        Assert(s.Tall.Creature.CurrentHp==33&&s.Short.Creature.CurrentHp==79&&!s.Tall.IsRobust&&s.Short.IsRobust,
-            $"Next uneven round exchanges HP and heals +6 each (33,79), got ({s.Tall.Creature.CurrentHp},{s.Short.Creature.CurrentHp}).");
-        Assert(s.Tall.StrengthGift==2&&s.Short.ArmorGift==4&&s.Short.FrailGift==2,"Weak attack buff and strong defense/frail buffs follow form.");
+        Assert(s.Tall.Creature.CurrentHp==27&&s.Short.Creature.CurrentHp==73&&!s.Tall.IsRobust&&s.Short.IsRobust,
+            $"Next uneven round exchanges HP and heals +3 each (27,73), got ({s.Tall.Creature.CurrentHp},{s.Short.Creature.CurrentHp}).");
+        Assert(s.Tall.StrengthGift==1&&s.Short.ArmorGift==3&&s.Short.FrailGift==1,"Weak attack buff and defense/frail buffs follow form.");
         int weakIntent=((AttackIntent)s.Tall.NextMove.Intents.Single()).GetTotalDamage(s.Players.Select(p=>p.Creature),s.Tall.Creature);
         int hp=s.Player.Creature.CurrentHp;await s.Tall.PerformMove();
-        // Base 18 + 4 Strength = 22; Withered 0.75x = 16.5 -> 16!
-        Assert(hp-s.Player.Creature.CurrentHp==weakIntent&&weakIntent==16,
-            $"Swapped weak form scales native damage including accumulated Strength (expected 16, got {weakIntent}).");
+        // Base 14 + 2 Strength = 16; Withered 0.75x = 12!
+        Assert(hp-s.Player.Creature.CurrentHp==weakIntent&&weakIntent==12,
+            $"Swapped weak form scales native damage including accumulated Strength (expected 12, got {weakIntent}).");
         await s.Short.PerformMove();
-        Assert(s.Player.Creature.GetPower<FrailPower>()?.Amount==2,"Robust shelter applies 2 Frail.");
+        Assert(s.Player.Creature.GetPower<FrailPower>()?.Amount==1,"Robust shelter applies 1 Frail.");
         s.Short.RollMove(s.Players.Select(p=>p.Creature));
         int armorHpBefore=s.Player.Creature.CurrentHp;
         await s.Short.PerformMove();
-        Assert(armorHpBefore-s.Player.Creature.CurrentHp>0,"Armor move now deals damage alongside granting Plating.");
-        Assert(s.Tall.Creature.GetPower<PlatingPower>()?.Amount==4&&s.Short.Creature.GetPower<PlatingPower>()?.Amount==4,"Robust defender's stronger Plating (+4) reaches both twins.");
+        Assert(armorHpBefore-s.Player.Creature.CurrentHp>0,"Armor move deals damage alongside granting Plating.");
+        Assert(s.Tall.Creature.GetPower<PlatingPower>()?.Amount==3&&s.Short.Creature.GetPower<PlatingPower>()?.Amount==3,"Robust defender's Plating (+3) reaches both twins.");
 
-        // Equal HP swap: still swaps forms and grants +1 Strength each, but triggers ZERO nutrient heal!
+        // Equal HP swap: still swaps forms, triggers ZERO nutrient heal and ZERO Strength!
         var fresh=await Scenario();
         await CreatureCmd.SetCurrentHp(fresh.Tall.Creature,50);
         await CreatureCmd.SetCurrentHp(fresh.Short.Creature,50);
         await EndRound(fresh);
         Assert(!fresh.Tall.IsRobust&&fresh.Short.IsRobust,"Equal HP still swaps forms.");
         Assert(fresh.Tall.Creature.CurrentHp==50&&fresh.Short.Creature.CurrentHp==50,"Equal HP swap triggers zero nutrient heal.");
-        Assert(fresh.Tall.Creature.GetPower<StrengthPower>()?.Amount==1&&fresh.Short.Creature.GetPower<StrengthPower>()?.Amount==1,"Equal HP swap still grants +1 Strength each.");
+        Assert(fresh.Tall.Creature.GetPower<StrengthPower>()==null&&fresh.Short.Creature.GetPower<StrengthPower>()==null,"Equal HP swap grants zero free Strength.");
         Assert(s.Short.IsRobust,"A second combat cannot share the first power's internal form data.");
         await CreatureCmd.SetCurrentHp(fresh.Tall.Creature,1);fresh.State.RoundNumber++;await EndRound(fresh);
-        Assert(fresh.Short.Creature.CurrentHp==7&&fresh.Short.Creature.IsAlive,"One HP survives swap and receives uneven nutrient heal (+6 on A0).");
+        Assert(fresh.Short.Creature.CurrentHp==4&&fresh.Short.Creature.IsAlive,"One HP survives swap and receives uneven nutrient heal (+3 on A0).");
 
-        // A20 scaling check: +2 Strength per swap & +8 Heal on uneven swap.
+        // A20 scaling check: +4 Heal on uneven swap, zero swap Strength.
         var a20=await Scenario(1,20);
         await CreatureCmd.SetCurrentHp(a20.Tall.Creature,40);
         await CreatureCmd.SetCurrentHp(a20.Short.Creature,60);
         await EndRound(a20);
-        Assert(a20.Tall.Creature.CurrentHp==68&&a20.Short.Creature.CurrentHp==48,"A20 uneven swap heals +8 each.");
-        Assert(a20.Tall.Creature.GetPower<StrengthPower>()?.Amount==2&&a20.Short.Creature.GetPower<StrengthPower>()?.Amount==2,"A20 swap grants +2 Strength each.");
+        Assert(a20.Tall.Creature.CurrentHp==64&&a20.Short.Creature.CurrentHp==44,"A20 uneven swap heals +4 each.");
+        Assert(a20.Tall.Creature.GetPower<StrengthPower>()==null&&a20.Short.Creature.GetPower<StrengthPower>()==null,"A20 swap grants zero free Strength.");
     }
     private static async Task CheckCycles()
     {
@@ -165,7 +165,7 @@ public partial class MycorrhizalTwinsProbeNode : Node
             Assert(s.Tall.NextMove.Intents.OfType<AttackIntent>().Any(),"Every Vanguard move deals damage (zero dead turns): "+expected);
             await s.Tall.PerformMove();s.Tall.RollMove(targets);
         }
-        Assert(s.Tall.Creature.GetPower<StrengthPower>()?.Amount==3&&s.Short.Creature.GetPower<StrengthPower>()?.Amount==3,"Robust elder grants 3 Strength to both.");
+        Assert(s.Tall.Creature.GetPower<StrengthPower>()?.Amount==2&&s.Short.Creature.GetPower<StrengthPower>()?.Amount==2,"Robust elder grants 2 Strength to both.");
         s=await Scenario();targets=s.Players.Select(p=>p.Creature).ToArray();
         foreach(var expected in new[]{"SHELTER_MOVE","ARMOR_MOVE","BASH_MOVE","SHELTER_MOVE"})
         {Assert(s.Short.NextMove.Id==expected,"Defensive cycle "+expected);await s.Short.PerformMove();s.Short.RollMove(targets);}
@@ -178,8 +178,8 @@ public partial class MycorrhizalTwinsProbeNode : Node
             var s=await Scenario();MycorrhizalTwin dead=killTall?s.Tall:s.Short,alive=killTall?s.Short:s.Tall;
             string announced=alive.NextMove.Id;await CreatureCmd.Damage(Choice,dead.Creature,9999,ValueProp.Unpowered,s.Player.Creature);
             Assert(alive.IsFurious&&alive.IsRobust,"Survivor becomes robust and furious.");
-            Assert(alive.Creature.GetPower<StrengthPower>()?.Amount==4&&alive.Creature.Block==15&&alive.Creature.GetPower<ThingsMycorrhizalBondPower>()==null,
-                "Death grants 4 Strength + 15 Block (A0) exactly once and severs bond.");
+            Assert(alive.Creature.GetPower<StrengthPower>()?.Amount==3&&alive.Creature.Block==10&&alive.Creature.GetPower<ThingsMycorrhizalBondPower>()==null,
+                "Death grants 3 Strength + 10 Block (A0) exactly once and severs bond.");
             Assert(alive.NextMove.Id==announced,"Already announced move is preserved.");
             await alive.PerformMove();alive.RollMove(s.Players.Select(p=>p.Creature));
             Assert(alive.NextMove.Id==(killTall?"RAMPART_MOVE":"FURY_LASH_MOVE"),"Correct specialization's fury cycle.");

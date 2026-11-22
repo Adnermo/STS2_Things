@@ -127,7 +127,7 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
     public override bool ShouldDisappearFromDoom => false;
     public override float DeathAnimLengthOverride => 7.20f;
     public override float HpBarSizeReduction => 120f;
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 270, 250) + (Sts2VersionSeam.IsDread() ? 20 : 0);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 244, 226) + (Sts2VersionSeam.IsDread() ? 18 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
     private static readonly AccessTools.FieldRef<MonsterModel, Creature?>? CreatureFieldRef =
@@ -141,11 +141,11 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
     public override bool ShouldAllowHitting(Creature creature) => creature != Creature || (!IsDefeated && Creature.IsAlive);
     public override bool ShouldAllowTargeting(Creature target) => target != Creature || (!IsDefeated && Creature.IsAlive);
 
-    private int JabDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6);
-    private int GuardDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 15, 13);
+    private int JabDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
+    private int GuardDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12);
     private int GuardBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 18, 15);
-    private int CrushDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 9) + (Sts2VersionSeam.IsDread() ? 2 : 0);
-    private int AngrySlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 22, 19) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    private int CrushDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 9, 8) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    private int AngrySlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 20, 17) + (Sts2VersionSeam.IsDread() ? 2 : 0);
     private int StrengthGain => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 3, 2) + (Sts2VersionSeam.IsDread() ? 1 : 0);
     private bool CanAttack => !IsWeakPhase && !IsDefeated && !_isEnrageLocked && Creature.IsAlive;
 

@@ -21,7 +21,7 @@ namespace STS2_Things.Monsters;
 /// <summary>
 /// 人面塔 Slot 2 — 缄默面 (Bastion Visage).
 /// Stone-bolt fortress &amp; burst check: enters center bolted with 14(18) Block and retains Block while bolted.
-/// Breaking Block triggers 破栓 (Unbolted): suffers 2 Vulnerable and drops Colossus Drop from 20(23) to 11(13).
+/// Breaking Block triggers 破栓 (Unbolted): suffers 2 Vulnerable and drops Colossus Drop from 18(21) to 10(12).
 /// </summary>
 public sealed class ThingsHumanFaceTowerBastion : ThingsHumanFaceTowerFace
 {
@@ -31,21 +31,21 @@ public sealed class ThingsHumanFaceTowerBastion : ThingsHumanFaceTowerFace
     public override string IdleAnimationName => IsBolted ? "bastion_idle_bolted" : "bastion_idle_unbolted";
     public override string StarterAttackAnimName => "bastion_attack_colossus";
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 135, 125) + (Sts2VersionSeam.IsDread() ? 15 : 0);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 121, 112) + (Sts2VersionSeam.IsDread() ? 14 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
     public int EntrySealBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 18, 14) + (Sts2VersionSeam.IsDread() ? 4 : 0);
-    public int BulwarkPressDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9);
+    public int BulwarkPressDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 8);
     public int BulwarkPressBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 10, 8);
-    public int BoltedColossusDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 23, 20);
-    public int UnboltedColossusDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 11);
+    public int BoltedColossusDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 21, 18);
+    public int UnboltedColossusDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10);
     public int ColossusDropDamage => IsBolted ? BoltedColossusDamage : UnboltedColossusDamage;
 
     public override int ComboStarterDamage => IsBolted
-        ? AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12)
-        : AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 9, 8);
+        ? AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 13, 11)
+        : AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 8, 7);
 
-    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10);
+    public override int ComboFollowUpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 11, 9);
 
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([
         ModelDb.Power<ThingsBastionSealPower>().ResolvedBigIconPath,

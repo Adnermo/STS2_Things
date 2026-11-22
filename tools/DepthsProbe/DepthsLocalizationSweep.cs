@@ -61,8 +61,9 @@ public partial class DepthsProbeNode
                     $"Soulfysh Disease must cascade Intangible hover tip ({lang}).");
                 Assert(ModelDb.Card<ThingsStickyBeeswax>().HoverTips.OfType<HoverTip>().Any(t => t.Id.Contains("ENERGY", StringComparison.OrdinalIgnoreCase)),
                     $"Sticky Beeswax must expose Energy hover tip ({lang}).");
-                Assert(ModelDb.Card<ThingsReuse>().HoverTips.OfType<HoverTip>().Any(t => t.Id.Contains("TRANSFORM", StringComparison.OrdinalIgnoreCase)),
-                    $"Reuse must expose Transform hover tip ({lang}).");
+                Assert(ModelDb.Card<ThingsReuse>().HoverTips.OfType<CardHoverTip>().Any(t => t.Card.CanonicalInstance is Fuel)
+                    && ModelDb.Card<ThingsReuse>().HoverTips.OfType<CardHoverTip>().Any(t => t.Card.CanonicalInstance is Soot),
+                    $"Reuse must expose Fuel and Soot hover tips ({lang}).");
 
                 var afflictions = ModelDb.AllAbstractModelSubtypes
                     .Where(t => t.Assembly == modAsm && typeof(AfflictionModel).IsAssignableFrom(t) && !t.IsAbstract)
@@ -161,6 +162,30 @@ public partial class DepthsProbeNode
                     $"Chromatic Fission power must expose Weak hover tip ({lang}).");
                 Assert(ModelDb.Power<ThingsBorrowedShadowPower>().HoverTips.OfType<HoverTip>().Any(t => t.Id.Contains("POISON", StringComparison.OrdinalIgnoreCase)),
                     $"Borrowed Shadow power must expose Poison hover tip ({lang}).");
+                Assert(!ModelDb.Power<ThingsAbyssalSurgePower>().HoverTips.OfType<HoverTip>().Any(t => t.Id.Contains("INK_BLACKOUT", StringComparison.OrdinalIgnoreCase)),
+                    $"Abyssal Surge must not expose stale Ink Blackout hover tip ({lang}).");
+                foreach (string extraKey in new[]
+                {
+                    "THINGS_INK_BLACKOUT_POWER.activeDescription",
+                    "THINGS_INK_BLACKOUT_POWER.activeMultiDescription",
+                    "THINGS_SILK_THREAD_POWER.activeDescription",
+                    "THINGS_SILK_THREAD_POWER.activeMultiDescription",
+                    "THINGS_TOWER_PIVOT_POWER.activeCycleDescription",
+                    "THINGS_TOWER_PIVOT_POWER.activeComboDescription",
+                    "THINGS_BASTION_SEAL_POWER.boltedDescription",
+                })
+                {
+                    Assert(LocString.Exists("powers", extraKey), $"Missing power localization key {extraKey} ({lang}).");
+                    var loc = new LocString("powers", extraKey);
+                    loc.Add("Amount", 1);
+                    loc.Add("ExtraTurns", 2);
+                    loc.Add("RemainingTurns", 1);
+                    loc.Add("CycleRemaining", 1);
+                    loc.Add("NextFace", "TestFace");
+                    loc.Add("EntryBlock", 14);
+                    loc.Add("VulnerableTurns", 2);
+                    AssertLocClean(loc.GetFormattedText(), $"Power.ExtraKey:{extraKey} ({lang})");
+                }
 
                 var ironclad = ModelDb.Character<Ironclad>();
                 var encounters = ModelDb.AllAbstractModelSubtypes

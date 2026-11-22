@@ -6,7 +6,7 @@
 
 原创第二章「深处」 · 8 位专属 Boss · 38 个跨章节事件与 5 款联机小游戏 · 单包双版本零依赖运行
 
-[![Version](https://img.shields.io/badge/Version-v2.0.3-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
+[![Version](https://img.shields.io/badge/Version-v2.0.4-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
 [![STS2 Support](https://img.shields.io/badge/STS2-v0.111.0%20%7C%20v0.111.1%20%7C%20v0.113.1%20Beta-1565c0?style=flat-square)](docs/DUAL_VERSION_SUPPORT.md)
 [![Steam Workshop](https://img.shields.io/badge/Steam-Workshop-1b2838?style=flat-square&logo=steam)](https://steamcommunity.com/sharedfiles/filedetails/?id=3747607944)
 [![Direct Mirror](https://img.shields.io/badge/国内直链-网盘下载-00838f?style=flat-square)](https://pan.adnermo.online/STS2_Things/latest)
@@ -211,6 +211,7 @@ STS2_Things/
 
 完整历史版本记录请参阅 **[CHANGELOG.md](CHANGELOG.md)** 或 **[`docs/releases/`](docs/releases/)**。
 
+- **`v2.0.4`**（[完整说明](docs/releases/release-2.0.4.md)）：第二章「深处」全部 38 个怪物类（常规/弱敌、精英与 3 位 Boss）血量与直接攻击伤害同步下调约 10%，并专项削弱菌根双生子（取消换血免费力量、降低互疗/狂暴奖励与攻防数值）；高清重绘 18 枚能力（Power）图标及 `power_atlas` 打包贴图；精修墨浊覆牌、蛛丝缠绕、逆流、腐潮吞噬、再利用与追忆等动态文案与悬浮提示。
 - **`v2.0.3`**（[完整说明](docs/releases/release-2.0.3.md)）：紧急修复异彩史莱姆（`THINGS_CHROMATIC_SLIME_WEAK`）进房黑屏卡死/闪退与双假商人事件战斗死锁（合并中/小史莱姆共享层级场景并通过 `SetupSkins` 切皮，清除背景自引用，新增 `ThreadedScenePreloadGuardPatch` 串行预加载模组场景）；统一修复各 Boss/小怪血条与意图被前景遮挡、巨型甲虫缩放意图偏移及深处各场遭遇站位布局；`min_game_version` 正式兼容至 **`v0.111.0`**。
 - **`v2.0.2`**（[完整说明](docs/releases/release-2.0.2.md)）：全面性能与显存治理（导出纹理显存 ~1,818 → 763.9 MiB，36 份 Spine 骨架无损抽稀，消除战斗/切房卡顿与活体巨岩首抓顿挫）；新增 5 张自制职业牌配置开关；逆流蝾螈新增「汹涌」机制；修复诡谲之店战前空引用与 `v0.113.1` F2 控件转换异常。
 - **`v2.0.1`**（[完整说明](docs/releases/release-2.0.1.md)）：修复渊墨巨蛸墨浊覆牌栈溢出崩退；人面柱升格为深处第 4 组专属精英并新增分层免伤传导底层；调优深处精英与始源雾菇；统一打磨 5 款小游戏 UI；修复模组事件「复制」附魔火堆缺失选项。

@@ -181,7 +181,7 @@ public partial class ScalePeelerProbeNode : Node
     private static async Task VerifyOpeningAndMoveCycle()
     {
         var a0 = await Scenario(weak: true, ascension: 0);
-        Assert(a0.Peeler.MinInitialHp == 62 && a0.Peeler.MaxInitialHp == 66, "A0 HP range is 62..66.");
+        Assert(a0.Peeler.MinInitialHp == 56 && a0.Peeler.MaxInitialHp == 60, "A0 HP range is 56..60.");
         Assert(a0.Peeler.OpeningBlock == 6 && a0.Peeler.Creature.Block == 6, "A0 opening Block is 6.");
         Assert(a0.Peeler.Creature.HasPower<ThingsArmorSiphonPower>(), "Wyrm starts combat with Armor Siphon.");
 
@@ -207,7 +207,7 @@ public partial class ScalePeelerProbeNode : Node
             "Strong encounter places Slime Snail in slime slot.");
 
         var a20 = await Scenario(weak: true, ascension: 20);
-        Assert(a20.Peeler.MinInitialHp == 66 && a20.Peeler.MaxInitialHp == 70, "A20 HP range is 66..70.");
+        Assert(a20.Peeler.MinInitialHp == 60 && a20.Peeler.MaxInitialHp == 64, "A20 HP range is 60..64.");
         Assert(a20.Peeler.OpeningBlock == 8 && a20.Peeler.Creature.Block == 8, "A20 opening Block is 8.");
         GD.Print("PASS A0/A20 opening HP/Block, innate power, trio composition, and 3-move cycle.");
     }
@@ -229,28 +229,28 @@ public partial class ScalePeelerProbeNode : Node
         await CreatureCmd.GainBlock(player, 20, ValueProp.Move, null);
         Assert(player.Block == 20 && wyrm.Block == 6, "Setup Block before enemy turn.");
 
-        // 1) Chisel Bite hits BEFORE siphon, so player's 20 Block absorbs the 10 damage leaving 10 Block.
+        // 1) Chisel Bite hits BEFORE siphon, so player's 20 Block absorbs the 9 damage leaving 11 Block.
         s.Room.CombatState.CurrentSide = CombatSide.Enemy;
         Assert(s.Peeler.NextMove.Id == "CHISEL_BITE_MOVE", "Turn 1 move is CHISEL_BITE_MOVE.");
         await s.Peeler.PerformMove();
-        Assert(player.CurrentHp == player.MaxHp && player.Block == 10,
-            "Player Block absorbs Chisel Bite (10) first, leaving 10 Block.");
+        Assert(player.CurrentHp == player.MaxHp && player.Block == 11,
+            "Player Block absorbs Chisel Bite (9) first, leaving 11 Block.");
         Assert(wyrm.Block == 12, "Chisel Bite grants Wyrm +6 Block (6 -> 12).");
 
-        // 2) Enemy turn end siphons all 10 remaining player Block and grants it to Wyrm.
+        // 2) Enemy turn end siphons all 11 remaining player Block and grants it to Wyrm.
         await InvokeEnemySideTurnEnd(s);
         Assert(player.Block == 0, "Remaining player Block is stolen at end of enemy turn.");
-        Assert(wyrm.Block == 22, "Wyrm gains total stolen Block (12 + 10 = 22).");
+        Assert(wyrm.Block == 23, "Wyrm gains total stolen Block (12 + 11 = 23).");
 
         // 3) Next enemy turn start: ClearBlock keeps Wyrm Block intact via ShouldClearBlock.
         await wyrm.AfterTurnStart(CombatSide.Enemy);
-        Assert(wyrm.Block == 22, "Wyrm retains its Block when ClearBlock fires on enemy turn start.");
+        Assert(wyrm.Block == 23, "Wyrm retains its Block when ClearBlock fires on enemy turn start.");
 
         // 4) Even if the player has Barricade, Armor Siphon still steals their remaining Block.
         await PowerCmd.Apply<BarricadePower>(Choice, player, 1, player, null);
         await CreatureCmd.GainBlock(player, 15, ValueProp.Move, null);
         await InvokeEnemySideTurnEnd(s);
-        Assert(player.Block == 0 && wyrm.Block == 37,
+        Assert(player.Block == 0 && wyrm.Block == 38,
             "Armor Siphon steals remaining Block even from a Barricade player.");
 
         // 5) Once dead in a multi-enemy combat, Wyrm stops siphoning player Block.
@@ -271,11 +271,11 @@ public partial class ScalePeelerProbeNode : Node
         var player = s.Player.Creature;
 
         await CreatureCmd.GainBlock(wyrm, 16, ValueProp.Unpowered, null); // 6 + 16 = 22
-        Assert(wyrm.Block == 22 && s.Peeler.PlatedSlamDamage == 29,
-            "Plated Slam scales 7 + 22 = 29 in 1P.");
+        Assert(wyrm.Block == 22 && s.Peeler.PlatedSlamDamage == 28,
+            "Plated Slam scales 6 + 22 = 28 in 1P.");
         int startHp = player.CurrentHp;
         await ((MoveState)s.Peeler.MoveStateMachine!.States["PLATED_SLAM_MOVE"]).PerformMove([player]);
-        Assert(player.CurrentHp == startHp - 29, "Plated Slam deals full scaled damage.");
+        Assert(player.CurrentHp == startHp - 28, "Plated Slam deals full scaled damage.");
         Assert(wyrm.Block == 11, "Plated Slam recoil halves 22 Block -> 11 remaining.");
 
         // Odd Block rounding: 7 Block -> lose 3 (7/2), retain 4.
@@ -283,14 +283,14 @@ public partial class ScalePeelerProbeNode : Node
         Assert(wyrm.Block == 7, "Setup odd 7 Block.");
         startHp = player.CurrentHp;
         await ((MoveState)s.Peeler.MoveStateMachine.States["PLATED_SLAM_MOVE"]).PerformMove([player]);
-        Assert(player.CurrentHp == startHp - 14 && wyrm.Block == 4,
-            "Odd Block (7): deals 14 and loses Floor(7/2)=3 leaving 4 Block.");
+        Assert(player.CurrentHp == startHp - 13 && wyrm.Block == 4,
+            "Odd Block (7): deals 13 and loses Floor(7/2)=3 leaving 4 Block.");
 
         // Burrow Scrape 2-hit + Defend.
         startHp = player.CurrentHp;
         await ((MoveState)s.Peeler.MoveStateMachine.States["BURROW_SCRAPE_MOVE"]).PerformMove([player]);
-        Assert(player.CurrentHp == startHp - 10 && wyrm.Block == 12,
-            "Burrow Scrape deals 5x2=10 damage and grants +8 Block (4 -> 12).");
+        Assert(player.CurrentHp == startHp - 8 && wyrm.Block == 12,
+            "Burrow Scrape deals 4x2=8 damage and grants +8 Block (4 -> 12).");
 
         // Co-op 2-player scaling and multi-target siphon (both v111.1 and v113.1 scale <=2 players natively via Hook.ModifyBlock).
         var coop = await Scenario(weak: true, players: 2, ascension: 0);
@@ -308,16 +308,16 @@ public partial class ScalePeelerProbeNode : Node
 
         await Sts2VersionSeam.LoseBlock(Choice, coop.Peeler.Creature, 11, coop.Peeler.Creature);
         int expectedPostLose = expectedAfterSiphon - 11;
-        int expectedSlam = 7 + (int)Math.Ceiling((decimal)expectedPostLose / 2m);
+        int expectedSlam = 6 + (int)Math.Ceiling((decimal)expectedPostLose / 2m);
         Assert(coop.Peeler.Creature.Block == expectedPostLose && coop.Peeler.PlatedSlamDamage == expectedSlam,
-            $"2P co-op scales Plated Slam as 7 + Ceil({expectedPostLose}/2) = {expectedSlam}.");
+            $"2P co-op scales Plated Slam as 6 + Ceil({expectedPostLose}/2) = {expectedSlam}.");
 
         // A20 Burrow Scrape numbers.
         var a20 = await Scenario(weak: true, players: 1, ascension: 20);
         startHp = a20.Player.Creature.CurrentHp;
         await ((MoveState)a20.Peeler.MoveStateMachine!.States["BURROW_SCRAPE_MOVE"]).PerformMove([a20.Player.Creature]);
-        Assert(a20.Player.Creature.CurrentHp == startHp - 12 && a20.Peeler.Creature.Block == 18,
-            "A20 Burrow Scrape deals 6x2=12 and grants +10 Block (8 -> 18).");
+        Assert(a20.Player.Creature.CurrentHp == startHp - 10 && a20.Peeler.Creature.Block == 18,
+            "A20 Burrow Scrape deals 5x2=10 and grants +10 Block (8 -> 18).");
 
         GD.Print("PASS Plated Slam 1P/2P scaling, odd/even Block recoil, Burrow Scrape A0/A20, and co-op siphon.");
     }

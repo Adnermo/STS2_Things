@@ -179,6 +179,12 @@ public partial class DepthsProbeNode : Node
                 await VerifyBlitzAndDreadModes();await ReleaseProbeResources();
                 GD.Print($"Depths Blitz & Dread modes probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
             }
+            if(OS.GetCmdlineUserArgs().Contains("--strong-only"))
+            {
+                VerifyResources();
+                await VerifyStrongEncounters();await ReleaseProbeResources();
+                GD.Print($"Depths strong encounters probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
+            }
             if(OS.GetCmdlineUserArgs().Contains("--effects-only"))
             {
                 await VerifySpongeSprayRendering();

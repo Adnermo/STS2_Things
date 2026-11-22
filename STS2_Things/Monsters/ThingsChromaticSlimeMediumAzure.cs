@@ -19,8 +19,8 @@ namespace STS2_Things.Monsters;
 /// </summary>
 public sealed class ThingsChromaticSlimeMediumAzure : ThingsChromaticSlimeMediumBase
 {
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 22, 20);
-    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 25, 23);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 20, 18);
+    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 23, 21);
 
     protected override string? PreferredSkinName => "azure";
     protected override float? VariantBoundsTop => -188f;
@@ -31,7 +31,7 @@ public sealed class ThingsChromaticSlimeMediumAzure : ThingsChromaticSlimeMedium
     protected override string? PreferredCastAnimation => "cast_azure";
 
     private int DrizzleDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
-    private int TideDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6);
+    private int TideDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
     {

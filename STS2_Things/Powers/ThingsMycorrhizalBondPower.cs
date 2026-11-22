@@ -24,10 +24,9 @@ public sealed class ThingsMycorrhizalBondPower : ThingsPowerModel
     public bool IsRobust => GetInternalData<Data>().Robust;
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
-        new IntVar("SwapStrength", 1),
-        new IntVar("NourishHeal", 6),
-        new IntVar("DeathStrength", 4),
-        new IntVar("DeathBlock", 15),
+        new IntVar("NourishHeal", 3),
+        new IntVar("DeathStrength", 3),
+        new IntVar("DeathBlock", 10),
     ];
     protected override string SmartDescriptionLocKey => IsMutable
         ? IsRobust ? "THINGS_MYCORRHIZAL_BOND_POWER.robustDescription" : "THINGS_MYCORRHIZAL_BOND_POWER.witheredDescription"
@@ -40,7 +39,6 @@ public sealed class ThingsMycorrhizalBondPower : ThingsPowerModel
         GetInternalData<Data>().Robust = Owner.Monster is ThingsMycorrhizalVanguard;
         if (Owner.Monster is MycorrhizalTwin twin)
         {
-            DynamicVars["SwapStrength"].BaseValue = twin.SwapStrengthGain;
             DynamicVars["NourishHeal"].BaseValue = twin.SwapNourishHeal;
             DynamicVars["DeathStrength"].BaseValue = twin.DeathStrengthGain;
             DynamicVars["DeathBlock"].BaseValue = twin.DeathBlockGain;
@@ -81,13 +79,7 @@ public sealed class ThingsMycorrhizalBondPower : ThingsPowerModel
             if (other != null) { other.GetInternalData<Data>().Robust = !robust; other.InvokeDisplayAmountChanged(); }
             InvokeDisplayAmountChanged();
 
-            // Shared root growth: every successful exchange empowers both twins.
-            int swapStr = twin.SwapStrengthGain;
-            await PowerCmd.Apply<StrengthPower>(choiceContext, Owner, swapStr, Owner, null);
-            if (partner.Creature.IsAlive)
-                await PowerCmd.Apply<StrengthPower>(choiceContext, partner.Creature, swapStr, Owner, null);
-
-            // Nutrient feedback: unequal HP pools trigger mutual healing through the root.
+            // Nutrient feedback: unequal HP pools trigger modest mutual healing through the root.
             if (uneven)
             {
                 int heal = twin.SwapNourishHeal;

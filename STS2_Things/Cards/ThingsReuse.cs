@@ -21,8 +21,7 @@ public sealed class ThingsReuse : ThingsCardModel
 
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
         HoverTipFactory.FromCardWithCardHoverTips<Fuel>()
-            .Concat(HoverTipFactory.FromCardWithCardHoverTips<Soot>())
-            .Append(HoverTipFactory.Static(StaticHoverTip.Transform));
+            .Concat(HoverTipFactory.FromCardWithCardHoverTips<Soot>());
 
     protected override List<DynamicVar> CanonicalVars =>
     [

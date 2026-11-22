@@ -50,7 +50,7 @@ public partial class DepthsProbeNode
             for (int frame = 0; frame < 4; frame++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             foreach (var node in creatures)
             {
-                Assert(node.Entity.MaxHp is >= 38 and <= 44, "A0 column disc HP stays within [38, 44]");
+                Assert(node.Entity.MaxHp is >= 34 and <= 40, "A0 column disc HP stays within [34, 40]");
                 Assert(Mathf.IsEqualApprox(node.Visuals.DefaultScale, 1f) && node.Visuals.Scale.IsEqualApprox(Vector2.One),
                     "Every column disc normalizes back to exact 1.0x scale despite duplicate-monster randomization");
                 Assert(node.Hitbox.Size.IsEqualApprox(new Vector2(420f, 194f)),

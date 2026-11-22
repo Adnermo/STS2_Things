@@ -27,9 +27,9 @@ public sealed class ThingsCrystalSnail : DepthsSnail
         base.AfterCloned();
         _bareBump = null;
     }
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 33, 30);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 30, 27);
     public override int MaxInitialHp => MinInitialHp + 3;
-    private int BumpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 10, 9);
+    private int BumpDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 9, 8);
     private int OpeningShell => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, 6);
     private int RetreatShell => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, 6);
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([ModelDb.Card<ThingsSnailCrystalChip>().PortraitPath]);

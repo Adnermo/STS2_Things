@@ -81,12 +81,12 @@ public partial class DepthsProbeNode
             if (players == 1)
             {
                 int rawHpSum = wrath.Creature.MaxHp + lament.Creature.MaxHp + bastion.Creature.MaxHp + mockery.Creature.MaxHp;
-                Assert(wrath.Creature.MaxHp == (asc == 0 ? 110 : 120) &&
-                       lament.Creature.MaxHp == (asc == 0 ? 115 : 125) &&
-                       bastion.Creature.MaxHp == (asc == 0 ? 125 : 135) &&
-                       mockery.Creature.MaxHp == (asc == 0 ? 110 : 120) &&
-                       rawHpSum == (asc == 0 ? 460 : 500),
-                    $"Act 2 Boss raw HP sum should be 460(A0)/500(A20), got {rawHpSum}.");
+                Assert(wrath.Creature.MaxHp == (asc == 0 ? 99 : 108) &&
+                       lament.Creature.MaxHp == (asc == 0 ? 104 : 113) &&
+                       bastion.Creature.MaxHp == (asc == 0 ? 112 : 121) &&
+                       mockery.Creature.MaxHp == (asc == 0 ? 99 : 108) &&
+                       rawHpSum == (asc == 0 ? 414 : 450),
+                    $"Act 2 Boss raw HP sum should be 414(A0)/450(A20), got {rawHpSum}.");
             }
             Assert(wrath.IsActiveFace && !lament.IsActiveFace && !bastion.IsActiveFace && !mockery.IsActiveFace,
                 "At most one stone face is active.");
@@ -202,11 +202,11 @@ public partial class DepthsProbeNode
                 $"Bastion attack does NOT gain Lamentation bonus damage (dealt {hpBeforeBastionPress - b.Players[0].Creature.CurrentHp}, expected {bastion.BulwarkPressDamage}).");
             Assert(ctrl.ActiveFace == bastion && bastion.NextMove.Id == "COLOSSUS_DROP_MOVE",
                 "Bastion Turn 2 rolls Colossus Drop.");
-            Assert(bastion.ColossusDropDamage == (asc == 0 ? 20 : 23), "Bolted Colossus Drop uses full damage 20(23).");
+            Assert(bastion.ColossusDropDamage == (asc == 0 ? 18 : 21), "Bolted Colossus Drop uses full damage 18(21).");
             await CreatureCmd.Damage(Choice, bastion.Creature, bastion.Creature.Block + 5, ValueProp.Move, b.Players[0].Creature);
             Assert(!bastion.IsBolted && bastion.Creature.GetPower<VulnerablePower>()?.Amount == 2 &&
-                   bastion.ColossusDropDamage == (asc == 0 ? 11 : 13),
-                "Breaking Bastion Block triggers Unbolted (+2 Vulnerable and reduced Colossus Drop damage 11(13)).");
+                   bastion.ColossusDropDamage == (asc == 0 ? 10 : 12),
+                "Breaking Bastion Block triggers Unbolted (+2 Vulnerable and reduced Colossus Drop damage 10(12)).");
             string unboltedTip = bastion.Creature.GetPower<ThingsBastionSealPower>()!.HoverTips.OfType<MegaCrit.Sts2.Core.HoverTips.HoverTip>().First().Description;
             Assert(unboltedTip.Contains($"[blue]{bastion.EntrySealBlock}[/blue]") || unboltedTip.Contains($"[blue]{expectedEntryBlock}[/blue]"),
                 $"Bastion unbolted tooltip should reflect {bastion.EntrySealBlock} (or scaled {expectedEntryBlock}) EntrySealBlock: {unboltedTip}");
@@ -396,12 +396,12 @@ public partial class DepthsProbeNode
             for (int t = 0; t < 8; t++)
                 await RunTowerEnemyRoundAsync(b);
             int total8TurnDamage = hpStart - b.Players[0].Creature.CurrentHp;
-            int expected8Turn = asc == 0 ? 114 : 133;
+            int expected8Turn = asc == 0 ? 101 : 118;
             Assert(total8TurnDamage == expected8Turn,
                 $"Human-Faced Tower 8-turn unmitigated damage at A{asc} was {total8TurnDamage}, expected {expected8Turn}.");
             DeactivateSyntheticCombat();
         }
 
-        GD.Print("PASS Human-Faced Tower rules: A0/A20, 1p/4p, Act 2 Boss 460/500 HP & 114/133 8-turn budget, 2-turn rotation, off-center immunity, all 4 passives, Turn-8 Climax, shatter stun, rotational 2-hit combo, and Final Stand.");
+        GD.Print("PASS Human-Faced Tower rules: A0/A20, 1p/4p, Act 2 Boss 414/450 HP & 101/118 8-turn budget, 2-turn rotation, off-center immunity, all 4 passives, Turn-8 Climax, shatter stun, rotational 2-hit combo, and Final Stand.");
     }
 }

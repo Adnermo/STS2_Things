@@ -1,0 +1,76 @@
+{
+  "pipeline": "image-generator + sts2-power-art",
+  "date": "2026-11-22",
+  "items": [
+    {
+      "stem": "things_human_face_column_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_human_face_column_power_raw.jpg",
+      "cutout_interior": false
+    },
+    {
+      "stem": "things_legacy_beat_of_death_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_legacy_beat_of_death_power_raw.jpg",
+      "cutout_interior": false
+    },
+    {
+      "stem": "things_dazed_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_dazed_power_raw.jpg",
+      "cutout_interior": true
+    },
+    {
+      "stem": "things_bowlbug_progenitor_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_bowlbug_progenitor_power_raw.jpg",
+      "cutout_interior": true
+    },
+    {
+      "stem": "things_protect_the_master_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_protect_the_master_power_raw.jpg",
+      "cutout_interior": true
+    },
+    {
+      "stem": "things_origin_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_origin_power_raw.jpg",
+      "cutout_interior": false
+    },
+    {
+      "stem": "things_origin_gain_energy_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_origin_gain_energy_power_raw.jpg",
+      "cutout_interior": false
+    },
+    {
+      "stem": "things_soul_roes_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_soul_roes_power_raw.jpg",
+      "cutout_interior": false
+    },
+    {
+      "stem": "things_scale_beetle_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_scale_beetle_power_raw.jpg",
+      "cutout_interior": true
+    },
+    {
+      "stem": "things_scale_up_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_scale_up_power_raw.jpg",
+      "cutout_interior": false
+    },
+    {
+      "stem": "things_scale_down_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_scale_down_power_raw.jpg",
+      "cutout_interior": false
+    },
+    {
+      "stem": "things_mycorrhizal_bond_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_mycorrhizal_bond_power_raw.jpg",
+      "cutout_interior": false
+    },
+    {
+      "stem": "things_mycorrhizal_fury_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_mycorrhizal_fury_power_raw.jpg",
+      "cutout_interior": false
+    },
+    {
+      "stem": "things_leech_mother_slumber_power",
+      "raw_archive": "source_assets/powers/remake_20261122/things_leech_mother_slumber_power_raw.jpg",
+      "cutout_interior": false
+    }
+  ]
+}

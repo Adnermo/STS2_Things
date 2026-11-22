@@ -238,7 +238,7 @@ public partial class ChromaticSlimeProbeNode : Node
     private static async Task VerifyLargeMovesAndCycle()
     {
         var s = await Scenario(players: 1, ascension: 0);
-        Assert(s.Large.MinInitialHp == 38 && s.Large.MaxInitialHp == 42, "Large A0 HP is 38..42.");
+        Assert(s.Large.MinInitialHp == 34 && s.Large.MaxInitialHp == 38, "Large A0 HP is 34..38.");
         Assert(s.Large.Creature.HasPower<ThingsChromaticFissionPower>(), "Large starts combat with Chromatic Fission.");
         Assert(s.Large.Creature.GetPower<ThingsChromaticFissionPower>()!.Amount == 2, "Chromatic Fission shows 2 stacks.");
         Assert(s.Large.Creature.SlotName == "large", "Large occupies 'large' slot.");

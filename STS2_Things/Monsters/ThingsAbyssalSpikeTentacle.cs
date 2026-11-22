@@ -31,8 +31,8 @@ public sealed class ThingsAbyssalSpikeTentacle : ThingsAbyssalSmallTentacleBase
     protected override string SecondNormalMoveId => DoubleSlapId;
     protected override string VisualsPath => "res://scenes/creature_visuals/things_abyssal_spike_tentacle.tscn";
 
-    public int SpikeSlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6) + (Sts2VersionSeam.IsDread() ? 1 : 0);
-    public int DoubleSlapDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
+    public int SpikeSlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5) + (Sts2VersionSeam.IsDread() ? 1 : 0);
+    public int DoubleSlapDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 4, 3);
     public const int DoubleSlapHits = 2;
     public int ChargeBossTempThorns => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 4, 3) + (Sts2VersionSeam.IsDread() ? 1 : 0);
 

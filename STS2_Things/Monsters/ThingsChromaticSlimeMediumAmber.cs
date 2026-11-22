@@ -15,8 +15,8 @@ namespace STS2_Things.Monsters;
 /// </summary>
 public sealed class ThingsChromaticSlimeMediumAmber : ThingsChromaticSlimeMediumBase
 {
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 24, 22);
-    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 27, 25);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 22, 20);
+    public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 25, 23);
 
     internal override int OpeningBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 9, 8);
     protected override string? PreferredSkinName => "amber";
@@ -25,7 +25,7 @@ public sealed class ThingsChromaticSlimeMediumAmber : ThingsChromaticSlimeMedium
     protected override Vector2? VariantIntentPos => new(-4f, -214f);
     protected override string? PreferredAttackAnimation => "attack_amber";
     protected override string? PreferredPowerUpAnimation => "power_amber";
-    private int BashDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6);
+    private int BashDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
     private int BashBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 6, 5);
     private int ShellDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4);
     private int ShellBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 10, 9);

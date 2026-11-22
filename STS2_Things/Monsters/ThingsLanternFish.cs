@@ -32,11 +32,11 @@ public sealed class ThingsLanternFish : ThingsSpineMonster
         _openingPhase = 0;
     }
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 46, 42);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 42, 38);
     public override int MaxInitialHp => MinInitialHp + 4;
     public override float HpBarSizeReduction => 145f;
-    private int BiteDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 15, 13);
-    private int TailDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 7, 6);
+    private int BiteDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 14, 12);
+    private int TailDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 6, 5);
     protected override string AttackSfx => "event:/sfx/enemy/enemy_attacks/thieving_hopper/thieving_hopper_attack";
     protected override string CastSfx => "event:/sfx/enemy/enemy_attacks/soul_fysh/soul_fysh_beckon";
     public override string DeathSfx => "event:/sfx/enemy/enemy_attacks/soul_fysh/soul_fysh_intangible";

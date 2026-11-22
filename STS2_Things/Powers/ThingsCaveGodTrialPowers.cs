@@ -18,7 +18,7 @@ namespace STS2_Things.Powers;
 public sealed class ThingsCaveGodBrokenBladePower : ThingsPowerModel
 {
     public override PowerType Type => PowerType.Debuff;
-    public override PowerStackType StackType => PowerStackType.Counter;
+    public override PowerStackType StackType => PowerStackType.Single;
 
     public override bool ShouldPlay(CardModel card, AutoPlayType autoPlayType)
     {
@@ -46,7 +46,7 @@ public sealed class ThingsCaveGodBrokenBladePower : ThingsPowerModel
 public sealed class ThingsCaveGodShatteredShieldPower : ThingsPowerModel
 {
     public override PowerType Type => PowerType.Debuff;
-    public override PowerStackType StackType => PowerStackType.Counter;
+    public override PowerStackType StackType => PowerStackType.Single;
 
     public override bool ShouldPlay(CardModel card, AutoPlayType autoPlayType)
     {
