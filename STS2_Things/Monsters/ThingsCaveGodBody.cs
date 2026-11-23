@@ -131,6 +131,12 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 244, 226) + (Sts2VersionSeam.IsDread() ? 18 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
+    public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([
+        ModelDb.Power<ThingsCaveGodAncientCorePower>().ResolvedBigIconPath,
+        ModelDb.Power<ThingsCaveGodMagmaSealPower>().ResolvedBigIconPath,
+        ModelDb.Power<StrengthPower>().ResolvedBigIconPath
+    ]);
+
     private static readonly AccessTools.FieldRef<MonsterModel, Creature?>? CreatureFieldRef =
         AccessTools.Field(typeof(MonsterModel), "_creature") != null
             ? AccessTools.FieldRefAccess<MonsterModel, Creature?>("_creature")
@@ -331,6 +337,7 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
         _isEnrageLocked = true;
         _deferExposure = false;
         Creature.HpDisplay = HpDisplay.InfiniteWithoutNumbers;
+        Creature.GetPower<ThingsCaveGodMagmaSealPower>()?.NotifyLockTriggered();
 
         _applyingEnrageHp = true;
         try
@@ -368,6 +375,9 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
             _applyingEnrageHp = false;
         }
 
+        if (Creature.GetPower<ThingsCaveGodMagmaSealPower>() is { } seal)
+            await PowerCmd.Remove(seal);
+
         RefreshBodyHealthBarUi();
         SyncTremorVisual();
     }
@@ -399,6 +409,24 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
         }
     }
 
+    public async Task EnsureMagmaSealPower()
+    {
+        if (Phase != 1 || IsDefeated || TryGetCreature() is not { IsAlive: true } creature)
+            return;
+        int threshold = EnrageHpThreshold;
+        ThingsCaveGodMagmaSealPower? existing = creature.GetPower<ThingsCaveGodMagmaSealPower>();
+        if (existing == null)
+        {
+            await PowerCmd.Apply<ThingsCaveGodMagmaSealPower>(
+                new ThrowingPlayerChoiceContext(), creature, threshold, creature, null);
+        }
+        else if (existing.Amount != threshold)
+        {
+            await PowerCmd.ModifyAmount(
+                new ThrowingPlayerChoiceContext(), existing, threshold - existing.Amount, creature, null);
+        }
+    }
+
     private void ConfigureBodyNode()
     {
         NCreature? creatureNode = NCombatRoom.Instance?.GetCreatureNode(Creature);
@@ -417,6 +445,14 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
         SyncTremorVisual();
         ConfigureBodyNode();
         await EnsureBulwarkPower();
+        await EnsureMagmaSealPower();
+    }
+
+    public override async Task BeforeCombatStart()
+    {
+        await base.BeforeCombatStart();
+        await EnsureBulwarkPower();
+        await EnsureMagmaSealPower();
     }
 
     public override async Task BeforeSideTurnStart(
@@ -428,7 +464,11 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
         if (side == CombatSide.Enemy && Hands.Any(h => h.IsGrabbing && h.NextMove.Intents.Any(i => i is StunIntent)))
             await ReleaseCaptives(stun: false);
         if (side == CombatSide.Player && !IsDefeated)
+        {
             await EnsureBulwarkPower();
+            if (Phase == 1)
+                await EnsureMagmaSealPower();
+        }
     }
 
     public override async Task AfterSideTurnStart(CombatSide side, IReadOnlyList<Creature> participants, ICombatState combatState)

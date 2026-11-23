@@ -609,6 +609,10 @@ public partial class DepthsProbeNode
             await boss.Creature.AfterTurnStart(CombatSide.Enemy);
             await boss.PerformMove();
             Assert(boss.Creature.Block == 20, "SUMMON_MOVE grants 20 Block.");
+            var enemyTurnBug = b.State.Enemies.Single(c => c != boss.Creature && c.IsAlive);
+            enemyTurnBug.Monster!.RollMove(targets);
+            Assert(enemyTurnBug.Monster.NextMove.Id != "STUNNED",
+                $"Enemy-turn SUMMON_MOVE Bowlbug must NOT be double-stunned on the next turn (got {enemyTurnBug.Monster.NextMove.Id}).");
             var strike = player.PlayerCombatState!.AllCards.OfType<StrikeIronclad>().First();
             if (strike.Pile?.Type != PileType.Hand) await CardPileCmd.Add(strike, PileType.Hand);
             await PlayerCmd.SetEnergy(3, player);
@@ -708,6 +712,42 @@ public partial class DepthsProbeNode
             Assert(actualUnblocked == 10 && instinct.Amount == thresholdAfterPowered - actualUnblocked,
                 $"Nest-Protecting Instinct decrements strictly by unblocked damage ({instinct.Amount} vs {thresholdAfterPowered - actualUnblocked}).");
 
+            // Player Turn 5b: Breaking Nest-Protecting Instinct during Player Turn spawns 2 STUNNED Bowlbugs
+            // that skip the immediately following Enemy Turn (even after OnSideSwitch clears SpawnedThisTurn!)
+            // and then cleanly resume their native opening moves on the next turn.
+            b.State.CurrentSide = CombatSide.Player;
+            var bugsBeforeBreak = b.State.Enemies.Where(c => c != boss.Creature && c.IsAlive).ToHashSet();
+            int remainingInstinct = instinct.Amount;
+            int bossBlockBeforeBreak = (int)boss.Creature.Block;
+            await CreatureCmd.Damage(Choice, boss.Creature, bossBlockBeforeBreak + remainingInstinct,
+                MegaCrit.Sts2.Core.ValueProps.ValueProp.Unpowered, player.Creature);
+            var newlySpawnedBugs = b.State.Enemies
+                .Where(c => c != boss.Creature && c.IsAlive && !bugsBeforeBreak.Contains(c))
+                .ToArray();
+            Assert(newlySpawnedBugs.Length == 2,
+                $"Breaking Nest-Protecting Instinct during Player Turn must spawn 2 Bowlbugs, got {newlySpawnedBugs.Length}.");
+            foreach (var bug in newlySpawnedBugs)
+            {
+                Assert(bug.Monster!.NextMove.Id == "STUNNED" && bug.Monster.NextMove.Intents.Any(i => i is StunIntent),
+                    $"Player-turn instinct-spawned {bug.Monster.Id.Entry} must start STUNNED (got {bug.Monster.NextMove.Id}).");
+            }
+
+            // Simulate native Player -> Enemy OnSideSwitch (which resets SpawnedThisTurn = false) and execute newly spawned bugs!
+            b.State.CurrentSide = CombatSide.Enemy;
+            foreach (var bug in newlySpawnedBugs)
+                bug.OnSideSwitch();
+            int hpBeforeNewBugsAct = player.Creature.CurrentHp;
+            foreach (var bug in newlySpawnedBugs)
+                await bug.Monster!.PerformMove();
+            Assert(player.Creature.CurrentHp == hpBeforeNewBugsAct,
+                $"Player-turn spawned Bowlbugs must deal 0 damage on the immediate Enemy Turn (lost {hpBeforeNewBugsAct - player.Creature.CurrentHp}).");
+            foreach (var bug in newlySpawnedBugs)
+            {
+                bug.Monster!.RollMove(targets);
+                Assert(bug.Monster.NextMove.Id != "STUNNED",
+                    $"Instinct-spawned {bug.Monster.Id.Entry} must cleanly resume native moves on the next turn (still {bug.Monster.NextMove.Id}).");
+            }
+
             // Enemy Turn 5: REST_MOVE & Swarm Carapace expires at BeforeSideTurnStart(CombatSide.Enemy)!
             boss.RollMove(targets);
             Assert(boss.NextMove.Id == "REST_MOVE", "Progenitor Turn 5 is REST_MOVE.");
@@ -718,6 +758,6 @@ public partial class DepthsProbeNode
 
             DeactivateSyntheticCombat();
         }
-        GD.Print("PASS Bowlbug Progenitor unblocked-damage instinct, Siphon->Vigor live intent & conversion, and Heavy Slam + Swarm Carapace.");
+        GD.Print("PASS Bowlbug Progenitor unblocked-damage instinct, player-turn summon stun, Siphon->Vigor live intent & conversion, and Heavy Slam + Swarm Carapace.");
     }
 }

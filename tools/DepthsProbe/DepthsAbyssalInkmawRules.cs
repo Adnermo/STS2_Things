@@ -101,14 +101,16 @@ public partial class DepthsProbeNode
             if (players == 1)
             {
                 Assert(boss.Creature.MaxHp == (asc == 0 ? 288 : 316), $"Boss HP mismatch: {boss.Creature.MaxHp}");
-                Assert(left.Creature.MaxHp == (asc == 0 ? 52 : 58), $"Left tentacle HP mismatch: {left.Creature.MaxHp}");
-                Assert(right.Creature.MaxHp == (asc == 0 ? 43 : 49), $"Right tentacle HP mismatch: {right.Creature.MaxHp}");
+                Assert(left.Creature.MaxHp == (asc == 0 ? 38 : 42), $"Left tentacle HP mismatch: {left.Creature.MaxHp}");
+                Assert(right.Creature.MaxHp == (asc == 0 ? 32 : 36), $"Right tentacle HP mismatch: {right.Creature.MaxHp}");
             }
 
             Assert(left.Creature.GetPower<MinionPower>() != null && right.Creature.GetPower<MinionPower>() != null,
                 "Both hero tentacles start with MinionPower.");
             Assert(boss.Creature.GetPower<ThingsAbyssalCoverPower>()?.Amount == 25,
                 "Boss starts with 25% Tentacle Cover DR while major tentacles are alive.");
+            Assert(boss.Creature.GetPower<ThingsAbyssalTideLockPower>()?.Amount == boss.Phase2HpThreshold,
+                $"Boss starts with ThingsAbyssalTideLockPower showing exact 50% threshold ({boss.Phase2HpThreshold}), got {boss.Creature.GetPower<ThingsAbyssalTideLockPower>()?.Amount}.");
             Assert(!left.IsFloorBreachMode && !right.IsFloorBreachMode,
                 "Phase 1 tentacles start in water-emergence mode.");
 
@@ -144,7 +146,7 @@ public partial class DepthsProbeNode
             var small1 = boss.LivingSmallTentacles[0];
             if (players == 1)
             {
-                Assert(small1.Creature.MaxHp == (asc == 0 ? 22 : 25),
+                Assert(small1.Creature.MaxHp == (asc == 0 ? 16 : 18),
                     $"Small tentacle HP mismatch: {small1.Creature.MaxHp}.");
             }
             Assert(boss.Creature.GetPower<ThingsAbyssalCoverPower>()?.Amount == 25,
@@ -338,12 +340,18 @@ public partial class DepthsProbeNode
                 await CreatureCmd.Kill(glandC, force: true);
             }
 
-            // Sever Left Major Tentacle on Turn 5 -> washes ALL cards across ALL piles + removes InkBlackoutPower!
+            // Sever Left Major Tentacle on Turn 5 -> washes ALL cards across ALL piles + removes InkBlackoutPower
+            // and deals Act-2 multiplayer-scaled recoil damage (20 for 1p, 96 for 4p)!
+            int expectedRecoil = players == 1 ? ThingsAbyssalCoverPower.SeverRecoilDamage : (int)(ThingsAbyssalCoverPower.SeverRecoilDamage * players * 1.2m);
+            string coverTip = boss.Creature.GetPower<ThingsAbyssalCoverPower>()!.HoverTips
+                .OfType<MegaCrit.Sts2.Core.HoverTips.HoverTip>().First().Description;
+            Assert(coverTip.Contains($"[blue]{expectedRecoil}[/blue]"),
+                $"Tentacle Cover tooltip must show scaled sever recoil {expectedRecoil} ({players}p): {coverTip}");
             ClearCreatureBlock(boss.Creature);
             int hpBeforeSever = boss.Creature.CurrentHp;
             await CreatureCmd.Kill(left.Creature, force: true);
-            Assert(hpBeforeSever - boss.Creature.CurrentHp == ThingsAbyssalCoverPower.SeverRecoilDamage,
-                $"Severing major tentacle must deal {ThingsAbyssalCoverPower.SeverRecoilDamage} recoil.");
+            Assert(hpBeforeSever - boss.Creature.CurrentHp == expectedRecoil,
+                $"Severing major tentacle must deal {expectedRecoil} recoil ({players}p, got {hpBeforeSever - boss.Creature.CurrentHp}).");
             Assert(boss.Creature.GetPower<ThingsAbyssalCoverPower>()?.Amount == 25,
                 "With 1 major tentacle still alive, Tentacle Cover DR stays at 25%.");
             Assert(p0.Creature.GetPower<ThingsInkBlackoutPower>() == null,
@@ -358,34 +366,46 @@ public partial class DepthsProbeNode
             Assert(bashDiscard.EnergyCost.GetWithModifiers(CostModifiers.All) == bashDiscard.EnergyCost.Canonical,
                 "Surgical wash must restore bashDiscard's exact canonical energy cost.");
 
-            // === PHASE 2 PRESERVES STUN TURN REWARD ===
-            // Drop Boss to <= 50% HP while Stunned on Turn 5 -> must clamp at 50% AND stay Stunned on Turn 5!
+            // === PHASE 2 PRESERVES STUN TURN REWARD & MARKS HALF-HP LOCK WITH ∞ (SAME AS LIVING MEGALITH) ===
+            // Drop Boss to <= 50% HP while Stunned on Turn 5 -> must lock ∞ immediately AND stay Stunned on Turn 5!
             ClearCreatureBlock(boss.Creature);
             await CreatureCmd.Damage(Choice, boss.Creature, 9999m, ValueProp.Unblockable | ValueProp.Unpowered, p0.Creature);
-            Assert(boss.Creature.IsAlive && boss.Phase == 1 && boss.Creature.CurrentHp == boss.Phase2HpThreshold,
-                $"Phase 1 lethal hit must clamp cleanly at 50% HP ({boss.Phase2HpThreshold}).");
+            Assert(boss.Creature.IsAlive && boss.Phase == 1 && boss.IsPhase2Locked &&
+                   boss.Creature.HpDisplay == HpDisplay.InfiniteWithoutNumbers,
+                $"Phase 1 lethal hit must lock cleanly at 50% with HpDisplay.InfiniteWithoutNumbers (locked={boss.IsPhase2Locked}, display={boss.Creature.HpDisplay}).");
+            int lockedHpBeforeFollowUp = boss.Creature.CurrentHp;
+            await CreatureCmd.Damage(Choice, boss.Creature, 9999m, ValueProp.Unblockable | ValueProp.Unpowered, p0.Creature);
+            Assert(boss.Creature.CurrentHp == lockedHpBeforeFollowUp && boss.IsPhase2Locked &&
+                   boss.Creature.HpDisplay == HpDisplay.InfiniteWithoutNumbers,
+                "Subsequent hits during the ∞ half-HP lock must deal 0 HP loss and keep InfiniteWithoutNumbers.");
             Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.PostSprayStunId,
                 $"Hitting 50% HP during Turn 5 Stun must preserve Turn 5 Stun reward, got {boss.NextMove.Id}.");
 
-            // Run Turn 5 (Stun turn — 0 damage!) -> Turn 6 Boss queues PHASE2_SURGE, Right resumes WHIP_LASH cleanly!
+            // Run Turn 5 (Stun turn — 0 damage!) -> Turn 6 Boss queues PHASE2_SURGE (still ∞ locked until Surge resolves!), Right resumes WHIP_LASH cleanly!
             int p0HpBeforeStun = p0.Creature.CurrentHp;
             await RunInkmawFullRoundAsync(b);
             Assert(p0.Creature.CurrentHp == p0HpBeforeStun,
                 "Stun turn must deal 0 damage from Boss and all stunned tentacles.");
             Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.Phase2SurgeId,
                 $"Turn 6 after deferred Phase 2 trigger must queue PHASE2_SURGE, got {boss.NextMove.Id}.");
+            Assert(boss.IsPhase2Locked && boss.Creature.HpDisplay == HpDisplay.InfiniteWithoutNumbers,
+                "Boss must keep HpDisplay.InfiniteWithoutNumbers until PHASE2_SURGE executes.");
             Assert(right.NextMove.Id == ThingsAbyssalInkTentacle.WhipLashId,
                 $"Turn 6 Right tentacle must seamlessly resume WHIP_LASH after Stun, got {right.NextMove.Id}.");
 
-            // Execute Phase 2 Surge with 1 missing major + 0 living smalls -> strict cap of 2 total spawns
-            // revives Left in floor-breach mode (1) + spawns 1 small tentacle (1), NEVER 3 or 4 at once!
+            // Execute Phase 2 Surge with 1 missing major + 0 living smalls -> unlocks ∞ back to exact 50% HP,
+            // removes ThingsAbyssalTideLockPower, and summons ALL missing tentacles (revives Left in floor-breach mode + 2 outer smalls = full 4/4 board!).
             await RunInkmawFullRoundAsync(b);
-            Assert(boss.Phase == 2 && boss.Creature.GetPower<ThingsAbyssalSurgePower>() != null,
-                "Boss must transition cleanly to Phase 2 with ThingsAbyssalSurgePower.");
+            Assert(boss.Phase == 2 && !boss.IsPhase2Locked &&
+                   boss.Creature.HpDisplay == HpDisplay.Normal &&
+                   boss.Creature.CurrentHp == boss.Phase2HpThreshold &&
+                   boss.Creature.GetPower<ThingsAbyssalTideLockPower>() == null &&
+                   boss.Creature.GetPower<ThingsAbyssalSurgePower>() != null,
+                $"Boss must transition cleanly to Phase 2 at exact 50% HP ({boss.Phase2HpThreshold}) with HpDisplay.Normal and TideLock removed, got phase={boss.Phase}, hp={boss.Creature.CurrentHp}, display={boss.Creature.HpDisplay}.");
             Assert(boss.LivingLeftTentacle != null && boss.LivingLeftTentacle.IsFloorBreachMode,
                 "Phase 2 Surge must revive missing Left tentacle in floor-breach mode.");
-            Assert(boss.LivingSmallTentacleCount == 1,
-                $"Phase 2 Surge with 1 missing major must cap total spawns at 2 (1 major + 1 small), got {boss.LivingSmallTentacleCount} smalls.");
+            Assert(boss.LivingTentacleCount == 2 && boss.LivingSmallTentacleCount == 2,
+                $"Phase 2 Surge must fill ALL 4 tentacle slots (2 majors + 2 smalls), got majors={boss.LivingTentacleCount}, smalls={boss.LivingSmallTentacleCount}.");
 
             // Kill Boss in Phase 2 -> ALL surviving major & small tentacles die cleanly!
             await CreatureCmd.Kill(boss.Creature, force: true);
@@ -435,11 +455,11 @@ public partial class DepthsProbeNode
             DeactivateSyntheticCombat();
         }
 
-        // Extra dedicated check 2: NEVER summon > 2 tentacles in one turn (even on completely empty board!)
-        // AND NEVER execute consecutive summon turns (T2 SUMMON_TENTACLE -> T3 hit 50% HP -> PHASE2_SURGE_NO_SUMMON)!
+        // Extra dedicated check 2: Phase 2 Surge summons ALL missing tentacles (4/4 board, ignoring 2-cap & cooldown!),
+        // while regular Phase 2 SUMMON_TENTACLE still enforces strict 2-tentacle cap and cooldown!
         {
-            // (a) Empty-board Phase 2 Surge cap: wipe both starting major tentacles -> trigger Phase 2 -> must spawn EXACTLY 2 (2 majors + 0 smalls, NEVER 4!)
-            var b = await InkmawBattle(1, 0, "inkmaw-summon-cap-empty");
+            // (a) Empty-board Phase 2 Surge: wipe both starting major tentacles -> trigger Phase 2 -> must fill ALL 4 slots (2 majors + 2 smalls)!
+            var b = await InkmawBattle(1, 0, "inkmaw-summon-all-empty");
             var boss = b.Monster<ThingsAbyssalInkmaw>();
             await CreatureCmd.Kill(boss.LivingLeftTentacle!.Creature, force: true);
             await CreatureCmd.Kill(boss.LivingRightTentacle!.Creature, force: true);
@@ -450,17 +470,19 @@ public partial class DepthsProbeNode
             Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.Phase2SurgeId,
                 $"Empty-board Phase 2 trigger must queue PHASE2_SURGE, got {boss.NextMove.Id}.");
             await RunInkmawFullRoundAsync(b);
-            Assert(boss.LivingTentacleCount == 2 && boss.LivingSmallTentacleCount == 0,
-                $"Empty-board PHASE2_SURGE must cap total spawns at 2 (2 majors + 0 smalls), got majors={boss.LivingTentacleCount}, smalls={boss.LivingSmallTentacleCount}.");
+            Assert(boss.LivingTentacleCount == 2 && boss.LivingSmallTentacleCount == 2,
+                $"Empty-board PHASE2_SURGE must summon ALL missing tentacles (2 majors + 2 smalls), got majors={boss.LivingTentacleCount}, smalls={boss.LivingSmallTentacleCount}.");
 
-            // Kill both majors again right after Phase 2 Surge -> T+1 is ABYSSAL_UNDERTOW, T+2 must respect summon cooldown (ABYSSAL_PRESSURE, NOT SUMMON_TENTACLE)!
+            // Kill ALL 4 tentacles right after Phase 2 Surge -> T+1 is ABYSSAL_UNDERTOW, T+2 must respect summon cooldown (ABYSSAL_PRESSURE, NOT SUMMON_TENTACLE)!
             await RunInkmawFullRoundAsync(b); // T+1 ABYSSAL_UNDERTOW (cd: 2 -> 1)
             await CreatureCmd.Kill(boss.LivingLeftTentacle!.Creature, force: true);
             await CreatureCmd.Kill(boss.LivingRightTentacle!.Creature, force: true);
+            foreach (var sm in boss.LivingSmallTentacles.ToList())
+                await CreatureCmd.Kill(sm.Creature, force: true);
             Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.AbyssalPressureId,
                 $"Post-Surge step 1 with active summon cooldown must NOT re-summon even with empty board, got {boss.NextMove.Id}.");
 
-            // Complete rest of cycle until next cycle's SUMMON_TENTACLE (cd == 0, empty board) -> still capped at EXACTLY 2 tentacles!
+            // Complete rest of cycle until next cycle's regular SUMMON_TENTACLE (cd == 0, empty board) -> regular summon still capped at 2!
             await RunInkmawFullRoundAsync(b); // T+2 ABYSSAL_PRESSURE
             await RunInkmawFullRoundAsync(b); // T+3 TIDAL_CRASH
             await RunInkmawFullRoundAsync(b); // T+4 ABYSSAL_PRESSURE
@@ -472,29 +494,48 @@ public partial class DepthsProbeNode
                 $"Next cycle step 1 with cooldown expired must queue SUMMON_TENTACLE, got {boss.NextMove.Id}.");
             await RunInkmawFullRoundAsync(b); // T+9 SUMMON_TENTACLE on empty board
             Assert(boss.LivingTentacleCount == 2 && boss.LivingSmallTentacleCount == 0,
-                $"Phase 2 SUMMON_TENTACLE on empty board must cap at 2 total (2 majors + 0 smalls), got majors={boss.LivingTentacleCount}, smalls={boss.LivingSmallTentacleCount}.");
+                $"Regular Phase 2 SUMMON_TENTACLE on empty board must still cap at 2 total (2 majors + 0 smalls), got majors={boss.LivingTentacleCount}, smalls={boss.LivingSmallTentacleCount}.");
             DeactivateSyntheticCombat();
         }
 
         {
-            // (b) Zero consecutive summon turns: T2 SUMMON_TENTACLE -> T3 drop Boss to 50% HP -> must route to PHASE2_SURGE_NO_SUMMON!
-            var b = await InkmawBattle(1, 0, "inkmaw-no-consecutive-summon");
+            // (b) Phase 2 Surge ignores summon cooldown & tops off all remaining slots (T2 SUMMON_TENTACLE -> 3 tentacles -> T3 hit 50% HP -> PHASE2_SURGE fills 4th tentacle!);
+            // AND when board is already 4/4 full, routes cleanly to PHASE2_SURGE_NO_SUMMON without a bogus SummonIntent!
+            var b = await InkmawBattle(1, 0, "inkmaw-phase2-ignore-cooldown");
             var boss = b.Monster<ThingsAbyssalInkmaw>();
             await RunInkmawFullRoundAsync(b); // T1 ABYSSAL_UNDERTOW
             Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.SummonTentacleId, "T2 must be SUMMON_TENTACLE.");
-            await RunInkmawFullRoundAsync(b); // T2 SUMMON_TENTACLE (spawns 1 small, sets cooldown=2)
-            int totalBeforeSurge = boss.LivingTentacleCount + boss.LivingSmallTentacleCount;
-            Assert(totalBeforeSurge == 3, $"Expected 3 tentacles after T2 summon, got {totalBeforeSurge}.");
+            await RunInkmawFullRoundAsync(b); // T2 SUMMON_TENTACLE (spawns 1 small, sets cooldown=2 -> 3 tentacles)
+            Assert(boss.LivingTentacleCount == 2 && boss.LivingSmallTentacleCount == 1,
+                $"Expected 2 majors + 1 small after T2 summon, got majors={boss.LivingTentacleCount}, smalls={boss.LivingSmallTentacleCount}.");
 
-            // Drop Boss to 50% HP on T3 immediately after T2's summon!
+            // Drop Boss to 50% HP on T3 immediately after T2's summon -> ignores cooldown, queues PHASE2_SURGE, fills 4/4!
             await CreatureCmd.Damage(Choice, boss.Creature, 9999m, ValueProp.Unblockable | ValueProp.Unpowered, b.Players[0].Creature);
-            Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.Phase2SurgeNoSummonId,
-                $"Hitting 50% HP right after T2 SUMMON_TENTACLE must use PHASE2_SURGE_NO_SUMMON (no back-to-back summon!), got {boss.NextMove.Id}.");
-            Assert(boss.NextMove.Intents.All(i => i is not SummonIntent),
-                "PHASE2_SURGE_NO_SUMMON must NOT display a SummonIntent.");
+            Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.Phase2SurgeId &&
+                   boss.NextMove.Intents.Any(i => i is SummonIntent),
+                $"Hitting 50% HP with vacant slot must ignore summon cooldown and queue PHASE2_SURGE, got {boss.NextMove.Id}.");
             await RunInkmawFullRoundAsync(b);
-            Assert(boss.Phase == 2 && boss.LivingTentacleCount + boss.LivingSmallTentacleCount == totalBeforeSurge,
-                "PHASE2_SURGE_NO_SUMMON must enter Phase 2 without summoning extra tentacles back-to-back.");
+            Assert(boss.Phase == 2 && boss.LivingTentacleCount == 2 && boss.LivingSmallTentacleCount == 2,
+                $"PHASE2_SURGE must enter Phase 2 and fill all 4 tentacle slots, got majors={boss.LivingTentacleCount}, smalls={boss.LivingSmallTentacleCount}.");
+            DeactivateSyntheticCombat();
+        }
+
+        {
+            // (c) Full 4/4 board at 50% HP -> PHASE2_SURGE_NO_SUMMON (no redundant SummonIntent); killing a tentacle upgrades to PHASE2_SURGE!
+            var b = await InkmawBattle(1, 0, "inkmaw-phase2-full-board");
+            var boss = b.Monster<ThingsAbyssalInkmaw>();
+            await boss.SpawnSmallTentaclesAsync(2, Choice);
+            Assert(boss.LivingTentacleCount == 2 && boss.LivingSmallTentacleCount == 2, "Board starts 4/4 full.");
+            await CreatureCmd.Damage(Choice, boss.Creature, 9999m, ValueProp.Unblockable | ValueProp.Unpowered, b.Players[0].Creature);
+            Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.Phase2SurgeNoSummonId &&
+                   boss.NextMove.Intents.All(i => i is not SummonIntent),
+                $"4/4 full board hitting 50% HP must use PHASE2_SURGE_NO_SUMMON, got {boss.NextMove.Id}.");
+            await CreatureCmd.Kill(boss.LivingSmallTentacles[0].Creature, force: true);
+            Assert(boss.NextMove.Id == ThingsAbyssalInkmaw.Phase2SurgeId,
+                $"Killing a tentacle during full-board half-HP lock must upgrade intent to PHASE2_SURGE, got {boss.NextMove.Id}.");
+            await RunInkmawFullRoundAsync(b);
+            Assert(boss.Phase == 2 && boss.LivingTentacleCount == 2 && boss.LivingSmallTentacleCount == 2,
+                "Upgraded PHASE2_SURGE must refill back to 4/4 tentacles.");
             DeactivateSyntheticCombat();
         }
 
@@ -516,30 +557,32 @@ public partial class DepthsProbeNode
             await PowerCmd.Apply<DoomPower>(Choice, boss.Creature, boss.Creature.CurrentHp + 50m, b.Players[0].Creature, null);
             await RunInkmawFullRoundAsync(b);
 
-            Assert(boss.Creature.IsAlive && boss.Creature.CurrentHp == boss.Phase2HpThreshold,
-                $"[InkmawDoom] Phase 1 Doom must clamp Boss alive at 50% threshold ({boss.Phase2HpThreshold}) and queue Phase 2, got alive={boss.Creature.IsAlive}, hp={boss.Creature.CurrentHp}.");
+            Assert(boss.Creature.IsAlive && boss.IsPhase2Locked && boss.Creature.HpDisplay == HpDisplay.InfiniteWithoutNumbers,
+                $"[InkmawDoom] Phase 1 Doom must lock Boss alive with InfiniteWithoutNumbers and queue Phase 2, got alive={boss.Creature.IsAlive}, locked={boss.IsPhase2Locked}, display={boss.Creature.HpDisplay}.");
             Assert(boss.NextMove.Id is ThingsAbyssalInkmaw.Phase2SurgeId or ThingsAbyssalInkmaw.Phase2SurgeNoSummonId,
                 $"[InkmawDoom] Phase 1 Doom must queue Phase 2 Surge, got {boss.NextMove.Id}.");
 
-            // Next round: Boss executes Phase 2 Surge (clears Doom safely & enters Phase 2) — must NOT die or hang!
+            // Next round: Boss executes Phase 2 Surge (unlocks to exact 50% HP, clears Doom safely & enters Phase 2) — must NOT die or hang!
             await RunInkmawFullRoundAsync(b);
-            Assert(boss.Phase == 2 && boss.Creature.IsAlive && boss.Creature.GetPower<DoomPower>() == null,
-                $"[InkmawDoom] Phase 2 Surge must enter Phase 2 and safely clear Doom, got phase={boss.Phase}, alive={boss.Creature.IsAlive}, doom={boss.Creature.GetPower<DoomPower>()?.Amount}.");
+            Assert(boss.Phase == 2 && !boss.IsPhase2Locked && boss.Creature.HpDisplay == HpDisplay.Normal &&
+                   boss.Creature.CurrentHp == boss.Phase2HpThreshold && boss.Creature.IsAlive && boss.Creature.GetPower<DoomPower>() == null,
+                $"[InkmawDoom] Phase 2 Surge must restore exact 50% HP ({boss.Phase2HpThreshold}), HpDisplay.Normal and clear Doom, got phase={boss.Phase}, hp={boss.Creature.CurrentHp}, display={boss.Creature.HpDisplay}, doom={boss.Creature.GetPower<DoomPower>()?.Amount}.");
             DeactivateSyntheticCombat();
         }
 
-        // Case 2: Phase 1 Boss already clamped at 50% HP (_phase2Pending == true) and THEN doomed before Phase 2 Surge runs (e.g. End of Days / enemy turn end while stunned)
+        // Case 2: Phase 1 Boss already locked at 50% HP (_phase2Pending == true) and THEN doomed before Phase 2 Surge runs (e.g. End of Days / enemy turn end while stunned)
         {
             var b = await InkmawBattle(1, 0, "inkmaw-doom-p1-pending");
             var boss = b.Monster<ThingsAbyssalInkmaw>();
             await CreatureCmd.Damage(Choice, boss.Creature, 9999m, ValueProp.Unblockable | ValueProp.Unpowered, b.Players[0].Creature);
-            Assert(boss.Phase == 1 && boss.Creature.CurrentHp == boss.Phase2HpThreshold, "[InkmawDoom] Clamped at 50% in Phase 1.");
+            Assert(boss.Phase == 1 && boss.IsPhase2Locked && boss.Creature.HpDisplay == HpDisplay.InfiniteWithoutNumbers,
+                "[InkmawDoom] Locked with InfiniteWithoutNumbers at 50% in Phase 1.");
 
             await PowerCmd.Apply<DoomPower>(Choice, boss.Creature, boss.Creature.CurrentHp + 20m, b.Players[0].Creature, null);
             // Simulate direct DoomPower.DoomKill (same path as End of Days card or turn-end trigger while stunned!)
             await DoomPower.DoomKill([boss.Creature]);
-            Assert(boss.Creature.IsAlive && boss.Creature.CurrentHp == boss.Phase2HpThreshold,
-                $"[InkmawDoom] Repeated DoomKill while Phase 1 pending must keep Boss alive at threshold ({boss.Phase2HpThreshold}), got alive={boss.Creature.IsAlive}, hp={boss.Creature.CurrentHp}.");
+            Assert(boss.Creature.IsAlive && boss.IsPhase2Locked && boss.Creature.HpDisplay == HpDisplay.InfiniteWithoutNumbers,
+                $"[InkmawDoom] Repeated DoomKill while Phase 1 locked must keep Boss alive with InfiniteWithoutNumbers, got alive={boss.Creature.IsAlive}, hp={boss.Creature.CurrentHp}, display={boss.Creature.HpDisplay}.");
             DeactivateSyntheticCombat();
         }
 
@@ -555,8 +598,8 @@ public partial class DepthsProbeNode
             await PowerCmd.Apply<DoomPower>(Choice, right.Creature, right.Creature.CurrentHp + 20m, b.Players[0].Creature, null);
             await DoomPower.DoomKill([boss.Creature, left.Creature, right.Creature]);
 
-            Assert(boss.Creature.IsAlive && boss.Creature.CurrentHp == boss.Phase2HpThreshold,
-                $"[InkmawDoom] Simultaneous DoomKill must keep Phase 1 Boss alive at threshold ({boss.Phase2HpThreshold}), got alive={boss.Creature.IsAlive}, hp={boss.Creature.CurrentHp}.");
+            Assert(boss.Creature.IsAlive && boss.IsPhase2Locked && boss.Creature.HpDisplay == HpDisplay.InfiniteWithoutNumbers,
+                $"[InkmawDoom] Simultaneous DoomKill must keep Phase 1 Boss alive with InfiniteWithoutNumbers, got alive={boss.Creature.IsAlive}, hp={boss.Creature.CurrentHp}, display={boss.Creature.HpDisplay}.");
             Assert(left.Creature.IsDead && right.Creature.IsDead,
                 "[InkmawDoom] Doomed tentacles must die cleanly alongside Phase 1 Boss survival.");
             DeactivateSyntheticCombat();
@@ -744,8 +787,71 @@ public partial class DepthsProbeNode
             Assert(whirlNode.Body.GetNodeOrNull<NInkBlackoutCardVeil>("AbyssalInkBlackoutVeil") == null,
                 "[InkVeilRepro] OnFreedToPool detached veil cleanly without recursion.");
 
+            // Step 4: Reparent + detached UpdateVisuals + pooled reuse + tentacle sever opacity regression!
+            // Reproduces the exact bug where NPlayerHand/NCardPlayQueue Reparent() runs _ExitTree() ->
+            // detached UpdateVisuals() spawns a duplicate sibling veil whose saved modulate is alpha=0 ->
+            // severing a tentacle leaves every Body child transparent (Modulate.A == 0f)!
+            whirlNode.OnReturnedFromPool();
+            whirlNode.Model = whirlwind;
+            await PowerCmd.Apply<ThingsInkBlackoutPower>(Choice, ironclad.Creature, 1m, boss.Creature, null);
+            await StartInkmawPlayerTurnAsync(b, rollMoves: false);
+            whirlNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+
+            var reparentHost = new Node2D { Name = "InkBlackoutReparentHost" };
+            AddChild(reparentHost);
+            try
+            {
+                // Detach from host, run UpdateVisuals while out-of-tree, then re-attach to reparentHost (simulates hand -> play queue).
+                host.RemoveChild(whirlNode);
+                whirlNode.UpdateVisuals(PileType.Play, CardPreviewMode.Normal);
+                NInkBlackoutCardVeil.Refresh(whirlNode);
+                reparentHost.AddChild(whirlNode);
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+                int veilCountAfterReparent = whirlNode.Body.GetChildren().OfType<NInkBlackoutCardVeil>().Count(v => !v.IsQueuedForDeletion());
+                Assert(veilCountAfterReparent == 1,
+                    $"[InkVeilRepro] Reparent + out-of-tree UpdateVisuals must keep strictly 1 veil (got {veilCountAfterReparent}).");
+
+                // Sever the right major tentacle via native CreatureCmd.Kill -> StartWaveWash() must immediately restore full card opacity!
+                var right = b.Monster<ThingsAbyssalInkTentacle>();
+                right.Creature.SetCurrentHpInternal(1);
+                await CreatureCmd.Kill(right.Creature, force: true);
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+                foreach (string childName in new[] { "%Frame", "%PortraitCanvasGroup", "%TitleBanner", "%TitleLabel", "%DescriptionLabel", "%EnergyIcon" })
+                {
+                    if (whirlNode.GetNodeOrNull<CanvasItem>(childName) is { } childItem)
+                    {
+                        Assert(childItem.Modulate.A > 0.9f,
+                            $"[InkVeilRepro] Reparented card {childName} became transparent after severing tentacle (alpha={childItem.Modulate.A}).");
+                    }
+                }
+
+                // Also verify pooled reuse heals any manually poisoned zero-alpha body child.
+                if (whirlNode.GetNodeOrNull<CanvasItem>("%Frame") is { } poisonedFrame)
+                {
+                    poisonedFrame.Modulate = new Color(1f, 1f, 1f, 0f);
+                }
+                whirlNode.OnFreedToPool();
+                whirlNode.OnReturnedFromPool();
+                if (whirlNode.GetNodeOrNull<CanvasItem>("%Frame") is { } healedFrame)
+                {
+                    Assert(healedFrame.Modulate.A > 0.9f,
+                        $"[InkVeilRepro] OnFreedToPool/OnReturnedFromPool must restore %Frame alpha > 0.9 (got {healedFrame.Modulate.A}).");
+                }
+            }
+            finally
+            {
+                if (GodotObject.IsInstanceValid(reparentHost))
+                {
+                    if (reparentHost.GetParent() != null)
+                        reparentHost.GetParent().RemoveChild(reparentHost);
+                    reparentHost.Free();
+                }
+            }
+
             DeactivateSyntheticCombat();
-            GD.Print("PASS Abyssal Inkmaw NInkBlackoutCardVeil live NCard detach/wash/3p regression.");
+            GD.Print("PASS Abyssal Inkmaw NInkBlackoutCardVeil live NCard detach/wash/3p/reparent-opacity regression.");
         }
         finally
         {

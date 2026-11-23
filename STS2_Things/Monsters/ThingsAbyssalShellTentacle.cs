@@ -32,7 +32,7 @@ public sealed class ThingsAbyssalShellTentacle : ThingsAbyssalSmallTentacleBase
     protected override string VisualsPath => "res://scenes/creature_visuals/things_abyssal_shell_tentacle.tscn";
 
     public int BossGuardBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 13, 10) + (Sts2VersionSeam.IsDread() ? 2 : 0);
-    public int SelfGuardBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, 6) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public int SelfGuardBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 4, 3) + (Sts2VersionSeam.IsDread() ? 1 : 0);
     public int ShellSlapDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4) + (Sts2VersionSeam.IsDread() ? 1 : 0);
     public int ShellSlapBossBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 8, 6) + (Sts2VersionSeam.IsDread() ? 2 : 0);
     public int ChargeBossTempWardPercent => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 20, 15);

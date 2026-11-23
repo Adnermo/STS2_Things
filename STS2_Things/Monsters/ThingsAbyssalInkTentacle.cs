@@ -45,10 +45,10 @@ public sealed class ThingsAbyssalInkTentacle : ThingsMonsterModel, IAbyssalSynce
     public int WhipLashDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 4, 3) + (Sts2VersionSeam.IsDread() ? 1 : 0);
     public const int WhipLashHits = 2;
     public int BolsterStrength => 1 + (Sts2VersionSeam.IsDread() ? 1 : 0);
-    public int BolsterBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 10, 7) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public int BolsterBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 4, 3) + (Sts2VersionSeam.IsDread() ? 1 : 0);
     public int ChargeBossTempStrength => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 4, 3) + (Sts2VersionSeam.IsDread() ? 1 : 0);
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 49, 43) + (Sts2VersionSeam.IsDread() ? 9 : 0);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 36, 32) + (Sts2VersionSeam.IsDread() ? 6 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
     protected override string VisualsPath => "res://scenes/creature_visuals/things_abyssal_ink_tentacle.tscn";

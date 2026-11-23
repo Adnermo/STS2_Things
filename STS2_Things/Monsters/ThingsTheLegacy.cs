@@ -28,23 +28,23 @@ using STS2_Things.Powers;
 namespace STS2_Things.Monsters;
 
 /// <summary>
-///     腐化之遗 — Underdocks 高难 Boss（一层“真·小王”）
+///     腐化之遗 — Underdocks Boss（一层腐化之心遗蜕）
 ///     开局: LegacyBeatOfDeathPower (固定 2 层，玩家出牌 Boss 扣 2 血，不再叠加) + HardenedShellPower (HP/5 层)
 ///     意图循环:
-///     衰竭(仅开局: 易伤+脆弱 + 灼伤/晕眩/黏液各2张) → 回音 → 血弹 → 强化 → 循环
+///     衰竭(仅开局: 1层易伤 + 1/2层脆弱 + 灼伤1/晕眩1/黏液1) → 回音 → 血弹 → 强化 → 循环
 ///     强化阶段(均不再追加自伤律动，每轮稳定加力量):
-///     第1次: 1层人工制品 + 2(恐惧3)力量
-///     第2次: 硬化外壳收紧至 HP/6 + 2(恐惧3)力量
-///     第3次: 晕眩打击(ThingsDazedPower) + 2(恐惧3)力量
-///     第4次: 2层人工制品 + 硬化外壳收紧至 HP/7 + 2(恐惧3)力量
-///     之后循环: (n+2)层人工制品 + 外壳收紧至 HP/(n+7) + 2(恐惧3)力量
+///     第1次: 1层人工制品 + 1(恐惧2)力量
+///     第2次: 硬化外壳收紧至 HP/6 + 1(恐惧2)力量
+///     第3次: 晕眩打击(ThingsDazedPower) + 1(恐惧2)力量
+///     第4次: 2层人工制品 + 硬化外壳收紧至 HP/7 + 1(恐惧2)力量
+///     之后循环: (n+2)层人工制品 + 外壳收紧至 HP/(n+7) + 1(恐惧2)力量
 /// </summary>
 public sealed class ThingsTheLegacy : ThingsSpineMonster
 {
     // The encounter lives in Underdocks, so it uses an act1_b track that is
     // already loaded by the native Act music lifecycle.
     private const string _trackName = "waterfall_giant_progress";
-    private const int BloodDamage = 3;
+    private const int BloodDamage = 2;
     private const int MinShellCap = 20;
 
     // 复用Vantom（暗黑Boss）的原版音效
@@ -84,22 +84,24 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
     ]).Distinct();
 
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 320, 300) + (Sts2VersionSeam.IsDread() ? 40 : 0);
+        AscensionLevel.ToughEnemies, 260, 240) + (Sts2VersionSeam.IsDread() ? 25 : 0);
 
     public override int MaxInitialHp => MinInitialHp;
 
     private int EchoDamage => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.DeadlyEnemies, 20, 18) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+        AscensionLevel.DeadlyEnemies, 15, 13) + (Sts2VersionSeam.IsDread() ? 2 : 0);
 
     private int BloodCount => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.DeadlyEnemies, 6, 5);
+        AscensionLevel.DeadlyEnemies, 5, 4);
 
-    private int ExhaustDebuffTurns => AscensionHelper.GetValueIfAscension(
+    private int ExhaustVulnerableTurns => 1;
+
+    private int ExhaustFrailTurns => AscensionHelper.GetValueIfAscension(
         AscensionLevel.DeadlyEnemies, 2, 1);
 
     private decimal OpeningBeatOfDeathAmount => 2m;
 
-    private decimal StrengthenStrengthAmount => 2m + (Sts2VersionSeam.IsDread() ? 1m : 0m);
+    private decimal StrengthenStrengthAmount => 1m + (Sts2VersionSeam.IsDread() ? 1m : 0m);
 
     // ========== 入场 ==========
     public override async Task AfterAddedToRoom()
@@ -113,7 +115,7 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
         await PowerCmd.Apply<ThingsLegacyProgressPower>(new ThrowingPlayerChoiceContext(), Creature, 1m, Creature, null);
         // 死亡律动: 保留反向特色并固定为 2 层（强化与恐惧模式不再增加自伤）
         await PowerCmd.Apply<ThingsLegacyBeatOfDeathPower>(new ThrowingPlayerChoiceContext(), Creature, OpeningBeatOfDeathAmount, Creature, null);
-        // 硬化外壳: 开局即收紧至最大 HP / 5（约 60/64，恐惧 68/72）
+        // 硬化外壳: 开局即收紧至最大 HP / 5（48/52，恐惧 53/57）
         // 注意：HardenedShellPower 的 ShouldScaleInMultiplayer=true，PowerCmd.Apply 会自动缩放。
         // 必须用缩放前的原始 HP（MonsterMaxHpBeforeModification）计算，否则会双重缩放导致层数超过 MaxHp。
         var baseHp = Creature.MonsterMaxHpBeforeModification ?? Creature.MaxHp;
@@ -126,16 +128,16 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
     {
         List<MonsterState> list = new();
 
-        // 衰竭: 1(2) 层易伤+脆弱 + Burn/Dazed/Slimed 各 2 张
+        // 衰竭: 1 层易伤 + 1(2) 层脆弱 + Burn 1 / Dazed 1 / Slimed 1（共 3 张）
         var exhaustMove = new MoveState("EXHAUST_MOVE", ExhaustMove,
             new DebuffIntent(),
-            new StatusIntent(6));
+            new StatusIntent(3));
 
-        // 回音: 18/20 (+2 恐惧) 单段重击
+        // 回音: 13/15 (+2 恐惧) 单段重击
         var echoMove = new MoveState("ECHO_MOVE", EchoMove,
             new SingleAttackIntent(EchoDamage));
 
-        // 血弹: 3×5 / 3×6 高频连击
+        // 血弹: 2×4 / 2×5 高频连击
         var bloodMove = new MoveState("BLOOD_MOVE", BloodMove,
             new MultiAttackIntent(BloodDamage, BloodCount));
 
@@ -165,11 +167,11 @@ public sealed class ThingsTheLegacy : ThingsSpineMonster
         await CreatureCmd.TriggerAnim(Creature, "Cast", 0.5f);
 
         var ctx = new ThrowingPlayerChoiceContext();
-        await PowerCmd.Apply<VulnerablePower>(ctx, targets, ExhaustDebuffTurns, Creature, null);
-        await PowerCmd.Apply<FrailPower>(ctx, targets, ExhaustDebuffTurns, Creature, null);
-        await CardPileCmd.AddToCombatAndPreview<Burn>(targets, PileType.Discard, 2, null);
-        await CardPileCmd.AddToCombatAndPreview<Dazed>(targets, PileType.Discard, 2, null);
-        await CardPileCmd.AddToCombatAndPreview<Slimed>(targets, PileType.Discard, 2, null);
+        await PowerCmd.Apply<VulnerablePower>(ctx, targets, ExhaustVulnerableTurns, Creature, null);
+        await PowerCmd.Apply<FrailPower>(ctx, targets, ExhaustFrailTurns, Creature, null);
+        await CardPileCmd.AddToCombatAndPreview<Burn>(targets, PileType.Discard, 1, null);
+        await CardPileCmd.AddToCombatAndPreview<Dazed>(targets, PileType.Discard, 1, null);
+        await CardPileCmd.AddToCombatAndPreview<Slimed>(targets, PileType.Discard, 1, null);
     }
 
     private async Task EchoMove(IReadOnlyList<Creature> targets)

@@ -19,6 +19,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.Models.Powers;
+using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -478,6 +479,8 @@ public partial class GravetideSlugProbeNode : Node
                 MoveState goop = RollBossMove(boss);
                 Assert(goop.Id == "GOOP_MOVE",
                     "Gravetide boss did not advance from Glomp to Goop.");
+                Assert(goop.Intents.OfType<DebuffIntent>().Any() && goop.Intents.OfType<SummonIntent>().Any(),
+                    "Gravetide Goop must expose both DebuffIntent and SummonIntent since it creates a corpse.");
                 await goop.PerformMove(scenario.Room.CombatState.PlayerCreatures);
                 MarkBossMovePerformed(boss);
 

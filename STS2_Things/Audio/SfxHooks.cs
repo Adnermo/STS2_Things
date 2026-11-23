@@ -22,6 +22,8 @@ namespace STS2_Things.Hooks;
 public static class SfxHooks
 {
     private const float OriginFogmogHurtChance = 0.35f;
+    private const long OriginFogmogHurtCooldownMs = 300;
+    private static long _lastOriginFogmogHurtTickMs = -OriginFogmogHurtCooldownMs;
 
     // Case-insensitive lookup covering both raw and "things_"-prefixed MonsterId entries so
     // vanilla monster damage/death checks never allocate id.ToLowerInvariant() strings.
@@ -218,9 +220,14 @@ public static class SfxHooks
             if (!CanPlayCombatAudio()) return false;
 
             // Keep the normal material impact on non-vocal hits. The custom
-            // Origin Fogmog hurt variant replaces it only on a local 35% roll.
+            // Origin Fogmog hurt variant replaces it only on a local 35% roll
+            // with a short cooldown so multi-hit attacks do not stack vocal roars.
+            if (entry == "origin_fogmog" && System.Environment.TickCount64 - _lastOriginFogmogHurtTickMs < OriginFogmogHurtCooldownMs)
+                return true;
             if (entry == "origin_fogmog" && !NativeSfxPlayer.RollChance(OriginFogmogHurtChance))
                 return true;
+            if (entry == "origin_fogmog")
+                _lastOriginFogmogHurtTickMs = System.Environment.TickCount64;
 
             var nativePath = MapToNativePathForMonster(entry, "hurt");
             if (nativePath != null) NativeSfxPlayer.Play(nativePath, volumeDb: 0f);

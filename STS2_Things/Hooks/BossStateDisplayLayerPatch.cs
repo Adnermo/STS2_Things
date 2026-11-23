@@ -18,11 +18,13 @@ namespace STS2_Things.Hooks;
 /// for standard <c>STS2_Things</c> monsters, minions, and players inside standard <c>STS2_Things</c> encounters.
 ///
 /// Effective Z is always clamped strictly below <c>0</c> (<c>&lt;= -1</c>) by walking the live
-/// <see cref="CanvasItem"/> ancestor chain so modded characters or reparented containers with
-/// <c>ZAsRelative = false</c> / effective <c>ZIndex &gt;= 0</c> can never render HP bars over
-/// <c>CombatUi</c> or <c>GlobalUi</c> overlays (e.g. <c>NCardRewardSelectionScreen</c>). Elevated
-/// HP bar Z-index is also reset to <c>0</c> when combat ends. Monumental proxy bosses (absolute
-/// <c>ZIndex = 0</c>) and <see cref="ThingsHumanFaceColumn"/> (custom side-UI Z) are intentionally skipped.
+/// <see cref="CanvasItem"/> ancestor chain so modded characters, third-party <see cref="NCreature._Ready"/>
+/// or <see cref="NCombatRoom.AddCreature"/> postfixes, or reparented containers with
+/// <c>ZAsRelative = false</c> / effective <c>ZIndex &gt;= 0</c> always clamp any previously elevated
+/// <c>%HealthBar</c>/<c>%Intents</c> back down to <c>0</c> and never render over <c>CombatUi</c>,
+/// <c>GlobalUi</c>, or ESC pause/settings overlays. Elevated HUD Z-indices are also reset to <c>0</c>
+/// when combat ends. Monumental proxy bosses (absolute <c>ZIndex = 0</c>) and
+/// <see cref="ThingsHumanFaceColumn"/> (custom side-UI Z) are intentionally skipped.
 /// </summary>
 [HarmonyPatch(typeof(NCreature), "UpdateBounds", typeof(Node))]
 internal static class BossStateDisplayLayerPatch
@@ -57,9 +59,6 @@ internal static class BossStateDisplayLayerPatch
     internal static void Apply(NCreature creature)
     {
         if (creature == null || !GodotObject.IsInstanceValid(creature))
-            return;
-
-        if (!creature.ZAsRelative)
             return;
 
         if (creature.Entity == null)
@@ -144,6 +143,33 @@ internal static class BossStateDisplayLayerPatch
 }
 
 /// <summary>
+/// Closes the mid-combat summon lifecycle race against third-party <see cref="NCreature._Ready"/> and
+/// <see cref="NCombatRoom.AddCreature"/> postfixes (for example, mods that set <c>ZAsRelative = false</c>
+/// or raise <c>ZIndex</c> after <c>UpdateBounds</c> already elevated <c>%HealthBar</c>/<c>%Intents</c>
+/// inside <c>NCreature._Ready</c>). Running at <see cref="Priority.Last"/> clamps synchronously after
+/// other <c>_Ready</c> postfixes, and a single deferred pass catches mutations applied later in the same
+/// frame by <c>AddCreature</c> postfixes or <c>AfterAddedToRoom</c>.
+/// </summary>
+[HarmonyPatch(typeof(NCreature), nameof(NCreature._Ready))]
+internal static class BossStateDisplayCreatureReadyPatch
+{
+    [HarmonyPostfix]
+    [HarmonyPriority(Priority.Last)]
+    private static void Postfix(NCreature __instance)
+    {
+        if (__instance == null || !GodotObject.IsInstanceValid(__instance))
+            return;
+
+        BossStateDisplayLayerPatch.Apply(__instance);
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(__instance))
+                BossStateDisplayLayerPatch.Apply(__instance);
+        }).CallDeferred();
+    }
+}
+
+/// <summary>
 /// <see cref="NCombatRoom._Ready"/> spawns ally and enemy <see cref="NCreature"/> nodes BEFORE setting
 /// <c>SceneContainer.ZIndex = -10</c>. Re-applying safe HUD elevation once <see cref="NCombatRoom._Ready"/>
 /// completes ensures initial creatures inside a standard <c>-10</c> scene container receive safe elevation,
@@ -153,6 +179,7 @@ internal static class BossStateDisplayLayerPatch
 internal static class BossStateDisplayCombatRoomReadyPatch
 {
     [HarmonyPostfix]
+    [HarmonyPriority(Priority.Last)]
     private static void Postfix(NCombatRoom __instance)
     {
         if (__instance == null || !GodotObject.IsInstanceValid(__instance) || __instance.Mode != CombatRoomMode.ActiveCombat)
@@ -166,8 +193,8 @@ internal static class BossStateDisplayCombatRoomReadyPatch
 }
 
 /// <summary>
-/// Resets any elevated <c>%HealthBar</c> relative Z-index back to <c>0</c> when combat ends so player
-/// HP bars are strictly back at vanilla Z during post-combat reward screens.
+/// Resets any elevated <c>%HealthBar</c> and <c>%Intents</c> relative Z-index back to <c>0</c> when combat
+/// ends so creature HUD overlays are strictly back at vanilla Z during post-combat reward screens.
 /// </summary>
 [HarmonyPatch(typeof(NCreature), "OnCombatEnded", typeof(CombatRoom))]
 internal static class BossStateDisplayCombatEndResetPatch
@@ -182,6 +209,12 @@ internal static class BossStateDisplayCombatEndResetPatch
         if (stateDisplay != null && GodotObject.IsInstanceValid(stateDisplay) && stateDisplay.ZAsRelative && stateDisplay.ZIndex > 0)
         {
             stateDisplay.ZIndex = 0;
+        }
+
+        Control? intentContainer = __instance.IntentContainer ?? __instance.GetNodeOrNull<Control>("%Intents");
+        if (intentContainer != null && GodotObject.IsInstanceValid(intentContainer) && intentContainer.ZAsRelative && intentContainer.ZIndex > 0)
+        {
+            intentContainer.ZIndex = 0;
         }
     }
 }

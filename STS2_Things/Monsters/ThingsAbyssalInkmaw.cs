@@ -18,6 +18,8 @@ using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Nodes.Vfx.Utilities;
 using MegaCrit.Sts2.Core.ValueProps;
@@ -83,12 +85,16 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
 
     public int Phase { get; private set; } = 1;
     private bool _phase2Pending;
+    private bool _applyingPhase2Hp;
+    private int _savedPhase2Hp;
+    private int _savedPhase2MaxHp;
     private bool _deathHandled;
     private int _cycleStep;
     private int _summonCooldownTurns;
     private InkSequenceStage _inkSequenceStage;
 
-    public int Phase2HpThreshold => (Creature.MaxHp + 1) / 2;
+    public bool IsPhase2Locked => _phase2Pending;
+    public int Phase2HpThreshold => ((_savedPhase2MaxHp > 0 ? _savedPhase2MaxHp : Creature.MaxHp) + 1) / 2;
     public bool IsChargingInk => NextMove?.Id == InkChargeId;
     public bool IsPostSprayStunned => NextMove?.Id == PostSprayStunId;
 
@@ -130,6 +136,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
 
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat([
         ModelDb.Power<ThingsAbyssalCoverPower>().ResolvedBigIconPath,
+        ModelDb.Power<ThingsAbyssalTideLockPower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsInkBlackoutPower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsAbyssalSurgePower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsAbyssalTempStrengthPower>().ResolvedBigIconPath,
@@ -184,6 +191,9 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         base.AfterCloned();
         Phase = 1;
         _phase2Pending = false;
+        _applyingPhase2Hp = false;
+        _savedPhase2Hp = 0;
+        _savedPhase2MaxHp = 0;
         _deathHandled = false;
         _cycleStep = 0;
         _summonCooldownTurns = 0;
@@ -197,7 +207,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
 
     private bool CanSummonNow => _summonCooldownTurns <= 0 && HasVacantTentacleSlot;
 
-    private string ResolvePhase2SurgeMoveId() => CanSummonNow ? Phase2SurgeId : Phase2SurgeNoSummonId;
+    private string ResolvePhase2SurgeMoveId() => HasVacantTentacleSlot ? Phase2SurgeId : Phase2SurgeNoSummonId;
 
     private void TickSummonCooldown()
     {
@@ -208,7 +218,27 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     public override async Task BeforeCombatStart()
     {
         await base.BeforeCombatStart();
-        await SyncCoverPowerAsync(new ThrowingPlayerChoiceContext());
+        var choice = new ThrowingPlayerChoiceContext();
+        await SyncCoverPowerAsync(choice);
+        await EnsureTideLockPowerAsync(choice);
+    }
+
+    public async Task EnsureTideLockPowerAsync(PlayerChoiceContext? choiceContext = null)
+    {
+        if (Phase != 1 || _deathHandled || !Creature.IsAlive)
+            return;
+
+        choiceContext ??= new ThrowingPlayerChoiceContext();
+        int threshold = Phase2HpThreshold;
+        ThingsAbyssalTideLockPower? existing = Creature.GetPower<ThingsAbyssalTideLockPower>();
+        if (existing == null)
+        {
+            await PowerCmd.Apply<ThingsAbyssalTideLockPower>(choiceContext, Creature, threshold, Creature, null);
+        }
+        else if (existing.Amount != threshold)
+        {
+            await PowerCmd.ModifyAmount(choiceContext, existing, threshold - existing.Amount, Creature, null);
+        }
     }
 
     private bool ShouldTriggerPhase2Now() =>
@@ -332,16 +362,29 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
             // and drop CurrentHp to 0 via LoseHpInternal before calling ShouldDie/AfterPreventingDeath.
             // CreatureCmd.KillWithoutCheckingWinCondition recurses and throws InvalidOperationException
             // if the creature is still dead (CurrentHp <= 0) after AfterPreventingDeath returns.
-            if (Creature.CurrentHp <= 0)
+            if (_phase2Pending)
             {
-                int restoreHp = Math.Clamp(Phase2HpThreshold, 1, Math.Max(1, Creature.MaxHp));
-                await CreatureCmd.SetCurrentHp(Creature, restoreHp);
+                if (Creature.CurrentHp <= 0)
+                {
+                    int restoreHp = Math.Max(1, _savedPhase2MaxHp > 0 ? _savedPhase2MaxHp : Creature.MaxHp);
+                    _applyingPhase2Hp = true;
+                    try
+                    {
+                        await CreatureCmd.SetCurrentHp(Creature, restoreHp);
+                    }
+                    finally
+                    {
+                        _applyingPhase2Hp = false;
+                    }
+                    RefreshBodyHealthBarUi();
+                }
+                return;
             }
-            TriggerPhase2Pending();
+            await EnterPhase2LockAsync();
         }
     }
 
-    public override Task AfterDamageReceived(
+    public override async Task AfterDamageReceived(
         PlayerChoiceContext choiceContext,
         Creature target,
         DamageResult result,
@@ -349,31 +392,46 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         Creature? dealer,
         CardModel? cardSource)
     {
-        if (target != Creature || !Creature.IsAlive || _deathHandled)
-            return Task.CompletedTask;
+        if (_applyingPhase2Hp || target != Creature || !Creature.IsAlive || _deathHandled)
+            return;
 
         if (result.TotalDamage > 0)
             NAbyssalInkmawBossBackground.Current?.PlayBossHurt();
 
         if (Phase == 1 && !_phase2Pending && Creature.CurrentHp <= Phase2HpThreshold)
-            TriggerPhase2Pending();
-
-        return Task.CompletedTask;
+            await EnterPhase2LockAsync();
     }
 
-    public override Task AfterCurrentHpChanged(Creature creature, decimal delta)
+    public override async Task AfterCurrentHpChanged(Creature creature, decimal delta)
     {
-        if (creature == Creature && Creature.IsAlive && Phase == 1 && !_phase2Pending && Creature.CurrentHp <= Phase2HpThreshold)
-            TriggerPhase2Pending();
-        return Task.CompletedTask;
+        if (_applyingPhase2Hp || creature != Creature)
+            return;
+        if (Creature.IsAlive && Phase == 1 && !_phase2Pending && Creature.CurrentHp <= Phase2HpThreshold)
+            await EnterPhase2LockAsync();
     }
 
-    private void TriggerPhase2Pending()
+    private async Task EnterPhase2LockAsync()
     {
         if (Phase != 1 || _phase2Pending || _deathHandled)
             return;
 
+        _savedPhase2MaxHp = Creature.MaxHp;
+        _savedPhase2Hp = Phase2HpThreshold;
         _phase2Pending = true;
+        Creature.HpDisplay = HpDisplay.InfiniteWithoutNumbers;
+        Creature.GetPower<ThingsAbyssalTideLockPower>()?.NotifyLockTriggered();
+
+        _applyingPhase2Hp = true;
+        try
+        {
+            await CreatureCmd.SetCurrentHp(Creature, _savedPhase2MaxHp);
+        }
+        finally
+        {
+            _applyingPhase2Hp = false;
+        }
+
+        RefreshBodyHealthBarUi();
 
         // Preserve the player's Stun turn reward if Boss hits 50% HP while Stunned:
         // Phase 2 Surge fires on the immediately following turn instead of canceling Stun!
@@ -395,6 +453,42 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
                 }
             }
         }
+    }
+
+    private async Task ExitPhase2LockAsync()
+    {
+        int restoreHp = _savedPhase2Hp > 0 ? _savedPhase2Hp : Phase2HpThreshold;
+        _phase2Pending = false;
+        Creature.HpDisplay = HpDisplay.Normal;
+
+        _applyingPhase2Hp = true;
+        try
+        {
+            await CreatureCmd.SetCurrentHp(Creature, restoreHp);
+        }
+        finally
+        {
+            _applyingPhase2Hp = false;
+        }
+
+        if (Creature.GetPower<ThingsAbyssalTideLockPower>() is { } tideLock)
+            await PowerCmd.Remove(tideLock);
+
+        RefreshBodyHealthBarUi();
+    }
+
+    private void RefreshBodyHealthBarUi()
+    {
+        NCreature? node = Sts2VersionSeam.GetCreatureNode(Creature) ?? NCombatRoom.Instance?.GetCreatureNode(Creature);
+        if (node == null || !GodotObject.IsInstanceValid(node))
+            return;
+
+        NCreatureStateDisplay? stateDisplay = node.GetNodeOrNull<NCreatureStateDisplay>("%HealthBar");
+        NHealthBar? hpBar = stateDisplay?.GetNodeOrNull<NHealthBar>("%HealthBar")
+            ?? stateDisplay?.FindChild("HealthBar", recursive: true, owned: false) as NHealthBar
+            ?? node.FindChild("HealthBar", recursive: true, owned: false) as NHealthBar;
+        if (hpBar != null && GodotObject.IsInstanceValid(hpBar))
+            hpBar.RefreshValues();
     }
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
@@ -461,7 +555,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         //   [T5 INK_CHARGE -> T6 INK_SPRAY -> T7 POST_SPRAY_STUN] -> T8 repeats!
         var router = new ConditionalBranchState(MoveRouterId);
         router.AddState(postSprayStun, () => _inkSequenceStage == InkSequenceStage.StunNext);
-        router.AddState(phase2Surge, () => Phase == 1 && (_phase2Pending || Creature.CurrentHp <= Phase2HpThreshold) && CanSummonNow);
+        router.AddState(phase2Surge, () => Phase == 1 && (_phase2Pending || Creature.CurrentHp <= Phase2HpThreshold) && HasVacantTentacleSlot);
         router.AddState(phase2SurgeNoSummon, () => Phase == 1 && (_phase2Pending || Creature.CurrentHp <= Phase2HpThreshold));
         router.AddState(inkSpray, () => _inkSequenceStage == InkSequenceStage.SprayNext);
         router.AddState(abyssalUndertow, () => _cycleStep == 0);
@@ -587,7 +681,8 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
 
         // Wait precisely until the sweeping cylindrical hydro-ink beam reaches 0° dead-center over the player (`t = 1.06s`)!
         await WaitForCombatBeatAsync(1.06f);
-        NGame.Instance?.ScreenShake(ShakeStrength.Medium, ShakeDuration.Normal);
+        if (NAbyssalInkmawBossBackground.Current == null)
+            NGame.Instance?.ScreenShake(ShakeStrength.Medium, ShakeDuration.Normal);
 
         await DamageCmd.Attack(InkSprayDamage)
             .FromMonster(this)
@@ -622,15 +717,19 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
 
     private async Task ExecutePhase2SurgeCoreAsync(bool allowSummon)
     {
+        bool wasPhase1 = Phase == 1;
         Phase = 2;
-        _phase2Pending = false;
         _cycleStep = 0;
         _inkSequenceStage = InkSequenceStage.None;
 
         NAbyssalInkmawBossBackground.Current?.PlayPhase2Surge();
         await WaitForCombatBeatAsync(0.95f);
 
-        NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Normal);
+        if (wasPhase1 || _phase2Pending)
+            await ExitPhase2LockAsync();
+
+        if (NAbyssalInkmawBossBackground.Current == null)
+            NGame.Instance?.ScreenShake(ShakeStrength.Strong, ShakeDuration.Normal);
         await ClearDebuffsSafelyAsync(Creature);
 
         // If Phase 2 interrupted an armed Ink Spray before it fired, strip unused charge-only Vigor.
@@ -644,15 +743,14 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         await PowerCmd.Apply<StrengthPower>(choice, Creature, Phase2Strength, Creature, null);
         await CreatureCmd.GainBlock(Creature, Phase2Block, ValueProp.Move, null);
 
-        if (allowSummon)
+        if (allowSummon || HasVacantTentacleSlot)
         {
-            // Strictly cap Phase 2 Surge at MaxTentaclesPerSummon (2) total (missing majors first,
-            // then distinct small breach tentacles with remaining budget) and start summon cooldown
-            // so the boss never chains consecutive or back-to-back summon turns.
+            // Phase 2 Surge ignores the normal 2-tentacle cap and summon cooldown,
+            // filling ALL 4 tentacle slots (2 floor-breach majors + 2 outer smalls).
             _summonCooldownTurns = SummonCooldownAfterSpawn;
             await SummonTentaclesWithBudgetAsync(
-                maxTotal: MaxTentaclesPerSummon,
-                maxSmall: MaxTentaclesPerSummon,
+                maxTotal: 4,
+                maxSmall: 2,
                 floorBreach: true,
                 choiceContext: choice);
         }
@@ -852,15 +950,12 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
             return;
 
         await SyncCoverPowerAsync(choiceContext);
+        if (Phase == 1 && _phase2Pending && !IsPerformingMove && NextMove?.Id == Phase2SurgeNoSummonId && HasVacantTentacleSlot)
+            SetMoveImmediate(Move(Phase2SurgeId), forceTransition: true);
         NAbyssalInkmawBossBackground.Current?.PlayBossHurt();
         NGame.Instance?.ScreenShake(ShakeStrength.Medium, ShakeDuration.Short);
 
-        int recoilDamage = ThingsAbyssalCoverPower.SeverRecoilDamage;
-        if (CombatState != null && MultiplayerCompat.IsExtendedParty(CombatState))
-        {
-            int rawPlayers = MultiplayerCompat.GetRawPlayerCount(CombatState);
-            recoilDamage = (int)Math.Round(recoilDamage * MultiplayerCompat.GetExtendedPartyScaleRatio(rawPlayers));
-        }
+        int recoilDamage = GetScaledSeverRecoilDamage();
 
         await CreatureCmd.Damage(
             choiceContext,
@@ -881,6 +976,9 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         }
     }
 
+    internal int GetScaledSeverRecoilDamage() =>
+        ThingsAbyssalCoverPower.ComputeScaledSeverRecoilDamage(CombatState);
+
     internal Task HandleSmallTentacleSeveredAsync(bool isOuterLeft, Creature severedTentacle, PlayerChoiceContext choiceContext)
     {
         _ = severedTentacle;
@@ -896,6 +994,8 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
 
         if (Creature.IsAlive && !CombatManager.Instance.IsOverOrEnding)
         {
+            if (Phase == 1 && _phase2Pending && !IsPerformingMove && NextMove?.Id == Phase2SurgeNoSummonId && HasVacantTentacleSlot)
+                SetMoveImmediate(Move(Phase2SurgeId), forceTransition: true);
             NAbyssalInkmawBossBackground.Current?.PlayBossHurt();
             NGame.Instance?.ScreenShake(ShakeStrength.Weak, ShakeDuration.Short);
         }
@@ -915,6 +1015,8 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
             return;
 
         _deathHandled = true;
+        _phase2Pending = false;
+        Creature.HpDisplay = HpDisplay.Normal;
         NAbyssalInkmawBossBackground.Current?.PlayBossDie();
 
         if (CombatState != null)

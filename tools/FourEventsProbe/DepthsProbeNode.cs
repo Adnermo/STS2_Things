@@ -13,6 +13,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
@@ -22,11 +23,13 @@ using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Models.Enchantments;
 using MegaCrit.Sts2.Core.Models.Potions;
 using MegaCrit.Sts2.Core.Multiplayer;
+using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
+using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Unlocks;
 using STS2_Things.Acts;
@@ -443,19 +446,59 @@ public partial class DepthsProbeNode : Node
         int maxHpBefore = p1.Creature.MaxHp;
 
         var ev1 = BeginEventForPlayer<ThingsCrackedBrazier>(p1, run1);
+        CardHoverTip? burnTip = ev1.CurrentOptions[0].HoverTips.OfType<CardHoverTip>().FirstOrDefault(tip => tip.Card is Burn);
+        Assert(burnTip != null && burnTip.Card.Type == CardType.Status && burnTip.Card.Keywords.Contains(CardKeyword.Eternal) && !burnTip.Card.IsRemovable,
+            "Temper option hover tips preview Burn status card with Eternal keyword attached");
+
         var cancelSel = new ProbeCardSelector(-1);
         using (ProbeRuntimeApi.UseSelector(cancelSel))
             await ev1.CurrentOptions[0].Chosen();
-        Assert(!ev1.IsFinished && p1.Creature.MaxHp == maxHpBefore && !cancelSel.LastOffered.Contains(whirlwind),
-            "Temper excludes X-cost cards and cancel preserves Max HP");
+        Assert(!ev1.IsFinished && p1.Creature.MaxHp == maxHpBefore && !cancelSel.LastOffered.Contains(whirlwind)
+               && !p1.Deck.Cards.Any(c => c is Burn),
+            "Temper excludes X-cost cards and cancel preserves Max HP without adding Eternal Burn");
 
         using (ProbeRuntimeApi.UseSelector(new ProbeCardSelector(targetPredicate: c => c == bash)))
             await ev1.CurrentOptions[0].Chosen();
+        CardModel? burn = p1.Deck.Cards.FirstOrDefault(c => c is Burn);
         Assert(ev1.IsFinished && p1.Creature.MaxHp == maxHpBefore - ThingsCrackedBrazier.TemperMaxHpLoss
                && bash.Enchantment is TezcatarasEmber
                && bash.EnergyCost.GetWithModifiers(CostModifiers.None) == 0
-               && bash.Keywords.Contains(CardKeyword.Eternal),
-            "Temper deducts 10 Max HP, drops cost to 0, and grants Eternal via Tezcatara's Ember");
+               && bash.Keywords.Contains(CardKeyword.Eternal)
+               && burn != null
+               && burn.Type == CardType.Status
+               && !burn.CanonicalKeywords.Contains(CardKeyword.Eternal)
+               && burn.Keywords.Contains(CardKeyword.Eternal)
+               && !burn.IsRemovable,
+            "Temper deducts 10 Max HP, adds non-canonical Eternal Burn status card, drops cost to 0, and grants Eternal via Tezcatara's Ember");
+
+        CardModel clonedBurn = (CardModel)burn!.MutableClone();
+        Assert(clonedBurn.Keywords.Contains(CardKeyword.Eternal) && !clonedBurn.IsRemovable,
+            "MutableClone preserves added Eternal keyword on Burn");
+
+        SerializableCard savedBurn = burn.ToSerializable();
+        Assert(savedBurn.Props?.bools?.Any(b => b.name == "ThingsEternalKeyword" && b.value) == true,
+            "Eternal Burn writes ThingsEternalKeyword into SerializableCard.Props.bools");
+
+        var writer = new PacketWriter();
+        writer.Reset();
+        savedBurn.Serialize(writer);
+        var reader = new PacketReader();
+        reader.Reset(writer.Buffer);
+        var packetBurn = new SerializableCard();
+        packetBurn.Deserialize(reader);
+        CardModel restoredFromPacket = CardModel.FromSerializable(packetBurn);
+        Assert(restoredFromPacket is Burn && restoredFromPacket.Keywords.Contains(CardKeyword.Eternal) && !restoredFromPacket.IsRemovable,
+            "Multiplayer packet roundtrip preserves Eternal keyword on Burn");
+
+        string jsonBurn = JsonSerializer.Serialize(savedBurn, JsonSerializationUtility.GetTypeInfo<SerializableCard>());
+        SerializableCard? fromJson = JsonSerializer.Deserialize(jsonBurn, JsonSerializationUtility.GetTypeInfo<SerializableCard>());
+        CardModel restoredFromJson = CardModel.FromSerializable(fromJson!);
+        Assert(restoredFromJson is Burn && restoredFromJson.Keywords.Contains(CardKeyword.Eternal) && !restoredFromJson.IsRemovable,
+            "JSON save/load roundtrip preserves Eternal keyword on Burn");
+
+        CardModel plainBurn = run1.CreateCard<Burn>(p1);
+        Assert(plainBurn.ToSerializable().Props == null && bash.ToSerializable().Props == null,
+            "Plain Burn and Tezcatara's Ember cards do not emit extra ThingsEternalKeyword props");
 
         // Option 2a: Burn Common card -> 9 HP damage, remove, NO Common Relic
         RunState run2 = SetupTestRun("cb-burn-common");
@@ -480,14 +523,16 @@ public partial class DepthsProbeNode : Node
         CardModel rareBurn = run3.CreateCard<Feed>(p3);
         await CardPileCmd.Add(rareBurn, PileType.Deck);
         int hp3 = p3.Creature.CurrentHp;
+        int maxHp3 = p3.Creature.MaxHp;
         int relics3 = p3.Relics.Count;
         var ev3 = BeginEventForPlayer<ThingsCrackedBrazier>(p3, run3);
         using (ProbeRuntimeApi.UseSelector(new ProbeCardSelector(targetPredicate: c => c == rareBurn)))
             await ev3.CurrentOptions[1].Chosen();
-        Assert(ev3.IsFinished && p3.Creature.CurrentHp == hp3 - ThingsCrackedBrazier.BurnDamage
+        int maxHpGain3 = Math.Max(0, p3.Creature.MaxHp - maxHp3);
+        Assert(ev3.IsFinished && p3.Creature.CurrentHp == hp3 - ThingsCrackedBrazier.BurnDamage + maxHpGain3
                && !p3.Deck.Cards.Contains(rareBurn) && p3.Relics.Count == relics3 + 1
                && p3.Relics[^1].Rarity == RelicRarity.Common,
-            "Burning Rare card grants 1 bonus Common Relic");
+            $"Burning Rare card grants 1 bonus Common Relic (hp={p3.Creature.CurrentHp}, expected={hp3 - ThingsCrackedBrazier.BurnDamage + maxHpGain3}, relic={p3.Relics[^1].Id.Entry})");
 
         // Option 3: Warm Hands -> Heal 10 HP
         RunState run4 = SetupTestRun("cb-warm");

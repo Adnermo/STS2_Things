@@ -3230,6 +3230,7 @@ def main() -> int:
             "PowerCmd.Apply<ThingsGravetideDigestionPower>",
             "ModelDb.Monster<ThingsGravetideCorpseSlug>().AssetPaths",
             "GoopAndCreateCorpseMove",
+            "new DebuffIntent(), new SummonIntent()",
             "DelayDigestionUntilNextEnemyTurn = true;",
             "CreatureCmd.Add(corpse, CombatState, slotName: slot)",
             "CreatureCmd.Add<ThingsGravetideCorpseSlug>",
@@ -3368,8 +3369,11 @@ def main() -> int:
         "Monsters/ThingsHumanFaceTowerBastion.cs": ["ThingsBastionSealPower", "VulnerablePower"],
         "Monsters/ThingsHumanFaceTowerMockery.cs": ["ThingsMockeryEchoPower", "VulnerablePower"],
         "Monsters/ThingsAbyssalInkmaw.cs": [
-            "ThingsAbyssalCoverPower", "ThingsInkBlackoutPower", "ThingsAbyssalSurgePower",
+            "ThingsAbyssalCoverPower", "ThingsAbyssalTideLockPower", "ThingsInkBlackoutPower", "ThingsAbyssalSurgePower",
             "VulnerablePower", "WeakPower", "FrailPower", "StrengthPower"
+        ],
+        "Monsters/ThingsCaveGodBody.cs": [
+            "ThingsCaveGodAncientCorePower", "ThingsCaveGodMagmaSealPower", "StrengthPower"
         ],
         "Monsters/ThingsAbyssalCrushingTentacle.cs": ["MinionPower", "VulnerablePower", "ThingsInkBlackoutPower"],
         "Monsters/ThingsAbyssalInkTentacle.cs": ["MinionPower", "StrengthPower", "VulnerablePower", "ThingsInkBlackoutPower"],

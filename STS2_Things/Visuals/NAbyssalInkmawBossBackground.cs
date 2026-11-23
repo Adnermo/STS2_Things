@@ -156,6 +156,11 @@ public partial class NAbyssalInkmawBossBackground : Node2D
     private ulong _lastRightHurtTicks;
     private ulong _lastOuterLeftSmallHurtTicks;
     private ulong _lastOuterRightSmallHurtTicks;
+    private bool _bodyLoopSyncPending;
+    private bool _leftLoopSyncPending;
+    private bool _rightLoopSyncPending;
+    private bool _outerLeftSmallLoopSyncPending;
+    private bool _outerRightSmallLoopSyncPending;
 
     public static NAbyssalInkmawBossBackground? Current =>
         _activeInstance != null && GodotObject.IsInstanceValid(_activeInstance) && _activeInstance.IsInsideTree()
@@ -311,7 +316,80 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         if (_presentationEnded)
             return;
 
+        SyncPendingLoopTransitionsInternal();
         SyncChamberTransformInternal(force: false);
+    }
+
+    private void SyncPendingLoopTransitionsInternal()
+    {
+        if (_bodyLoopSyncPending)
+        {
+            if (_bossDead)
+            {
+                _bodyLoopSyncPending = false;
+            }
+            else if (_bodyReady && _bodySprite?.TryGetAnimationState() is { } bodyState)
+            {
+                string? playing = bodyState.GetCurrentAnimationName(ActionTrack);
+                if (playing == null || playing.EndsWith("_loop", StringComparison.Ordinal))
+                {
+                    if (playing != CurrentBossIdleAnim)
+                        SetTrackImmediate(bodyState, CurrentBossIdleAnim, loop: true, ActionTrack, mix: 0.20f);
+                    _bodyLoopSyncPending = false;
+                }
+            }
+        }
+
+        SyncTentaclePendingLoop(isLeft: true, ref _leftLoopSyncPending);
+        SyncTentaclePendingLoop(isLeft: false, ref _rightLoopSyncPending);
+        SyncSmallTentaclePendingLoop(isOuterLeft: true, ref _outerLeftSmallLoopSyncPending);
+        SyncSmallTentaclePendingLoop(isOuterLeft: false, ref _outerRightSmallLoopSyncPending);
+    }
+
+    private void SyncTentaclePendingLoop(bool isLeft, ref bool pending)
+    {
+        if (!pending)
+            return;
+        bool alive = isLeft ? _leftAlive : _rightAlive;
+        if (!alive)
+        {
+            pending = false;
+            return;
+        }
+        MegaSprite? sprite = GetActiveTentacleSprite(isLeft, out bool ready);
+        if (!ready || sprite?.TryGetAnimationState() is not { } state)
+            return;
+        string? playing = state.GetCurrentAnimationName(ActionTrack);
+        if (playing == null || playing.EndsWith("_loop", StringComparison.Ordinal))
+        {
+            string targetLoop = (isLeft ? _leftStunned : _rightStunned) ? "stun_loop" : "idle_loop";
+            if (playing != targetLoop)
+                SetTrackImmediate(state, targetLoop, loop: true, ActionTrack, mix: 0.18f);
+            pending = false;
+        }
+    }
+
+    private void SyncSmallTentaclePendingLoop(bool isOuterLeft, ref bool pending)
+    {
+        if (!pending)
+            return;
+        bool alive = isOuterLeft ? _outerLeftSmallAlive : _outerRightSmallAlive;
+        if (!alive)
+        {
+            pending = false;
+            return;
+        }
+        MegaSprite? sprite = GetSmallTentacleSprite(isOuterLeft, out bool ready);
+        if (!ready || sprite?.TryGetAnimationState() is not { } state)
+            return;
+        string? playing = state.GetCurrentAnimationName(ActionTrack);
+        if (playing == null || playing.EndsWith("_loop", StringComparison.Ordinal))
+        {
+            string targetLoop = (isOuterLeft ? _outerLeftSmallStunned : _outerRightSmallStunned) ? "stun_loop" : "idle_loop";
+            if (playing != targetLoop)
+                SetTrackImmediate(state, targetLoop, loop: true, ActionTrack, mix: 0.18f);
+            pending = false;
+        }
     }
 
     public void AlignStageAndPlayers()
@@ -336,11 +414,15 @@ public partial class NAbyssalInkmawBossBackground : Node2D
             string? playing = bodyState.GetCurrentAnimationName(ActionTrack);
             if (playing == null || playing.EndsWith("_loop", StringComparison.Ordinal))
             {
-                SetTrackImmediate(bodyState, CurrentBossIdleAnim, loop: true, ActionTrack, mix: 0.18f);
+                _bodyLoopSyncPending = false;
+                if (playing != CurrentBossIdleAnim)
+                    SetTrackImmediate(bodyState, CurrentBossIdleAnim, loop: true, ActionTrack, mix: 0.18f);
             }
             else
             {
-                bodyState.AddAnimation(CurrentBossIdleAnim, 0f, loop: true, ActionTrack);
+                // Do NOT append behind an already-queued looping idle_loop (would delay transition by a full 4s cycle!).
+                // SyncPendingLoopTransitionsInternal smoothly crossfades on the exact frame the active action finishes.
+                _bodyLoopSyncPending = true;
             }
         }
     }
@@ -348,6 +430,7 @@ public partial class NAbyssalInkmawBossBackground : Node2D
     public void PlayBossChargePulse()
     {
         _bossStance = BossStance.Charging;
+        _bodyLoopSyncPending = false;
         if (_bossDead || _presentationEnded)
             return;
 
@@ -373,6 +456,7 @@ public partial class NAbyssalInkmawBossBackground : Node2D
     public void PlayInkSpray()
     {
         _bossStance = BossStance.Normal;
+        _bodyLoopSyncPending = false;
         if (_bossDead || _presentationEnded)
             return;
 
@@ -427,6 +511,7 @@ public partial class NAbyssalInkmawBossBackground : Node2D
     {
         _isPhase2 = true;
         _bossStance = BossStance.Normal;
+        _bodyLoopSyncPending = false;
         if (_bossDead || _presentationEnded)
             return;
 
@@ -439,7 +524,7 @@ public partial class NAbyssalInkmawBossBackground : Node2D
 
     public void PlayBossHurt()
     {
-        if (_bossDead || _presentationEnded)
+        if (_bossDead || _presentationEnded || _bossStance == BossStance.Stunned)
             return;
 
         ulong now = Time.GetTicksMsec();
@@ -454,7 +539,7 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         if (playing != null && !playing.EndsWith("_loop", StringComparison.Ordinal) && playing != "hurt")
             return;
 
-        SetTrackImmediate(bodyState, "hurt", loop: false, ActionTrack, mix: 0.05f);
+        SetTrackImmediate(bodyState, "hurt", loop: false, ActionTrack, mix: 0.08f);
         bodyState.AddAnimation(CurrentBossIdleAnim, 0f, loop: true, ActionTrack);
     }
 
@@ -567,14 +652,16 @@ public partial class NAbyssalInkmawBossBackground : Node2D
 
         string targetLoop = stunned ? "stun_loop" : "idle_loop";
         string? playing = state.GetCurrentAnimationName(ActionTrack);
+        ref bool pending = ref (isLeft ? ref _leftLoopSyncPending : ref _rightLoopSyncPending);
         if (playing == null || playing.EndsWith("_loop", StringComparison.Ordinal))
         {
+            pending = false;
             if (playing != targetLoop)
                 SetTrackImmediate(state, targetLoop, loop: true, ActionTrack, mix: 0.16f);
         }
         else
         {
-            state.AddAnimation(targetLoop, 0f, loop: true, ActionTrack);
+            pending = true;
         }
     }
 
@@ -584,7 +671,8 @@ public partial class NAbyssalInkmawBossBackground : Node2D
             return;
 
         bool alive = isLeft ? _leftAlive : _rightAlive;
-        if (!alive)
+        bool stunned = isLeft ? _leftStunned : _rightStunned;
+        if (!alive || stunned)
             return;
 
         ulong now = Time.GetTicksMsec();
@@ -601,9 +689,8 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         if (playing != null && !playing.EndsWith("_loop", StringComparison.Ordinal) && playing != "hurt")
             return;
 
-        bool stunned = isLeft ? _leftStunned : _rightStunned;
-        SetTrackImmediate(state, "hurt", loop: false, ActionTrack, mix: 0.05f);
-        state.AddAnimation(stunned ? "stun_loop" : "idle_loop", 0f, loop: true, ActionTrack);
+        SetTrackImmediate(state, "hurt", loop: false, ActionTrack, mix: 0.08f);
+        state.AddAnimation("idle_loop", 0f, loop: true, ActionTrack);
     }
 
     public void PlayTentacleRetreatDie(bool isLeft)
@@ -703,14 +790,16 @@ public partial class NAbyssalInkmawBossBackground : Node2D
 
         string targetLoop = stunned ? "stun_loop" : "idle_loop";
         string? playing = state.GetCurrentAnimationName(ActionTrack);
+        ref bool pending = ref (isOuterLeft ? ref _outerLeftSmallLoopSyncPending : ref _outerRightSmallLoopSyncPending);
         if (playing == null || playing.EndsWith("_loop", StringComparison.Ordinal))
         {
+            pending = false;
             if (playing != targetLoop)
                 SetTrackImmediate(state, targetLoop, loop: true, ActionTrack, mix: 0.16f);
         }
         else
         {
-            state.AddAnimation(targetLoop, 0f, loop: true, ActionTrack);
+            pending = true;
         }
     }
 
@@ -720,7 +809,8 @@ public partial class NAbyssalInkmawBossBackground : Node2D
             return;
 
         bool alive = isOuterLeft ? _outerLeftSmallAlive : _outerRightSmallAlive;
-        if (!alive)
+        bool stunned = isOuterLeft ? _outerLeftSmallStunned : _outerRightSmallStunned;
+        if (!alive || stunned)
             return;
 
         ulong now = Time.GetTicksMsec();
@@ -737,9 +827,8 @@ public partial class NAbyssalInkmawBossBackground : Node2D
         if (playing != null && !playing.EndsWith("_loop", StringComparison.Ordinal) && playing != "hurt")
             return;
 
-        bool stunned = isOuterLeft ? _outerLeftSmallStunned : _outerRightSmallStunned;
-        SetTrackImmediate(state, "hurt", loop: false, ActionTrack, mix: 0.05f);
-        state.AddAnimation(stunned ? "stun_loop" : "idle_loop", 0f, loop: true, ActionTrack);
+        SetTrackImmediate(state, "hurt", loop: false, ActionTrack, mix: 0.08f);
+        state.AddAnimation("idle_loop", 0f, loop: true, ActionTrack);
     }
 
     public void PlaySmallTentacleRetreatDie(bool isOuterLeft)

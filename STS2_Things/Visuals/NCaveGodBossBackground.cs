@@ -296,6 +296,8 @@ public partial class NCaveGodBossBackground : Node2D
         if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
             return;
 
+        ClearReactionTrackBoth(0.1f);
+
         Control? foreground = GetNodeOrNull<Control>("%Foreground")
             ?? GetParent()?.GetNodeOrNull<Control>("%Foreground")
             ?? GetParent()?.GetNodeOrNull<Control>("Foreground");
@@ -865,6 +867,8 @@ public partial class NCaveGodBossBackground : Node2D
         if (_cts == null || !IsPresentationAlive())
             return;
 
+        ClearReactionTrackBoth(0.1f);
+
         if (HasCapturedPlayers)
         {
             await DropPlayersToGround(isSlam: false);
@@ -1180,6 +1184,8 @@ public partial class NCaveGodBossBackground : Node2D
         if (_cts == null || !IsPresentationAlive())
             return;
 
+        ClearReactionTrackBoth(0.1f);
+
         if (HasCapturedPlayers)
         {
             await DropPlayersToGround(isSlam: false);
@@ -1441,7 +1447,7 @@ public partial class NCaveGodBossBackground : Node2D
     {
         foreach (MegaSprite? sprite in new[] { _bodyController, _armsController })
         {
-            MegaAnimationState? state = sprite?.TryGetAnimationState();
+            MegaAnimationState? state = TryGetValidAnimationState(sprite);
             if (state == null || !HasBossAnimation(sprite, animName)) continue;
             state.SetAnimation(animName, false, ReactionTrack);
             using (TrackEntryScope(state.GetCurrent(ReactionTrack), out MegaTrackEntry? track))
@@ -1455,7 +1461,9 @@ public partial class NCaveGodBossBackground : Node2D
                     track.SetMixDuration(0.15f);
                 }
             }
-            state.AddEmptyAnimation(ReactionTrack);
+            using (state.BoundObject.Call("add_empty_animation", ReactionTrack, 0.12f, 0f))
+            {
+            }
         }
     }
 
@@ -1602,14 +1610,22 @@ public partial class NCaveGodBossBackground : Node2D
         }
     }
 
-    private void AddEmptyReactionAnimation()
+    private void ClearReactionTrackBoth(float mixDuration = 0.1f)
     {
-        if (!GodotObject.IsInstanceValid(this))
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _presentationEnded)
             return;
 
-        TryGetValidAnimationState(_bodyController)?.AddEmptyAnimation(ReactionTrack);
-        TryGetValidAnimationState(_armsController)?.AddEmptyAnimation(ReactionTrack);
+        foreach (MegaSprite? sprite in new[] { _bodyController, _armsController })
+        {
+            MegaAnimationState? state = TryGetValidAnimationState(sprite);
+            if (state == null) continue;
+            using (state.BoundObject.Call("set_empty_animation", ReactionTrack, mixDuration))
+            {
+            }
+        }
     }
+
+    private void AddEmptyReactionAnimation() => ClearReactionTrackBoth(0.1f);
 
     /// <summary>
     /// Starts real-time bone tracking for grabbed players.

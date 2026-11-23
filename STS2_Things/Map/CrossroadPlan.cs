@@ -28,8 +28,14 @@ public sealed class CrossroadActPlan
 
 public static class CrossroadPlan
 {
-    public const int Price = 50;
     public const int MaxRoads = 3;
+
+    public static int PriceForAct(int actIndex) => actIndex switch
+    {
+        <= 0 => 50,
+        1 => 100,
+        _ => 150,
+    };
 
     // Only forward edges participate: opening a side road never changes its ID.
     public static ulong Fingerprint(ActMap map)
@@ -57,8 +63,7 @@ public static class CrossroadPlan
             for (int i = 0; i + 1 < points.Length; i++)
             {
                 MapPoint a = points[i], b = points[i + 1];
-                if (!Suitable(a) || !Suitable(b) || a.PointType == b.PointType || b.coord.col - a.coord.col > 3 ||
-                    a.Children.Contains(b) || b.Children.Contains(a)) continue;
+                if (!Suitable(a) || !Suitable(b) || a.PointType == b.PointType || b.coord.col - a.coord.col > 3) continue;
                 int score = Value(a) + Value(b);
                 if (score == 0) continue;
                 var road = new CrossroadRecord { Row = row, Left = a.coord.col, Right = b.coord.col };

@@ -335,6 +335,10 @@ public static class AbyssalInkBlackout
         {
             foreach (CardModel card in washedCards)
             {
+                if (playWaveWash)
+                {
+                    NInkBlackoutCardVeil.WashAllForModel(card);
+                }
                 card.InvokeEnergyCostChanged();
             }
         }
@@ -378,6 +382,7 @@ public static class AbyssalInkBlackout
         {
             foreach (CardModel card in washedCards)
             {
+                NInkBlackoutCardVeil.WashAllForModel(card);
                 card.InvokeEnergyCostChanged();
             }
         }

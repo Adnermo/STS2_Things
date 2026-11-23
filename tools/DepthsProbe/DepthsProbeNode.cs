@@ -169,6 +169,11 @@ public partial class DepthsProbeNode : Node
                 await VerifyFoolArrowRegressions();await ReleaseProbeResources();
                 GD.Print($"Depths Fool arrow probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
             }
+            if(OS.GetCmdlineUserArgs().Contains("--leech-surrender-zindex-only"))
+            {
+                await VerifyLeechSurrenderAndZIndexRegressions();await ReleaseProbeResources();
+                GD.Print($"Depths Leech/Surrender/ZIndex probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
+            }
             if(OS.GetCmdlineUserArgs().Contains("--depths-music-only"))
             {
                 await VerifyDepthsMusicStages();await ReleaseProbeResources();
@@ -211,6 +216,7 @@ public partial class DepthsProbeNode : Node
             await VerifyHumanFaceTowerRules();
             await VerifyAbyssalInkmawRules();
             await VerifyFoolArrowRegressions();
+            await VerifyLeechSurrenderAndZIndexRegressions();
             await VerifyFleetingEcho();
             await VerifyStrongEncounters();
             await VerifySpongeSprayRendering();

@@ -60,8 +60,22 @@ public sealed class ThingsCrossroads : ModifierModel
         CrossroadActPlan? plan = ledger.Acts.FirstOrDefault(p => p.Act == act);
         if (plan == null)
         {
-            plan = new CrossroadActPlan { Act = act, Fingerprint = fingerprint, Roads = CrossroadPlan.Generate(map, run.Rng.Seed, act),
-                History = run.CurrentActIndex == act ? run.VisitedMapCoords.ToList() : [] };
+            List<CrossroadRecord> roads = CrossroadPlan.Generate(map, run.Rng.Seed, act);
+            foreach (CrossroadRecord road in roads)
+            {
+                if (map.GetPoint(road.A) is { } a && map.GetPoint(road.B) is { } b)
+                {
+                    if (a.Children.Contains(b)) road.FromColumn = road.Left;
+                    else if (b.Children.Contains(a)) road.FromColumn = road.Right;
+                }
+            }
+            plan = new CrossroadActPlan
+            {
+                Act = act,
+                Fingerprint = fingerprint,
+                Roads = roads,
+                History = run.CurrentActIndex == act ? run.VisitedMapCoords.ToList() : [],
+            };
             ledger.Acts.Add(plan);
             Commit();
         }
@@ -99,6 +113,13 @@ public sealed class ThingsCrossroads : ModifierModel
         var history = Read().Acts.FirstOrDefault(p => p.Act == location.actIndex)?.History;
         int index = history?.IndexOf(location.coord.Value) ?? -1;
         return index >= 0 ? index : null;
+    }
+
+    public bool HasHistoryForAct(int actIndex)
+    {
+        if (_invalid || actIndex < 0) return false;
+        var history = Read().Acts.FirstOrDefault(p => p.Act == actIndex)?.History;
+        return history is { Count: > 0 };
     }
 
     public void Commit()

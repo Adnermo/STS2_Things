@@ -353,11 +353,16 @@ class Baker:
             entry = {}
             for channel, series in rows.items():
                 keys = reduce_keys(series, TOLERANCE[channel], keep)
+                if clip.overlay:
+                    neutral = (1.0, 1.0) if channel == "scale" else ((0.0,) if channel == "rotate" else (0.0, 0.0))
+                    if all(max(abs(a - b) for a, b in zip(v, neutral)) <= 1e-5 for _, v in keys):
+                        continue
                 if channel == "rotate":
                     entry[channel] = [{"time": r(t), "value": r(v[0])} for t, v in keys]
                 else:
                     entry[channel] = [{"time": r(t), "x": r(v[0]), "y": r(v[1])} for t, v in keys]
-            bones[name] = entry
+            if entry:
+                bones[name] = entry
         return {"bones": bones}
 
 
@@ -421,7 +426,8 @@ def assemble(data: dict, baker: Baker, built: list[C.Clip]) -> dict:
                 continue
             attach = clip.arms[side].attach or [(0.0, "open")]
             slots.setdefault(slot, {})["attachment"] = [{"time": r(t), "name": ATTACH[side][kind]} for t, kind in attach]
-        anim["slots"] = slots
+        if slots:
+            anim["slots"] = slots
         if not clip.overlay:
             anim["ik"] = {"arm1_IK": [{"time": 0, "mix": 0, "bendPositive": False}],
                           "arm2_IK": [{"time": 0, "mix": 0, "bendPositive": True}]}
@@ -429,9 +435,35 @@ def assemble(data: dict, baker: Baker, built: list[C.Clip]) -> dict:
             anim["drawOrder"] = copy.deepcopy(source["drawOrder"])
         if clip.name in EVENTS:
             anim["events"] = copy.deepcopy(EVENTS[clip.name])
-        elif "events" in source and clip.source and not clip.name.startswith("grab_hold"):
+        elif "events" in source and clip.source and not clip.overlay and not clip.name.startswith("grab_hold"):
             anim["events"] = copy.deepcopy(source["events"])
         animations[clip.name] = anim
+
+    # Every bone channel keyed in ANY MixBlend.add overlay MUST be explicitly keyed on EVERY
+    # non-additive Track-0 animation; otherwise Spine accumulates the additive delta every frame.
+    overlay_names = {"hit_recoil", "hit_recoil_angry", "critical_tremor"} | {c.name for c in built if c.overlay}
+    protected: set[tuple[str, str]] = set()
+    for ov_name in overlay_names:
+        ov_anim = animations.get(ov_name)
+        if not isinstance(ov_anim, dict):
+            continue
+        for bname, btls in ov_anim.get("bones", {}).items():
+            for ch in btls:
+                if ch in ("rotate", "translate", "scale", "shear"):
+                    protected.add((bname, ch))
+    for aname, anim in animations.items():
+        if aname in overlay_names or not isinstance(anim, dict):
+            continue
+        abones = anim.setdefault("bones", {})
+        for bname, ch in sorted(protected):
+            btls = abones.setdefault(bname, {})
+            if ch not in btls or not btls[ch]:
+                if ch == "rotate":
+                    btls[ch] = [{"time": 0, "value": 0}]
+                elif ch == "scale":
+                    btls[ch] = [{"time": 0, "x": 1, "y": 1}]
+                else:
+                    btls[ch] = [{"time": 0, "x": 0, "y": 0}]
     return out
 
 

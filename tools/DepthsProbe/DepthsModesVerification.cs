@@ -541,48 +541,50 @@ public partial class DepthsProbeNode
             player.Creature.SetCurrentHpInternal(500);
             ClearCreatureBlock(player.Creature);
 
-            Assert(legacy.MaxHp == 360,
-                $"Dread A10 ThingsTheLegacy HP must be 360 (320 + 40 Dread), got {legacy.MaxHp}.");
+            Assert(legacy.MaxHp == 285,
+                $"Dread A10 ThingsTheLegacy HP must be 285 (260 + 25 Dread), got {legacy.MaxHp}.");
             Assert(legacy.GetPower<ThingsLegacyBeatOfDeathPower>()?.Amount == 2,
                 $"ThingsTheLegacy Beat of Death must stay fixed at 2 even in Dread (got {legacy.GetPower<ThingsLegacyBeatOfDeathPower>()?.Amount}).");
-            Assert(legacy.GetPower<HardenedShellPower>()?.Amount == 72,
-                $"ThingsTheLegacy opening HardenedShell must be HP/5 = 72 in Dread A10 (got {legacy.GetPower<HardenedShellPower>()?.Amount}).");
+            Assert(legacy.GetPower<HardenedShellPower>()?.Amount == 57,
+                $"ThingsTheLegacy opening HardenedShell must be HP/5 = 57 in Dread A10 (got {legacy.GetPower<HardenedShellPower>()?.Amount}).");
 
-            // T1 Exhaust: Debuff + 6 Statuses (2 Vuln, 2 Frail, 2 Burn, 2 Dazed, 2 Slimed)
+            // T1 Exhaust: Debuff + 3 Statuses (1 Vuln, 2 Frail, 1 Burn, 1 Dazed, 1 Slimed)
             Assert(legacy.Monster!.NextMove.Id == "EXHAUST_MOVE", "T1 opens with EXHAUST_MOVE.");
             await legacy.Monster.PerformMove();
-            Assert(player.Creature.GetPower<VulnerablePower>()?.Amount == 2 &&
+            Assert(player.Creature.GetPower<VulnerablePower>()?.Amount == 1 &&
                    player.Creature.GetPower<FrailPower>()?.Amount == 2,
-                "A10 EXHAUST_MOVE must inflict 2 Vulnerable and 2 Frail.");
-            Assert(PileType.Discard.GetPile(player).Cards.Count(c => c is Burn or Dazed or Slimed) == 6,
-                "EXHAUST_MOVE must add 6 status cards (2 Burn, 2 Dazed, 2 Slimed) to Discard.");
+                "A10 EXHAUST_MOVE must inflict 1 Vulnerable and 2 Frail.");
+            Assert(PileType.Discard.GetPile(player).Cards.Count(c => c is Burn) == 1 &&
+                   PileType.Discard.GetPile(player).Cards.Count(c => c is Dazed) == 1 &&
+                   PileType.Discard.GetPile(player).Cards.Count(c => c is Slimed) == 1,
+                "EXHAUST_MOVE must add 3 status cards (1 Burn, 1 Dazed, 1 Slimed) to Discard.");
 
-            // T2 Echo: 20 + 2 Dread = 22 base -> 33 with Vulnerable
+            // T2 Echo: 15 + 2 Dread = 17 base -> 25 with Vulnerable (floor(17 * 1.5))
             legacy.Monster.RollMove([player.Creature]);
             Assert(legacy.Monster.NextMove.Id == "ECHO_MOVE", "T2 rolls ECHO_MOVE.");
             int hpBeforeEcho = player.Creature.CurrentHp;
             await legacy.Monster.PerformMove();
-            Assert(hpBeforeEcho - player.Creature.CurrentHp == 33,
-                $"Dread A10 ECHO_MOVE under Vulnerable must deal 33 dmg (22 * 1.5), got {hpBeforeEcho - player.Creature.CurrentHp}.");
+            Assert(hpBeforeEcho - player.Creature.CurrentHp == 25,
+                $"Dread A10 ECHO_MOVE under Vulnerable must deal 25 dmg (floor(17 * 1.5)), got {hpBeforeEcho - player.Creature.CurrentHp}.");
 
-            // T3 Blood: 3 * 6 under Vulnerable -> 4 * 6 = 24
+            // T3 Blood: 2 * 5 (synthetic combat doesn't tick Vulnerable, so under Vulnerable -> 3 * 5 = 15)
             legacy.Monster.RollMove([player.Creature]);
             Assert(legacy.Monster.NextMove.Id == "BLOOD_MOVE", "T3 rolls BLOOD_MOVE.");
             int hpBeforeBlood = player.Creature.CurrentHp;
             await legacy.Monster.PerformMove();
-            Assert(hpBeforeBlood - player.Creature.CurrentHp == 24,
-                $"A10 BLOOD_MOVE (3x6) under Vulnerable must deal 24 dmg (4 * 6), got {hpBeforeBlood - player.Creature.CurrentHp}.");
+            Assert(hpBeforeBlood - player.Creature.CurrentHp == 15,
+                $"A10 BLOOD_MOVE (2x5) under Vulnerable must deal 15 dmg (3 * 5), got {hpBeforeBlood - player.Creature.CurrentHp}.");
 
-            // T4 Strengthen 1: +1 Artifact + 3 Strength (Dread), BeatOfDeath remains 2
+            // T4 Strengthen 1: +1 Artifact + 2 Strength (Dread), BeatOfDeath remains 2
             legacy.Monster.RollMove([player.Creature]);
             Assert(legacy.Monster.NextMove.Id == "STRENGTHEN_MOVE", "T4 rolls STRENGTHEN_MOVE.");
             await legacy.Monster.PerformMove();
             Assert(legacy.GetPower<ArtifactPower>()?.Amount == 1 &&
-                   legacy.GetPower<StrengthPower>()?.Amount == 3 &&
+                   legacy.GetPower<StrengthPower>()?.Amount == 2 &&
                    legacy.GetPower<ThingsLegacyBeatOfDeathPower>()?.Amount == 2,
-                "Strengthen Stage 1 must grant 1 Artifact + 3 Dread Strength without increasing Beat of Death.");
+                "Strengthen Stage 1 must grant 1 Artifact + 2 Dread Strength without increasing Beat of Death.");
 
-            // Advance to Stage 2 -> Shell tightens to HP/6 (60) + 3 more Strength (total 6), BeatOfDeath still 2
+            // Advance to Stage 2 -> Shell tightens to HP/6 (47) + 2 more Strength (total 4), BeatOfDeath still 2
             for (int i = 0; i < 3; i++)
             {
                 legacy.Monster.RollMove([player.Creature]);
@@ -591,12 +593,12 @@ public partial class DepthsProbeNode
                 else
                     legacy.Monster.MoveStateMachine!.OnMovePerformed(legacy.Monster.NextMove);
             }
-            Assert(legacy.GetPower<HardenedShellPower>()?.Amount == 60 &&
-                   legacy.GetPower<StrengthPower>()?.Amount == 6 &&
+            Assert(legacy.GetPower<HardenedShellPower>()?.Amount == 47 &&
+                   legacy.GetPower<StrengthPower>()?.Amount == 4 &&
                    legacy.GetPower<ThingsLegacyBeatOfDeathPower>()?.Amount == 2,
-                $"Strengthen Stage 2 must tighten HardenedShell to HP/6=60 and stack Strength to 6 (got Shell={legacy.GetPower<HardenedShellPower>()?.Amount}, Str={legacy.GetPower<StrengthPower>()?.Amount}).");
+                $"Strengthen Stage 2 must tighten HardenedShell to HP/6=47 and stack Strength to 4 (got Shell={legacy.GetPower<HardenedShellPower>()?.Amount}, Str={legacy.GetPower<StrengthPower>()?.Amount}).");
 
-            // Advance to Stage 3 -> ThingsDazedPower + 3 more Strength (total 9)
+            // Advance to Stage 3 -> ThingsDazedPower + 2 more Strength (total 6)
             for (int i = 0; i < 3; i++)
             {
                 legacy.Monster.RollMove([player.Creature]);
@@ -606,10 +608,10 @@ public partial class DepthsProbeNode
                     legacy.Monster.MoveStateMachine!.OnMovePerformed(legacy.Monster.NextMove);
             }
             Assert(legacy.GetPower<ThingsDazedPower>()?.Amount == 1 &&
-                   legacy.GetPower<StrengthPower>()?.Amount == 9,
-                "Strengthen Stage 3 must grant ThingsDazedPower(1) and stack Strength to 9.");
+                   legacy.GetPower<StrengthPower>()?.Amount == 6,
+                "Strengthen Stage 3 must grant ThingsDazedPower(1) and stack Strength to 6.");
 
-            // Advance to Stage 4 -> Shell tightens to HP/7 (51) + 2 more Artifact + 3 more Strength (total 12), BeatOfDeath still 2
+            // Advance to Stage 4 -> Shell tightens to HP/7 (40) + 2 more Artifact + 2 more Strength (total 8), BeatOfDeath still 2
             for (int i = 0; i < 3; i++)
             {
                 legacy.Monster.RollMove([player.Creature]);
@@ -618,11 +620,11 @@ public partial class DepthsProbeNode
                 else
                     legacy.Monster.MoveStateMachine!.OnMovePerformed(legacy.Monster.NextMove);
             }
-            Assert(legacy.GetPower<HardenedShellPower>()?.Amount == 51 &&
+            Assert(legacy.GetPower<HardenedShellPower>()?.Amount == 40 &&
                    legacy.GetPower<ArtifactPower>()?.Amount == 3 &&
-                   legacy.GetPower<StrengthPower>()?.Amount == 12 &&
+                   legacy.GetPower<StrengthPower>()?.Amount == 8 &&
                    legacy.GetPower<ThingsLegacyBeatOfDeathPower>()?.Amount == 2,
-                $"Strengthen Stage 4 must tighten HardenedShell to HP/7=51, add 2 Artifact, stack Strength to 12, and keep BeatOfDeath at 2.");
+                $"Strengthen Stage 4 must tighten HardenedShell to HP/7=40, add 2 Artifact, stack Strength to 8, and keep BeatOfDeath at 2 (got Shell={legacy.GetPower<HardenedShellPower>()?.Amount}).");
 
             DeactivateSyntheticCombat();
         }

@@ -43,10 +43,11 @@ public sealed class ThingsAbyssalCrushingTentacle : ThingsMonsterModel, IAbyssal
     public bool IsFloorBreachMode => _floorBreachMode;
 
     public int HeavySlamDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 12, 10) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public int SelfGuardBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 6, 4) + (Sts2VersionSeam.IsDread() ? 1 : 0);
     public int GuardBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 12, 9) + (Sts2VersionSeam.IsDread() ? 2 : 0);
     public int ChargeBossBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 18, 15) + (Sts2VersionSeam.IsDread() ? 3 : 0);
 
-    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 58, 52) + (Sts2VersionSeam.IsDread() ? 9 : 0);
+    public override int MinInitialHp => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 42, 38) + (Sts2VersionSeam.IsDread() ? 6 : 0);
     public override int MaxInitialHp => MinInitialHp;
 
     protected override string VisualsPath => "res://scenes/creature_visuals/things_abyssal_crushing_tentacle.tscn";
@@ -210,7 +211,7 @@ public sealed class ThingsAbyssalCrushingTentacle : ThingsMonsterModel, IAbyssal
         NAbyssalInkmawBossBackground.Current?.PlayTentacleAction(isLeft: true, "guard_coil", triggerBaseBurst: false);
         await WaitForCombatBeatAsync(0.52f);
 
-        await CreatureCmd.GainBlock(Creature, GuardBlock, ValueProp.Move, null);
+        await CreatureCmd.GainBlock(Creature, SelfGuardBlock, ValueProp.Move, null);
         if (FindBoss() is { } boss && boss.Creature.IsAlive)
         {
             await CreatureCmd.GainBlock(boss.Creature, GuardBlock, ValueProp.Move, null);

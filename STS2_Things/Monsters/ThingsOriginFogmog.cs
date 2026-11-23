@@ -69,11 +69,13 @@ public sealed class ThingsOriginFogmog : ThingsSpineMonster
     }
 
     private bool _hasTransformed; // 仅控制本地转场音效，不承载玩法状态。
+    private bool _suppressNextSummonSfx;
 
     protected override void AfterCloned()
     {
         base.AfterCloned();
         _hasTransformed = false;
+        _suppressNextSummonSfx = false;
     }
     // 复用Fogmog（同源生物）的原版音效
     protected override string AttackSfx =>
@@ -99,7 +101,7 @@ public sealed class ThingsOriginFogmog : ThingsSpineMonster
             .Distinct();
 
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 240, 235) + (IsDread() ? 25 : 0);
+        AscensionLevel.ToughEnemies, 230, 220) + (IsDread() ? 20 : 0);
 
     public override int MaxInitialHp => MinInitialHp;
 
@@ -141,6 +143,7 @@ public sealed class ThingsOriginFogmog : ThingsSpineMonster
     {
         if (_hasTransformed) return;
         _hasTransformed = true;
+        _suppressNextSummonSfx = true;
         Log.Info("[OriginFogmog] Phase2 transition triggered!");
         SfxCmd.Play(CastSfx);
     }
@@ -216,7 +219,10 @@ public sealed class ThingsOriginFogmog : ThingsSpineMonster
                  && combatState.Enemies.All(c => c.SlotName != s));
         if (!hasFreeSlot) return;
 
-        SfxCmd.Play(CastSfx);
+        if (_suppressNextSummonSfx)
+            _suppressNextSummonSfx = false;
+        else
+            SfxCmd.Play(CastSfx);
         await CreatureCmd.TriggerAnim(Creature, "Summon", 0f);
         await WaitForStrike("summon", SummonRelease, SummonRelease);
         for (var i = 0; i < maxCount; i++)
@@ -298,12 +304,12 @@ public sealed class ThingsOriginFogmog : ThingsSpineMonster
                 if (beat == 0)
                 {
                     if (strike > 1) await FinishMotion("triple_attack");
+                    SfxCmd.Play(AttackSfx);
                     await CreatureCmd.TriggerAnim(Creature, "Triple", 0f);
                 }
                 float previous = beat == 0 ? 0 : TripleContacts[beat - 1];
                 await WaitForStrike("triple_attack", TripleContacts[beat], TripleContacts[beat] - previous);
             })
-            .WithAttackerFx(null, AttackSfx)
             .WithHitFx("vfx/vfx_attack_slash")
             .Execute(null);
         await FinishMotion("triple_attack");

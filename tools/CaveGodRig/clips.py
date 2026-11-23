@@ -181,6 +181,8 @@ def idle(angry: bool) -> Clip:
             "s2x": lambda t: 3.4 * b(t, 0.18),
             "s1o": lambda t: -1.1 * b(t, 0.16),
             "s2o": lambda t: -1.1 * b(t, 0.22),
+            "s1r": lambda t: 0.28 * wave(t, p, 1, 0.6),
+            "s2r": lambda t: -0.28 * wave(t, p, 1, 1.4),
             "hx": lambda t: -2.2 * b(t, 0.36),
             "hr": lambda t: 0.40 * wave(t, p, 1, 2.0),
             "hy": lambda t: 0.65 * wave(t, p, 1, 1.7),

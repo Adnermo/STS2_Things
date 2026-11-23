@@ -63,11 +63,25 @@ public partial class NInkBlackoutCardVeil : Control
     private static readonly HashSet<NInkBlackoutCardVeil> ActiveVeils = [];
     private static readonly ConditionalWeakTable<NCard, NInkBlackoutCardVeil> VeilsByCard = new();
 
+    // Canonical non-zero original modulates keyed by each masked child CanvasItem so a duplicate veil,
+    // reparent race, or pooled NCard reuse can NEVER record alpha=0 as a child's "original" modulate.
+    private sealed class BoxedColor(Color value)
+    {
+        public Color Value { get; set; } = value;
+    }
+
+    private static readonly ConditionalWeakTable<CanvasItem, BoxedColor> CanonicalChildModulates = new();
+    private static readonly ConditionalWeakTable<NCard, object> CardsEverMasked = new();
+    private static readonly object MaskedMarker = new();
+
     // Re-entrancy guard preventing NCard.UpdateVisuals Harmony postfixes from recursing back into
     // Refresh/DetachAndFree/StartWaveWash while a veil itself is unveiling or detaching from a card.
     private static readonly HashSet<NCard> RefreshingCards = [];
 
     internal static bool HasActiveVeils => ActiveVeils.Count > 0;
+
+    internal static bool WasCardEverMasked(NCard card) =>
+        GodotObject.IsInstanceValid(card) && CardsEverMasked.TryGetValue(card, out _);
 
     private NCard _card = null!;
     private Control? _body;
@@ -81,7 +95,7 @@ public partial class NInkBlackoutCardVeil : Control
     private bool _active;
     private bool _washing;
     private bool _detaching;
-    private readonly Dictionary<CanvasItem, Color> _maskedBodyChildren = [];
+    private readonly HashSet<CanvasItem> _maskedBodyChildren = [];
 
     public static void RefreshOnTable(CardModel model) => RefreshAllForModel(model);
 
@@ -122,16 +136,18 @@ public partial class NInkBlackoutCardVeil : Control
 
     public static void WashAllForModel(CardModel model)
     {
-        if (ActiveVeils.Count == 0)
-            return;
-
         bool startedAny = false;
-        if (NCard.FindOnTable(model) is { } tableCard &&
-            GodotObject.IsInstanceValid(tableCard) &&
-            FindVeil(tableCard) is { } tableVeil)
+        if (NCard.FindOnTable(model) is { } tableCard && GodotObject.IsInstanceValid(tableCard))
         {
-            tableVeil.StartWaveWash();
-            startedAny = true;
+            if (FindVeil(tableCard) is { } tableVeil)
+            {
+                tableVeil.StartWaveWash();
+                startedAny = true;
+            }
+            else if (WasCardEverMasked(tableCard))
+            {
+                RestoreCardBodyOpacity(tableCard);
+            }
         }
 
         if (ActiveVeils.Count > 0)
@@ -210,10 +226,14 @@ public partial class NInkBlackoutCardVeil : Control
 
     public static void Refresh(NCard card)
     {
-        if (!AbyssalInkBlackout.HasPotentialState && ActiveVeils.Count == 0)
+        if (!GodotObject.IsInstanceValid(card))
             return;
 
-        if (!GodotObject.IsInstanceValid(card) || !card.IsNodeReady() || RefreshingCards.Contains(card))
+        bool wasEverMasked = WasCardEverMasked(card);
+        if (!AbyssalInkBlackout.HasPotentialState && ActiveVeils.Count == 0 && !wasEverMasked)
+            return;
+
+        if (!card.IsNodeReady() || RefreshingCards.Contains(card))
             return;
 
         NInkBlackoutCardVeil? veil = FindVeil(card);
@@ -227,6 +247,16 @@ public partial class NInkBlackoutCardVeil : Control
                 {
                     veil.DetachAndFree(refreshCardVisuals: true);
                 }
+                else if (wasEverMasked)
+                {
+                    // Washing veil must never leave underlying body children transparent.
+                    RestoreCardBodyOpacity(card);
+                }
+            }
+            else if (wasEverMasked)
+            {
+                RestoreCardBodyOpacity(card);
+                CardsEverMasked.Remove(card);
             }
             return;
         }
@@ -282,7 +312,10 @@ public partial class NInkBlackoutCardVeil : Control
         detachedAny |= DetachChildVeils(cardContainer);
         detachedAny |= DetachChildVeils(card);
 
-        if (detachedAny && refreshCardVisuals)
+        bool restoredAny = RestoreCardBodyOpacity(card);
+        CardsEverMasked.Remove(card);
+
+        if ((detachedAny || restoredAny) && refreshCardVisuals)
             RefreshCardVisualsGuarded(card);
     }
 
@@ -331,17 +364,66 @@ public partial class NInkBlackoutCardVeil : Control
 
     private static NInkBlackoutCardVeil? FindVeil(NCard card)
     {
-        if (ActiveVeils.Count == 0)
-            return null;
-
-        if (VeilsByCard.TryGetValue(card, out NInkBlackoutCardVeil? veil))
+        NInkBlackoutCardVeil? primary = null;
+        if (VeilsByCard.TryGetValue(card, out NInkBlackoutCardVeil? mapped))
         {
-            if (GodotObject.IsInstanceValid(veil) && !veil._detaching && !veil.IsQueuedForDeletion())
-                return veil;
-            VeilsByCard.Remove(card);
+            if (GodotObject.IsInstanceValid(mapped) && !mapped._detaching && !mapped.IsQueuedForDeletion())
+                primary = mapped;
+            else
+                VeilsByCard.Remove(card);
         }
 
-        return null;
+        // Always scan host nodes directly as well: during Node.Reparent() (hand -> play queue / play container),
+        // _ExitTree() removes the existing veil from ActiveVeils/VeilsByCard while it remains a child of Body.
+        // Without scanning host children, a mid-reparent UpdateVisuals() spawns a duplicate sibling veil whose
+        // saved modulate records alpha=0, turning the card transparent when a tentacle is severed!
+        Control? body = card.Body != null && GodotObject.IsInstanceValid(card.Body) ? card.Body : null;
+        Control? cardContainer = card.GetNodeOrNull<Control>("%CardContainer");
+        if (cardContainer != null && (!GodotObject.IsInstanceValid(cardContainer) || ReferenceEquals(cardContainer, body)))
+            cardContainer = null;
+
+        primary = ScanHostForSingleVeil(body, primary);
+        primary = ScanHostForSingleVeil(cardContainer, primary);
+        primary = ScanHostForSingleVeil(card, primary);
+
+        if (primary != null)
+        {
+            VeilsByCard.AddOrUpdate(card, primary);
+            if (primary.IsInsideTree())
+                ActiveVeils.Add(primary);
+        }
+
+        return primary;
+    }
+
+    private static NInkBlackoutCardVeil? ScanHostForSingleVeil(Node? host, NInkBlackoutCardVeil? existingPrimary)
+    {
+        if (host == null || !GodotObject.IsInstanceValid(host))
+            return existingPrimary;
+
+        NInkBlackoutCardVeil? primary = existingPrimary;
+        for (int i = host.GetChildCount() - 1; i >= 0; i--)
+        {
+            if (host.GetChild(i) is not NInkBlackoutCardVeil child ||
+                !GodotObject.IsInstanceValid(child) ||
+                child._detaching ||
+                child.IsQueuedForDeletion())
+            {
+                continue;
+            }
+
+            if (primary == null)
+            {
+                primary = child;
+            }
+            else if (!ReferenceEquals(child, primary))
+            {
+                // Enforce strict single-veil invariant on every NCard.
+                child.DetachAndFree(refreshCardVisuals: false);
+            }
+        }
+
+        return primary;
     }
 
     public override void _EnterTree()
@@ -534,15 +616,114 @@ public partial class NInkBlackoutCardVeil : Control
         return Math.Max(0, model.EnergyCost.GetWithModifiers(CostModifiers.All)).ToString();
     }
 
+    private static void RememberCanonicalModulate(CanvasItem item)
+    {
+        // Never record a zero/near-zero alpha as an item's canonical modulate (prevents poisoning
+        // from reparent races, tweens, or stale veil state).
+        if (item.Modulate.A <= 0.01f)
+            return;
+
+        if (CanonicalChildModulates.TryGetValue(item, out BoxedColor? existing))
+        {
+            existing.Value = item.Modulate;
+        }
+        else
+        {
+            CanonicalChildModulates.Add(item, new BoxedColor(item.Modulate));
+        }
+    }
+
+    private static float ResolveDefaultChildAlpha(CanvasItem item)
+    {
+        string name = item.Name.ToString();
+        return name switch
+        {
+            "AncientBorder" => 0.502f,
+            "AncientTextBg" => 0.66f,
+            "Highlight" => 0.98f,
+            _ => 1f,
+        };
+    }
+
+    private static bool RestoreItemOpacity(CanvasItem item)
+    {
+        if (!GodotObject.IsInstanceValid(item))
+            return false;
+
+        Color current = item.Modulate;
+        if (current.A > 0.01f)
+            return false;
+
+        float targetAlpha = CanonicalChildModulates.TryGetValue(item, out BoxedColor? saved) && saved.Value.A > 0.01f
+            ? saved.Value.A
+            : ResolveDefaultChildAlpha(item);
+
+        // Preserve live RGB (e.g. NCardHighlight gold/red/playableColor updated while veiled) while restoring alpha.
+        Color restoredRgb = current.R == 0f && current.G == 0f && current.B == 0f &&
+                            CanonicalChildModulates.TryGetValue(item, out BoxedColor? savedColor) &&
+                            (savedColor.Value.R > 0f || savedColor.Value.G > 0f || savedColor.Value.B > 0f)
+            ? savedColor.Value
+            : current;
+
+        item.Modulate = new Color(restoredRgb.R, restoredRgb.G, restoredRgb.B, targetAlpha);
+        return true;
+    }
+
+    internal static bool RestoreCardBodyOpacity(NCard? card)
+    {
+        if (card == null || !GodotObject.IsInstanceValid(card))
+            return false;
+
+        bool restoredAny = false;
+        Control? body = card.Body != null && GodotObject.IsInstanceValid(card.Body) ? card.Body : null;
+        Control? cardContainer = card.GetNodeOrNull<Control>("%CardContainer");
+        if (cardContainer != null && (!GodotObject.IsInstanceValid(cardContainer) || ReferenceEquals(cardContainer, body)))
+            cardContainer = null;
+
+        restoredAny |= RestoreHostChildrenOpacity(body);
+        restoredAny |= RestoreHostChildrenOpacity(cardContainer);
+
+        if (card.CardHighlight is { } highlight && GodotObject.IsInstanceValid(highlight))
+        {
+            restoredAny |= RestoreItemOpacity(highlight);
+        }
+
+        return restoredAny;
+    }
+
+    private static bool RestoreHostChildrenOpacity(Node? host)
+    {
+        if (host == null || !GodotObject.IsInstanceValid(host))
+            return false;
+
+        bool restoredAny = false;
+        foreach (Node child in host.GetChildren())
+        {
+            if (child is NInkBlackoutCardVeil)
+                continue;
+            if (child is not CanvasItem item || !GodotObject.IsInstanceValid(item))
+                continue;
+            if (string.Equals(child.Name, "Shadow", StringComparison.Ordinal))
+                continue;
+
+            restoredAny |= RestoreItemOpacity(item);
+        }
+
+        return restoredAny;
+    }
+
     private void ApplyBodyChildrenMask()
     {
         Control? body = _body != null && GodotObject.IsInstanceValid(_body) ? _body : ResolveHostBody(_card);
         if (body == null || !GodotObject.IsInstanceValid(body))
             return;
 
+        if (GodotObject.IsInstanceValid(_card))
+            CardsEverMasked.AddOrUpdate(_card, MaskedMarker);
+
         foreach (Node child in body.GetChildren())
         {
-            if (ReferenceEquals(child, this))
+            if (ReferenceEquals(child, this) || child is NInkBlackoutCardVeil)
                 continue;
             if (child is not CanvasItem item || !GodotObject.IsInstanceValid(item))
                 continue;
@@ -550,10 +731,8 @@ public partial class NInkBlackoutCardVeil : Control
             if (string.Equals(child.Name, "Shadow", StringComparison.Ordinal))
                 continue;
 
-            if (!_maskedBodyChildren.ContainsKey(item))
-            {
-                _maskedBodyChildren[item] = item.Modulate;
-            }
+            RememberCanonicalModulate(item);
+            _maskedBodyChildren.Add(item);
 
             if (item.Modulate.A > 0f)
             {
@@ -570,10 +749,9 @@ public partial class NInkBlackoutCardVeil : Control
 
         if (_card.CardHighlight is { } highlight && GodotObject.IsInstanceValid(highlight))
         {
-            if (!_maskedBodyChildren.ContainsKey(highlight))
-            {
-                _maskedBodyChildren[highlight] = highlight.Modulate;
-            }
+            CardsEverMasked.AddOrUpdate(_card, MaskedMarker);
+            RememberCanonicalModulate(highlight);
+            _maskedBodyChildren.Add(highlight);
             highlight.AnimHideInstantly();
             Color c = highlight.Modulate;
             if (c.A > 0f)
@@ -585,17 +763,12 @@ public partial class NInkBlackoutCardVeil : Control
 
     private void RestoreMaskedBodyChildren()
     {
-        if (_maskedBodyChildren.Count == 0)
-            return;
-
-        foreach ((CanvasItem item, Color savedModulate) in _maskedBodyChildren)
+        foreach (CanvasItem item in _maskedBodyChildren)
         {
-            if (GodotObject.IsInstanceValid(item))
-            {
-                item.Modulate = savedModulate;
-            }
+            RestoreItemOpacity(item);
         }
         _maskedBodyChildren.Clear();
+        RestoreCardBodyOpacity(_card);
     }
 
     private void StartWaveWash()
@@ -645,7 +818,10 @@ public partial class NInkBlackoutCardVeil : Control
 
         KillTweens();
         _washing = false;
-        _active = true;
+        // Only activate once _Ready() has initialized the veil frame/orb; activating early on an
+        // out-of-tree pooled NCard before _Ready() would mask children prematurely during _EnterTree().
+        if (IsNodeReady())
+            _active = true;
         _inkMaterial?.SetShaderParameter("wash_progress", 0f);
         _inkMaterial?.SetShaderParameter("drench_progress", 1f);
     }
@@ -765,7 +941,7 @@ internal static class AbyssalInkBlackoutCardVisualPatch
 {
     private static void Postfix(NCard __instance)
     {
-        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils)
+        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils || NInkBlackoutCardVeil.WasCardEverMasked(__instance))
             NInkBlackoutCardVeil.Refresh(__instance);
     }
 }
@@ -775,7 +951,7 @@ internal static class AbyssalInkBlackoutCardReloadPatch
 {
     private static void Postfix(NCard __instance)
     {
-        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils)
+        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils || NInkBlackoutCardVeil.WasCardEverMasked(__instance))
             NInkBlackoutCardVeil.Refresh(__instance);
     }
 }
@@ -785,7 +961,7 @@ internal static class AbyssalInkBlackoutEnergyCostPatch
 {
     private static void Postfix(NCard __instance)
     {
-        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils)
+        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils || NInkBlackoutCardVeil.WasCardEverMasked(__instance))
             NInkBlackoutCardVeil.Refresh(__instance);
     }
 }
@@ -795,7 +971,7 @@ internal static class AbyssalInkBlackoutStarCostPatch
 {
     private static void Postfix(NCard __instance)
     {
-        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils)
+        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils || NInkBlackoutCardVeil.WasCardEverMasked(__instance))
             NInkBlackoutCardVeil.Refresh(__instance);
     }
 }
@@ -805,7 +981,7 @@ internal static class AbyssalInkBlackoutEnchantmentPatch
 {
     private static void Postfix(NCard __instance)
     {
-        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils)
+        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils || NInkBlackoutCardVeil.WasCardEverMasked(__instance))
             NInkBlackoutCardVeil.Refresh(__instance);
     }
 }
@@ -815,7 +991,7 @@ internal static class AbyssalInkBlackoutOverlayPatch
 {
     private static void Postfix(NCard __instance)
     {
-        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils)
+        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils || NInkBlackoutCardVeil.WasCardEverMasked(__instance))
             NInkBlackoutCardVeil.Refresh(__instance);
     }
 }
@@ -825,7 +1001,7 @@ internal static class AbyssalInkBlackoutRandomizeAnimPatch
 {
     private static void Postfix(NCard __instance)
     {
-        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils)
+        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils || NInkBlackoutCardVeil.WasCardEverMasked(__instance))
             NInkBlackoutCardVeil.Refresh(__instance);
     }
 }
@@ -840,7 +1016,7 @@ internal static class AbyssalInkBlackoutSetPortraitTexturePatch
 
     private static void Postfix(NCard __instance)
     {
-        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils)
+        if (AbyssalInkBlackout.HasPotentialState || NInkBlackoutCardVeil.HasActiveVeils || NInkBlackoutCardVeil.WasCardEverMasked(__instance))
             NInkBlackoutCardVeil.Refresh(__instance);
     }
 }
@@ -854,15 +1030,29 @@ internal static class AbyssalInkBlackoutPoolCleanupPatch
     }
 }
 
+[HarmonyPatch(typeof(NCard), nameof(NCard.OnReturnedFromPool))]
+internal static class AbyssalInkBlackoutPoolReturnPatch
+{
+    private static void Postfix(NCard __instance)
+    {
+        if (NInkBlackoutCardVeil.WasCardEverMasked(__instance))
+            NInkBlackoutCardVeil.DetachFromCard(__instance, refreshCardVisuals: false);
+    }
+}
+
 [HarmonyPatch(typeof(NHandCardHolder), nameof(NHandCardHolder.UpdateCard))]
 internal static class AbyssalInkBlackoutHandHolderUpdatePatch
 {
     private static void Postfix(NHandCardHolder __instance)
     {
-        if (!AbyssalInkBlackout.HasPotentialState)
+        if (__instance.CardNode is not { } card)
             return;
 
-        if (__instance.CardNode is { } card && AbyssalInkBlackout.IsVeiled(card.Model))
+        if (AbyssalInkBlackout.HasPotentialState && AbyssalInkBlackout.IsVeiled(card.Model))
+        {
+            NInkBlackoutCardVeil.Refresh(card);
+        }
+        else if (NInkBlackoutCardVeil.HasActiveVeils || NInkBlackoutCardVeil.WasCardEverMasked(card))
         {
             NInkBlackoutCardVeil.Refresh(card);
         }

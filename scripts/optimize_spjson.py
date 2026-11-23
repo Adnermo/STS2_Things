@@ -47,6 +47,28 @@ SPLIT_MAP: dict[str, tuple[str, str]] = {
     "shear": ("shearx", "sheary"),
 }
 
+# Known Spine MixBlend.add overlay animations. Any bone channel keyed by these clips
+# MUST remain explicitly keyed on every non-additive Track-0 animation so Spine never
+# accumulates the additive delta across frames.
+DEFAULT_ADDITIVE_OVERLAY_ANIMS: frozenset[str] = frozenset({
+    "hit_recoil",
+    "hit_recoil_angry",
+    "critical_tremor",
+})
+
+BONE_TL_PROPS: dict[str, tuple[str, ...]] = {
+    "rotate": ("rot",),
+    "translate": ("tx", "ty"),
+    "translatex": ("tx",),
+    "translatey": ("ty",),
+    "scale": ("sx", "sy"),
+    "scalex": ("sx",),
+    "scaley": ("sy",),
+    "shear": ("shx", "shy"),
+    "shearx": ("shx",),
+    "sheary": ("shy",),
+}
+
 # Candidate relative time positions for cubic Bezier handles (all strictly inside (0, 1)).
 BEZIER_HANDLE_CANDIDATES: tuple[tuple[float, float], ...] = (
     (1.0 / 3.0, 2.0 / 3.0),
@@ -319,8 +341,14 @@ def test_bezier_1d(
         return None
     ts_in = pts_t[a + 1 : b]
     vs_in = pts_v[a + 1 : b]
-    k0 = int(math.floor(ta * 60.0)) + 1
-    k1 = int(math.ceil(tb * 60.0)) - 1
+    seg_vals = pts_v[a : b + 1]
+    seg_min = min(seg_vals)
+    seg_max = max(seg_vals)
+    cy_margin = max(tol60 * 3.0, (seg_max - seg_min) * 0.45)
+    # Oversample at 240Hz (4x 60Hz) so cubic Bezier fits cannot oscillate/ring
+    # between 60Hz ticks on 120Hz/144Hz/240Hz displays or variable frame deltas.
+    k0 = int(math.floor(ta * 240.0)) + 1
+    k1 = int(math.ceil(tb * 240.0)) - 1
     for h_idx, (a1, a2) in enumerate(BEZIER_HANDLE_CANDIDATES):
         cx1 = round(ta + a1 * dt, 4)
         cx2 = round(ta + a2 * dt, 4)
@@ -332,6 +360,13 @@ def test_bezier_1d(
             continue
         cy1 = round(fit[0], cy_digits)
         cy2 = round(fit[1], cy_digits)
+        if (
+            cy1 < seg_min - cy_margin
+            or cy1 > seg_max + cy_margin
+            or cy2 < seg_min - cy_margin
+            or cy2 > seg_max + cy_margin
+        ):
+            continue
         xs, ys = build_spine_bezier_18(ta, va, cx1, cy1, cx2, cy2, tb, vb)
         ok = True
         for i in range(a + 1, b):
@@ -341,7 +376,7 @@ def test_bezier_1d(
         if not ok:
             continue
         for k in range(k0, k1 + 1):
-            t = k / 60.0
+            t = k / 240.0
             if t <= ta or t >= tb:
                 continue
             if abs(eval_spine_bezier_18(xs, ys, t) - eval_pwl_1d(pts_t, pts_v, a, b, t)) > tol60:
@@ -868,12 +903,89 @@ def _append_duration_anchor(anim: dict[str, Any], orig_duration: float, fallback
         keys.append(dup)
 
 
+def _anim_bone_props(anim: dict[str, Any]) -> set[tuple[str, str]]:
+    present: set[tuple[str, str]] = set()
+    bones = anim.get("bones")
+    if not isinstance(bones, dict):
+        return present
+    for bname, btls in bones.items():
+        if not isinstance(btls, dict):
+            continue
+        for tname, keys in btls.items():
+            if not isinstance(keys, list) or not keys:
+                continue
+            for prop in BONE_TL_PROPS.get(tname, ()):
+                present.add((bname, prop))
+    return present
+
+
+def _collect_additive_channels(
+    anims: dict[str, Any],
+    additive_names: set[str] | frozenset[str],
+) -> set[tuple[str, str]]:
+    protected: set[tuple[str, str]] = set()
+    for aname in additive_names:
+        anim = anims.get(aname)
+        if isinstance(anim, dict):
+            protected.update(_anim_bone_props(anim))
+    return protected
+
+
+def _ensure_protected_channels(
+    anim: dict[str, Any],
+    protected: set[tuple[str, str]],
+) -> int:
+    """Ensure every (bone, prop) in ``protected`` is keyed on ``anim`` with a t=0 anchor."""
+    if not protected:
+        return 0
+    present = _anim_bone_props(anim)
+    missing = protected - present
+    if not missing:
+        return 0
+
+    by_bone: dict[str, set[str]] = {}
+    for bname, prop in missing:
+        by_bone.setdefault(bname, set()).add(prop)
+
+    bones = anim.get("bones")
+    if not isinstance(bones, dict):
+        bones = {}
+        anim["bones"] = bones
+
+    added = 0
+    for bname, props in sorted(by_bone.items()):
+        btls = bones.setdefault(bname, {})
+        if "rot" in props:
+            btls["rotate"] = [{}]
+            added += 1
+        for pair, tl2d, tlx, tly in (
+            (("tx", "ty"), "translate", "translatex", "translatey"),
+            (("sx", "sy"), "scale", "scalex", "scaley"),
+            (("shx", "shy"), "shear", "shearx", "sheary"),
+        ):
+            mx = pair[0] in props
+            my = pair[1] in props
+            if mx and my and tl2d not in btls and tlx not in btls and tly not in btls:
+                btls[tl2d] = [{}]
+                added += 1
+            else:
+                if mx:
+                    btls[tlx] = [{}]
+                    added += 1
+                if my:
+                    btls[tly] = [{}]
+                    added += 1
+    return added
+
+
 def optimize_skeleton(
     orig_data: dict[str, Any],
     allow_bezier: bool = True,
     allow_split: bool = True,
+    additive_anims: set[str] | frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Return a newly optimized Spine 4.2 JSON object without mutating orig_data."""
+    overlay_names = DEFAULT_ADDITIVE_OVERLAY_ANIMS if additive_anims is None else additive_anims
     opt_data: dict[str, Any] = {}
     for top_key, top_val in orig_data.items():
         if top_key != "animations":
@@ -965,6 +1077,17 @@ def optimize_skeleton(
             _append_duration_anchor(new_anim, orig_dur, first_orig_bone)
 
         opt_anims[aname] = new_anim
+
+    # Protect every bone channel touched by any MixBlend.add overlay animation from
+    # being stripped out of non-additive Track-0 animations (otherwise Spine accumulates
+    # the additive delta every frame when Track 0 omits that property).
+    active_additive = set(opt_anims.keys()) & set(overlay_names)
+    if active_additive:
+        protected = _collect_additive_channels(opt_anims, active_additive)
+        for aname, new_anim in opt_anims.items():
+            if aname in active_additive or not isinstance(new_anim, dict):
+                continue
+            _ensure_protected_channels(new_anim, protected)
 
     opt_data["animations"] = opt_anims
     return opt_data
@@ -1150,6 +1273,7 @@ def verify_skeleton_pair(
     orig_data: dict[str, Any],
     opt_data: dict[str, Any],
     label: str = "",
+    additive_anims: set[str] | frozenset[str] | None = None,
 ) -> dict[str, float]:
     """Strictly verify lossless equivalence at 60 Hz across every animation & bone."""
     # 1. Exact non-animation top-level equality
@@ -1275,6 +1399,20 @@ def verify_skeleton_pair(
                                         f"orig={co[ch_i]:.2f} vs opt={cn[ch_i]:.2f} (err={err:.2f})"
                                     )
 
+    # 3. Verify additive-overlay channel protection on all non-additive Track-0 animations.
+    overlay_names = DEFAULT_ADDITIVE_OVERLAY_ANIMS if additive_anims is None else additive_anims
+    active_additive = set(opt_anims.keys()) & set(overlay_names)
+    if active_additive:
+        protected = _collect_additive_channels(opt_anims, active_additive)
+        for aname, n_anim in opt_anims.items():
+            if aname in active_additive or not isinstance(n_anim, dict):
+                continue
+            missing = sorted(protected - _anim_bone_props(n_anim))
+            if missing:
+                raise AssertionError(
+                    f"{label}/{aname}: missing additive-overlay protected channels: {missing}"
+                )
+
     return max_err
 
 
@@ -1290,10 +1428,29 @@ def default_target_files(project_root: pathlib.Path) -> list[pathlib.Path]:
     return files
 
 
+def _has_missing_additive_protection(
+    data: dict[str, Any],
+    additive_names: set[str] | frozenset[str],
+) -> bool:
+    anims = data.get("animations", {})
+    if not isinstance(anims, dict):
+        return False
+    active_additive = set(anims.keys()) & set(additive_names)
+    if not active_additive:
+        return False
+    protected = _collect_additive_channels(anims, active_additive)
+    for aname, anim in anims.items():
+        if aname in active_additive or not isinstance(anim, dict):
+            continue
+        if protected - _anim_bone_props(anim):
+            return True
+    return False
+
+
 def process_one_file(
-    args_tuple: tuple[str, bool, bool, bool, bool]
+    args_tuple: tuple[str, bool, bool, bool, bool, frozenset[str]]
 ) -> dict[str, Any]:
-    path_str, dry_run, verify, allow_bezier, allow_split = args_tuple
+    path_str, dry_run, verify, allow_bezier, allow_split, additive_anims = args_tuple
     path = pathlib.Path(path_str)
     t_start = time.perf_counter()
     raw_bytes = path.read_bytes()
@@ -1301,8 +1458,14 @@ def process_one_file(
 
     orig_bkf = count_bone_keyframes(orig_data)
     orig_skf = count_slot_keyframes(orig_data)
+    needs_repair = _has_missing_additive_protection(orig_data, additive_anims)
 
-    opt_data = optimize_skeleton(orig_data, allow_bezier=allow_bezier, allow_split=allow_split)
+    opt_data = optimize_skeleton(
+        orig_data,
+        allow_bezier=allow_bezier,
+        allow_split=allow_split,
+        additive_anims=additive_anims,
+    )
     out_text = json.dumps(opt_data, separators=(",", ":"), ensure_ascii=False)
     out_bytes = out_text.encode("utf-8")
 
@@ -1310,13 +1473,18 @@ def process_one_file(
     reparsed_opt = json.loads(out_bytes.decode("utf-8"))
     max_err: dict[str, float] = {}
     if verify:
-        max_err = verify_skeleton_pair(orig_data, reparsed_opt, label=path.name)
+        max_err = verify_skeleton_pair(
+            orig_data,
+            reparsed_opt,
+            label=path.name,
+            additive_anims=additive_anims,
+        )
 
     opt_bkf = count_bone_keyframes(reparsed_opt)
     opt_skf = count_slot_keyframes(reparsed_opt)
 
     wrote = False
-    if not dry_run and len(out_bytes) <= len(raw_bytes):
+    if not dry_run and (len(out_bytes) <= len(raw_bytes) or needs_repair):
         tmp_path = path.with_suffix(".spjson.tmp")
         tmp_path.write_bytes(out_bytes)
         os.replace(tmp_path, path)
@@ -1356,6 +1524,12 @@ def main() -> int:
     parser.add_argument("--no-bezier", action="store_true", help="Disable Spine 4.2 cubic Bezier fitting.")
     parser.add_argument("--no-split", action="store_true", help="Disable opportunistic 2D->1D axis splitting.")
     parser.add_argument(
+        "--additive-anim",
+        action="append",
+        default=[],
+        help="Additional MixBlend.add overlay animation name(s) (repeatable or comma-separated) whose channels are never stripped from non-additive clips.",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=min(8, os.cpu_count() or 1),
@@ -1369,11 +1543,19 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    extra_additive = {
+        name.strip()
+        for entry in args.additive_anim
+        for name in entry.split(",")
+        if name.strip()
+    }
+    additive_anims = DEFAULT_ADDITIVE_OVERLAY_ANIMS | extra_additive
+
     if args.compare:
         orig_p, opt_p = pathlib.Path(args.compare[0]), pathlib.Path(args.compare[1])
         orig_d = json.loads(orig_p.read_text(encoding="utf-8"))
         opt_d = json.loads(opt_p.read_text(encoding="utf-8"))
-        errs = verify_skeleton_pair(orig_d, opt_d, label=opt_p.name)
+        errs = verify_skeleton_pair(orig_d, opt_d, label=opt_p.name, additive_anims=additive_anims)
         print(f"PASS {opt_p.name}: {errs}")
         return 0
 
@@ -1399,7 +1581,7 @@ def main() -> int:
     # Process largest files first for optimal multiprocessing load balance.
     targets.sort(key=lambda p: p.stat().st_size, reverse=True)
     work = [
-        (str(p), args.dry_run, args.verify, not args.no_bezier, not args.no_split)
+        (str(p), args.dry_run, args.verify, not args.no_bezier, not args.no_split, additive_anims)
         for p in targets
     ]
 

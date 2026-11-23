@@ -188,16 +188,37 @@ public partial class NAbyssalInkSprayOverlay : CanvasLayer
 
         if (active)
         {
+            bool wasVisible = _rect.Visible;
+            float startBorder = wasVisible ? _material.GetShaderParameter("border_strength").AsSingle() : 0.0f;
+            float startCurtain = wasVisible ? _material.GetShaderParameter("curtain_strength").AsSingle() : 0.0f;
+            float startDrip = wasVisible ? _material.GetShaderParameter("drip_offset").AsSingle() : 0.04f;
+            float startSweep = wasVisible ? _material.GetShaderParameter("sweep_progress").AsSingle() : 1.35f;
+
             _rect.Visible = true;
-            _material.SetShaderParameter("sweep_progress", 1.35f);
-            _material.SetShaderParameter("curtain_strength", 0.0f);
+            _material.SetShaderParameter("sweep_progress", Mathf.Max(startSweep, 1.35f));
             _material.SetShaderParameter("wash_progress", 0.0f);
-            _material.SetShaderParameter("drip_offset", 0.04f);
+            if (!wasVisible)
+            {
+                _material.SetShaderParameter("curtain_strength", 0.0f);
+                _material.SetShaderParameter("drip_offset", 0.04f);
+            }
 
             _animTween = CreateTween();
-            _animTween.TweenMethod(Callable.From<float>(v => _material?.SetShaderParameter("border_strength", v)), 0.0f, 0.40f, 0.45f)
+            _animTween.TweenMethod(Callable.From<float>(v => _material?.SetShaderParameter("border_strength", v)), startBorder, 0.40f, 0.45f)
                 .SetTrans(Tween.TransitionType.Sine)
                 .SetEase(Tween.EaseType.Out);
+            if (startCurtain > 0.001f)
+            {
+                _animTween.Parallel().TweenMethod(Callable.From<float>(v => _material?.SetShaderParameter("curtain_strength", v)), startCurtain, 0.0f, 0.45f)
+                    .SetTrans(Tween.TransitionType.Quad)
+                    .SetEase(Tween.EaseType.In);
+            }
+            if (wasVisible && startDrip < 0.08f)
+            {
+                _animTween.Parallel().TweenMethod(Callable.From<float>(v => _material?.SetShaderParameter("drip_offset", v)), startDrip, 0.08f, 0.45f)
+                    .SetTrans(Tween.TransitionType.Sine)
+                    .SetEase(Tween.EaseType.Out);
+            }
             return;
         }
 

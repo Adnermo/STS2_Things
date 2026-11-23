@@ -8,18 +8,20 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Core.Models;
 using STS2_Things.Monsters;
+using STS2_Things.Platform;
 
 namespace STS2_Things.Powers;
 
 /// <summary>
 /// 触腕庇护 (Tentacle Cover) — 渊墨巨蛸本体的联动庇护能力。
 /// 只要场上有存活的主触腕，即提供 25% 攻击减伤（不按触腕数叠加，直接显示于层数）；
-/// 斩断任意主触腕对本体造成 20 点反伤、施加 2 层易伤并冲净全部染黑手牌。
+/// 斩断任意主触腕对本体造成基础 20 点（多人按 Act 2 原生倍率缩放：2P 48 / 3P 72 / 4P 96）反伤、施加 2 层易伤并冲净全部染黑手牌。
 /// </summary>
 public sealed class ThingsAbyssalCoverPower : ThingsPowerModel
 {
@@ -30,11 +32,35 @@ public sealed class ThingsAbyssalCoverPower : ThingsPowerModel
     public override PowerType Type => PowerType.Buff;
     public override PowerStackType StackType => PowerStackType.Counter;
 
+    protected override IEnumerable<DynamicVar> CanonicalVars =>
+    [
+        new IntVar("SeverRecoil", SeverRecoilDamage)
+    ];
+
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
     [
         HoverTipFactory.FromPower<VulnerablePower>(),
         HoverTipFactory.FromPower<ThingsInkBlackoutPower>()
     ];
+
+    public static int ComputeScaledSeverRecoilDamage(ICombatState? combatState)
+    {
+        int effectivePlayers = MultiplayerCompat.GetEffectivePlayerCount(combatState);
+        if (effectivePlayers <= 1)
+            return SeverRecoilDamage;
+        // Matches Act 2 native multiplayer HP scaling (playerCount * 1.2m): 1P=20, 2P=48, 3P=72, 4P=96.
+        return (int)(SeverRecoilDamage * effectivePlayers * 1.2m);
+    }
+
+    protected override string SmartDescriptionLocKey
+    {
+        get
+        {
+            if (IsMutable && Owner?.CombatState is { } combatState)
+                DynamicVars["SeverRecoil"].BaseValue = ComputeScaledSeverRecoilDamage(combatState);
+            return base.SmartDescriptionLocKey;
+        }
+    }
 
     protected override decimal OnModifyDamageMultiplicative(
         Creature? target, decimal amount, ValueProp props, Creature? dealer, CardModel? cardSource, CardPlay? cardPlay)

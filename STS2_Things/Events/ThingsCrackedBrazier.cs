@@ -9,16 +9,19 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Enchantments;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
+using STS2_Things.Core.Localization;
 using STS2_Things.Core.Models;
 
 namespace STS2_Things.Events;
 
 /// <summary>
-/// Depths event offering Tezcatara's Ember (0 cost + Eternal + +3 Attack damage) for 10 Max HP,
+/// Depths event offering Tezcatara's Ember (0 cost + Eternal + +3 Attack damage) for 10 Max HP + Eternal Burn,
 /// 9-HP Removal that grants a Common Relic if the burned card was Rare, or a 10-HP Heal.
 /// </summary>
 public sealed class ThingsCrackedBrazier : ThingsEventModel
@@ -26,8 +29,19 @@ public sealed class ThingsCrackedBrazier : ThingsEventModel
     public const int TemperMaxHpLoss = 10;
     public const int BurnDamage = 9;
     public const int WarmHeal = 10;
+    internal const string EternalKeywordSavedPropertyName = nameof(ThingsEternalKeyword);
 
     private bool _settling;
+
+    // Registered with ModelIdSerializationCache so SavedProperties can carry added
+    // CardKeyword.Eternal on non-Eternal cards (such as Eternal Burn) over JSON and MP packets.
+    // Always false on the event instance so it is never written to event save data.
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    private bool ThingsEternalKeyword
+    {
+        get => false;
+        set { _ = value; }
+    }
 
     protected override void AfterCloned()
     {
@@ -40,6 +54,7 @@ public sealed class ThingsCrackedBrazier : ThingsEventModel
         new MaxHpVar(TemperMaxHpLoss),
         new DamageVar("BurnDamage", BurnDamage, ValueProp.Unblockable | ValueProp.Unpowered),
         new HealVar("WarmHeal", WarmHeal),
+        new LocalizedStringVar("Burn", static _ => new LocString("cards", "BURN.title").GetFormattedText()),
     ];
 
     public override bool IsAllowed(IRunState runState) =>
@@ -55,6 +70,7 @@ public sealed class ThingsCrackedBrazier : ThingsEventModel
     public override IEnumerable<string> GetAssetPaths(IRunState runState) =>
         base.GetAssetPaths(runState)
             .Concat([ModelDb.Enchantment<TezcatarasEmber>().IconPath])
+            .Concat(ModelDb.Card<Burn>().AllPortraitPaths)
             .Distinct();
 
     private static bool CanTemper(CardModel? card) =>
@@ -62,27 +78,39 @@ public sealed class ThingsCrackedBrazier : ThingsEventModel
         && !card.EnergyCost.CostsX
         && ModelDb.Enchantment<TezcatarasEmber>().CanEnchant(card);
 
+    private static CardModel CreateEternalBurnPreview()
+    {
+        CardModel preview = ModelDb.Card<Burn>().ToMutable();
+        preview.AddKeyword(CardKeyword.Eternal);
+        return preview;
+    }
+
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()
     {
         bool lowMaxHp = EventOwner.Creature.MaxHp <= TemperMaxHpLoss;
         bool hasTemperCard = EventOwner.Deck.Cards.Any(CanTemper);
+        CardModel previewBurn = CreateEternalBurnPreview();
+        IEnumerable<IHoverTip> temperHoverTips = IHoverTip.RemoveDupes(
+            HoverTipFactory.FromEnchantment<TezcatarasEmber>()
+                .Append(HoverTipFactory.FromCard(previewBurn))
+                .Concat(previewBurn.HoverTips));
         EventOption temperOption = (lowMaxHp, hasTemperCard) switch
         {
             (true, _) => new EventOption(
                 this,
                 null,
                 InitialOptionKey("TEMPER_LOW_HP"),
-                HoverTipFactory.FromEnchantment<TezcatarasEmber>()),
+                temperHoverTips),
             (false, false) => new EventOption(
                 this,
                 null,
                 InitialOptionKey("TEMPER_NO_CARD"),
-                HoverTipFactory.FromEnchantment<TezcatarasEmber>()),
+                temperHoverTips),
             _ => new EventOption(
                 this,
                 TemperCard,
                 InitialOptionKey("TEMPER"),
-                HoverTipFactory.FromEnchantment<TezcatarasEmber>())
+                temperHoverTips)
                 .ThatDecreasesMaxHp(TemperMaxHpLoss),
         };
 
@@ -149,6 +177,10 @@ public sealed class ThingsCrackedBrazier : ThingsEventModel
 
         CardCmd.Enchant<TezcatarasEmber>(selected, 1m);
         CardCmd.Preview(selected, 1.4f, CardPreviewStyle.EventLayout);
+        CardModel burn = player.RunState.CreateCard<Burn>(player);
+        burn.AddKeyword(CardKeyword.Eternal);
+        CardPileAddResult burnResult = await CardPileCmd.Add(burn, PileType.Deck);
+        CardCmd.PreviewCardPileAdd([burnResult], 2f);
         Finish("TEMPER.description");
     }
 

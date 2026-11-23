@@ -8,7 +8,9 @@ using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.Unlocks;
 using STS2_Things.Map;
@@ -91,12 +93,256 @@ public partial class CaveGodProbeNode
         foreach(var point in map.GetAllMapPoints())Visit(point);
     }
 
+    private static async Task VerifyCrossroadActPricing()
+    {
+        Assert(CrossroadPlan.PriceForAct(-1) == 50, "Negative act index must clamp to 50 Gold");
+        Assert(CrossroadPlan.PriceForAct(0) == 50, "Act 1 crossroad price must be 50 Gold");
+        Assert(CrossroadPlan.PriceForAct(1) == 100, "Act 2 crossroad price must be 100 Gold");
+        Assert(CrossroadPlan.PriceForAct(2) == 150, "Act 3 crossroad price must be 150 Gold");
+        Assert(CrossroadPlan.PriceForAct(3) == 150, "Act 4 crossroad price must cap at 150 Gold");
+        Assert(CrossroadPlan.PriceForAct(4) == 150, "Act 5+ crossroad price must cap at 150 Gold");
+
+        var defaultActs = ActModel.GetDefaultList();
+        var expectedByAct = new (int Act, int Price)[] { (0, 50), (1, 100), (2, 150), (3, 150) };
+        foreach (var (act, expectedPrice) in expectedByAct)
+        {
+            var p1 = Player.CreateForNewRun<Ironclad>(UnlockState.all, 1);
+            var p2 = Player.CreateForNewRun<Silent>(UnlockState.all, 2);
+            var acts = defaultActs.Concat([defaultActs[0]]).ToList();
+            var run = RunState.CreateForTest([p1, p2], acts: acts, seed: $"act-price-{act}");
+            run.CurrentActIndex = act;
+            var map = new CrossroadFixtureMap();
+            run.Map = map;
+            var ledger = Crossroads.Ledger(run)!;
+            var plan = ledger.EnsurePlan(run, map, act)!;
+            var road = plan.Roads[0];
+            run.AddVisitedMapCoord(map.StartingMapPoint.coord);
+            run.AddVisitedMapCoord(road.A);
+
+            p1.Gold = expectedPrice + 25;
+            p2.Gold = expectedPrice + 40;
+            Assert(await Crossroads.Purchase(p1, act, plan.Fingerprint, road.A, road.B, expectedPrice - 1) == CrossroadPurchaseResult.Stale,
+                $"Act {act + 1} accepted wrong quoted price {expectedPrice - 1}");
+
+            // Initiator can afford, teammate cannot -> strict reject with zero gold lost.
+            p2.Gold = expectedPrice - 1;
+            Assert(await Crossroads.Purchase(p1, act, plan.Fingerprint, road.A, road.B, expectedPrice) == CrossroadPurchaseResult.InsufficientGold,
+                $"Act {act + 1} allowed purchase while teammate lacked gold");
+            Assert(!road.IsOpen && p1.Gold == expectedPrice + 25 && p2.Gold == expectedPrice - 1,
+                $"Act {act + 1} mutated road or gold on teammate shortfall");
+
+            // Teammate can afford, initiator cannot -> strict reject with zero gold lost.
+            p1.Gold = expectedPrice - 1;
+            p2.Gold = expectedPrice + 40;
+            Assert(await Crossroads.Purchase(p1, act, plan.Fingerprint, road.A, road.B, expectedPrice) == CrossroadPurchaseResult.InsufficientGold,
+                $"Act {act + 1} allowed purchase while initiator lacked gold");
+            Assert(!road.IsOpen && p1.Gold == expectedPrice - 1 && p2.Gold == expectedPrice + 40,
+                $"Act {act + 1} mutated road or gold on initiator shortfall");
+
+            // Both afford -> both pay exact act price.
+            p1.Gold = expectedPrice + 25;
+            p2.Gold = expectedPrice + 40;
+            Assert(await Crossroads.Purchase(p2, act, plan.Fingerprint, road.A, road.B, expectedPrice) == CrossroadPurchaseResult.Purchased,
+                $"Act {act + 1} rejected valid all-players crossroad purchase");
+            Assert(road.IsOpen && p1.Gold == 25 && p2.Gold == 40,
+                $"Act {act + 1} did not deduct {expectedPrice} Gold from every player (got p1={p1.Gold}, p2={p2.Gold})");
+        }
+    }
+
+    private static void VerifyCrossroadOpenEdgeGenerationInvariance()
+    {
+        foreach (bool fromRight in new[] { false, true })
+        {
+            var run = RunState.CreateForTest(seed: $"open-edge-invariance-{fromRight}");
+            var map = new CrossroadFixtureMap();
+            var baseline = CrossroadPlan.Generate(map, run.Rng.Seed, 0);
+            Assert(baseline.Count == 3, "Fixture must generate 3 baseline crossroads");
+
+            var target = baseline[0];
+            MapCoord from = fromRight ? target.B : target.A;
+            MapCoord to = target.Other(from);
+            map.GetPoint(from)!.AddChildPoint(map.GetPoint(to)!);
+
+            // Simulate a reloaded SavedActMap that already has the horizontal edge baked in (9249a16a).
+            var savedMap = new SavedActMap(SerializableActMap.FromActMap(map));
+            var regenerated = CrossroadPlan.Generate(savedMap, run.Rng.Seed, 0);
+            Assert(regenerated.Count == baseline.Count &&
+                   regenerated.Zip(baseline).All(pair =>
+                       pair.First.Row == pair.Second.Row &&
+                       pair.First.Left == pair.Second.Left &&
+                       pair.First.Right == pair.Second.Right),
+                $"CrossroadPlan.Generate drifted after horizontal edge {from}->{to} was baked into SavedActMap");
+
+            // Simulate fallback EnsurePlan when no ledger existed yet on the reloaded SavedActMap.
+            var freshLedger = (ThingsCrossroads)ModelDb.Modifier<ThingsCrossroads>().ToMutable();
+            freshLedger.Bind(run);
+            var recoveredPlan = freshLedger.EnsurePlan(run, savedMap, 0)!;
+            var recoveredRoad = recoveredPlan.Roads.First(r => r.Row == target.Row && r.Left == target.Left && r.Right == target.Right);
+            Assert(recoveredRoad.IsOpen && recoveredRoad.FromColumn == from.col,
+                $"EnsurePlan fallback failed to recover opened edge direction {from}->{to} (got FromColumn={recoveredRoad.FromColumn})");
+            AssertAcyclic(savedMap);
+        }
+    }
+
+    private static void VerifyCrossroadJsonSerializationRoundtrip()
+    {
+        var p1 = Player.CreateForNewRun<Ironclad>(UnlockState.all, 1);
+        var p2 = Player.CreateForNewRun<Silent>(UnlockState.all, 2);
+        var run = RunState.CreateForTest([p1, p2], seed: "json-ledger-roundtrip");
+        foreach (var actModel in run.Acts)
+            actModel.GenerateRooms(run.Rng.UpFront, UnlockState.all);
+        var map = new CrossroadFixtureMap();
+        run.Map = map;
+        var ledger = Crossroads.Ledger(run)!;
+        var plan = ledger.EnsurePlan(run, map, 0)!;
+        var road = plan.Roads[0];
+        run.AddVisitedMapCoord(map.StartingMapPoint.coord);
+        run.AddVisitedMapCoord(road.A);
+        road.FromColumn = road.Left;
+        road.Payer = p1.NetId;
+        map.GetPoint(road.A)!.AddChildPoint(map.GetPoint(road.B)!);
+        ledger.Commit();
+
+        var save = new SerializableRun
+        {
+            SchemaVersion = 1,
+            Acts = run.Acts.Select(a => a.ToSave()).ToList(),
+            Modifiers = [],
+            CurrentActIndex = run.CurrentActIndex,
+            EventsSeen = run.VisitedEventIds.ToList(),
+            SerializableOdds = run.Odds.ToSerializable(),
+            SerializableSharedRelicGrabBag = run.SharedRelicGrabBag.ToSerializable(),
+            Players = run.Players.Select(p => p.ToSerializable()).ToList(),
+            SerializableRng = run.Rng.ToSerializable(),
+            VisitedMapCoords = run.VisitedMapCoords.ToList(),
+            MapPointHistory = run.MapPointHistory.Select(l => l.ToList()).ToList(),
+            ExtraFields = run.ExtraFields.ToSerializable(),
+            GameMode = GameMode.Standard,
+        };
+        save.Acts[0].SavedMap = SerializableActMap.FromActMap(map);
+
+        MethodInfo setLedger = typeof(Crossroads).GetMethod("SetSerializedLedger", BindingFlags.NonPublic | BindingFlags.Static)!;
+        MethodInfo tryGetLedger = typeof(Crossroads).GetMethod("TryGetSerializedLedger", BindingFlags.NonPublic | BindingFlags.Static)!;
+        MethodInfo isLedgerId = typeof(Crossroads).GetMethod("IsLedgerId", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        setLedger.Invoke(null, [save, ledger.ToSerializable()]);
+        string json = JsonSerializationUtility.ToJson(save);
+        Assert(json.Contains("THINGS_CROSSROADS", StringComparison.Ordinal),
+            "JsonSerializationUtility.ToJson omitted THINGS_CROSSROADS ledger");
+        Assert(save.Modifiers.Count == 0,
+            "JsonSerializationUtility.ToJson mutated SerializableRun.Modifiers");
+
+        var loaded = JsonSerializationUtility.FromJson<SerializableRun>(json);
+        Assert(loaded.Success && loaded.SaveData != null,
+            $"JsonSerializationUtility.FromJson failed: {loaded.Status} {loaded.ErrorMessage}");
+        Assert(loaded.SaveData!.Modifiers.All(m => !(bool)isLedgerId.Invoke(null, [m.Id])!),
+            "JsonSerializationUtility.FromJson left THINGS_CROSSROADS inside SerializableRun.Modifiers");
+
+        object?[] tryArgs = [loaded.SaveData, null];
+        bool hasLedger = (bool)tryGetLedger.Invoke(null, tryArgs)!;
+        var restoredMod = (SerializableModifier?)tryArgs[1];
+        Assert(hasLedger && restoredMod != null,
+            "JsonSerializationUtility.FromJson did not extract THINGS_CROSSROADS into SerializedLedgers");
+        var restoredLedger = (ThingsCrossroads)ModifierModel.FromSerializable(restoredMod!);
+        Assert(restoredLedger.Data == ledger.Data,
+            "JSON roundtrip altered THINGS_CROSSROADS ledger payload");
+
+        // Second roundtrip must also preserve THINGS_CROSSROADS without mutation.
+        string jsonAgain = JsonSerializationUtility.ToJson(loaded.SaveData);
+        Assert(jsonAgain.Contains("THINGS_CROSSROADS", StringComparison.Ordinal) && loaded.SaveData.Modifiers.Count == 0,
+            "Re-serializing loaded SerializableRun dropped THINGS_CROSSROADS or mutated Modifiers");
+
+        // Rehydrating RunState from JSON-loaded save must attach the exact ledger.
+        var rehydrated = RunState.FromSerializable(loaded.SaveData);
+        Assert(Crossroads.Ledger(rehydrated)?.Data == ledger.Data,
+            "RunState.FromSerializable after JSON roundtrip lost THINGS_CROSSROADS ledger");
+    }
+
+    private static void VerifyCrossroadUnknownRoomHistoryAndFloors()
+    {
+        var run = RunState.CreateForTest(seed: "crossroads-unknown-history");
+        var map = new CrossroadFixtureMap();
+        // Configure row 3 right (4,3) and row 4 right (4,4) as Unknown (?) rooms.
+        var row3Left = new MapCoord(2, 3);
+        var row3Unknown = new MapCoord(4, 3);
+        var row4Unknown = new MapCoord(4, 4);
+        map.GetPoint(row3Left)!.PointType = MapPointType.Shop;
+        map.GetPoint(row3Unknown)!.PointType = MapPointType.Unknown;
+        map.GetPoint(row4Unknown)!.PointType = MapPointType.Unknown;
+        run.Map = map;
+        var ledger = Crossroads.Ledger(run)!;
+        ledger.EnsurePlan(run, map, 0);
+
+        // Visit Ancient (3,0), row 1 (2,1), row 2 (2,2), row 3 left (2,3) [Shop].
+        void Visit(MapCoord coord, MapPointType pointType, RoomType roomType)
+        {
+            run.AddVisitedMapCoord(coord);
+            run.AppendToMapPointHistory(pointType, roomType, null);
+        }
+
+        Visit(map.StartingMapPoint.coord, MapPointType.Ancient, RoomType.Event);
+        Visit(new MapCoord(2, 1), MapPointType.Monster, RoomType.Monster);
+        Visit(new MapCoord(2, 2), MapPointType.Monster, RoomType.Monster);
+        Visit(row3Left, MapPointType.Shop, RoomType.Shop);
+
+        // Pre-entry (simulating NNormalMapPoint.OnSelected before AddVisitedMapCoord):
+        // must return null instead of falling back to coord.row=3 (which is row3Left's Shop!).
+        Assert(!Crossroads.TryResolveHistoryIndex(run, new MapLocation(row3Unknown, 0), out _),
+            "Unvisited same-row ? node unexpectedly resolved a history index");
+        Assert(run.GetHistoryEntryFor(new MapLocation(row3Unknown, 0)) == null,
+            "Pre-entry ? node returned previous same-row room history (coord.row fallback regression)");
+
+        // Mid-transition (after AddVisitedMapCoord, before AppendToMapPointHistory):
+        // visit index is 4 while MapPointHistory[0].Count is 4 -> must still return null.
+        run.AddVisitedMapCoord(row3Unknown);
+        Assert(Crossroads.TryResolveHistoryIndex(run, new MapLocation(row3Unknown, 0), out int midIdx) && midIdx == 4,
+            "Visited same-row ? node did not resolve to history index 4");
+        Assert(run.GetHistoryEntryFor(new MapLocation(row3Unknown, 0)) == null,
+            "Mid-transition ? node returned out-of-range history entry before AppendToMapPointHistory");
+
+        // Post-entry: (4,3) is Treasure at visit index 4 (Floor 5), (2,3) remains Shop at index 3 (Floor 4).
+        run.AppendToMapPointHistory(MapPointType.Unknown, RoomType.Treasure, null);
+        Assert(run.GetHistoryEntryFor(new MapLocation(row3Left, 0))?.Rooms[0].RoomType == RoomType.Shop,
+            "Crossroad origin room lost its Shop history entry");
+        Assert(run.GetHistoryEntryFor(new MapLocation(row3Unknown, 0))?.Rooms[0].RoomType == RoomType.Treasure,
+            "Crossroad ? destination did not resolve its Treasure history entry");
+        Assert(Crossroads.TryComputeFloorNumber(run, new MapLocation(row3Left, 0), out int shopFloor) && shopFloor == 4,
+            $"Crossroad origin floor mismatch (expected 4, got {shopFloor})");
+        Assert(Crossroads.TryComputeFloorNumber(run, new MapLocation(row3Unknown, 0), out int unknownFloor) && unknownFloor == 5,
+            $"Crossroad ? destination floor mismatch (expected 5, got {unknownFloor})");
+
+        // Subsequent row ? node (4,4): history.Count == 5 > row 4, so vanilla coord.row=4 would leak row3Unknown!
+        Assert(run.GetHistoryEntryFor(new MapLocation(row4Unknown, 0)) == null,
+            "Pre-entry subsequent-row ? node leaked earlier crossroad room history");
+        Visit(row4Unknown, MapPointType.Unknown, RoomType.Monster);
+        Assert(run.GetHistoryEntryFor(new MapLocation(row4Unknown, 0))?.Rooms[0].RoomType == RoomType.Monster,
+            "Subsequent-row ? node did not resolve its own Monster history entry");
+        Assert(Crossroads.TryComputeFloorNumber(run, new MapLocation(row4Unknown, 0), out int nextRowFloor) && nextRowFloor == 6,
+            $"Subsequent-row ? node floor mismatch (expected 6, got {nextRowFloor})");
+
+        // Advance to Act 2 (index 1): prior act had 6 entries, so Act 2 Ancient starts at Floor 7.
+        run.CurrentActIndex = 1;
+        var act2Map = new CrossroadFixtureMap();
+        run.Map = act2Map;
+        ledger.EnsurePlan(run, act2Map, 1);
+        Assert(run.GetHistoryEntryFor(new MapLocation(row3Unknown, 0))?.Rooms[0].RoomType == RoomType.Treasure,
+            "Prior-act crossroad ? node lost its history entry after advancing acts");
+        Assert(run.GetHistoryEntryFor(new MapLocation(new MapCoord(0, 3), 0)) == null,
+            "Unvisited prior-act node fell back to coord.row indexing despite ledger history");
+        Assert(Crossroads.TryComputeFloorNumber(run, new MapLocation(row3Unknown, 0), out int priorActFloor) && priorActFloor == 5,
+            $"Prior-act crossroad floor mismatch (expected 5, got {priorActFloor})");
+
+        Visit(act2Map.StartingMapPoint.coord, MapPointType.Ancient, RoomType.Event);
+        Assert(Crossroads.TryComputeFloorNumber(run, new MapLocation(act2Map.StartingMapPoint.coord, 1), out int act2Floor) && act2Floor == 7,
+            $"Act 2 starting floor did not include prior-act crossroad room count (expected 7, got {act2Floor})");
+    }
+
     private async Task VerifyCrossroads()
     {
         string root=Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"),"../.."));
         string output=Path.Combine(root,"build/crossroads-20261003");Directory.CreateDirectory(output);
         var harmony=new Harmony("Things.Crossroads.Probe");
-        foreach(var name in new[]{"CrossroadRunPatch","CrossroadHistoryRecordPatch","CrossroadHistoryLookupPatch","CrossroadFreeTravelPatch"})
+        foreach(var name in new[]{"CrossroadRunPatch","CrossroadFromSerializablePatch","CrossroadSaveLoadPatches","CrossroadHistoryRecordPatch","CrossroadHistoryLookupPatch","CrossroadUnknownIconPatch","CrossroadMapPointHoverFloorPatch","CrossroadHistoryHoverTipCreatePatch","CrossroadFreeTravelPatch"})
             harmony.CreateClassProcessor(ImplementationAssembly.GetType("STS2_Things.Map."+name,true)!).Patch();
         ActionTypes.Initialize();
         var results=new List<object>();
@@ -128,6 +374,10 @@ public partial class CaveGodProbeNode
                 }
             }
             VerifyCrossroadSaveFiltering();
+            await VerifyCrossroadActPricing();
+            VerifyCrossroadOpenEdgeGenerationInvariance();
+            VerifyCrossroadJsonSerializationRoundtrip();
+            VerifyCrossroadUnknownRoomHistoryAndFloors();
             foreach(int count in new[]{1,2,4})
             foreach(bool fromRight in new[]{false,true})
             {
@@ -146,7 +396,15 @@ public partial class CaveGodProbeNode
                 Assert(await Crossroads.Purchase(payer,0,plan.Fingerprint+1,from,to,50)==CrossroadPurchaseResult.Stale,"Stale map accepted");
                 payer.Gold=49;
                 Assert(await Crossroads.Purchase(payer,0,plan.Fingerprint,from,to,50)==CrossroadPurchaseResult.InsufficientGold,"Insufficient gold accepted");
-                Assert(!road.IsOpen&&payer.Gold==49,"Rejected purchase mutated the route or gold");payer.Gold=125;
+                Assert(!road.IsOpen&&payer.Gold==49&&players.Where(p=>p!=payer).All(p=>p.Gold==125),"Rejected purchase mutated the route or gold");
+                payer.Gold=125;
+                if(count>1)
+                {
+                    players[0].Gold=49;
+                    Assert(await Crossroads.Purchase(payer,0,plan.Fingerprint,from,to,50)==CrossroadPurchaseResult.InsufficientGold,"Teammate shortfall accepted");
+                    Assert(!road.IsOpen&&players[0].Gold==49&&players.Skip(1).All(p=>p.Gold==125),"Teammate shortfall mutated the route or gold");
+                    players[0].Gold=125;
+                }
                 var action=new ThingsNetUnlockCrossroadAction{Act=0,Fingerprint=plan.Fingerprint,From=from,To=to,Price=50};
                 Assert(action.ToId()>=0,"Native action discovery missed the unlock action");
                 var writer=new PacketWriter();action.Serialize(writer);var reader=new PacketReader();reader.Reset(writer.Buffer);
@@ -154,9 +412,9 @@ public partial class CaveGodProbeNode
                 Assert(decoded.Act==action.Act&&decoded.Fingerprint==action.Fingerprint&&decoded.From==from&&decoded.To==to&&decoded.Price==50,"Action packet changed");
                 var nativeAction=decoded.ToGameAction(payer);nativeAction.OnEnqueued(_=>{},1);await nativeAction.Execute();
                 Assert(nativeAction.Exception==null&&road.IsOpen,"Native unlock action failed");
-                Assert(payer.Gold==75&&players.Where(p=>p!=payer).All(p=>p.Gold==125),"Someone other than the initiator paid");
+                Assert(players.All(p=>p.Gold==75),"Every player must pay the crossroad toll");
                 Assert(await Crossroads.Purchase(payer,0,plan.Fingerprint,from,to,50)==CrossroadPurchaseResult.AlreadyOpen,"Duplicate purchase was not idempotent");
-                Assert(payer.Gold==75,"Duplicate purchase charged again");
+                Assert(players.All(p=>p.Gold==75),"Duplicate purchase charged again");
                 Assert(map.GetPoint(from)!.Children.Contains(map.GetPoint(to)!),"Paid edge missing");AssertAcyclic(map);
                 var fingerprint=CrossroadPlan.Fingerprint(map);Assert(fingerprint==plan.Fingerprint,"Opening a route changed its map identity");
 
@@ -174,7 +432,7 @@ public partial class CaveGodProbeNode
             }
             File.WriteAllText(Path.Combine(output,"generation.json"),JsonSerializer.Serialize(generated,new JsonSerializerOptions{WriteIndented=true}));
             File.WriteAllText(Path.Combine(output,"transactions.json"),JsonSerializer.Serialize(results,new JsonSerializerOptions{WriteIndented=true}));
-            GD.Print($"CROSSROADS_RULES_PASS maps={generated.Count} transactions={results.Count}; different-room routes only, six same-type save migrations/paid-edge preservation, deterministic routes, native actions, payer-only gold, save/network roundtrip, no cycles/revisits");
+            GD.Print($"CROSSROADS_RULES_PASS maps={generated.Count} transactions={results.Count}; different-room routes only, six same-type save migrations/paid-edge preservation, act 1/2/3/4 pricing (50/100/150/150), all-players gold deduction, open-edge invariance, JSON ledger roundtrip, unknown-room history & floor numbers, save/network roundtrip, no cycles/revisits");
         }
         finally{harmony.UnpatchAll(harmony.Id);}
     }

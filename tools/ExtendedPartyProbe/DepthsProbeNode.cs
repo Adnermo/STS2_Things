@@ -431,7 +431,7 @@ public partial class DepthsProbeNode : Node
             if (scaledRecoil != null)
             {
                 int dmg = (int)scaledRecoil.Invoke(boss.Monster, null)!;
-                Assert(dmg == 40, $"16p effective=8 Inkmaw SeverRecoilDamage must scale 2x to 40, got {dmg}");
+                Assert(dmg == 192, $"16p effective=8 Inkmaw SeverRecoilDamage must scale to 192 (20 * 8 * 1.2), got {dmg}");
             }
             else
             {

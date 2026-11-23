@@ -122,6 +122,8 @@ public partial class CaveGodProbeNode
                 Assert(distance<0.5f,"Path dots do not follow the line between node centers");
             }
         }
+        ActionExecutor? mpExecutor=null;
+        ActionQueueSynchronizer? mpSync=null;
         try
         {
             await Capture("map-locked");
@@ -209,12 +211,79 @@ public partial class CaveGodProbeNode
             run.AddVisitedMapCoord(road.B);
             for(int frame=0;frame<2;frame++)await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
             await AssertUnavailable("at the visited destination of an open road");
-            GD.Print("CROSSROADS_UI_PASS node alignment, scaled/scrolled map, endpoint-only mouse/controller interaction, both endpoints, room completion, native dialog, cancel, insufficient funds, gold spending, unlocked map");
+
+            // Act 2 pricing (100 Gold) UI verification.
+            run.CurrentActIndex=1;
+            var act2Map=new CrossroadFixtureMap();
+            run.Map=act2Map;screen.ActMap=act2Map;
+            var act2Plan=((ThingsCrossroads)ledger).EnsurePlan(run,act2Map,1)!;
+            var act2Road=act2Plan.Roads[0];
+            screen.SetMap(act2Map,run.Rng.Seed,false);
+            await SetCurrent(act2Road.A);
+            player.Gold=99;
+            pending=Button(act2Road).Activate!();
+            for(int frame=0;frame<2;frame++)await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+            controls=((NGenericPopup)modal.OpenModal!).GetNode<NVerticalPopup>("VerticalPopup");
+            Assert(!controls.YesButton.IsEnabled,"Act 2 confirm must be disabled below 100 Gold");
+            Assert(controls.GetNode<RichTextLabel>("Description").Text.Contains("100",StringComparison.Ordinal),
+                "Act 2 popup description did not show 100 Gold price");
+            controls.NoButton.EmitSignal(NClickableControl.SignalName.Released,controls.NoButton);await pending;
+            player.Gold=100;
+            pending=Button(act2Road).Activate!();
+            for(int frame=0;frame<2;frame++)await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+            controls=((NGenericPopup)modal.OpenModal!).GetNode<NVerticalPopup>("VerticalPopup");
+            Assert(controls.YesButton.IsEnabled,"Act 2 confirm must be enabled at 100 Gold");
+            controls.YesButton.EmitSignal(NClickableControl.SignalName.Released,controls.YesButton);await pending;
+            await executor.FinishedExecutingActions();
+            for(int frame=0;frame<2;frame++)await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+            Assert(player.Gold==0&&act2Road.IsOpen,"Act 2 confirm did not deduct 100 Gold and open the road");
+
+            // Multiplayer (2 players) strict all-must-afford UI & dual-deduction verification.
+            var mpP1=Player.CreateForNewRun<Ironclad>(UnlockState.all,1);
+            var mpP2=Player.CreateForNewRun<Silent>(UnlockState.all,2);
+            var mpLedger=(ThingsCrossroads)ModelDb.Modifier<ThingsCrossroads>().ToMutable();
+            var mpRun=RunState.CreateForTest([mpP1,mpP2],modifiers:[mpLedger],seed:"crossroads-ui-mp");
+            var mpMap=new CrossroadFixtureMap();mpRun.Map=mpMap;mpLedger.Bind(mpRun);
+            var mpPlan=mpLedger.EnsurePlan(mpRun,mpMap,0)!;var mpRoad=mpPlan.Roads[0];
+            mpRun.AddVisitedMapCoord(mpRoad.A);LocalContext.NetId=1;
+            var mpNet=new NetSingleplayerGameService();var mpQueue=new ActionQueueSet(mpRun.Players);
+            mpExecutor=new ActionExecutor(mpQueue);mpExecutor.Unpause();mpQueue.UnpauseAllPlayerQueues();
+            var mpBuffer=new RunLocationTargetedMessageBuffer(mpNet);
+            mpSync=new ActionQueueSynchronizer(mpRun,mpQueue,mpBuffer,mpNet);
+            typeof(RunManager).GetProperty(nameof(RunManager.ActionQueueSynchronizer))!.SetValue(RunManager.Instance,mpSync);
+            screen.Run=mpRun;screen.ActMap=mpMap;
+            screen.Initialize(mpRun);screen.SetMap(mpMap,mpRun.Rng.Seed,false);
+            for(int frame=0;frame<2;frame++)await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+            mpP1.Gold=125;mpP2.Gold=49;
+            pending=Button(mpRoad).Activate!();
+            for(int frame=0;frame<2;frame++)await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+            controls=((NGenericPopup)modal.OpenModal!).GetNode<NVerticalPopup>("VerticalPopup");
+            Assert(!controls.YesButton.IsEnabled,"MP confirm must be disabled when a teammate lacks Gold");
+            string mpPoorText=controls.GetNode<RichTextLabel>("Description").Text;
+            Assert(mpPoorText.Contains("50",StringComparison.Ordinal)&&mpPoorText.Contains("49",StringComparison.Ordinal),
+                $"MP insufficient popup must show required toll and short teammate gold, got: {mpPoorText}");
+            controls.NoButton.EmitSignal(NClickableControl.SignalName.Released,controls.NoButton);await pending;
+            Assert(mpP1.Gold==125&&mpP2.Gold==49&&!mpRoad.IsOpen,"MP cancel mutated gold or road");
+
+            mpP2.Gold=80;
+            pending=Button(mpRoad).Activate!();
+            for(int frame=0;frame<2;frame++)await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+            controls=((NGenericPopup)modal.OpenModal!).GetNode<NVerticalPopup>("VerticalPopup");
+            Assert(controls.YesButton.IsEnabled,"MP confirm must be enabled when all players can afford");
+            string mpAskText=controls.GetNode<RichTextLabel>("Description").Text;
+            Assert(mpAskText.Contains("50",StringComparison.Ordinal),$"MP confirm popup missing price: {mpAskText}");
+            controls.YesButton.EmitSignal(NClickableControl.SignalName.Released,controls.YesButton);await pending;
+            await mpExecutor.FinishedExecutingActions();
+            Assert(mpRoad.IsOpen&&mpP1.Gold==75&&mpP2.Gold==30,
+                $"MP confirm did not deduct 50 Gold from every player (got p1={mpP1.Gold}, p2={mpP2.Gold})");
+
+            GD.Print("CROSSROADS_UI_PASS node alignment, scaled/scrolled map, endpoint-only mouse/controller interaction, both endpoints, room completion, native dialog, cancel, insufficient funds, gold spending, act 2 pricing, multiplayer all-afford/dual-deduct UI, unlocked map");
         }
         finally
         {
             viewport.QueueFree();await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
             if(atlas!=null)ResourceLoader.RemoveResourceFormatLoader(atlas);
+            mpSync?.Dispose();mpExecutor?.Cancel();
             sync.Dispose();executor.Cancel();RoadHotkeys=null;harmony.UnpatchAll(harmony.Id);
         }
     }

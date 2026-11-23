@@ -45,7 +45,7 @@ public sealed class ThingsOriginEyeWithTeeth : ThingsMonsterModel
         AscensionLevel.DeadlyEnemies, 5, 4);
 
     private int HealAmountPerPlayer => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 12, 10);
+        AscensionLevel.ToughEnemies, 8, 6);
 
     public bool StartsWithBite
     {
@@ -67,7 +67,7 @@ public sealed class ThingsOriginEyeWithTeeth : ThingsMonsterModel
     protected override string VisualsPath => SceneHelper.GetScenePath("creature_visuals/origin_eye_with_teeth");
 
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 26, 22) + (IsDread() ? 4 : 0);
+        AscensionLevel.ToughEnemies, 16, 14) + (IsDread() ? 2 : 0);
 
     public override int MaxInitialHp => MinInitialHp;
 
@@ -180,16 +180,10 @@ public sealed class ThingsOriginEyeWithTeeth : ThingsMonsterModel
             // 多人游戏时回血按玩家数 scaling，与 OriginFogmog 的 HealMove 保持一致
             var healAmount = HealAmountPerPlayer * MultiplayerCompat.GetEffectivePlayerCount(combatState);
             await CreatureCmd.Heal(boss, healAmount);
-        }
-
-        var aliveAllies = combatState.GetTeammatesOf(Creature)
-            .Where(c => c.IsAlive)
-            .ToArray();
-        if (aliveAllies.Length > 0)
-        {
+            // 仅赋予始源雾菇本体（固定 Slots[0] 先手行动）+1 力量，避免同回合内前序眼给后序攻击眼加力导致意图失真
             await PowerCmd.Apply<StrengthPower>(
                 new ThrowingPlayerChoiceContext(),
-                aliveAllies,
+                boss,
                 NourishStrength,
                 Creature,
                 null);

@@ -51,6 +51,7 @@ public sealed class ThingsCaveGodBossEncounter : ModBossEncounter
         "res://images/rooms/cave_god_boss/cavegod_bg_far.png",
         "res://images/rooms/cave_god_boss/cavegod_fg_platform.png",
         ModelDb.Power<ThingsCaveGodAncientCorePower>().ResolvedBigIconPath,
+        ModelDb.Power<ThingsCaveGodMagmaSealPower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsCaveGodAgingPower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsCaveGodBrokenBladePower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsCaveGodShatteredShieldPower>().ResolvedBigIconPath,

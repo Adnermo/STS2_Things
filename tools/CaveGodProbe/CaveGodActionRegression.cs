@@ -380,6 +380,7 @@ public partial class CaveGodProbeNode
                 if (ActionPoseHits.Count != 1 || Math.Abs(ActionPoseHits[0] - 1.35) > 0.025)
                     failures.Add($"CleaveSweep (right={right}) contact pose ({mode}) got {(ActionPoseHits.Count > 0 ? ActionPoseHits[0] : -1):F3}, expected 1.350.");
             }
+            VerifyAdditiveOverlayStability(controller, samples, failures);
         }
         finally
         {
@@ -394,6 +395,179 @@ public partial class CaveGodProbeNode
         foreach (string failure in failures) GD.Print("ACTION_REGRESSION: " + failure);
         Assert(failures.Count == 0, string.Join("; ", failures));
         GD.Print("CaveGod action regression: PASS");
+    }
+
+    private static void VerifyAdditiveOverlayStability(
+        NCaveGodBossBackground controller,
+        List<object> samples,
+        List<string> failures)
+    {
+        string[] monitoredBones =
+        [
+            "shoulder1", "shoulder2", "body1", "arm1_1", "arm2_1",
+            "hand1_contact_rotation", "hand2_contact_rotation",
+        ];
+        var disposables = new List<GodotObject>();
+        var rigs = new List<GodotObject[]>(ActionSprites.Length);
+        try
+        {
+            for (int sIdx = 0; sIdx < ActionSprites.Length; sIdx++)
+            {
+                using Variant skelVar = ActionSprites[sIdx].Call("get_skeleton");
+                GodotObject? skelObj = skelVar.AsGodotObject();
+                Assert(skelObj != null, $"CaveGod sprite[{sIdx}] skeleton unavailable.");
+                disposables.Add(skelObj!);
+                var boneObjs = new GodotObject[monitoredBones.Length];
+                for (int bIdx = 0; bIdx < monitoredBones.Length; bIdx++)
+                {
+                    using Variant boneVar = skelObj!.Call("find_bone", monitoredBones[bIdx]);
+                    GodotObject? boneObj = boneVar.AsGodotObject();
+                    Assert(boneObj != null, $"CaveGod sprite[{sIdx}] missing bone '{monitoredBones[bIdx]}'.");
+                    disposables.Add(boneObj!);
+                    boneObjs[bIdx] = boneObj!;
+                }
+                rigs.Add(boneObjs);
+            }
+
+            (float Rot, Vector2 Pos)[][] CaptureSnapshot()
+            {
+                var snap = new (float Rot, Vector2 Pos)[rigs.Count][];
+                for (int r = 0; r < rigs.Count; r++)
+                {
+                    var bones = rigs[r];
+                    var row = new (float Rot, Vector2 Pos)[bones.Length];
+                    for (int b = 0; b < bones.Length; b++)
+                    {
+                        row[b] = (
+                            bones[b].Call("get_rotation").AsSingle(),
+                            new Vector2(
+                                bones[b].Call("get_world_x").AsSingle(),
+                                bones[b].Call("get_world_y").AsSingle()));
+                    }
+                    snap[r] = row;
+                }
+                return snap;
+            }
+
+            void ResetToAngryIdlePhase()
+            {
+                controller.SetCriticalTremor(false);
+                controller.ResetVisualState();
+                controller.SetAngry(false);
+                controller.SetAngry(true);
+                AdvanceAction(0.5);
+            }
+
+            (string Name, string? AttackClip, int ActiveFrames, int[] RecoilFrames)[] scenarios =
+            [
+                ("idle_angry+tremor+recoil", null, 300, new[] { 10, 40, 70, 100, 130, 160, 190, 220, 250, 280 }),
+                ("central_slam_angry+tremor+recoil", "central_slam_angry", 270, new[] { 40, 110, 175 }),
+                ("double_fist_crush_angry+tremor+recoil", "double_fist_crush_angry", 240, new[] { 35, 95, 155 }),
+            ];
+
+            const int settleFrames = 60;
+            foreach (var scenario in scenarios)
+            {
+                int totalFrames = scenario.ActiveFrames + settleFrames;
+                var reference = new (float Rot, Vector2 Pos)[totalFrames + 1][][];
+
+                // 1. Clean Track-0-only reference pass.
+                ResetToAngryIdlePhase();
+                if (scenario.AttackClip != null)
+                {
+                    controller.StartAttackAnim(scenario.AttackClip);
+                    AdvanceAction(0);
+                }
+                reference[0] = CaptureSnapshot();
+                for (int f = 1; f <= totalFrames; f++)
+                {
+                    AdvanceAction(1.0 / 60.0);
+                    reference[f] = CaptureSnapshot();
+                }
+
+                // 2. Identical Track-0 pass with Track 2 critical_tremor + Track 1 hit_recoil_angry (MixBlend.Add).
+                ResetToAngryIdlePhase();
+                controller.SetCriticalTremor(true);
+                if (scenario.AttackClip != null)
+                {
+                    controller.StartAttackAnim(scenario.AttackClip);
+                    AdvanceAction(0);
+                }
+                var recoilSet = new HashSet<int>(scenario.RecoilFrames);
+                float maxRotDelta = 0f;
+                float maxHandRotDelta = 0f;
+                float maxArmPosDelta = 0f;
+                float settleRotDelta = 0f;
+                float settleHandRotDelta = 0f;
+                float settleArmPosDelta = 0f;
+
+                for (int f = 1; f <= totalFrames; f++)
+                {
+                    if (recoilSet.Contains(f))
+                        controller.PlayHurtAnim(forceGroan: true, allowGroan: false);
+                    if (f == scenario.ActiveFrames)
+                    {
+                        controller.SetCriticalTremor(false);
+                        controller.ResetVisualState();
+                    }
+                    AdvanceAction(1.0 / 60.0);
+                    var current = CaptureSnapshot();
+                    for (int r = 0; r < rigs.Count; r++)
+                    {
+                        for (int b = 0; b < monitoredBones.Length; b++)
+                        {
+                            float dRot = MathF.Abs(current[r][b].Rot - reference[f][r][b].Rot);
+                            float dPos = current[r][b].Pos.DistanceTo(reference[f][r][b].Pos);
+                            string boneName = monitoredBones[b];
+                            if (boneName is "hand1_contact_rotation" or "hand2_contact_rotation")
+                            {
+                                maxHandRotDelta = MathF.Max(maxHandRotDelta, dRot);
+                                if (f == totalFrames) settleHandRotDelta = MathF.Max(settleHandRotDelta, dRot);
+                            }
+                            else if (boneName is "shoulder1" or "shoulder2" or "body1")
+                            {
+                                maxRotDelta = MathF.Max(maxRotDelta, dRot);
+                                if (f == totalFrames) settleRotDelta = MathF.Max(settleRotDelta, dRot);
+                            }
+                            else
+                            {
+                                maxArmPosDelta = MathF.Max(maxArmPosDelta, dPos);
+                                if (f == totalFrames) settleArmPosDelta = MathF.Max(settleArmPosDelta, dPos);
+                            }
+                        }
+                    }
+                }
+
+                samples.Add(new
+                {
+                    state = "additive-overlay",
+                    scenario = scenario.Name,
+                    maxRotDelta,
+                    maxHandRotDelta,
+                    maxArmPosDelta,
+                    settleRotDelta,
+                    settleHandRotDelta,
+                    settleArmPosDelta,
+                });
+                GD.Print($"ADDITIVE_OVERLAY {scenario.Name}: maxRot={maxRotDelta:F3}deg handRot={maxHandRotDelta:F4}deg armPos={maxArmPosDelta:F2}px settle=({settleRotDelta:F4}deg, {settleHandRotDelta:F4}deg, {settleArmPosDelta:F3}px)");
+
+                if (maxHandRotDelta > 0.1f)
+                    failures.Add($"{scenario.Name}: hand contact rotation drifted by {maxHandRotDelta:F3}deg (limit 0.1deg).");
+                if (maxRotDelta > 6.0f)
+                    failures.Add($"{scenario.Name}: shoulder/body1 rotation delta reached {maxRotDelta:F3}deg (limit 6.0deg).");
+                if (maxArmPosDelta > 25.0f)
+                    failures.Add($"{scenario.Name}: arm1_1/arm2_1 world drift reached {maxArmPosDelta:F2}px (limit 25px).");
+                if (settleRotDelta > 0.25f || settleHandRotDelta > 0.1f || settleArmPosDelta > 1.0f)
+                    failures.Add($"{scenario.Name}: residual drift after clearing overlays (rot={settleRotDelta:F3}deg hand={settleHandRotDelta:F3}deg pos={settleArmPosDelta:F2}px).");
+            }
+        }
+        finally
+        {
+            controller.SetCriticalTremor(false);
+            controller.ResetVisualState();
+            for (int i = disposables.Count - 1; i >= 0; i--)
+                disposables[i].Dispose();
+        }
     }
 
     private async Task ActionCapture(string output, string name)

@@ -92,7 +92,7 @@ public sealed class ThingsGravetideSlug : GravetideSlugBase
         var goop = new MoveState(
             "GOOP_MOVE",
             GoopAndCreateCorpseMove,
-            new DebuffIntent());
+            new DebuffIntent(), new SummonIntent());
         var summon = new MoveState(
             "SUMMON_CORPSE_SLUGS_MOVE",
             SummonCorpseSlugsMove,

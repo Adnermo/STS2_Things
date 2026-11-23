@@ -32,7 +32,7 @@ public sealed class ThingsAbyssalGlandTentacle : ThingsAbyssalSmallTentacleBase
     protected override string VisualsPath => "res://scenes/creature_visuals/things_abyssal_gland_tentacle.tscn";
 
     public int BossStrengthBuff => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 2, 1) + (Sts2VersionSeam.IsDread() ? 1 : 0);
-    public int SelfBuffBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 7, 5) + (Sts2VersionSeam.IsDread() ? 2 : 0);
+    public int SelfBuffBlock => AscensionHelper.GetValueIfAscension(AscensionLevel.ToughEnemies, 3, 2) + (Sts2VersionSeam.IsDread() ? 1 : 0);
     public int GlandSlapDamage => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4) + (Sts2VersionSeam.IsDread() ? 1 : 0);
     public const int GlandSlapBossStrength = 1;
     public int ChargeBossVigor => AscensionHelper.GetValueIfAscension(AscensionLevel.DeadlyEnemies, 5, 4) + (Sts2VersionSeam.IsDread() ? 1 : 0);

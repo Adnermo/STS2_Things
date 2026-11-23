@@ -87,10 +87,18 @@ for(const side of [1,2]){
 for(const clip of Object.values(raw.animations))for(const [name,keys] of Object.entries(clip.ik??{}))
  for(const key of keys)if((key.mix??1)===0 && key.bendPositive===undefined)
   key.bendPositive=raw.ik.find(c=>c.name===name)?.bendPositive??true;
-// Every incoming clip needs the helper directions too. Otherwise the helper
+// Every incoming non-additive clip needs the helper directions too. Otherwise the helper
 // rotates toward setup zero while its transform constraint simultaneously fades
 // out, briefly bending the wrist away from both the outgoing and incoming pose.
+// Additive overlays (MixBlend.add) MUST NOT bake absolute wrist angles or stale events,
+// otherwise playing them on Track 1/2 adds -85.8°/-101.7° on top of active hand poses.
+const ADDITIVE_OVERLAYS=new Set(['hit_recoil','hit_recoil_angry','critical_tremor']);
 for(const [name,clip] of Object.entries(raw.animations)){
+ if(ADDITIVE_OVERLAYS.has(name)){
+  if(clip.bones){delete clip.bones.hand1_contact_rotation;delete clip.bones.hand2_contact_rotation;}
+  delete clip.events;
+  continue;
+ }
  const duration=data.findAnimation(name).duration;
  for(const side of [1,2]){
   const keys=[];let last;

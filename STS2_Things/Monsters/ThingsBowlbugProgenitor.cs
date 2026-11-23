@@ -210,7 +210,12 @@ public sealed class ThingsBowlbugProgenitor : ThingsSpineMonster
         return spawned;
     }
 
-    /// <summary>生成单只盛碗虫底层实现，遵循原版 SpawnedThisTurn 规则，不强行注入 Stun 避免破坏状态机</summary>
+    /// <summary>
+    /// 生成单只盛碗虫底层实现：
+    /// 敌方回合主动召唤依赖原版 SpawnedThisTurn 跳过当前敌方回合；
+    /// 玩家回合内（含回合结束自动结算期）由护巢本能生成的盛碗虫会在阵营切换时被 OnSideSwitch 清空 SpawnedThisTurn，
+    /// 故须在此主动调用原生 CreatureCmd.Stun 令其跳过紧接着的敌方回合，下回合再按原版首招循环行动。
+    /// </summary>
     private async Task<bool> SpawnSingleBowlbug(PlayerChoiceContext choiceContext, decimal maxHpMultiplier)
     {
         if (!Creature.IsAlive || CombatManager.Instance.IsOverOrEnding || !CombatState.IsLiveCombat()) return false;
@@ -238,6 +243,11 @@ public sealed class ThingsBowlbugProgenitor : ThingsSpineMonster
         if (Sts2VersionSeam.IsDread())
         {
             await PowerCmd.Apply<StrengthPower>(choiceContext, creature, 1m, Creature, null);
+        }
+
+        if (CombatState.CurrentSide != CombatSide.Enemy && creature.IsAlive)
+        {
+            await CreatureCmd.Stun(creature);
         }
 
         return true;

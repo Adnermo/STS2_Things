@@ -1,9 +1,12 @@
 using HarmonyLib;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization.Metadata;
+using Godot;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -242,6 +245,58 @@ internal static class CrossroadSaveLoadPatches
             save.Modifiers.Remove(__state);
     }
 
+    [HarmonyPatch(typeof(JsonSerializationUtility), nameof(JsonSerializationUtility.AlphabetizeProperties))]
+    [HarmonyPostfix]
+    private static void AfterAlphabetizeProperties(JsonTypeInfo info)
+    {
+        if (info.Type != typeof(SerializableRun) || info.Kind != JsonTypeInfoKind.Object || info.IsReadOnly)
+            return;
+
+        JsonPropertyInfo? modifiersProp = info.Properties.FirstOrDefault(
+            p => string.Equals(p.Name, "modifiers", StringComparison.Ordinal));
+        if (modifiersProp?.Get is { } baseGetter)
+        {
+            modifiersProp.Get = obj =>
+            {
+                object? raw = baseGetter(obj);
+                if (obj is not SerializableRun run || raw is not List<SerializableModifier> list)
+                    return raw;
+
+                if (IsBlitzSave(run))
+                {
+                    return list.Any(m => Crossroads.IsLedgerId(m.Id))
+                        ? list.Where(m => !Crossroads.IsLedgerId(m.Id)).ToList()
+                        : list;
+                }
+
+                if (list.Any(m => Crossroads.IsLedgerId(m.Id)))
+                    return list;
+
+                if (!Crossroads.TryGetSerializedLedger(run, out var mod) &&
+                    _canonicalizingDepth > 0 && _canonicalizedLedger != null)
+                {
+                    mod = _canonicalizedLedger;
+                }
+
+                if (mod == null)
+                    return list;
+
+                var augmented = new List<SerializableModifier>(list.Count + 1);
+                augmented.AddRange(list);
+                augmented.Add(mod);
+                return augmented;
+            };
+        }
+
+        Action<object>? baseOnDeserialized = info.OnDeserialized;
+        info.OnDeserialized = obj =>
+        {
+            baseOnDeserialized?.Invoke(obj);
+            if (obj is SerializableRun run)
+                Crossroads.ExtractSerializedLedger(run);
+        };
+    }
+
     private static async Task RemoveInjectedLedgerAfterSaveAsync(Task pending, SerializableRun save, SerializableModifier injected)
     {
         try
@@ -273,11 +328,149 @@ internal static class CrossroadHistoryLookupPatch
     private static bool Prefix(RunState __instance, MapLocation location, ref MapPointHistoryEntry? __result)
     {
         if (Sts2VersionSeam.IsBlitz(__instance)) return true;
-        int? index = Crossroads.Ledger(__instance)?.HistoryIndex(location);
-        if (!index.HasValue || location.actIndex < 0 || location.actIndex >= __instance.MapPointHistory.Count) return true;
+        if (!location.coord.HasValue || location.actIndex < 0 || location.actIndex >= __instance.MapPointHistory.Count)
+            return true;
+
         var history = __instance.MapPointHistory[location.actIndex];
-        __result = index.Value < history.Count ? history[index.Value] : null;
+        if (Crossroads.TryResolveHistoryIndex(__instance, location, out int index))
+        {
+            __result = index >= 0 && index < history.Count ? history[index] : null;
+            return false;
+        }
+
+        if (location.actIndex == __instance.CurrentActIndex)
+        {
+            // Never fall back to vanilla coord.row indexing for an unvisited node in the
+            // current act (e.g. during NMapPoint.OnSelected() before AddVisitedMapCoord runs).
+            __result = null;
+            return false;
+        }
+
+        if (location.actIndex < __instance.CurrentActIndex &&
+            Crossroads.Ledger(__instance)?.HasHistoryForAct(location.actIndex) == true)
+        {
+            __result = null;
+            return false;
+        }
+
+        return true;
+    }
+}
+
+// Vanilla NNormalMapPoint.UpdateIcon indexes MapPointHistory[CurrentActIndex] by
+// Point.coord.row directly, flashing the previous same-row room icon on click and
+// displaying the wrong revealed ? icon on every subsequent row after a crossroad.
+[HarmonyPatch(typeof(NNormalMapPoint), "UpdateIcon")]
+internal static class CrossroadUnknownIconPatch
+{
+    private static readonly AccessTools.FieldRef<NMapPoint, IRunState?> RunStateRef =
+        AccessTools.FieldRefAccess<NMapPoint, IRunState?>("_runState");
+    private static readonly AccessTools.FieldRef<NNormalMapPoint, TextureRect?> IconRef =
+        AccessTools.FieldRefAccess<NNormalMapPoint, TextureRect?>("_icon");
+    private static readonly AccessTools.FieldRef<NNormalMapPoint, TextureRect?> OutlineRef =
+        AccessTools.FieldRefAccess<NNormalMapPoint, TextureRect?>("_outline");
+
+    // Static helpers are public on v113.1 and private on v111.1; delegate binding works on both.
+    private static readonly Func<MapPointType, string> GetIconName =
+        (Func<MapPointType, string>)Delegate.CreateDelegate(
+            typeof(Func<MapPointType, string>),
+            AccessTools.Method(typeof(NNormalMapPoint), "IconName", [typeof(MapPointType)])!);
+    private static readonly Func<string, string> GetIconPath =
+        (Func<string, string>)Delegate.CreateDelegate(
+            typeof(Func<string, string>),
+            AccessTools.Method(typeof(NNormalMapPoint), "IconPath", [typeof(string)])!);
+    private static readonly Func<string, string> GetOutlinePath =
+        (Func<string, string>)Delegate.CreateDelegate(
+            typeof(Func<string, string>),
+            AccessTools.Method(typeof(NNormalMapPoint), "OutlinePath", [typeof(string)])!);
+    private static readonly Func<RoomType, string> GetUnknownIconPath =
+        (Func<RoomType, string>)Delegate.CreateDelegate(
+            typeof(Func<RoomType, string>),
+            AccessTools.Method(typeof(NNormalMapPoint), "UnknownIconPath", [typeof(RoomType)])!);
+    private static readonly Func<RoomType, string> GetUnknownOutlinePath =
+        (Func<RoomType, string>)Delegate.CreateDelegate(
+            typeof(Func<RoomType, string>),
+            AccessTools.Method(typeof(NNormalMapPoint), "UnknownOutlinePath", [typeof(RoomType)])!);
+
+    private static bool Prefix(NNormalMapPoint __instance)
+    {
+        if (__instance.Point == null ||
+            __instance.Point.PointType != MapPointType.Unknown ||
+            __instance.State != MapPointState.Traveled)
+            return true;
+
+        IRunState? runState = RunStateRef(__instance);
+        if (runState == null || Sts2VersionSeam.IsBlitz(runState))
+            return true;
+
+        TextureRect? icon = IconRef(__instance);
+        TextureRect? outline = OutlineRef(__instance);
+        if (icon == null || outline == null)
+            return true;
+
+        MapPointHistoryEntry? entry = runState.GetHistoryEntryFor(
+            new MapLocation(__instance.Point.coord, runState.CurrentActIndex));
+        string iconPath;
+        string outlinePath;
+        if (entry != null && entry.Rooms.Count > 0)
+        {
+            RoomType roomType = entry.Rooms[0].RoomType;
+            iconPath = GetUnknownIconPath(roomType);
+            outlinePath = GetUnknownOutlinePath(roomType);
+        }
+        else
+        {
+            string unknownName = GetIconName(MapPointType.Unknown);
+            iconPath = GetIconPath(unknownName);
+            outlinePath = GetOutlinePath(unknownName);
+        }
+
+        icon.Texture = ResourceLoader.Load<Texture2D>(iconPath, null, ResourceLoader.CacheMode.Reuse);
+        outline.Texture = ResourceLoader.Load<Texture2D>(outlinePath, null, ResourceLoader.CacheMode.Reuse);
         return false;
+    }
+}
+
+// Map point hover tips compute floor from coord.row + 1; override with true visit-order floor.
+[HarmonyPatch(typeof(NMapPoint), "OnFocus")]
+internal static class CrossroadMapPointHoverFloorPatch
+{
+    private static readonly AccessTools.FieldRef<NMapPoint, IRunState?> RunStateRef =
+        AccessTools.FieldRefAccess<NMapPoint, IRunState?>("_runState");
+
+    [ThreadStatic]
+    private static int? _hoverFloorOverride;
+
+    internal static int? ActiveFloorOverride => _hoverFloorOverride;
+
+    private static void Prefix(NMapPoint __instance, out int? __state)
+    {
+        __state = _hoverFloorOverride;
+        if (__instance.Point == null) return;
+        IRunState? runState = RunStateRef(__instance);
+        if (runState == null || Sts2VersionSeam.IsBlitz(runState)) return;
+        if (Crossroads.TryComputeFloorNumber(
+                runState,
+                new MapLocation(__instance.Point.coord, runState.CurrentActIndex),
+                out int floorNumber))
+        {
+            _hoverFloorOverride = floorNumber;
+        }
+    }
+
+    private static void Finalizer(int? __state)
+    {
+        _hoverFloorOverride = __state;
+    }
+}
+
+[HarmonyPatch(typeof(NMapPointHistoryHoverTip), nameof(NMapPointHistoryHoverTip.Create))]
+internal static class CrossroadHistoryHoverTipCreatePatch
+{
+    private static void Prefix(ref int floorNum)
+    {
+        if (CrossroadMapPointHoverFloorPatch.ActiveFloorOverride is { } overrideFloor)
+            floorNum = overrideFloor;
     }
 }
 

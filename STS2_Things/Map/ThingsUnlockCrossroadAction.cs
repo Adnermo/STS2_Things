@@ -108,10 +108,59 @@ public static class Crossroads
         };
     }
 
+    public static bool TryResolveHistoryIndex(IRunState run, MapLocation location, out int historyIndex)
+    {
+        if (location.coord is not { } coord || location.actIndex < 0)
+        {
+            historyIndex = -1;
+            return false;
+        }
+
+        int? ledgerIndex = Ledger(run)?.HistoryIndex(location);
+        if (ledgerIndex.HasValue)
+        {
+            historyIndex = ledgerIndex.Value;
+            return true;
+        }
+
+        if (location.actIndex == run.CurrentActIndex && run is RunState runState)
+        {
+            IReadOnlyList<MapCoord> visited = runState.VisitedMapCoords;
+            for (int i = 0; i < visited.Count; i++)
+            {
+                if (visited[i] == coord)
+                {
+                    historyIndex = i;
+                    return true;
+                }
+            }
+        }
+
+        historyIndex = -1;
+        return false;
+    }
+
+    public static bool TryComputeFloorNumber(IRunState run, MapLocation location, out int floorNumber)
+    {
+        if (TryResolveHistoryIndex(run, location, out int historyIndex))
+        {
+            int priorFloors = 0;
+            int priorActCount = Math.Min(location.actIndex, run.MapPointHistory.Count);
+            for (int i = 0; i < priorActCount; i++)
+                priorFloors += run.MapPointHistory[i].Count;
+            floorNumber = priorFloors + historyIndex + 1;
+            return true;
+        }
+
+        floorNumber = 0;
+        return false;
+    }
+
     public static async Task<CrossroadPurchaseResult> Purchase(Player payer, int act, ulong fingerprint, MapCoord from, MapCoord to, int quotedPrice)
     {
         if (payer.RunState is not RunState run || !run.Players.Contains(payer)) return CrossroadPurchaseResult.Stale;
-        if (run.CurrentActIndex != act || quotedPrice != CrossroadPlan.Price || run.Map == null ||
+        int price = CrossroadPlan.PriceForAct(act);
+        if (run.CurrentActIndex != act || quotedPrice != price || run.Map == null ||
             CrossroadPlan.Fingerprint(run.Map) != fingerprint) return CrossroadPurchaseResult.Stale;
         if (run.CurrentMapCoord != from || run.VisitedMapCoords.Contains(to)) return CrossroadPurchaseResult.NotAtRoad;
         var ledger = Ledger(run);
@@ -121,13 +170,14 @@ public static class Crossroads
         if (road.IsOpen) return CrossroadPurchaseResult.AlreadyOpen;
         if (run.Map.GetPoint(from) is not { } source || run.Map.GetPoint(to) is not { } destination ||
             source.Children.Contains(destination) || destination.Children.Contains(source)) return CrossroadPurchaseResult.Stale;
-        if (payer.Gold < CrossroadPlan.Price) return CrossroadPurchaseResult.InsufficientGold;
+        if (run.Players.Any(member => member.Gold < price)) return CrossroadPurchaseResult.InsufficientGold;
 
         // Native gold spending is synchronous. Reserve before yielding so two
         // confirmed requests cannot charge twice or open a reverse cycle.
         road.FromColumn = from.col;
         road.Payer = payer.NetId;
-        await PlayerCmd.LoseGold(CrossroadPlan.Price, payer, GoldLossType.Spent);
+        foreach (Player member in run.Players)
+            await PlayerCmd.LoseGold(price, member, GoldLossType.Spent);
         source.AddChildPoint(destination);
         ledger!.Commit();
         Changed?.Invoke(run);
@@ -139,8 +189,14 @@ public sealed class ThingsUnlockCrossroadAction(Player player, int act, ulong fi
 {
     public override ulong OwnerId => player.NetId;
     public override GameActionType ActionType => GameActionType.NonCombat;
-    protected override async Task ExecuteAction() =>
-        await Crossroads.Purchase(player, act, fingerprint, from, to, price);
+    protected override async Task ExecuteAction()
+    {
+        CrossroadPurchaseResult result = await Crossroads.Purchase(player, act, fingerprint, from, to, price);
+        if (result != CrossroadPurchaseResult.Purchased && player.RunState.Players.Count > 1)
+        {
+            Log.Warn($"STS2_Things: crossroad unlock rejected in multiplayer: result={result}, payer={player.NetId}, act={act}, from={from}, to={to}, price={price}");
+        }
+    }
     public override INetAction ToNetAction() => new ThingsNetUnlockCrossroadAction { Act = act, Fingerprint = fingerprint, From = from, To = to, Price = price };
 }
 

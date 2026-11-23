@@ -26,7 +26,10 @@ namespace STS2_Things.Monsters;
 
 public sealed class ThingsLeechMother : ThingsSpineMonster
 {
+    public const string SleepMoveId = "SLEEP_MOVE";
     public const string BroodMoveId = "BROOD_MOVE";
+    private const string SipMoveId = "SIP_MOVE";
+    private const string AfterSleepBranchId = "AFTER_SLEEP_BRANCH";
     public const string SleepLoopSfx = "event:/sfx/enemy/enemy_attacks/slumbering_beetle/slumbering_beetle_sleep_loop";
     private NSleepingVfx? _sleepingVfx;
     private bool _isAwake;
@@ -88,7 +91,13 @@ public sealed class ThingsLeechMother : ThingsSpineMonster
         StopSleeping();
         if (Creature.GetPower<ThingsLeechMotherSlumberPower>() is { } sleep) await PowerCmd.Remove(sleep);
         if (Creature.GetPower<PlatingPower>() is { } plating) await PowerCmd.Remove(plating);
-        SetMoveImmediate((MoveState)MoveStateMachine!.States[BroodMoveId]);
+        if (MoveStateMachine is { } stateMachine)
+        {
+            if (NextMove is { CanTransitionAway: false })
+                NextMove.FollowUpState = stateMachine.States[AfterSleepBranchId];
+            else
+                SetMoveImmediate((MoveState)stateMachine.States[BroodMoveId]);
+        }
         SfxCmd.Play("event:/sfx/enemy/enemy_attacks/slumbering_beetle/slumbering_beetle_wake_up");
         await CreatureCmd.TriggerAnim(Creature, "WakeUp", 1.0f);
     }
@@ -118,31 +127,58 @@ public sealed class ThingsLeechMother : ThingsSpineMonster
         StopSleeping();
         return Task.CompletedTask;
     }
+    private void EnsureAwakeMoveNotSleeping()
+    {
+        if (!_isAwake || !Creature.IsAlive || MoveStateMachine is not { } stateMachine || NextMove == null)
+            return;
+
+        if (NextMove.Id == SleepMoveId)
+        {
+            string targetMoveId = _hasSummonedBrood ? SipMoveId : BroodMoveId;
+            SetMoveImmediate((MoveState)stateMachine.States[targetMoveId], forceTransition: true);
+            return;
+        }
+
+        string? effectiveFollowUpId = NextMove.FollowUpState?.Id ?? NextMove.FollowUpStateId;
+        if (effectiveFollowUpId == SleepMoveId || effectiveFollowUpId == string.Empty)
+            NextMove.FollowUpState = stateMachine.States[AfterSleepBranchId];
+    }
+
+    public override Task AfterSideTurnStart(CombatSide side, IReadOnlyList<Creature> participants, ICombatState combatState)
+    {
+        if (side == CombatSide.Player || participants.Contains(Creature))
+            EnsureAwakeMoveNotSleeping();
+        return Task.CompletedTask;
+    }
+
     public override Task AfterSideTurnEnd(PlayerChoiceContext choiceContext, CombatSide side,
         IEnumerable<Creature> participants)
     {
-        if (side == CombatSide.Enemy && participants.Contains(Creature) && Creature.IsAlive &&
-            _isAwake && !_hasSummonedBrood && NextMove.Id == "STUNNED" && NextMove.CanTransitionAway)
-            NextMove.FollowUpState = MoveStateMachine!.States[BroodMoveId];
+        if (side == CombatSide.Enemy && participants.Contains(Creature))
+            EnsureAwakeMoveNotSleeping();
         return Task.CompletedTask;
     }
 
     protected override MonsterMoveStateMachine GenerateMoveStateMachine()
     {
-        var sleep = new MoveState("SLEEP_MOVE", _ => Task.CompletedTask, new SleepIntent());
+        var sleep = new MoveState(SleepMoveId, _ => Task.CompletedTask, new SleepIntent());
         var brood = new MoveState(BroodMoveId, Brood, new SummonIntent(), new StatusIntent(2));
-        var sip = new MoveState("SIP_MOVE", Sip, new SingleAttackIntent(SipDamage));
+        var sip = new MoveState(SipMoveId, Sip, new SingleAttackIntent(SipDamage));
         var crush = new MoveState("CRUSH_MOVE", Crush, new SingleAttackIntent(CrushDamage), new DefendIntent());
         var rest = new MoveState("REST_MOVE", Rest, new DefendIntent(), new HealIntent());
+        var afterSleep = new ConditionalBranchState(AfterSleepBranchId);
+        afterSleep.AddState(sleep, () => !_isAwake);
+        afterSleep.AddState(brood, () => _isAwake && !_hasSummonedBrood);
+        afterSleep.AddState(sip, () => _isAwake && _hasSummonedBrood);
         var afterBrood = new ConditionalBranchState("BROOD_NEXT");
         afterBrood.AddState(brood, () => !_hasSummonedBrood);
         afterBrood.AddState(sip, () => _hasSummonedBrood);
-        sleep.FollowUpState = sleep;
+        sleep.FollowUpState = afterSleep;
         brood.FollowUpState = afterBrood;
         sip.FollowUpState = crush;
         crush.FollowUpState = rest;
         rest.FollowUpState = sip;
-        return new MonsterMoveStateMachine([sleep, brood, afterBrood, sip, crush, rest], sleep);
+        return new MonsterMoveStateMachine([sleep, afterSleep, brood, afterBrood, sip, crush, rest], sleep);
     }
 
     private async Task Brood(IReadOnlyList<Creature> targets)

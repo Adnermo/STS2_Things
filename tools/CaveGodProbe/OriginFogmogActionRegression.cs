@@ -103,11 +103,18 @@ public partial class CaveGodProbeNode
             var (state, boss) = FogmogScenario(count, ascension);
             try
             {
-                int expectedHp = ascension >= 8 ? 26 : 22;
+                int expectedBossHp = ascension >= 8 ? 230 : 220;
+                int expectedHp = ascension >= 8 ? 16 : 14;
                 int expectedDistractDmg = ascension >= 9 ? 6 : 5;
                 int expectedDazed = ascension >= 9 ? 3 : 2;
                 int expectedBiteSingle = ascension >= 9 ? 5 : 4;
-                int expectedHealPerPlayer = ascension >= 8 ? 12 : 10;
+                int expectedHealPerPlayer = ascension >= 8 ? 8 : 6;
+
+                if (count == 1)
+                {
+                    Assert(boss.Creature.MaxHp == expectedBossHp,
+                        $"A{ascension} solo Fogmog HP expected {expectedBossHp}, got {boss.Creature.MaxHp}");
+                }
 
                 // Summon both Eyes through Fogmog's native interrupted-opening double summon.
                 await boss.PerformInterruptedOpeningIllusionMove(state.PlayerCreatures.ToArray());
@@ -174,7 +181,8 @@ public partial class CaveGodProbeNode
                         $"A{ascension}/{count}p Bite damage mismatch on P{i}: {hpBeforeBite[i] - targets[i].CurrentHp} != {expectedBiteSingle * 2}");
                 }
 
-                // 3) HEAL_BOSS_MOVE: heals Boss by HealAmountPerPlayer * players AND grants +1 Strength to all living allies.
+                // 3) HEAL_BOSS_MOVE: heals Boss by HealAmountPerPlayer * players AND grants +1 Strength ONLY to Boss
+                //    (never to sibling Eyes, preventing same-turn intent desync like preview 6x2 -> actual 7x2).
                 eye2.RollMove(state.PlayerCreatures);
                 Assert(eye2.NextMove.StateId == ThingsOriginEyeWithTeeth.HealBossMoveId,
                     $"illusion2 expected {ThingsOriginEyeWithTeeth.HealBossMoveId}, got {eye2.NextMove.StateId}");
@@ -185,21 +193,22 @@ public partial class CaveGodProbeNode
                 Assert(bossHealed == expectedHealPerPlayer * count,
                     $"A{ascension}/{count}p HealBoss heal mismatch: {bossHealed} != {expectedHealPerPlayer * count}");
                 Assert(boss.Creature.GetPowerAmount<StrengthPower>() == 1
-                    && eyes[0].GetPowerAmount<StrengthPower>() == 1
-                    && eyes[1].GetPowerAmount<StrengthPower>() == 1,
-                    $"A{ascension}/{count}p HealBoss failed to grant +1 Strength to all living allies");
+                    && eyes[0].GetPowerAmount<StrengthPower>() == 0
+                    && eyes[1].GetPowerAmount<StrengthPower>() == 0,
+                    $"A{ascension}/{count}p HealBoss must grant +1 Strength ONLY to Boss (got boss={boss.Creature.GetPowerAmount<StrengthPower>()}, eye1={eyes[0].GetPowerAmount<StrengthPower>()}, eye2={eyes[1].GetPowerAmount<StrengthPower>()})");
 
-                // 4) BITE_MOVE scales with Strength (+1 Str -> +2 total damage).
+                // 4) BITE_MOVE stays faithful to its preview (unbuffed by sibling HealBoss), and scales when Strength is applied directly.
                 eye1.RollMove(state.PlayerCreatures);
                 Assert(eye1.NextMove.StateId == ThingsOriginEyeWithTeeth.BiteMoveId,
                     $"illusion1 expected {ThingsOriginEyeWithTeeth.BiteMoveId}, got {eye1.NextMove.StateId}");
-                var hpBeforeBuffedBite = targets.Select(c => c.CurrentHp).ToArray();
+                var hpBeforeUnbuffedBite = targets.Select(c => c.CurrentHp).ToArray();
                 await eye1.PerformMove();
                 for (int i = 0; i < targets.Length; i++)
                 {
-                    Assert(hpBeforeBuffedBite[i] - targets[i].CurrentHp == (expectedBiteSingle + 1) * 2,
-                        $"A{ascension}/{count}p buffed Bite damage mismatch on P{i}: {hpBeforeBuffedBite[i] - targets[i].CurrentHp} != {(expectedBiteSingle + 1) * 2}");
+                    Assert(hpBeforeUnbuffedBite[i] - targets[i].CurrentHp == expectedBiteSingle * 2,
+                        $"A{ascension}/{count}p Bite damage after sibling HealBoss mismatch on P{i}: {hpBeforeUnbuffedBite[i] - targets[i].CurrentHp} != {expectedBiteSingle * 2}");
                 }
+                await PowerCmd.Apply<StrengthPower>(Choice, eyes[0], 1m, boss.Creature, null);
 
                 // 5) Killing eye1 triggers REVIVE_MOVE -> 1-turn STUN_AFTER_REVIVE -> DISTRACT_MOVE
                 //    AND grants +1 Energy to all players while preserving StrengthPower across revive.

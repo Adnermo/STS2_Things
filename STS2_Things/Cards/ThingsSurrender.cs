@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -46,9 +45,8 @@ public sealed class ThingsSurrender : ThingsCardModel
         if (monster.NextMove == null || !monster.NextMove.CanTransitionAway) return;
         var moveStateMachine = monster.MoveStateMachine;
         if (moveStateMachine == null) return;
-        var stateLog = moveStateMachine.StateLog;
-        if (stateLog.Count == 0) return;
-        var originalStateId = stateLog.Last().Id;
+        var originalStateId = ResolveOriginalStateId(monster, moveStateMachine);
+        if (string.IsNullOrEmpty(originalStateId)) return;
         var weakAmount = DynamicVars.Weak.BaseValue;
         var applyWeak = new MoveState(
             "DEBUFF_WEAK",
@@ -74,6 +72,34 @@ public sealed class ThingsSurrender : ThingsCardModel
             MustPerformOnceBeforeTransitioning = true
         };
         monster.SetMoveImmediate(applyWeak, forceTransition: false);
+    }
+
+    private static string? ResolveOriginalStateId(MonsterModel monster, MonsterMoveStateMachine moveStateMachine)
+    {
+        if (monster.NextMove is { } liveMove)
+        {
+            if (!string.IsNullOrEmpty(liveMove.StateId) && moveStateMachine.States.ContainsKey(liveMove.StateId))
+                return liveMove.StateId;
+
+            if (liveMove.FollowUpState is { } follow &&
+                !string.IsNullOrEmpty(follow.Id) &&
+                moveStateMachine.States.ContainsKey(follow.Id))
+                return follow.Id;
+
+            if (!string.IsNullOrEmpty(liveMove.FollowUpStateId) &&
+                moveStateMachine.States.ContainsKey(liveMove.FollowUpStateId))
+                return liveMove.FollowUpStateId;
+        }
+
+        IReadOnlyList<MonsterState> stateLog = moveStateMachine.StateLog;
+        if (stateLog.Count > 0)
+        {
+            string loggedId = stateLog[stateLog.Count - 1].Id;
+            if (!string.IsNullOrEmpty(loggedId))
+                return loggedId;
+        }
+
+        return null;
     }
 
     protected override void OnUpgrade()

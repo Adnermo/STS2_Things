@@ -194,6 +194,7 @@ public partial class CaveGodProbeNode : Node
         left.EnsureAgingPower().GetAwaiter().GetResult();
         right.EnsureAgingPower().GetAwaiter().GetResult();
         body.EnsureBulwarkPower().GetAwaiter().GetResult();
+        body.EnsureMagmaSealPower().GetAwaiter().GetResult();
         if (forceRightLead.HasValue)
             body.SetRightLeadsForTest(forceRightLead.Value);
         else
@@ -1856,13 +1857,16 @@ public partial class CaveGodProbeNode : Node
             int expectedThreshold = ascension == 0 ? 113 : 122;
             Assert(s.Body.EnrageHpThreshold == expectedThreshold,
                 $"Expected EnrageHpThreshold={expectedThreshold} at A{ascension}, got {s.Body.EnrageHpThreshold}.");
+            Assert(s.Body.Creature.GetPower<ThingsCaveGodMagmaSealPower>()?.Amount == expectedThreshold,
+                $"Body must start with ThingsCaveGodMagmaSealPower={expectedThreshold} at A{ascension}.");
 
             await Hit(s, s.Right.Creature, 20m);
             await Hit(s, s.Body.Creature, 5000m);
 
             Assert(s.Body.Creature.IsAlive && !s.Body.IsDefeated, "5000-damage overkill in Phase 1 must never kill Body.");
-            Assert(s.Body.IsEnrageLocked && s.Body.Creature.HpDisplay == HpDisplay.InfiniteWithoutNumbers,
-                "Half-HP hit must immediately switch Body to HpDisplay.InfiniteWithoutNumbers.");
+            Assert(s.Body.IsEnrageLocked && s.Body.Creature.HpDisplay == HpDisplay.InfiniteWithoutNumbers &&
+                   s.Body.Creature.GetPower<ThingsCaveGodMagmaSealPower>() != null,
+                "Half-HP hit must immediately switch Body to HpDisplay.InfiniteWithoutNumbers while keeping MagmaCoreSeal visible.");
             Assert(s.Body.NextMove.Id == ThingsCaveGodBody.EnrageId &&
                    s.Body.NextMove.Intents.All(i => i is UnknownIntent),
                 $"Expected immediate EnrageId (?) at A{ascension}, got {s.Body.NextMove.Id}.");
@@ -1882,8 +1886,9 @@ public partial class CaveGodProbeNode : Node
             int expectedStr = ascension == 0 ? 2 : 3;
             Assert(s.Body.Phase == 2 && !s.Body.IsEnrageLocked && !s.Body.ShouldTriggerEnrage,
                 "Same-turn ENRAGE_ROAR must enter Phase 2 and unlock HP.");
-            Assert(s.Body.Creature.HpDisplay == HpDisplay.Normal && s.Body.Creature.CurrentHp == expectedThreshold,
-                $"After Phase 2 transition, Body HP must restore to exact 50% ({expectedThreshold}), got {s.Body.Creature.CurrentHp} ({s.Body.Creature.HpDisplay}).");
+            Assert(s.Body.Creature.HpDisplay == HpDisplay.Normal && s.Body.Creature.CurrentHp == expectedThreshold &&
+                   s.Body.Creature.GetPower<ThingsCaveGodMagmaSealPower>() == null,
+                $"After Phase 2 transition, Body HP must restore to exact 50% ({expectedThreshold}) and remove MagmaCoreSeal, got {s.Body.Creature.CurrentHp} ({s.Body.Creature.HpDisplay}).");
             Assert(s.Right.Creature.CurrentHp == s.Right.Creature.MaxHp, "ENRAGE_ROAR must heal chipped arms to full.");
             Assert(s.Body.Creature.HasPower<ThingsCaveGodAncientCorePower>(), "ENRAGE_ROAR must ensure Granite Bulwark is active.");
             foreach (var c in new[] { s.Body.Creature, s.Left.Creature, s.Right.Creature })

@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
+using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace STS2_Things.Map;
@@ -252,7 +253,8 @@ public partial class NCrossroadLayer : Node2D
             return;
         Callable.From(() =>
         {
-            if (!GodotObject.IsInstanceValid(_screen) || _screen.IsTraveling || !ReferenceEquals(_run.Map, _map))
+            if (!GodotObject.IsInstanceValid(this) || IsQueuedForDeletion() ||
+                !GodotObject.IsInstanceValid(_screen) || _screen.IsTraveling || !ReferenceEquals(_run.Map, _map))
                 return;
             _screen.SetMap(_map, _run.Rng.Seed, clearDrawings: false);
             if (_run.CurrentMapCoord is { } coord &&
@@ -278,12 +280,32 @@ public partial class NCrossroadLayer : Node2D
             return;
         }
 
-        string key = payer.Gold < CrossroadPlan.Price ? "THINGS_CROSSROAD_POOR" : "THINGS_CROSSROAD_ASK";
+        int act = _run.CurrentActIndex;
+        int price = CrossroadPlan.PriceForAct(act);
+        bool isMultiplayer = _run.Players.Count > 1;
+        List<Player> shortPlayers = _run.Players.Where(p => p.Gold < price).ToList();
+        bool canPay = shortPlayers.Count == 0;
+        string key = (isMultiplayer, canPay) switch
+        {
+            (false, true) => "THINGS_CROSSROAD_ASK",
+            (false, false) => "THINGS_CROSSROAD_POOR",
+            (true, true) => "THINGS_CROSSROAD_ASK_MP",
+            (true, false) => "THINGS_CROSSROAD_POOR_MP",
+        };
         var body = Text(key);
-        body.Add("Price", CrossroadPlan.Price); body.Add("Gold", payer.Gold);
+        body.Add("Price", price);
+        body.Add("Gold", payer.Gold);
         body.Add("Room", RoomName(_map.GetPoint(target)!.PointType));
         body.Add("GoldIcon", "[img=top]res://images/packed/sprite_fonts/gold_icon.png[/img]");
-        bool canPay = payer.Gold >= CrossroadPlan.Price;
+        if (isMultiplayer && !canPay)
+        {
+            string sep = Text("THINGS_CROSSROAD_PLAYER_SEP").GetFormattedText();
+            body.Add("ShortPlayers", string.Join(sep, shortPlayers.Select(FormatPlayerLabel)));
+        }
+
+        var buyButton = Text(isMultiplayer ? "THINGS_CROSSROAD_BUY_MP" : "THINGS_CROSSROAD_BUY");
+        buyButton.Add("Price", price);
+
         NGenericPopup? popup = NGenericPopup.Create();
         if (popup == null) return;
         _asking = true; _popup = popup;
@@ -291,18 +313,28 @@ public partial class NCrossroadLayer : Node2D
         popup.TreeExiting += () => closed.TrySetResult(false);
         modal.Add(popup);
         Task<bool> answer = popup.WaitForConfirmation(body, Text("THINGS_CROSSROAD_HEADER"),
-            Text("THINGS_CROSSROAD_CANCEL"), Text("THINGS_CROSSROAD_BUY"));
+            Text("THINGS_CROSSROAD_CANCEL"), buyButton);
         if (!canPay) popup.GetNode<NVerticalPopup>("VerticalPopup").YesButton.Disable();
-        int act = _run.CurrentActIndex; ulong fingerprint = _plan.Fingerprint;
+        ulong fingerprint = _plan.Fingerprint;
         try
         {
             await Task.WhenAny(answer, closed.Task);
             if (!canPay || !answer.IsCompletedSuccessfully || !answer.Result || !GodotObject.IsInstanceValid(this) ||
                 !GodotObject.IsInstanceValid(_screen) || !CanInteract(road) || _run.CurrentMapCoord != current) return;
             RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(new ThingsUnlockCrossroadAction(payer, act, fingerprint,
-                current, target, CrossroadPlan.Price));
+                current, target, price));
         }
         finally { _asking = false; _popup = null; }
+    }
+
+    private static string FormatPlayerLabel(Player player)
+    {
+        string? name = null;
+        if (RunManager.Instance?.NetService is { Platform: var platform } && platform != PlatformType.None)
+            name = PlatformUtil.GetPlayerName(platform, player.NetId);
+        if (string.IsNullOrWhiteSpace(name))
+            name = player.Character.Title.GetFormattedText();
+        return $"{name} ({player.Gold})";
     }
 
     private static LocString Text(string key) => new("settings_ui", key);

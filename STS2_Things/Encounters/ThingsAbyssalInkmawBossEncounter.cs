@@ -83,6 +83,7 @@ public sealed class ThingsAbyssalInkmawBossEncounter : ModBossEncounter
         "res://STS2_Things/animations/monsters/abyssal_small_tentacle/abyssal_small_tentacle_skel_data.tres",
         "res://STS2_Things/animations/monsters/abyssal_small_tentacle/abyssal_small_tentacle.png",
         ModelDb.Power<ThingsAbyssalCoverPower>().ResolvedBigIconPath,
+        ModelDb.Power<ThingsAbyssalTideLockPower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsInkBlackoutPower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsAbyssalSurgePower>().ResolvedBigIconPath,
         ModelDb.Power<ThingsAbyssalTempStrengthPower>().ResolvedBigIconPath,

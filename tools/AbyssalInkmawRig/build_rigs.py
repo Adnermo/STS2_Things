@@ -137,8 +137,10 @@ def eval_cascaded_fk(
     ripple_fn=None,
 ) -> list[float]:
     """Evaluate a multi-bone FK world-angle timeline with true per-joint overlapping action & follow-through!"""
-    # Taper phase lag cleanly to 0 at start & end so every action blends seamlessly into rest/idle!
-    edge_env = smoothstep(seg(t, 0.0, 0.07)) * (1.0 - smoothstep(seg(t, dur - 0.14, dur)))
+    # Wide smooth startup/tail envelopes keep d(t_q)/dt > 0 everywhere (ZERO startup time-reversal or tail whip snap!).
+    start_w = min(0.28, dur * 0.25)
+    end_w = min(0.32, dur * 0.26)
+    edge_env = smoothstep(seg(t, 0.0, start_w)) * (1.0 - smoothstep(seg(t, dur - end_w, dur)))
     out: list[float] = []
     t_min, t_max = keyframes[0][0], keyframes[-1][0]
     for i in range(n_bones):
@@ -184,8 +186,16 @@ def eval_parabolic_arc(
     If `spin_deg_per_s` is None, aligns rotation cleanly with the instantaneous velocity tangent!
     """
     dt = t - t_launch
-    if dt < 0.0 or dt > life:
-        return (0.0, 0.0, -40.0, 0.0)
+    rot0 = 0.0 if spin_deg_per_s is not None else (math.degrees(math.atan2(vy, vx)) - 90.0)
+    if dt < 0.0:
+        return (rot0, 0.0, -40.0, 0.0)
+    if dt > life:
+        if spin_deg_per_s is not None:
+            rot_end = spin_deg_per_s * life
+        else:
+            raw_end = math.degrees(math.atan2(vy - g * life, vx)) - 90.0
+            rot_end = rot0 + ((raw_end - rot0 + 180.0) % 360.0) - 180.0
+        return (rot_end, vx * life, -40.0, 0.0)
     x = vx * dt
     y = vy * dt - 0.5 * g * dt * dt
     cur_vx = vx
@@ -204,8 +214,10 @@ def eval_parabolic_arc(
     if spin_deg_per_s is not None:
         rot = spin_deg_per_s * dt
     else:
-        # Align teardrop tail opposite velocity direction (sprite points UP by default)
-        rot = math.degrees(math.atan2(cur_vy, cur_vx)) - 90.0
+        # Align teardrop tail opposite velocity direction (sprite points UP by default),
+        # unwrapped continuously relative to launch angle so vx < 0 arcs NEVER flip 360° across apex!
+        raw_rot = math.degrees(math.atan2(cur_vy, cur_vx)) - 90.0
+        rot = rot0 + ((raw_rot - rot0 + 180.0) % 360.0) - 180.0
     fade_in = smoothstep(seg(dt, 0.0, min(0.06, life * 0.12)))
     fade_out = 1.0 - smoothstep(seg(dt, life * 0.72, life))
     return (rot, x, y, clamp(fade_in * fade_out, 0.0, 1.0))
@@ -456,6 +468,43 @@ def build_grid_mesh(im: Image.Image, spacing: int = 16) -> tuple[np.ndarray, np.
     return verts_arr, uvs, tris
 
 
+def build_quad_mesh(im: Image.Image) -> tuple[np.ndarray, np.ndarray, list[int]]:
+    """Build a tight 4-vertex / 2-triangle quad mesh for rigid 1-bone sprites (identical visuals, ~95% fewer tris)."""
+    al = np.array(im.convert("RGBA"))[:, :, 3]
+    h, w = al.shape
+    ys, xs = np.where(al > 0)
+    if len(xs) == 0:
+        x0, y0, x1, y1 = 0, 0, w, h
+    else:
+        x0 = max(0, int(xs.min()) - 1)
+        y0 = max(0, int(ys.min()) - 1)
+        x1 = min(w, int(xs.max()) + 2)
+        y1 = min(h, int(ys.max()) + 2)
+    verts_arr = np.array([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], dtype=np.float64)
+    uvs = np.column_stack([verts_arr[:, 0] / w, verts_arr[:, 1] / h])
+    return verts_arr, uvs, [0, 1, 2, 0, 2, 3]
+
+
+def simplify_convex_hull_poly(pts: np.ndarray, max_verts: int = 8) -> np.ndarray:
+    """Return a strictly convex simplified polygon (<= max_verts) from a contour via convex hull + min-area pruning."""
+    hull = cv2.convexHull(pts.astype(np.float32), returnPoints=True).reshape(-1, 2).astype(np.float64)
+    ring = [p for p in hull]
+    while len(ring) > max(3, max_verts):
+        n = len(ring)
+        best_i = 0
+        best_area = float("inf")
+        for i in range(n):
+            a = ring[(i - 1) % n]
+            b = ring[i]
+            c = ring[(i + 1) % n]
+            area = abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]))
+            if area < best_area:
+                best_area = area
+                best_i = i
+        ring.pop(best_i)
+    return np.array(ring, dtype=np.float64)
+
+
 def encode_weighted_vertices(
     world_spine_pts: np.ndarray,
     weights_per_vert: list[list[tuple[int, float]]],
@@ -570,9 +619,10 @@ class SpineBuilder:
         spacing: int = 44,
     ) -> None:
         """Mount a rigid 1-bone hand-painted sprite centered around `anchor_px` in image coords at `bone_name`'s world origin."""
+        _ = spacing  # rigid 1-bone sprites use a tight 2-triangle quad mesh for minimal CPU clipping & skinning cost
         bidx = self.bone_idx[bone_name]
         bx, by = self.bone_world[bidx]
-        v_px, uvs, tris = build_grid_mesh(im, spacing=spacing)
+        v_px, uvs, tris = build_quad_mesh(im)
         wpts = np.column_stack([
             bx + (v_px[:, 0] - anchor_px[0]) * scale,
             by + (anchor_px[1] - v_px[:, 1]) * scale,
@@ -608,6 +658,7 @@ class SpineBuilder:
         loop: bool,
         eval_fn,
         events: list[tuple[float, str]] | None = None,
+        slot_attachments: dict[str, str | None] | None = None,
     ) -> None:
         n_steps = max(2, int(round(duration * FPS)))
         times = [round(i * duration / n_steps, 5) for i in range(n_steps + 1)]
@@ -655,6 +706,10 @@ class SpineBuilder:
             if arr[0]["time"] == 0:
                 del arr[0]["time"]
             slot_tls[sname] = {"rgba": arr}
+        if slot_attachments:
+            for sname, att_name in slot_attachments.items():
+                entry = slot_tls.setdefault(sname, {})
+                entry["attachment"] = [{"time": 0, "name": att_name}]
 
         anim_obj: dict = {}
         if bone_tls:
@@ -852,6 +907,75 @@ def bind_mesh_to_fk_chain(
     verts_px, uvs, tris = build_grid_mesh(im, spacing=spacing)
     if mirror_x:
         tris = [tris[k + o] for k in range(0, len(tris), 3) for o in (0, 2, 1)]
+
+    al = np.array(im.convert("RGBA"))[:, :, 3]
+    H, W = u_map.shape
+
+    def sample_u(vx: float, vy: float) -> float:
+        ix = int(clamp(round(vx), 0, W - 1))
+        iy = int(clamp(round(vy), 0, H - 1))
+        return float(u_map[iy, ix])
+
+    # Anti-bridge geodesic seam protection:
+    # Any grid triangle spanning a wide geodesic jump across a tight concave curl gap (|du| > 1.8)
+    # is either dropped (pure empty air) or detached onto its own opaque-pixel geodesic side so it
+    # can NEVER stretch into a razor spike when the tentacle uncoils or slams!
+    vert_list = [tuple(p) for p in verts_px]
+    uv_list = [tuple(uv) for uv in uvs]
+    vert_u = [sample_u(vx, vy) for vx, vy in vert_list]
+    clean_tris: list[int] = []
+
+    for k in range(0, len(tris), 3):
+        i0, i1, i2 = tris[k], tris[k + 1], tris[k + 2]
+        u0, u1, u2 = vert_u[i0], vert_u[i1], vert_u[i2]
+        if max(u0, u1, u2) - min(u0, u1, u2) <= 1.8:
+            clean_tris.extend((i0, i1, i2))
+            continue
+
+        # Triangle bridges a concave curl gap — inspect opaque pixels strictly inside its bbox.
+        p0, p1, p2 = vert_list[i0], vert_list[i1], vert_list[i2]
+        bx0 = max(0, int(math.floor(min(p0[0], p1[0], p2[0]))))
+        bx1 = min(W, int(math.ceil(max(p0[0], p1[0], p2[0]))) + 1)
+        by0 = max(0, int(math.floor(min(p0[1], p1[1], p2[1]))))
+        by1 = min(H, int(math.ceil(max(p0[1], p1[1], p2[1]))) + 1)
+        if bx1 <= bx0 or by1 <= by0:
+            continue
+        sub_al = al[by0:by1, bx0:bx1]
+        ys_o, xs_o = np.where(sub_al > 16)
+        if len(xs_o) == 0:
+            # Pure transparent air bridging across curl gap -> drop!
+            continue
+        # Test barycentric membership inside triangle so pixels from the other half of the quad don't pollute.
+        px_o = xs_o.astype(np.float64) + bx0
+        py_o = ys_o.astype(np.float64) + by0
+        ax, ay = p0
+        bx, by = p1
+        cx, cy = p2
+        denom = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+        if abs(denom) < 1e-6:
+            continue
+        w0 = ((by - cy) * (px_o - cx) + (cx - bx) * (py_o - cy)) / denom
+        w1 = ((cy - ay) * (px_o - cx) + (ax - cx) * (py_o - cy)) / denom
+        w2 = 1.0 - w0 - w1
+        inside = (w0 >= -0.02) & (w1 >= -0.02) & (w2 >= -0.02)
+        if not np.any(inside):
+            continue
+        in_us = u_map[ys_o[inside] + by0, xs_o[inside] + bx0]
+        if float(in_us.max() - in_us.min()) > 2.2:
+            # Tiny seam triangle straddling both lips -> drop to prevent cross-gap rubber-band tearing
+            continue
+        u_med = float(np.median(in_us))
+        base_idx = len(vert_list)
+        for vi in (i0, i1, i2):
+            vert_list.append(vert_list[vi])
+            uv_list.append(uv_list[vi])
+            vert_u.append(u_med)
+        clean_tris.extend((base_idx, base_idx + 1, base_idx + 2))
+
+    verts_px = np.array(vert_list, dtype=np.float64)
+    uvs = np.array(uv_list, dtype=np.float64)
+    tris = clean_tris
+
     dx = (verts_px[:, 0] - rx0) * (-scale if mirror_x else scale)
     dy = (ry0 - verts_px[:, 1]) * scale
     world_pts = np.column_stack([
@@ -859,13 +983,9 @@ def bind_mesh_to_fk_chain(
         root_world_xy[1] + dx * sin_t + dy * cos_t,
     ])
 
-    H, W = u_map.shape
     weights_list = []
     sigma_u = 0.85
-    for vx, vy in verts_px:
-        ix = int(clamp(round(vx), 0, W - 1))
-        iy = int(clamp(round(vy), 0, H - 1))
-        u = float(u_map[iy, ix])
+    for u in vert_u:
         dists = [(abs(u - k), k) for k in range(n_bones)]
         dists.sort()
         top = dists[:4]
@@ -979,36 +1099,28 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
     # Far misty shore sits at y_spine = +181 (Y=355px); bridge curb sits at y_spine = -126 (Y=666px).
     # All 6 tentacles emerge cleanly at y_spine = -42..-66 (~230-255px BELOW far shore, 60-85px BEHIND bridge)!
     bg_specs = [
-        ("bg_t_l3", "bg_tentacle_tall",  bg_tall_im,  bg_tall_pts,  bg_tall_u,  (-775.0, -44.0), 0.50, False, 24.0, "6b7b94ff", 1.0, 0.4, 4.4, 10.5,  1.0),
-        ("bg_t_r3", "bg_tentacle_tall",  bg_tall_im,  bg_tall_pts,  bg_tall_u,  ( 775.0, -44.0), 0.50, True,  -24.0, "6b7b94ff", 1.0, 2.6, 4.4, 10.5, -1.0),
-        ("bg_t_l2", "bg_tentacle_outer", bg_outer_im, bg_outer_pts, bg_outer_u, (-615.0, -68.0), 0.58, True,  18.0, "7c8da8ff", 1.0, 1.8, 4.8, 11.5,  1.0),
-        ("bg_t_r2", "bg_tentacle_outer", bg_outer_im, bg_outer_pts, bg_outer_u, ( 615.0, -68.0), 0.58, False, -18.0, "7c8da8ff", 1.0, 4.3, 4.8, 11.5, -1.0),
+        ("bg_t_l3", "bg_tentacle_tall",  bg_tall_im,  bg_tall_pts,  bg_tall_u,  (-775.0, -56.0), 0.50, False, 24.0, "6b7b94ff", 1.0, 0.4, 4.4, 10.5,  1.0),
+        ("bg_t_r3", "bg_tentacle_tall",  bg_tall_im,  bg_tall_pts,  bg_tall_u,  ( 775.0, -56.0), 0.50, True,  -24.0, "6b7b94ff", 1.0, 2.6, 4.4, 10.5, -1.0),
+        ("bg_t_l2", "bg_tentacle_outer", bg_outer_im, bg_outer_pts, bg_outer_u, (-615.0, -56.0), 0.58, True,  18.0, "7c8da8ff", 1.0, 1.8, 4.8, 11.5,  1.0),
+        ("bg_t_r2", "bg_tentacle_outer", bg_outer_im, bg_outer_pts, bg_outer_u, ( 615.0, -56.0), 0.58, False, -18.0, "7c8da8ff", 1.0, 4.3, 4.8, 11.5, -1.0),
         ("bg_t_l1", "bg_tentacle_tall",  bg_tall_im,  bg_tall_pts,  bg_tall_u,  (-305.0, -56.0), 0.64, False,  9.0, "8d9db8ff", 2.0, 0.9, 4.0, 10.0,  1.0),
         ("bg_t_r1", "bg_tentacle_tall",  bg_tall_im,  bg_tall_pts,  bg_tall_u,  ( 305.0, -56.0), 0.64, True,   -9.0, "8d9db8ff", 2.0, 3.5, 4.0, 10.0, -1.0),
     ]
     # Subtle misty deep-lake broken ripple rings beneath the 4 outer background tentacles (alternating A/B variants!)
     for pref, rx, ry, rsc, r_reg, r_im in (
-        ("bg_rip_l3", -775.0, -44.0, 0.56, "ripple_ring", ripple_im),
-        ("bg_rip_r3",  775.0, -44.0, 0.56, "ripple_b_ring", ripple_b_im),
-        ("bg_rip_l2", -615.0, -68.0, 0.64, "ripple_b_ring", ripple_b_im),
-        ("bg_rip_r2",  615.0, -68.0, 0.64, "ripple_ring", ripple_im),
+        ("bg_rip_l3", -775.0, -56.0, 0.56, "ripple_ring", ripple_im),
+        ("bg_rip_r3",  775.0, -56.0, 0.56, "ripple_b_ring", ripple_b_im),
+        ("bg_rip_l2", -615.0, -56.0, 0.64, "ripple_b_ring", ripple_b_im),
+        ("bg_rip_r2",  615.0, -56.0, 0.64, "ripple_ring", ripple_im),
     ):
         sb.add_bone(pref, "water_rig", rx, ry)
         sb.add_rigid_sprite(pref, r_reg, pref, r_im,
                             (r_im.width * 0.5, r_im.height * 0.5), scale=rsc, color="7da4b855", spacing=54)
 
-    # Hardware waterline clip for all 6 background tentacles so submerged roots never float below their water rings!
+    # Strictly convex 4-vertex hardware waterline clip for all 6 background tentacles (0 concave corners, 2 clip tris!)
     bg_clip_poly = np.array([
-        [-1300.0, -44.0],
-        [ -700.0, -44.0],
-        [ -680.0, -68.0],
-        [ -450.0, -68.0],
-        [ -420.0, -56.0],
-        [  420.0, -56.0],
-        [  450.0, -68.0],
-        [  680.0, -68.0],
-        [  700.0, -44.0],
-        [ 1300.0, -44.0],
+        [-1300.0, -56.0],
+        [ 1300.0, -56.0],
         [ 1300.0,  950.0],
         [-1300.0,  950.0],
     ], dtype=np.float64)
@@ -1019,7 +1131,7 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
         # Plant root 18px deeper below waterline clip so roots always emerge cleanly out of the water!
         bg_chains[pref] = add_fk_tentacle(
             sb, pref, "water_rig", reg, im, pts, umap, (rxy[0], rxy[1] - 18.0),
-            scale=sc, mirror_x=mir, base_tilt_deg=tilt, spacing=18, slot_color=col
+            scale=sc, mirror_x=mir, base_tilt_deg=tilt, spacing=30, slot_color=col
         )
 
     # 2) Refined 3-Tier Waterline BEHIND Kraken: ambient lake glint ribbons + tight meniscus collar + A/B broken ripples!
@@ -1119,8 +1231,8 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
             out.append([(bi, w / sw) for bi, w in pairs])
         return out
 
-    # Curved elliptical lake-surface hardware clip polygon for `head_mantle` (ZERO flat cut even on +45px breach or -460px die!)
-    meniscus_xs = np.linspace(-480.0, 480.0, 17)
+    # Strictly convex 7-vertex curved lake-surface hardware clip polygon for `head_mantle` (ZERO flat cut, ZERO concave corners!)
+    meniscus_xs = np.linspace(-480.0, 480.0, 5)
     meniscus_pts = [
         [float(x), float(WATERLINE_SPINE_Y - 16.0 * math.cos(math.pi * 0.5 * (x / 480.0)))]
         for x in meniscus_xs
@@ -1129,7 +1241,7 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
     sb.add_clipping_slot("boss_water_clip", "head_mantle", "water_rig", boss_clip_poly,
                          [[(water_rig_bid, 1.0)] for _ in range(len(boss_clip_poly))])
 
-    hv_px, huvs, htris = build_grid_mesh(head_im, spacing=20)
+    hv_px, huvs, htris = build_grid_mesh(head_im, spacing=36)
     hw_pts = np.column_stack([
         (hv_px[:, 0] - CW * 0.5) * BODY_SCALE,
         WATERLINE_SPINE_Y + (WATERLINE_PX_Y - hv_px[:, 1]) * BODY_SCALE,
@@ -1139,7 +1251,7 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
     # 4) HARDWARE EYE-SOCKET CLIPPING POLYGONS + TRACKING SLIT PUPILS + 1:1 RIGID SLIDING EYELIDS!
     # Zero eyelid texture squashing — eyelids stay at (1.0, 1.0) scale and slide cleanly down behind brow!
     for tag, pim, lim in (("l", pupil_l_im, eyelid_l_im), ("r", pupil_r_im, eyelid_r_im)):
-        clip_px = np.array(extra["eye_clips"][tag], dtype=np.float64)
+        clip_px = simplify_convex_hull_poly(np.array(extra["eye_clips"][tag], dtype=np.float64), max_verts=8)
         clip_sp = np.column_stack([
             (clip_px[:, 0] - CW * 0.5) * BODY_SCALE,
             WATERLINE_SPINE_Y + (WATERLINE_PX_Y - clip_px[:, 1]) * BODY_SCALE,
@@ -1151,7 +1263,7 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
         pm = meta[f"pupil_{tag}"]
         p_wx, p_wy = body_px_to_spine((pm["x"] + pm["w"] * 0.5, pm["y"] + pm["h"] * 0.5))
         p_bid = sb.add_bone(f"pupil_{tag}", "face_c", p_wx, p_wy)
-        pv, puvs, ptris = build_grid_mesh(pim, spacing=10)
+        pv, puvs, ptris = build_quad_mesh(pim)
         pw_pts = np.column_stack([
             (pv[:, 0] + pm["x"] - CW * 0.5) * BODY_SCALE,
             WATERLINE_SPINE_Y + (WATERLINE_PX_Y - (pv[:, 1] + pm["y"])) * BODY_SCALE,
@@ -1162,7 +1274,7 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
         # Setup pose = CLOSED over socket; idle slides rigid lid UP (+48px) cleanly out of eye_clip!
         l_wx, l_wy = body_px_to_spine((lm["x"] + lm["w"] * 0.5, lm["y"] + lm["h"] * 0.5))
         l_bid = sb.add_bone(f"eyelid_{tag}", "face_c", l_wx, l_wy)
-        lv, luvs, ltris = build_grid_mesh(lim, spacing=14)
+        lv, luvs, ltris = build_quad_mesh(lim)
         lw_pts = np.column_stack([
             (lv[:, 0] + lm["x"] - CW * 0.5) * BODY_SCALE,
             WATERLINE_SPINE_Y + (WATERLINE_PX_Y - (lv[:, 1] + lm["y"])) * BODY_SCALE,
@@ -1171,7 +1283,7 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
 
     # 5) Additive Bioluminescent Crown + Shoulder Spots & Symmetrical Eye Flare
     gm = meta["ink_glow"]
-    gv, guvs, gtris = build_grid_mesh(ink_glow_im, spacing=26)
+    gv, guvs, gtris = build_grid_mesh(ink_glow_im, spacing=48)
     gw_pts = np.column_stack([
         (gv[:, 0] + gm["x"] - CW * 0.5) * BODY_SCALE,
         WATERLINE_SPINE_Y + (WATERLINE_PX_Y - (gv[:, 1] + gm["y"])) * BODY_SCALE,
@@ -1395,11 +1507,11 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
         # Stage 1 (0.00..0.52): Deep muscular inhale crouch aiming hard LEFT!
         inhale = bump(t, 0.0, 0.44, 0.56)
         intake_pulse = inhale * (0.62 + 0.38 * math.sin(TAU * 5.0 * t))
-        # Stage 2 (0.52..0.66): Explosive pressurized ignition kickback!
-        kickback = bump(t, 0.52, 0.57, 0.78)
-        kick_lag = bump(t - 0.065, 0.52, 0.57, 0.80)
-        # Stage 3 (0.54..1.54): Continuous relentless L->R sweep with torqued surge through center player (t=1.06s)!
-        firing = hold(t, 0.52, 0.56, 1.48, 1.62)
+        # Stage 2 (0.50..0.80): Explosive pressurized ignition kickback (6-frame smooth rise, zero fin-tip snap)!
+        kickback = bump(t, 0.50, 0.60, 0.80)
+        kick_lag = bump(t - 0.065, 0.50, 0.60, 0.82)
+        # Stage 3 (0.50..1.62): Continuous relentless L->R sweep with torqued surge through center player (t=1.06s)!
+        firing = hold(t, 0.50, 0.60, 1.48, 1.62)
         # Slight muscular acceleration across the center bridge deck (`t=1.06s` stays dead 0.50 -> exact 0° center hit!)
         u_raw = seg(t, 0.60, 1.52)
         sweep_u = clamp(smootherstep(u_raw) + 0.045 * math.sin(TAU * u_raw), 0.0, 1.0)
@@ -1415,10 +1527,10 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
         aim_lag = ((-1.0 + 2.0 * sw_lag) if t_lag >= 0.56 else -ease_out_cubic(seg(t_lag, 0.06, 0.46))) * (1.0 - smootherstep(seg(t_lag, 1.54, 2.02)))
 
         impact_jolt = bump(t, 1.02, 1.06, 1.24)
-        tremor = (firing + impact_jolt * 1.05) * math.sin(TAU * 16.5 * t)
+        tremor = (firing + impact_jolt * 0.45) * math.sin(TAU * 6.5 * t)
         sigh = spring_osc(t - 1.54, 5.2, 2.6) * (1.0 - smoothstep(seg(t, 1.92, 2.05)))
 
-        bp["camera_shake"] = (0.0, tremor * (11.0 + impact_jolt * 11.0), tremor * (8.0 + impact_jolt * 9.0), 1.0, 1.0)
+        bp["camera_shake"] = (0.0, tremor * (4.2 + impact_jolt * 2.5), tremor * (3.0 + impact_jolt * 2.0), 1.0, 1.0)
         # Whole torso plunges deeply into the lake on inhale, surges powerfully upward on ignition & drives through the sweep!
         bp["torso_base"] = (-aim_final * 3.2 + sigh * 1.6, aim_final * 10.0,
                             -inhale * 36.0 + kickback * 32.0 + firing * 12.0 - impact_jolt * 12.0 + cutoff_flick * 14.0 + sigh * 9.0, 1.0, 1.0)
@@ -1428,17 +1540,17 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
                             inhale * 24.0 + kickback * 16.0 + firing * 12.0 + sigh * 6.0, 1.0, 1.0)
         bp["siphon_l"] = (intake_pulse * 22.0 - firing * 14.0, intake_pulse * 16.0, intake_pulse * 10.0, 1.0, 1.0)
         bp["siphon_r"] = (-intake_pulse * 22.0 + firing * 14.0, -intake_pulse * 16.0, intake_pulse * 10.0, 1.0, 1.0)
-        bp["neck_pivot"] = (-aim_final * 8.0 + tremor * 1.6, aim_final * 24.0,
+        bp["neck_pivot"] = (-aim_final * 8.0 + tremor * 1.4, aim_final * 24.0,
                             inhale * 28.0 + kickback * 26.0 + firing * 10.0 - impact_jolt * 8.0 + cutoff_flick * 18.0 - sigh * 6.0, 1.0, 1.0)
         bp["head_pivot"] = (-aim_final * 9.5, aim_final * 12.0,
                             inhale * 16.0 + kickback * 20.0 - firing * 10.0 + cutoff_flick * 14.0, 1.0, 1.0)
         bp["crown_mid"] = (-aim_lag * 7.5 + sigh * 2.8, 0.0, inhale * 14.0 + kick_lag * 18.0 + cutoff_flick * 8.0, 1.0, 1.0)
         bp["crown_tip"] = (-aim_lag * 10.5 + sigh * 4.2, 0.0, inhale * 12.0 + kick_lag * 16.0 + cutoff_flick * 10.0, 1.0, 1.0)
-        # Lateral mantle fins compress tightly during charge -> BLAST open backward on ignition -> ripple wildly through sweep!
-        bp["fin_l_base"] = (-inhale * 14.0 + kick_lag * 32.0 + firing * 18.0 + tremor * 8.0 - sigh * 9.0, 0.0, 0.0, 1.0, 1.0)
-        bp["fin_l_tip"] = (-inhale * 18.0 + kick_lag * 36.0 - firing * 16.0 - tremor * 9.5 - sigh * 13.0, 0.0, 0.0, 1.0, 1.0)
-        bp["fin_r_base"] = (inhale * 14.0 - kick_lag * 32.0 - firing * 18.0 - tremor * 8.0 + sigh * 9.0, 0.0, 0.0, 1.0, 1.0)
-        bp["fin_r_tip"] = (inhale * 18.0 - kick_lag * 36.0 + firing * 16.0 + tremor * 9.5 + sigh * 13.0, 0.0, 0.0, 1.0, 1.0)
+        # Lateral mantle fins compress tightly during charge -> BLAST open backward on ignition -> ripple smoothly through sweep!
+        bp["fin_l_base"] = (-inhale * 14.0 + kick_lag * 24.0 + firing * 16.0 + tremor * 2.5 - sigh * 9.0, 0.0, 0.0, 1.0, 1.0)
+        bp["fin_l_tip"] = (-inhale * 18.0 + kick_lag * 26.0 - firing * 14.0 - tremor * 2.8 - sigh * 12.0, 0.0, 0.0, 1.0, 1.0)
+        bp["fin_r_base"] = (inhale * 14.0 - kick_lag * 24.0 - firing * 16.0 - tremor * 2.5 + sigh * 9.0, 0.0, 0.0, 1.0, 1.0)
+        bp["fin_r_tip"] = (inhale * 18.0 - kick_lag * 26.0 + firing * 14.0 + tremor * 2.8 + sigh * 12.0, 0.0, 0.0, 1.0, 1.0)
         bp["brow_l"] = (inhale * 11.0 + firing * 13.0, 0.0, -firing * 7.0, 1.0, 1.0)
         bp["brow_r"] = (-inhale * 11.0 - firing * 13.0, 0.0, -firing * 7.0, 1.0, 1.0)
         bp["pupil_l"] = (0.0, aim_final * 7.6, -3.5 * firing, 1.0, 1.0)
@@ -1462,10 +1574,10 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
         lunge = bump(t, 0.54, 0.78, 1.28)
         lunge_lag = bump(t - 0.065, 0.54, 0.78, 1.32)
         impact = bump(t, 0.74, 0.80, 1.12)
-        tremor = spring_osc(t - 0.78, 6.2, 12.5)
+        tremor = spring_osc(t - 0.78, 6.2, 8.5)
         bob = spring_osc(t - 0.82, 4.2, 2.2) * (1.0 - smoothstep(seg(t, 1.48, 1.65)))
 
-        bp["camera_shake"] = (0.0, tremor * 22.0, tremor * 18.0, 1.0, 1.0)
+        bp["camera_shake"] = (0.0, tremor * 10.0, tremor * 8.0, 1.0, 1.0)
         bp["torso_base"] = (tremor * 2.5, 0.0, -coil * 58.0 + lunge * 42.0 - impact * 26.0 + bob * 14.0, 1.0, 1.0)
         bp["shoulder_l"] = (-coil * 8.0 + lunge * 13.0, coil * 16.0 - lunge * 24.0, -coil * 18.0 + lunge * 30.0 + bob * 8.0, 1.0, 1.0)
         bp["shoulder_r"] = (coil * 8.0 - lunge * 13.0, -coil * 16.0 + lunge * 24.0, -coil * 18.0 + lunge * 30.0 + bob * 8.0, 1.0, 1.0)
@@ -1597,7 +1709,7 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
         bp, sc = {}, {"ink_glow": (1, 1, 1, 0.12)}
         hit = bump(t, 0.0, 0.11, 0.60)
         hit_lag = bump(t - 0.055, 0.0, 0.11, 0.62)
-        vib = spring_osc(t, 7.2, 11.5)
+        vib = spring_osc(t, 7.2, 8.5)
         bp["torso_base"] = (-hit * 2.5, hit * 8.0, -hit * 14.0, 1.0, 1.0)
         bp["neck_pivot"] = (hit * -7.5 + vib * 3.8, hit * 16.0 + vib * 8.0, -hit * 18.0, 1.0, 1.0)
         bp["head_pivot"] = (hit_lag * -7.0 + vib * 2.5, 0.0, -hit_lag * 10.0, 1.0, 1.0)
@@ -1646,7 +1758,7 @@ def build_boss_body_rig(bg_tall_im, bg_tall_pts, bg_tall_u, bg_outer_im, bg_oute
         cyc = TAU * t / dur
         swell = 0.5 + 0.5 * math.sin(cyc - 0.6)
         tremor = math.sin(TAU * 4.0 * t) * 1.4
-        bp["torso_base"] = (tremor * 0.45, math.sin(cyc * 0.5) * 4.0, -24.0 + swell * 26.0, 1.0 + swell * 0.042, 1.0 - swell * 0.024)
+        bp["torso_base"] = (tremor * 0.45, math.sin(cyc) * 4.0, -24.0 + swell * 26.0, 1.0 + swell * 0.042, 1.0 - swell * 0.024)
         bp["neck_pivot"] = (swell * 3.8 + tremor * 0.5, 0.0, -10.0 + swell * 18.0, 1.0, 1.0)
         bp["head_pivot"] = (-4.5 + swell * 5.2, 0.0, swell * 12.0, 1.02 + swell * 0.025, 0.99 - swell * 0.015)
         bp["crown_mid"] = (swell * 4.5 + tremor * 0.6, 0.0, swell * 8.0, 1.0, 1.0)
@@ -1820,7 +1932,7 @@ def build_ink_beam_rig(ink_imgs: dict[str, Image.Image], beak_spine_y: float):
     sb.add_clipping_slot("beam_clip", "shock_ring_5", "beam_pivot", clip_poly, clip_wts)
 
     # Flexible 8-bone geodesic-weighted mesh for the lush 1340px hydro-ink column!
-    v_px, uvs, tris = build_grid_mesh(col_im, spacing=26)
+    v_px, uvs, tris = build_grid_mesh(col_im, spacing=40)
     col_sx = 1.24
     col_sy = col_len / max(1.0, col_im.height - 12.0)
     w_pts = np.column_stack([
@@ -1870,8 +1982,8 @@ def build_ink_beam_rig(ink_imgs: dict[str, Image.Image], beak_spine_y: float):
     def eval_beam_kinematics(t: float):
         """Return mouth offset, base angle, per-segment local bends, and curved FK spine samples."""
         inhale = bump(t, 0.0, 0.44, 0.56)
-        kickback = bump(t, 0.52, 0.57, 0.78)
-        firing = hold(t, 0.52, 0.56, 1.48, 1.62)
+        kickback = bump(t, 0.50, 0.60, 0.80)
+        firing = hold(t, 0.50, 0.60, 1.48, 1.62)
         impact_jolt = bump(t, 1.02, 1.06, 1.24)
         cutoff_flick = bump(t, 1.48, 1.58, 1.82)
 
@@ -1895,32 +2007,43 @@ def build_ink_beam_rig(ink_imgs: dict[str, Image.Image], beak_spine_y: float):
         mouth_dx = aim_final * 34.0
         mouth_dy = -inhale * 8.0 + kickback * 48.0 + firing * 12.0 - impact_jolt * 16.0 + cutoff_flick * 24.0
 
-        tremor = (firing + impact_jolt * 0.6) * math.sin(TAU * 22.0 * t)
-        pivot_rot = theta_deg + tremor * 1.6
+        tremor = (firing + impact_jolt * 0.50) * math.sin(TAU * 8.5 * t)
+        pivot_rot = theta_deg + tremor * 1.0
 
         # Unmistakable fluid water-hose Coriolis sweep-lag + pressurized traveling hydraulic wave down the 8 segments!
         local_rots: list[float] = []
+        smooth_rots: list[float] = []
         for k in range(n_seg):
             if k == 0:
-                local_rots.append(math.sin(TAU * 11.5 * t) * 2.0 * firing)
+                local_rots.append(math.sin(TAU * 7.5 * t) * 1.5 * firing)
+                smooth_rots.append(0.0)
             else:
                 uk = k / float(n_seg - 1)
                 coriolis_lag = -0.056 * omega_deg * (0.55 + 0.45 * uk)
-                turb = math.sin(TAU * 11.5 * t - 1.35 * k) * (2.2 + 2.8 * uk) * firing
+                turb = math.sin(TAU * 7.5 * t - 1.35 * k) * (1.8 + 2.2 * uk) * firing
                 local_rots.append(coriolis_lag + turb)
+                smooth_rots.append(coriolis_lag)
 
         # Forward-kinematics world path of the curved hydro-ink centerline (`(x, y, world_rot_deg)` for k=0..n_seg)
         cx, cy = mouth_dx, beak_spine_y + mouth_dy
         cum_rot = pivot_rot
         pts_world = [(cx, cy, cum_rot)]
+        scx, scy = mouth_dx, beak_spine_y + mouth_dy
+        scum_rot = theta_deg
+        pts_world_smooth = [(scx, scy, scum_rot)]
         for k in range(n_seg):
             cum_rot += local_rots[k]
-            # Column points along -Y when rot=0; Spine CCW rotation +r rotates (0, -1) to (+sin r, -cos r)!
             rad = math.radians(cum_rot)
             cx += seg_len * math.sin(rad)
             cy -= seg_len * math.cos(rad)
             pts_world.append((cx, cy, cum_rot))
-        return mouth_dx, mouth_dy, pivot_rot, local_rots, pts_world, firing, impact_jolt
+
+            scum_rot += smooth_rots[k]
+            srad = math.radians(scum_rot)
+            scx += seg_len * math.sin(srad)
+            scy -= seg_len * math.cos(srad)
+            pts_world_smooth.append((scx, scy, scum_rot))
+        return mouth_dx, mouth_dy, pivot_rot, local_rots, pts_world, pts_world_smooth, firing, impact_jolt
 
     def sample_curve(pts_world: list[tuple[float, float, float]], dist: float) -> tuple[float, float, float]:
         idx_f = clamp(dist / seg_len, 0.0, float(n_seg) - 1e-4)
@@ -1936,7 +2059,7 @@ def build_ink_beam_rig(ink_imgs: dict[str, Image.Image], beak_spine_y: float):
 
     def anim_ink_spray(t: float):
         bp, sc = {}, {}
-        mouth_dx, mouth_dy, pivot_rot, local_rots, pts_world, firing, impact_jolt = eval_beam_kinematics(t)
+        mouth_dx, mouth_dy, pivot_rot, local_rots, pts_world, pts_world_smooth, firing, impact_jolt = eval_beam_kinematics(t)
         pre_charge = bump(t, 0.24, 0.48, 0.56)
 
         bp["beam_pivot"] = (pivot_rot, mouth_dx, mouth_dy, 1.0, 1.0)
@@ -1945,7 +2068,7 @@ def build_ink_beam_rig(ink_imgs: dict[str, Image.Image], beak_spine_y: float):
         ign_w = 0.72 + ease_out_cubic(seg(t, 0.52, 0.60)) * 0.28 + bump(t, 0.54, 0.58, 0.68) * 0.16
         hit_swell = impact_jolt * 0.14
         cut_pinch = 1.0 - smootherstep(seg(t, 1.46, 1.62)) * 0.78
-        col_width_scale = (ign_w + hit_swell + firing * math.sin(TAU * 14.0 * t) * 0.04) * cut_pinch
+        col_width_scale = (ign_w + hit_swell + firing * math.sin(TAU * 7.5 * t) * 0.035) * cut_pinch
 
         for k, bn in enumerate(seg_bones):
             if k == 0:
@@ -1975,8 +2098,8 @@ def build_ink_beam_rig(ink_imgs: dict[str, Image.Image], beak_spine_y: float):
                 dist = 40.0 + u * 1080.0
                 rx, ry, rrot = sample_curve(pts_world, dist)
                 r_sc = (0.64 + u * 0.58) * (0.65 + 0.35 * col_width_scale)
-                ra = math.sin(math.pi * u) * firing * (0.78 if ri % 2 == 0 else 0.92)
-                bp[f"shock_ring_{ri}"] = (rrot + math.sin(u * 14.0) * 5.0, rx, ry - (beak_spine_y - 30.0), r_sc, r_sc * 0.82)
+                ra = (math.sin(math.pi * u) ** 1.35) * firing * (0.78 if ri % 2 == 0 else 0.92)
+                bp[f"shock_ring_{ri}"] = (rrot + math.sin(u * 14.0) * 4.0, rx, ry - (beak_spine_y - 30.0), r_sc, r_sc * 0.82)
                 sc[f"shock_ring_{ri}"] = (1, 1, 1, ra)
             else:
                 bp[f"shock_ring_{ri}"] = (0.0, 0.0, 0.0, 1.0, 1.0)
@@ -2003,12 +2126,12 @@ def build_ink_beam_rig(ink_imgs: dict[str, Image.Image], beak_spine_y: float):
                 bp[f"streak_{si}"] = (0.0, 0.0, 0.0, 1.0, 1.0)
                 sc[f"streak_{si}"] = (1, 1, 1, 0.0)
 
-        # Continuous bridge-deck scraping splash (`sweep_splash`) riding exact jet-bridge intersection (y = -252 -> Godot y = +228)!
+        # Continuous bridge-deck scraping splash (`sweep_splash`) riding smooth jet-bridge intersection (y = -252 -> Godot y = +228)!
         bridge_y = -252.0
         hit_x = 0.0
-        for k in range(len(pts_world) - 1):
-            x0, y0, _ = pts_world[k]
-            x1, y1, _ = pts_world[k + 1]
+        for k in range(len(pts_world_smooth) - 1):
+            x0, y0, _ = pts_world_smooth[k]
+            x1, y1, _ = pts_world_smooth[k + 1]
             if y0 >= bridge_y >= y1 and abs(y0 - y1) > 1e-3:
                 f_y = (y0 - bridge_y) / (y0 - y1)
                 hit_x = x0 + (x1 - x0) * f_y
@@ -2016,8 +2139,8 @@ def build_ink_beam_rig(ink_imgs: dict[str, Image.Image], beak_spine_y: float):
         # Dim sweep_splash gently right while peak `player_impact` takes center stage so the two crowns never double-stack!
         center_duck = 1.0 - hold(t, 1.04, 1.08, 1.26, 1.38) * 0.72
         sw_sp_a = hold(t, 0.56, 0.62, 1.48, 1.58) * 0.88 * center_duck
-        sw_sp_sc = 0.86 + 0.14 * math.sin(TAU * 13.0 * t)
-        bp["sweep_splash"] = (math.sin(TAU * 11.0 * t) * 9.0, hit_x, -10.0 + math.sin(TAU * 16.0 * t) * 5.0, sw_sp_sc, sw_sp_sc * 0.86)
+        sw_sp_sc = 0.86 + 0.12 * math.sin(TAU * 7.0 * t)
+        bp["sweep_splash"] = (math.sin(TAU * 6.5 * t) * 7.5, hit_x, -10.0 + math.sin(TAU * 8.0 * t) * 4.0, sw_sp_sc, sw_sp_sc * 0.86)
         sc["sweep_splash"] = (1, 1, 1, sw_sp_a)
 
         # Explosive radial ink splash crown + 4 ballistic droplets erupting over centered player at exact `ink_hit_player` (t = 1.06s)!
@@ -2212,25 +2335,35 @@ def build_hero_tentacle_rig(
     sb.add_rigid_sprite("slam_shockwave", "shockwave_ring", "slam_shockwave", shock_im,
                         (shock_im.width * 0.5, shock_im.height * 0.52), scale=1.12, color="ffffff00")
 
-    # --- STRIKE-SIDE-OPEN HARDWARE `emerge_clip` POLYGON ---
+    # --- STRIKE-SIDE-OPEN HARDWARE `emerge_clip` POLYGON (compact 7v -> 5 clip tris, down from 16v/14 tris!) ---
     # Hugs the curved water/crater meniscus cleanly across the base trunk, while dropping wide open
     # down to y = -720 on the bridge-strike side so the slamming tentacle crosses OVER the stone curb
     # and slaps 100% UNCLIPPED directly onto the stone bridge surface!
     clip_end = "tentacle_glow" if is_ink_arm else "tentacle"
     if not mirror_x:
-        # Left arm strikes RIGHT (+X): clip entire submerged base trunk [-1400 .. +112], drop open cleanly at x >= +122 -> +1500
-        men_xs = np.linspace(-180.0, 112.0, 11)
-        men_pts = [[float(base_cx + dx), float(-6.0 - 12.0 * math.cos(math.pi * 0.5 * clamp(dx / 180.0, -1.0, 1.0)))] for dx in men_xs]
         emerge_poly = np.array(
-            [[-1400.0, -6.0]] + men_pts + [[base_cx + 122.0, -720.0], [1500.0, -720.0], [1500.0, 1500.0], [-1400.0, 1500.0]],
+            [
+                [-1400.0, -6.0],
+                [base_cx - 25.0, -18.0],
+                [base_cx + 112.0, -12.0],
+                [base_cx + 122.0, -720.0],
+                [1500.0, -720.0],
+                [1500.0, 1500.0],
+                [-1400.0, 1500.0],
+            ],
             dtype=np.float64,
         )
     else:
-        # Right arm strikes LEFT (-X): drop open cleanly at x <= -122 -> -1500, clip entire submerged base trunk [-112 .. +1400]
-        men_xs = np.linspace(-112.0, 180.0, 11)
-        men_pts = [[float(base_cx + dx), float(-6.0 - 12.0 * math.cos(math.pi * 0.5 * clamp(dx / 180.0, -1.0, 1.0)))] for dx in men_xs]
         emerge_poly = np.array(
-            [[-1500.0, -720.0], [base_cx - 122.0, -720.0]] + men_pts + [[1400.0, -6.0], [1400.0, 1500.0], [-1500.0, 1500.0]],
+            [
+                [-1500.0, -720.0],
+                [base_cx - 122.0, -720.0],
+                [base_cx - 112.0, -12.0],
+                [base_cx + 25.0, -18.0],
+                [1400.0, -6.0],
+                [1400.0, 1500.0],
+                [-1500.0, 1500.0],
+            ],
             dtype=np.float64,
         )
     sb.add_clipping_slot("emerge_clip", clip_end, "root", emerge_poly, [[(root_bid, 1.0)] for _ in range(len(emerge_poly))])
@@ -2238,7 +2371,7 @@ def build_hero_tentacle_rig(
     # --- 14-BONE PURE-ROTATIONAL FK TENTACLE CHAIN ---
     bones, rest_angs, seg_lens, _ = add_fk_tentacle_ex(
         sb, "tentacle", "emerge_rig", "tentacle", tentacle_im, pts, u_map,
-        root_world_xy=root_xy, scale=arm_scale, mirror_x=mirror_x, base_tilt_deg=base_tilt_deg, spacing=14,
+        root_world_xy=root_xy, scale=arm_scale, mirror_x=mirror_x, base_tilt_deg=base_tilt_deg, spacing=22,
         glow_im=glow_im if is_ink_arm else None,
         glow_region_name="ink_blister_glow" if is_ink_arm else None,
     )
@@ -2377,8 +2510,8 @@ def build_hero_tentacle_rig(
                 sc[f"w_drop_{idx_d}"] = (1, 1, 1, da)
 
         if include_floor_debris:
-            heave = smootherstep(seg(t, t0, t0 + 0.24))
-            overshoot = bump(t, t0 + 0.12, t0 + 0.26, t0 + 0.52)
+            heave = 1.0
+            overshoot = bump(t, t0 + 0.08, t0 + 0.24, t0 + 0.52)
             bp["f_slab_l"] = (heave * 5.0 + overshoot * 12.0, -heave * 6.0, heave * 4.0 + overshoot * 9.0, 1.0, 1.0)
             bp["f_slab_r"] = (-heave * 12.0 - overshoot * 16.0, heave * 8.0, heave * 8.0 + overshoot * 11.0, 1.0, 1.0)
             bp["f_slab_front"] = (-overshoot * 8.0, 0.0, -heave * 4.0 + overshoot * 10.0, 1.0, 1.0)
@@ -2476,9 +2609,8 @@ def build_hero_tentacle_rig(
         for wn in WATER_SLOTS:
             sc[wn] = (1, 1, 1, 0.0)
         eval_burst_fx(bp, sc, t, 0.04, include_floor_debris=True, water_visible_in_track0=False)
-        ca = smoothstep(seg(t, 0.0, 0.14))
         for sn in ("f_crater", "f_slab_back", "f_slab_l", "f_slab_r", "f_slab_front"):
-            sc[sn] = (1, 1, 1, ca)
+            sc[sn] = (1, 1, 1, 1.0)
         dust_a = bump(t, 0.04, 0.24, 0.82) * 0.52
         sc["f_dust_l"] = (1, 1, 1, dust_a)
         sc["f_dust_r"] = (1, 1, 1, dust_a)
@@ -2533,7 +2665,7 @@ def build_hero_tentacle_rig(
             u = i / (n_bones - 1)
             t_b = max(0.0, t - 0.095 * (u ** 1.15))
             hit = bump(t_b, 0.0, 0.10, 0.44)
-            vib = spring_osc(t_b, 8.2, 11.5) * (1.0 - smoothstep(seg(t, 0.45, 0.55)))
+            vib = spring_osc(t_b, 8.2, 8.5) * (1.0 - smoothstep(seg(t, 0.45, 0.55)))
             bp[bn] = (sign * (-hit * (7.5 + 10.5 * u) + vib * (3.5 + 7.0 * u)), 0.0, 0.0, 1.0, 1.0)
         kick_x = -dir_x * bump(t, 0.0, 0.09, 0.42) * 20.0
         kick_y = -bump(t, 0.0, 0.09, 0.42) * 16.0
@@ -2549,7 +2681,7 @@ def build_hero_tentacle_rig(
             (0.00, 0.0, "smooth"),
             (0.16, 32.0, "out_cubic"),
             (0.32, 10.0, "smooth"),
-            (1.06, -650.0, "in_cubic"),
+            (1.06, -650.0, "smoother"),
         ], t)
         bp = {}
         for i, bn in enumerate(bones):
@@ -2611,22 +2743,18 @@ def build_hero_tentacle_rig(
         ]
 
         def slam_lag(t: float, u: float) -> float:
-            # Sinuous tip drag on windup & peel-off, crisp 0.026s tip-slap follow-through on bridge contact!
-            if t < 0.50:
-                return 0.105 * (u ** 1.25)
-            if t < 0.68:
-                # Tightens smoothly to 0.026s distal whip-slap right at impact!
-                w = smoothstep(seg(t, 0.50, 0.66))
-                return ((1.0 - w) * 0.095 + w * 0.026) * (u ** 1.35)
-            if t < 0.84:
-                return 0.022 * (u ** 1.5)
-            return 0.145 * (u ** 1.20)
+            # Smooth C1 monotonic lag curve (ZERO step jumps or backward time reversals!):
+            # sinuous tip drag on windup (0.095s) -> crisp distal whip-slap at impact (0.024s) -> sticky peel-off (0.135s).
+            w1 = smoothstep(seg(t, 0.46, 0.64))
+            w2 = smoothstep(seg(t, 0.82, 1.08))
+            base = (1.0 - w1) * 0.095 + w1 * ((1.0 - w2) * 0.024 + w2 * 0.135)
+            return base * (u ** 1.28)
 
         def slam_ripple(t: float, u: float) -> float:
             # Apex muscle tremor + post-impact traveling fleshy shockwave down the club!
-            apex_trem = bump(t, 0.40, 0.48, 0.55) * math.sin(TAU * 16.0 * t - 3.0 * u) * (1.2 + 2.8 * u)
+            apex_trem = bump(t, 0.40, 0.48, 0.55) * math.sin(TAU * 8.5 * t - 3.0 * u) * (1.2 + 2.4 * u)
             hit_dt = t - (0.675 + 0.024 * (u ** 1.4))
-            hit_shock = spring_osc(hit_dt, 14.5, 19.0) * (1.0 - smoothstep(seg(t, 0.84, 0.94))) * (1.6 + 4.8 * u)
+            hit_shock = spring_osc(hit_dt, 13.5, 9.5) * (1.0 - smoothstep(seg(t, 0.84, 0.94))) * (1.5 + 4.2 * u)
             settle_wave = spring_osc(t - 1.32, 6.0, 2.6) * (2.5 * (u ** 1.3))
             return sign * (apex_trem + hit_shock + settle_wave)
 
@@ -2719,20 +2847,21 @@ def build_hero_tentacle_rig(
         ]
 
         def whip_lag(t: float, u: float) -> float:
-            # Faster nimble bullwhip cascade on Strike 1, huge looping overhead drag on Rebound, sticky peel on Recovery!
-            if t < 0.34:
-                return 0.085 * (u ** 1.25)
-            if t < 0.52:
-                return 0.032 * (u ** 1.45)
-            if t < 0.78:
-                return 0.115 * (u ** 1.20)
-            if t < 1.06:
-                return 0.028 * (u ** 1.45)
-            return 0.140 * (u ** 1.20)
+            # Smooth C1 monotonic lag curve (ZERO discontinuous jumps between Hit 1, Rebound, Hit 2, Recovery!)
+            w1 = smoothstep(seg(t, 0.28, 0.42))
+            w2 = smoothstep(seg(t, 0.50, 0.68))
+            w3 = smoothstep(seg(t, 0.74, 0.88))
+            w4 = smoothstep(seg(t, 1.04, 1.28))
+            v = 0.080
+            v = v + (0.028 - v) * w1
+            v = v + (0.108 - v) * w2
+            v = v + (0.026 - v) * w3
+            v = v + (0.130 - v) * w4
+            return v * (u ** 1.28)
 
         def whip_ripple(t: float, u: float) -> float:
-            h1 = spring_osc(t - (0.455 + 0.022 * u), 18.0, 22.0) * (1.0 - smoothstep(seg(t, 0.52, 0.60))) * (1.5 + 4.0 * u)
-            h2 = spring_osc(t - (0.915 + 0.024 * u), 14.5, 20.0) * (1.0 - smoothstep(seg(t, 1.06, 1.16))) * (1.8 + 5.2 * u)
+            h1 = spring_osc(t - (0.455 + 0.022 * u), 15.0, 10.0) * (1.0 - smoothstep(seg(t, 0.52, 0.60))) * (1.4 + 3.6 * u)
+            h2 = spring_osc(t - (0.915 + 0.024 * u), 13.5, 9.5) * (1.0 - smoothstep(seg(t, 1.06, 1.16))) * (1.6 + 4.6 * u)
             settle = spring_osc(t - 1.40, 6.5, 3.0) * (2.6 * (u ** 1.3))
             return sign * (h1 + h2 + settle)
 
@@ -2904,12 +3033,18 @@ def build_small_tentacle_rig(
     sb.add_rigid_sprite("slam_shockwave", "shockwave_ring", "slam_shockwave", slam_imgs["shockwave_ring"],
                         (slam_imgs["shockwave_ring"].width * 0.5, slam_imgs["shockwave_ring"].height * 0.52), scale=0.72, color="ffffff00")
 
-    # Strike-side-open hardware `emerge_clip` (hugs small crater [-900..+46], opens wide down to -420 right past crater lip at +54!)
+    # Compact 7-vertex strike-side-open hardware `emerge_clip` (down from 12v -> 5 clip tris!)
     root_bid = sb.bone_idx["root"]
-    men_xs = np.linspace(-110.0, 46.0, 7)
-    men_pts = [[float(dx), float(-4.0 - 8.0 * math.cos(math.pi * 0.5 * clamp(dx / 110.0, -1.0, 1.0)))] for dx in men_xs]
     emerge_poly = np.array(
-        [[-900.0, -4.0]] + men_pts + [[54.0, -420.0], [900.0, -420.0], [900.0, 900.0], [-900.0, 900.0]],
+        [
+            [-900.0, -4.0],
+            [-24.0, -12.0],
+            [46.0, -10.0],
+            [54.0, -420.0],
+            [900.0, -420.0],
+            [900.0, 900.0],
+            [-900.0, 900.0],
+        ],
         dtype=np.float64,
     )
     sb.add_clipping_slot("emerge_clip", "small_gland_glow", "root", emerge_poly, [[(root_bid, 1.0)] for _ in range(len(emerge_poly))])
@@ -2917,23 +3052,23 @@ def build_small_tentacle_rig(
     # Shared 10-bone pure-rotational FK chain (`small_spike` builds bones; `small_shell` & `small_gland` bind to same bones!)
     bones, rest_angs, _, b_indices = add_fk_tentacle_ex(
         sb, "small_spike", "emerge_rig", "spike", small_imgs["spike"], spike_pts, spike_u,
-        root_world_xy=root_xy, scale=arm_scale, mirror_x=False, spacing=12,
+        root_world_xy=root_xy, scale=arm_scale, mirror_x=False, spacing=19,
     )
     bind_mesh_to_fk_chain(
         sb, "small_shell", "shell", bones[0], b_indices, small_imgs["shell"], shell_pts, shell_u,
-        root_world_xy=root_xy, scale=arm_scale, mirror_x=False, spacing=12, slot_color="ffffff00",
+        root_world_xy=root_xy, scale=arm_scale, mirror_x=False, spacing=19, slot_color="ffffff00",
     )
     bind_mesh_to_fk_chain(
         sb, "small_shell_sheen", "shell_sheen", bones[0], b_indices, small_imgs["shell_sheen"], shell_pts, shell_u,
-        root_world_xy=root_xy, scale=arm_scale, mirror_x=False, spacing=12, slot_color="ffffff00", blend="additive",
+        root_world_xy=root_xy, scale=arm_scale, mirror_x=False, spacing=24, slot_color="ffffff00", blend="additive",
     )
     bind_mesh_to_fk_chain(
         sb, "small_gland", "gland", bones[0], b_indices, small_imgs["gland"], gland_pts, gland_u,
-        root_world_xy=root_xy, scale=arm_scale, mirror_x=False, spacing=12, slot_color="ffffff00",
+        root_world_xy=root_xy, scale=arm_scale, mirror_x=False, spacing=19, slot_color="ffffff00",
     )
     bind_mesh_to_fk_chain(
         sb, "small_gland_glow", "gland_glow", bones[0], b_indices, small_imgs["gland_glow"], gland_pts, gland_u,
-        root_world_xy=root_xy, scale=arm_scale, mirror_x=False, spacing=12, slot_color="ffffff00", blend="additive",
+        root_world_xy=root_xy, scale=arm_scale, mirror_x=False, spacing=24, slot_color="ffffff00", blend="additive",
     )
 
     # Front hinged breach slabs + shards + breach dust
@@ -3019,8 +3154,8 @@ def build_small_tentacle_rig(
         return bp, sc
 
     def anim_base_floor_burst(t: float):
-        heave = smootherstep(seg(t, 0.02, 0.24))
-        over = bump(t, 0.12, 0.24, 0.48)
+        heave = 1.0
+        over = bump(t, 0.08, 0.22, 0.48)
         bp = {
             "f_slab_l": (heave * 4.0 + over * 10.0, -heave * 4.0, heave * 3.0 + over * 6.0, 1.0, 1.0),
             "f_slab_r": (-heave * 11.0 - over * 14.0, heave * 6.0, heave * 6.0 + over * 8.0, 1.0, 1.0),
@@ -3030,8 +3165,7 @@ def build_small_tentacle_rig(
         dp = seg(t, 0.04, 0.78)
         bp["f_dust_l"] = (dp * 48.0, -dp * 68.0, smoothstep(dp) * 18.0, 1.0, 1.0)
         bp["f_dust_r"] = (-dp * 48.0, dp * 68.0, smoothstep(dp) * 18.0, 1.0, 1.0)
-        ca = smoothstep(seg(t, 0.0, 0.12))
-        sc = {sn: (1, 1, 1, ca) for sn in ("f_crater", "f_slab_back", "f_slab_l", "f_slab_r", "f_slab_front")}
+        sc = {sn: (1, 1, 1, 1.0) for sn in ("f_crater", "f_slab_back", "f_slab_l", "f_slab_r", "f_slab_front")}
         da = bump(t, 0.04, 0.22, 0.76) * 0.54
         sc["f_dust_l"] = (1, 1, 1, da)
         sc["f_dust_r"] = (1, 1, 1, da)
@@ -3121,17 +3255,19 @@ def build_small_tentacle_rig(
     ]
 
     def sm_slam_lag(t: float, u: float) -> float:
-        if t < 0.34:
-            return 0.085 * (u ** 1.25)
-        if t < 0.56:
-            return 0.024 * (u ** 1.45)
-        return 0.115 * (u ** 1.20)
+        # Smooth C1 monotonic lag curve (ZERO step jumps!)
+        w1 = smoothstep(seg(t, 0.28, 0.42))
+        w2 = smoothstep(seg(t, 0.54, 0.76))
+        v = 0.080
+        v = v + (0.024 - v) * w1
+        v = v + (0.110 - v) * w2
+        return v * (u ** 1.28)
 
     def anim_slam_attack(t: float):
         cur = eval_cascaded_fk(
             sm_slam_kf, t, n_bones, dur=1.25, lag_fn=sm_slam_lag,
             ripple_fn=lambda tt, u: (
-                spring_osc(tt - (0.455 + 0.02 * u), 16.5, 22.0) * (1.0 - smoothstep(seg(tt, 0.56, 0.65))) * (1.5 + 4.4 * u)
+                spring_osc(tt - (0.455 + 0.02 * u), 14.5, 10.0) * (1.0 - smoothstep(seg(tt, 0.56, 0.65))) * (1.4 + 3.8 * u)
                 + spring_osc(tt - 1.00, 7.0, 3.0) * (2.5 * (u ** 1.3))
             ),
         )
@@ -3184,22 +3320,24 @@ def build_small_tentacle_rig(
     ]
 
     def sm_dbl_lag(t: float, u: float) -> float:
-        if t < 0.29:
-            return 0.072 * (u ** 1.25)
-        if t < 0.43:
-            return 0.024 * (u ** 1.45)
-        if t < 0.68:
-            return 0.095 * (u ** 1.20)
-        if t < 0.92:
-            return 0.024 * (u ** 1.45)
-        return 0.115 * (u ** 1.20)
+        # Smooth C1 monotonic lag curve (ZERO step jumps!)
+        w1 = smoothstep(seg(t, 0.24, 0.35))
+        w2 = smoothstep(seg(t, 0.42, 0.58))
+        w3 = smoothstep(seg(t, 0.64, 0.76))
+        w4 = smoothstep(seg(t, 0.90, 1.12))
+        v = 0.070
+        v = v + (0.024 - v) * w1
+        v = v + (0.090 - v) * w2
+        v = v + (0.024 - v) * w3
+        v = v + (0.110 - v) * w4
+        return v * (u ** 1.28)
 
     def anim_double_slap(t: float):
         cur = eval_cascaded_fk(
             sm_dbl_kf, t, n_bones, dur=1.45, lag_fn=sm_dbl_lag,
             ripple_fn=lambda tt, u: (
-                spring_osc(tt - (0.375 + 0.018 * u), 18.0, 24.0) * (1.0 - smoothstep(seg(tt, 0.43, 0.50))) * (1.5 + 3.8 * u)
-                + spring_osc(tt - (0.795 + 0.020 * u), 16.0, 22.0) * (1.0 - smoothstep(seg(tt, 0.92, 1.00))) * (1.8 + 4.8 * u)
+                spring_osc(tt - (0.375 + 0.018 * u), 15.0, 10.5) * (1.0 - smoothstep(seg(tt, 0.43, 0.50))) * (1.3 + 3.4 * u)
+                + spring_osc(tt - (0.795 + 0.020 * u), 14.0, 10.0) * (1.0 - smoothstep(seg(tt, 0.92, 1.00))) * (1.6 + 4.2 * u)
                 + spring_osc(tt - 1.26, 7.0, 3.2) * (2.5 * (u ** 1.3))
             ),
         )
@@ -3289,7 +3427,7 @@ def build_small_tentacle_rig(
             u = i / (n_bones - 1)
             t_b = max(0.0, t - 0.08 * (u ** 1.15))
             hit = bump(t_b, 0.0, 0.09, 0.40)
-            vib = spring_osc(t_b, 9.0, 13.0) * (1.0 - smoothstep(seg(t, 0.38, 0.48)))
+            vib = spring_osc(t_b, 9.0, 9.0) * (1.0 - smoothstep(seg(t, 0.38, 0.48)))
             bp[bn] = (-hit * (7.5 + 10.0 * u) + vib * (3.5 + 6.5 * u), 0.0, 0.0, 1.0, 1.0)
         bp["emerge_rig"] = (0.0, -bump(t, 0.0, 0.08, 0.38) * 14.0, -bump(t, 0.0, 0.08, 0.38) * 12.0, 1.0, 1.0)
         sc: dict = {}
@@ -3302,7 +3440,7 @@ def build_small_tentacle_rig(
             (0.00, 0.0, "smooth"),
             (0.14, 24.0, "out_cubic"),
             (0.28, 8.0, "smooth"),
-            (0.92, -410.0, "in_cubic"),
+            (0.92, -410.0, "smoother"),
         ], t)
         bp = {}
         for i, bn in enumerate(bones):
@@ -3332,9 +3470,36 @@ def build_small_tentacle_rig(
 
     sb.sample_animation("base_floor", 0.5, True, anim_base_floor)
     sb.sample_animation("base_floor_burst", 0.90, False, anim_base_floor_burst)
-    sb.sample_animation("skin_spike", 0.2, True, make_skin_anim("spike"))
-    sb.sample_animation("skin_shell", 0.2, True, make_skin_anim("shell"))
-    sb.sample_animation("skin_gland", 0.2, True, make_skin_anim("gland"))
+    sb.sample_animation(
+        "skin_spike", 0.2, True, make_skin_anim("spike"),
+        slot_attachments={
+            "small_spike": "small_spike",
+            "small_shell": None,
+            "small_shell_sheen": None,
+            "small_gland": None,
+            "small_gland_glow": None,
+        },
+    )
+    sb.sample_animation(
+        "skin_shell", 0.2, True, make_skin_anim("shell"),
+        slot_attachments={
+            "small_spike": None,
+            "small_shell": "small_shell",
+            "small_shell_sheen": "small_shell_sheen",
+            "small_gland": None,
+            "small_gland_glow": None,
+        },
+    )
+    sb.sample_animation(
+        "skin_gland", 0.2, True, make_skin_anim("gland"),
+        slot_attachments={
+            "small_spike": None,
+            "small_shell": None,
+            "small_shell_sheen": None,
+            "small_gland": "small_gland",
+            "small_gland_glow": "small_gland_glow",
+        },
+    )
     sb.sample_animation("idle_loop", 2.4, True, anim_idle)
     sb.sample_animation("emerge", 0.85, False, anim_emerge)
     sb.sample_animation("slam_attack", 1.25, False, anim_slam_attack, events=[(0.46, "small_hit")])
