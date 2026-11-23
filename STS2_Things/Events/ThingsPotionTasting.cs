@@ -4,6 +4,7 @@ using MegaCrit.Sts2.Core.Entities.Gold;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Factories;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Localization;
@@ -11,6 +12,7 @@ using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Core.Models;
 
 namespace STS2_Things.Events;
@@ -18,10 +20,9 @@ namespace STS2_Things.Events;
 /// <summary>Personal random potion rewards, with a choice of payment for barter.</summary>
 public sealed class ThingsPotionTasting : ThingsEventModel
 {
-    private const int PairCost = 40;
-    private const int WarmWaterHeal = 10;
-    private const int BuyHeal = 8;
-    private const int BarterMaxHp = 3;
+    public const int SampleDamage = 7;
+    public const int PairCost = 75;
+    public const int BarterMaxHpLoss = 4;
     private const int PageSize = 3;
     private PotionModel[]? _rolledPotions;
     private bool _previousPotionPermission;
@@ -39,14 +40,18 @@ public sealed class ThingsPotionTasting : ThingsEventModel
     }
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
-        [new GoldVar(PairCost), new HealVar(WarmWaterHeal), new IntVar("BuyHeal", BuyHeal), new IntVar("BarterMaxHp", BarterMaxHp)];
+        [new DamageVar("SampleDamage", SampleDamage, ValueProp.Unblockable | ValueProp.Unpowered),
+         new GoldVar(PairCost),
+         new MaxHpVar("BarterMaxHpLoss", BarterMaxHpLoss)];
     public override bool IsAllowed(IRunState runState) =>
         runState.Players.Count > 0
-        && runState.Players.All(player =>
-            !player.Creature.IsDead
-            && (player.Gold >= PairCost || player.Potions.Any()));
+        && runState.Players.All(p =>
+            !p.Creature.IsDead
+            && (p.Creature.CurrentHp > SampleDamage
+                || p.Gold >= PairCost
+                || (p.Potions.Any() && p.Creature.MaxHp > BarterMaxHpLoss)));
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "SAMPLE", "BUY", "BARTER", "WATER");
+        DepthsEventDefaults.DescribeOptions(this, "SAMPLE", "BUY", "BARTER", "LEAVE");
 
     private bool CanReceive(PotionModel potion) => Hook.ShouldProcurePotion(EventOwner.RunState,
         EventOwner.Creature.CombatState, potion.ToMutable(), EventOwner);
@@ -83,22 +88,30 @@ public sealed class ThingsPotionTasting : ThingsEventModel
         int receivable = ReceivablePotions.Length;
         bool canPair = receivable >= 2;
         bool canBuy = canPair && EventOwner.Gold >= PairCost;
-        bool canBarter = canPair && EventOwner.Potions.Any();
+        bool hasPotions = EventOwner.Potions.Any();
+        bool hasBarterMaxHp = EventOwner.Creature.MaxHp > BarterMaxHpLoss;
+        bool canBarter = canPair && hasPotions && hasBarterMaxHp;
+        EventOption sampleOption = receivable > 0
+            ? new EventOption(this, () => Award(1, false, null), InitialOptionKey("SAMPLE"))
+                .ThatDoesDamage(SampleDamage)
+            : new EventOption(this, null, InitialOptionKey("SAMPLE_LOCKED"));
         EventOption barterOption = new(
             this,
             canBarter ? () => ShowPayment(0) : null,
-            InitialOptionKey(!canPair ? "CANNOT_RECEIVE" : canBarter ? "BARTER" : "BARTER_LOCKED"));
+            InitialOptionKey(!canPair ? "CANNOT_RECEIVE" : !hasBarterMaxHp ? "BARTER_LOW_HP" : !hasPotions ? "BARTER_LOCKED" : "BARTER"));
         if (canBarter)
+        {
+            barterOption.ThatDecreasesMaxHp(BarterMaxHpLoss);
             barterOption.ThatWontSaveToChoiceHistory();
+        }
 
         return
         [
-            receivable > 0
-                ? new EventOption(this, () => Award(1, false, null), InitialOptionKey("SAMPLE"))
-                : new EventOption(this, DrinkWater, InitialOptionKey("WATER")),
+            sampleOption,
             new EventOption(this, canBuy ? () => Award(2, true, null) : null,
                 InitialOptionKey(!canPair ? "CANNOT_RECEIVE" : canBuy ? "BUY" : "BUY_LOCKED")),
             barterOption,
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
     }
 
@@ -106,7 +119,7 @@ public sealed class ThingsPotionTasting : ThingsEventModel
     {
         if (IsFinished || _settling) return Task.CompletedTask;
         var potions = EventOwner.Potions.ToArray();
-        if (potions.Length == 0 || ReceivablePotions.Length < 2) return Back();
+        if (potions.Length == 0 || ReceivablePotions.Length < 2 || EventOwner.Creature.MaxHp <= BarterMaxHpLoss) return Back();
         int pages = (potions.Length + PageSize - 1) / PageSize;
         page %= pages;
         var options = new List<EventOption>();
@@ -119,6 +132,7 @@ public sealed class ThingsPotionTasting : ThingsEventModel
             description.Add("Potion", potion.Title.GetFormattedText());
             options.Add(new EventOption(this, () => Award(2, false, potion), title, description, key,
                 new[] { HoverTipFactory.FromPotion(potion) })
+                .ThatDecreasesMaxHp(BarterMaxHpLoss)
                 .ThatHasDynamicTitle());
         }
         if (pages > 1)
@@ -146,15 +160,30 @@ public sealed class ThingsPotionTasting : ThingsEventModel
             potions.Length != count || (payment != null && !EventOwner.Potions.Contains(payment)))
             { await Back(); return; }
         _settling = true;
+        if (!paid && payment == null)
+        {
+            await ThingsEventHelpers.DealUnblockableDamageAsync(EventOwner, SampleDamage);
+            if (EventOwner.Creature.IsDead)
+            {
+                if (_permissionCaptured) PlayerCanModifyPotions = _previousPotionPermission;
+                SetEventFinished(L10NLookup("THINGS_POTION_TASTING.pages.SAMPLE.loss"));
+                return;
+            }
+        }
         if (payment != null)
         {
             await PotionCmd.Discard(payment);
-            await CreatureCmd.GainMaxHp(EventOwner.Creature, BarterMaxHp);
+            await LoseEventOwnerMaxHpAsync(new ThrowingPlayerChoiceContext(), BarterMaxHpLoss);
+            if (EventOwner.Creature.IsDead)
+            {
+                if (_permissionCaptured) PlayerCanModifyPotions = _previousPotionPermission;
+                SetEventFinished(L10NLookup("THINGS_POTION_TASTING.pages.BARTERED.loss"));
+                return;
+            }
         }
         if (paid)
         {
             await PlayerCmd.LoseGold(PairCost, EventOwner, GoldLossType.Spent);
-            await CreatureCmd.Heal(EventOwner.Creature, BuyHeal);
         }
         // Restore native potion controls before opening rewards, so full slots
         // can be freed normally. Never try to Obtain into an already full belt.
@@ -170,11 +199,11 @@ public sealed class ThingsPotionTasting : ThingsEventModel
         return Task.CompletedTask;
     }
 
-    private async Task DrinkWater()
+    private Task Leave()
     {
-        if (IsFinished || _settling) return;
+        if (IsFinished || _settling) return Task.CompletedTask;
         _settling = true;
-        await CreatureCmd.Heal(EventOwner.Creature, WarmWaterHeal);
-        SetEventFinished(L10NLookup("THINGS_POTION_TASTING.pages.WATER.description"));
+        SetEventFinished(L10NLookup("THINGS_POTION_TASTING.pages.LEAVE.description"));
+        return Task.CompletedTask;
     }
 }

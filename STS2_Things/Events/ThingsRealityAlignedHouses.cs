@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Enchantments;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Core.Localization;
 using STS2_Things.Core.Models;
@@ -19,6 +20,10 @@ namespace STS2_Things.Events;
 /// <summary>Per-player choices about repetition, returning home, and an endless road.</summary>
 public sealed class ThingsRealityAlignedHouses : ThingsEventModel
 {
+    public const int MergeDamage = 10;
+    public const int AddressMaxHpLoss = 7;
+    public const int InitialRoadHpLoss = 6;
+    public const int InitialRoadGold = 50;
     private const int MaximumLaps = 3;
     private int _completedLaps;
 
@@ -30,11 +35,18 @@ public sealed class ThingsRealityAlignedHouses : ThingsEventModel
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
-        new IntVar("AddressMaxHpLoss", 5), new HpLossVar("RoadHpLoss", 4m), new GoldVar(55),
-        new IntVar("MaximumLaps", MaximumLaps), new IntVar("NextLap", 1),
+        new DamageVar("MergeDamage", MergeDamage, ValueProp.Unblockable | ValueProp.Unpowered),
+        new IntVar("AddressMaxHpLoss", AddressMaxHpLoss),
+        new HpLossVar("RoadHpLoss", InitialRoadHpLoss),
+        new GoldVar(InitialRoadGold),
+        new IntVar("MaximumLaps", MaximumLaps),
+        new IntVar("NextLap", 1),
         new LocalizedStringVar("Enchantment", static _ => ModelDb.Enchantment<PerfectFit>().Title.GetFormattedText()),
-        new HealVar(10m),
     ];
+
+    public override bool IsAllowed(IRunState runState) =>
+        runState.Players.Count > 0
+        && runState.Players.All(p => !p.Creature.IsDead && p.Creature.CurrentHp > MergeDamage);
 
     // Keep 1.19.0 localization keys available to old run histories, but publish
     // only the new options in the native game-information catalogue.
@@ -77,11 +89,13 @@ public sealed class ThingsRealityAlignedHouses : ThingsEventModel
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()
     {
         bool merge = MergeCandidates().Count > 0;
-        bool address = EventOwner.Deck.Cards.Any(IsAddressCard);
+        bool address = EventOwner.Creature.MaxHp > AddressMaxHpLoss && EventOwner.Deck.Cards.Any(IsAddressCard);
+        EventOption mergeOption = new(this, merge ? MergeHouses : null,
+            InitialOptionKey(merge ? "MERGE" : "MERGE_LOCKED"));
+        if (merge) mergeOption.ThatDoesDamage(MergeDamage);
         return
         [
-            new EventOption(this, merge ? MergeHouses : null,
-                InitialOptionKey(merge ? "MERGE" : "MERGE_LOCKED")),
+            mergeOption,
             address
                 ? new EventOption(this, LeaveAnAddress, InitialOptionKey("ADDRESS"),
                     HoverTipFactory.FromEnchantment<PerfectFit>())
@@ -109,6 +123,9 @@ public sealed class ThingsRealityAlignedHouses : ThingsEventModel
         if (other == null || EventOwner.Creature.IsDead ||
             !EventOwner.Deck.Cards.Contains(keeper) || !IsMergeCard(keeper))
         { FinishWithoutSelection(); return; }
+
+        await ThingsEventHelpers.DealUnblockableDamageAsync(EventOwner, MergeDamage);
+        if (EventOwner.Creature.IsDead) { Finish("DEATH"); return; }
 
         await CardPileCmd.RemoveFromDeck(other);
         if (EventOwner.Creature.IsDead) { Finish("DEATH"); return; }
@@ -159,11 +176,11 @@ public sealed class ThingsRealityAlignedHouses : ThingsEventModel
     }
 
     private Task LeaveRoad() { Finish("ROAD_STOP"); return Task.CompletedTask; }
-    private async Task FollowBlueHouse()
+    private Task FollowBlueHouse()
     {
-        if (IsFinished) return;
-        await CreatureCmd.Heal(EventOwner.Creature, DynamicVars.Heal.BaseValue);
+        if (IsFinished) return Task.CompletedTask;
         Finish("BLUE");
+        return Task.CompletedTask;
     }
     private void FinishWithoutSelection() => Finish(EventOwner.Creature.IsDead ? "DEATH" : "ABORTED");
     private void Finish(string page)

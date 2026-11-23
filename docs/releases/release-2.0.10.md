@@ -1,0 +1,42 @@
+# 尖塔：琐事 2.0.10 / STS2 Things 2.0.10
+
+- **收音水母（Radio Jellyfish）回音数值回调与主文案重制**：
+  - 基础回音伤害由 `8/9` 回调至原设计档位 **`5/6`**（开局 1 层「收音」下每段伤害由 `10/11` 下调至 **`7/8`**，打出 2 张攻击牌总伤害由 `30/33` 降至 **`21/24`**；第 3 回合「调频」后每段 **`9/10`**）。
+  - 重写中英文「收音」能力主文案，直接在主框写明“记录前 2 张攻击或技能牌并在敌方回合重放、每格攻击回音多打一段（实时显示每段伤害）并在重放结束时再攻击一次、每张技能回音获得对应格挡、每层+2”，消除玩家误以为仅加 2 点伤害/格挡的歧义。
+- **血蛭之母（Leech Mother）与吸血血蛭（Sanguine Leech）防卡死修复与加固**：
+  - 将「吸血血蛭」的再寄生逻辑重构为原生条件分支 `REINFEST_GATE` 并保护刚召唤时的 `UNSET_MOVE`，彻底修复「血蛭之母」唤子后若子蛭被眩晕、覆盖意图或同回合触发「寄生」消耗导致的 `FollowUpStateId` 空引用/查表崩溃软锁。
+  - 加固「唤子」与「寄生」按玩家 `NetId` 去重（修复带宠物角色收到双倍「寄生」）、增加 `NCombatRoom.EncounterSlots` 槽位节点存在性校验与战斗结束保护，并补齐 `vfx/vfx_sleeping` 资源预加载。
+- **Boss 自制战曲生命周期彻底修复**：
+  - 修复 `NativeSfxPlayer`、`CustomMusicHooks` 与 `CombatRoomAudioCleanupPatch`，确保自制 Boss WAV 战曲在战斗胜利、切换房间或退出返回主菜单时严格停止并释放，不再在战后持续播放，同时保持跨幕切歌无缝稳定。
+- **百科大全（Bestiary）Boss 外观显示修复**：
+  - 新增 `BestiaryBossLayoutPatch` 及渊墨巨蛸、活体巨岩、人面塔专属图鉴排版容器，修复百科大全中只显示 Boss 意图而不显示巨型/多部件 Boss 完整外观的问题。
+- **第二幕「深处」（The Depths）随机进入保底 & 全事件随机性梳理**：
+  - 新增 `DepthsActPityTracker` 并联动 `DepthsActPatches` 与 `ActLikeIt2` 兼容层，解决连续多局随机未进入第二幕「深处」的体感问题（保持联机确定性与原版 RNG 序列安全）。
+  - 全面审计并修复 `ActEventCatalogPatches`、`DepthsEventPoolPatch` 与 25+ 个事件的 `IsAllowed` 准入条件、选项前置及双语文案，确保事件池随机均衡且杜绝空选或误锁。
+- **玩家 F2 上报与第三方模组兼容集中修复**：
+  - **外部战斗模拟模组 & 人面柱转嫁保护**：新增 `ExternalCombatSimulationGuard` 并加固 `HumanFaceColumnDamageRedirectPatch` / `ThingsHumanFaceColumnPower`，避免第三方伤害预测/模拟模组误改真实战斗状态或触发人面柱伤害转嫁异常。
+  - **灵魂异鱼籽（Soul Roe）碰撞箱与目标选中**：修正 `soul_roe*.tscn` 与 `ThingsSoulRoe` / `ThingsSoulRoes` 交互区域与场景配置。
+  - **盲蟹墨瓶事件（Blind Crab Inkwell）修复**：修复特定局面下的事件交互异常。
+  - **第三方卡面美化模组兼容**：移除会干扰第三方卡面 Mod 的 `CrispCardPortraitPatch`，改为无侵入 `Sts2VersionSeam.TryGetBigCardPortrait`（`CacheMode.Reuse`），避免污染 `PreloadManager.Cache`。
+  - **巨岩/渊墨巨蛸与深处遭遇清理**：加固活体巨岩与渊墨巨蛸边界处理，统一修正深处常规/精英遭遇的 `HasCustomBackground` 配置。
+
+---
+
+- **Radio Jellyfish Balance Rollback & Tooltip Rewrite**:
+  - Lowered base Echo damage from `8/9` back to its original **`5/6`** target (opening 1-stack hit drops from `10/11` to **`7/8`**, reducing 2-Attack playback from `30/33` to **`21/24`**; post-Tune hits scale to **`9/10`**).
+  - Rewrote both Chinese and English *Reception* main power tooltips to state the full 2-card replay rule, live per-hit damage / per-Skill Block values, finale pulse, and `+2` per-stack scaling directly upfront instead of hiding them in secondary hover tips.
+- **Leech Mother & Sanguine Leech Softlock Fix & Hardening**:
+  - Refactored `ThingsSanguineLeech` reinfestation routing to a native `REINFEST_GATE` conditional branch with an `UNSET_MOVE` guard, fixing the `FollowUpStateId` null/missing-key crash that permanently softlocked combat when a freshly brooded leech was stunned, overridden, or had its Parasite exhausted during the same enemy turn.
+  - Deduplicated parasite delivery by `Player.NetId` in `Brood()` / `Infest()` (fixing double parasites for pet classes such as Necrobinder + Osty), verified `NCombatRoom.EncounterSlots` node presence before passing slot names, added combat-end guards, and preloaded `vfx/vfx_sleeping`.
+- **Custom Boss Music Lifecycle Fix**:
+  - Hardened `NativeSfxPlayer`, `CustomMusicHooks`, and `CombatRoomAudioCleanupPatch` so custom Boss WAV tracks reliably stop and dispose after combat victory, room transitions, or exiting to main menu without breaking cross-act music transitions.
+- **Bestiary Boss Visuals**:
+  - Added `BestiaryBossLayoutPatch` and dedicated Bestiary layouts for Abyssal Inkmaw, Cave God, and Visage Tower so multi-part/monumental bosses render cleanly alongside their intents in the Compendium.
+- **Act 2 Depths Pity & Event Randomization Overhaul**:
+  - Added deterministic `DepthsActPityTracker` (integrated with `DepthsActPatches` and `ActLikeIt2`) so players do not suffer long streaks without rolling Act 2 *The Depths*.
+  - Audited and fixed `ActEventCatalogPatches`, `DepthsEventPoolPatch`, and `IsAllowed` / option predicates & bilingual copy across 25+ events for balanced pools and zero dead-end options.
+- **Player F2 Reports & Third-Party Mod Compatibility Fixes**:
+  - Added `ExternalCombatSimulationGuard` and hardened `HumanFaceColumnDamageRedirectPatch` / `ThingsHumanFaceColumnPower` against external damage-prediction / simulation mods.
+  - Fixed Soul Roe hitbox/scene alignment (`soul_roe*.tscn`, `ThingsSoulRoe`, `ThingsSoulRoes`) and Blind Crab Inkwell edge cases.
+  - Removed `CrispCardPortraitPatch` in favor of non-intrusive `Sts2VersionSeam.TryGetBigCardPortrait` (`CacheMode.Reuse`), fixing interference with third-party card portrait mods and `PreloadManager.Cache`.
+  - Tightened Cave God / Abyssal Inkmaw edge guards and cleaned up `HasCustomBackground` flags on Depths regular/elite encounters.

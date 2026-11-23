@@ -19,19 +19,18 @@ namespace STS2_Things.Events;
 
 /// <summary>
 /// Depths push-your-luck event featuring a hand-cranked silt winch over a flooded pit:
-/// Haul 1 (-5 HP -> 3-choice Upgraded Common/Uncommon card reward),
-/// Haul 2 (-10 HP -> random Potion or +25 Gold + 45 Gold),
+/// Haul 1 (-8 HP -> 3-choice Upgraded Common/Uncommon card reward),
+/// Haul 2 (-12 HP -> random Potion or +25 Gold + 45 Gold),
 /// Haul 3 (-10 Max HP + Decay -> Uncommon/Rare Relic),
-/// or cut the loose pouch for a lossless 25 Gold.
+/// or leaving.
 /// </summary>
 public sealed class ThingsSiltWinch : ThingsEventModel
 {
-    public const int Pull1Damage = 5;
-    public const int Pull2Damage = 10;
+    public const int Pull1Damage = 8;
+    public const int Pull2Damage = 12;
     public const int Pull2Gold = 45;
     public const int Pull2PotionFallbackGold = 25;
     public const int Pull3MaxHpLoss = 10;
-    public const int PouchGold = 25;
 
     private PotionModel? _mudPotion;
     private bool _settling;
@@ -50,7 +49,6 @@ public sealed class ThingsSiltWinch : ThingsEventModel
         new GoldVar("Pull2Gold", Pull2Gold),
         new GoldVar("Pull2TotalGold", Pull2Gold + Pull2PotionFallbackGold),
         new MaxHpVar("Pull3MaxHp", Pull3MaxHpLoss),
-        new GoldVar("PouchGold", PouchGold),
         new LocalizedStringVar("Curse", static _ => new LocString("cards", "DECAY.title").GetFormattedText()),
     ];
 
@@ -61,7 +59,7 @@ public sealed class ThingsSiltWinch : ThingsEventModel
             && player.Creature.CurrentHp > Pull1Damage);
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "HAUL_1", "CUT_POUCH");
+        DepthsEventDefaults.DescribeOptions(this, "HAUL_1", "LEAVE");
 
     protected override Task BeforeEventStarted(bool isPreFinished)
     {
@@ -74,7 +72,7 @@ public sealed class ThingsSiltWinch : ThingsEventModel
     [
         new EventOption(this, HaulDepth1, InitialOptionKey("HAUL_1"))
             .ThatDoesDamage(Pull1Damage),
-        new EventOption(this, CutLoosePouch, InitialOptionKey("CUT_POUCH")),
+        new EventOption(this, Leave, InitialOptionKey("LEAVE")),
     ];
 
     private bool BeginSettlement()
@@ -227,12 +225,12 @@ public sealed class ThingsSiltWinch : ThingsEventModel
         return Task.CompletedTask;
     }
 
-    private async Task CutLoosePouch()
+    private Task Leave()
     {
         if (!BeginSettlement())
-            return;
-        await PlayerCmd.GainGold(PouchGold, EventOwner);
-        Finish("CUT_POUCH.description");
+            return Task.CompletedTask;
+        Finish("LEAVE.description");
+        return Task.CompletedTask;
     }
 
     private void Finish(string pageSuffix)

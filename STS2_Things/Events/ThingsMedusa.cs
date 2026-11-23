@@ -12,11 +12,9 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Enchantments;
-using MegaCrit.Sts2.Core.Models.Potions;
 using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
-using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using STS2_Things.Core.Models;
 using STS2_Things.Relics;
@@ -25,7 +23,7 @@ namespace STS2_Things.Events;
 
 public sealed class ThingsMedusa : ThingsEventModel
 {
-    public const int GoldCost = 75;
+    public const int GoldCost = 90;
 
     private bool _settling;
 
@@ -72,7 +70,7 @@ public sealed class ThingsMedusa : ThingsEventModel
                 lockedTips));
         }
 
-        // 选项2：献上钱财 — 需要75金币且存在可附魔稳定的牌
+        // 选项2：献上钱财 — 需要90金币且存在可附魔稳定的牌
         bool hasSteadyCard = EventOwner.Deck.Cards.Any(CanSteady);
         bool hasGold = EventOwner.Gold >= GoldCost;
         if (hasGold && hasSteadyCard)
@@ -97,7 +95,7 @@ public sealed class ThingsMedusa : ThingsEventModel
         // 选项3：礼貌问候
         options.Add(new EventOption(this, Greet,
             InitialOptionKey("GREET"),
-            [HoverTipFactory.FromPotion<PotionShapedRock>()]));
+            Array.Empty<IHoverTip>()));
 
         return options;
     }
@@ -122,7 +120,7 @@ public sealed class ThingsMedusa : ThingsEventModel
     }
 
     /// <summary>
-    /// 献上钱财：选择一张卡附魔保留，确认后再扣除75金币
+    /// 献上钱财：选择一张卡附魔保留，确认后再扣除90金币
     /// </summary>
     private async Task OfferGold()
     {
@@ -167,15 +165,14 @@ public sealed class ThingsMedusa : ThingsEventModel
     }
 
     /// <summary>
-    /// 礼貌问候：获得1瓶药水形状的石头（原生奖励界面支持满药水栏丢弃置换）
+    /// 礼貌问候：礼貌离开，无额外奖励
     /// </summary>
-    private async Task Greet()
+    private Task Greet()
     {
         if (IsFinished || _settling || EventOwner.Creature.IsDead)
-            return;
+            return Task.CompletedTask;
         _settling = true;
-        await RewardsCmd.OfferCustom(EventOwner,
-            [new PotionReward(ModelDb.Potion<PotionShapedRock>().ToMutable(), EventOwner)]);
         SetEventFinished(L10NLookup($"{Id.Entry}.pages.GREET.description"));
+        return Task.CompletedTask;
     }
 }

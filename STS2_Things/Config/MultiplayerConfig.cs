@@ -1,6 +1,8 @@
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Runs;
+using STS2_Things.Hooks;
 
 namespace STS2_Things.Config;
 
@@ -9,6 +11,8 @@ public static class MultiplayerConfig
 {
     private static INetGameService? _service;
     private static ThingsConfigSnapshotMessage? _snapshot;
+    private static ThingsDepthsPityMessage? _depthsPity;
+    private static GameMode _boundGameMode = GameMode.None;
     private static bool _initialized;
     private static readonly Dictionary<string, int> Indices = ThingsModConfig.Entries
         .Select((entry, index) => (entry.Key, index)).ToDictionary(pair => pair.Key, pair => pair.index);
@@ -19,6 +23,8 @@ public static class MultiplayerConfig
     public static bool IsHost => _service?.Type == NetGameType.Host;
     public static bool IsLocked => _snapshot?.Locked == true;
     public static bool HasSnapshot => _snapshot.HasValue;
+    public static bool HasDepthsPity => _depthsPity.HasValue;
+    public static bool SessionDepthsPityActive => _depthsPity?.ForceDepths == true;
 
     public static void Initialize()
     {
@@ -62,6 +68,16 @@ public static class MultiplayerConfig
 
     public static void Bind(INetGameService service, bool lockForLoadedRun = false)
     {
+        BindCore(service, lockForLoadedRun, GameMode.None);
+    }
+
+    internal static void BindStartLobby(INetGameService service, GameMode gameMode)
+    {
+        BindCore(service, lockForLoadedRun: false, gameMode);
+    }
+
+    private static void BindCore(INetGameService service, bool lockForLoadedRun, GameMode gameMode)
+    {
         Initialize();
         if (service.Type is not (NetGameType.Host or NetGameType.Client))
         {
@@ -70,17 +86,22 @@ public static class MultiplayerConfig
         }
         if (ReferenceEquals(_service, service))
         {
-            if (lockForLoadedRun && IsHost && !IsLocked) PrepareRun(service);
+            if (gameMode != GameMode.None)
+                _boundGameMode = gameMode;
+            if (lockForLoadedRun && IsHost && !IsLocked)
+                PrepareRunForGameMode(service, _boundGameMode, disableDepthsPity: true);
             return;
         }
         Clear();
         _service = service;
+        _boundGameMode = gameMode;
         service.RegisterMessageHandler<ThingsConfigSnapshotMessage>(Receive);
+        service.RegisterMessageHandler<ThingsDepthsPityMessage>(ReceiveDepthsPity);
         service.Disconnected += OnDisconnected;
         if (service is INetHostGameService host)
         {
             host.ClientConnected += SendToJoiningPlayer;
-            CaptureHost(lockForLoadedRun);
+            CaptureHost(lockForLoadedRun, gameMode, disableDepthsPity: lockForLoadedRun);
             SendToConnectedPeers(host);
         }
         ThingsModConfig.NotifyEffectiveChanged();
@@ -116,22 +137,31 @@ public static class MultiplayerConfig
         if (_service is not { } service) return;
         _service = null;
         _snapshot = null;
+        _depthsPity = null;
+        _boundGameMode = GameMode.None;
         service.UnregisterMessageHandler<ThingsConfigSnapshotMessage>(Receive);
+        service.UnregisterMessageHandler<ThingsDepthsPityMessage>(ReceiveDepthsPity);
         service.Disconnected -= OnDisconnected;
         if (service is INetHostGameService host) host.ClientConnected -= SendToJoiningPlayer;
         ThingsModConfig.NotifyEffectiveChanged();
     }
 
-    public static bool PrepareRun(INetGameService service)
+    public static bool PrepareRun(INetGameService service) =>
+        PrepareRunForGameMode(service, GameMode.None, disableDepthsPity: false);
+
+    internal static bool PrepareRunForGameMode(
+        INetGameService service,
+        GameMode gameMode,
+        bool disableDepthsPity = false)
     {
-        Bind(service);
+        BindCore(service, lockForLoadedRun: false, gameMode);
         if (!IsActive) return true;
         if (IsHost)
         {
             if (!IsLocked)
             {
-                CaptureHost(locked: true);
-                Broadcast();
+                CaptureHost(locked: true, gameMode, disableDepthsPity);
+                Broadcast(includeDepthsPity: true);
                 ThingsModConfig.NotifyEffectiveChanged();
             }
             return true;
@@ -146,17 +176,31 @@ public static class MultiplayerConfig
         if (ReferenceEquals(service, _service)) Clear();
     }
 
-    private static void CaptureHost(bool locked)
+    private static void CaptureHost(
+        bool locked,
+        GameMode gameMode = GameMode.None,
+        bool disableDepthsPity = false)
     {
+        bool wasLocked = _snapshot is { Locked: true };
         int[] values = _snapshot is { Locked: true } old ? (int[])old.Values.Clone() :
             ThingsModConfig.Entries.Select(entry => Convert.ToInt32(ThingsModConfig.GetLocalValue(entry.Key))).ToArray();
         values[Indices[ThingsModConfig.FeatureCustomBgmEnabled]] =
             Convert.ToInt32(ThingsModConfig.GetLocalValue(ThingsModConfig.FeatureCustomBgmEnabled));
+        uint revision = (_snapshot?.Revision ?? 0) + 1;
+        if (!wasLocked)
+        {
+            GameMode effectiveMode = gameMode != GameMode.None ? gameMode : _boundGameMode;
+            _depthsPity = new ThingsDepthsPityMessage
+            {
+                Revision = revision,
+                ForceDepths = !disableDepthsPity && DepthsActPityTracker.ShouldHostActivatePity(effectiveMode),
+            };
+        }
         _snapshot = new ThingsConfigSnapshotMessage
         {
             Version = ThingsConfigSnapshotMessage.Protocol,
             SchemaHash = ThingsConfigSnapshotMessage.Schema,
-            Revision = (_snapshot?.Revision ?? 0) + 1,
+            Revision = revision,
             Locked = locked,
             Values = values,
         };
@@ -165,27 +209,55 @@ public static class MultiplayerConfig
     private static void OnLocalChanged()
     {
         if (!IsHost) return;
-        CaptureHost(IsLocked);
-        Broadcast();
+        bool wasLocked = IsLocked;
+        CaptureHost(wasLocked, _boundGameMode);
+        Broadcast(includeDepthsPity: !wasLocked);
     }
 
-    private static void Broadcast()
+    private static void Broadcast(bool includeDepthsPity)
     {
         if (_service is not { IsConnected: true } service || _snapshot is not { } snapshot)
             return;
         if (service is INetHostGameService host)
         {
             if (SendToConnectedPeers(host) == 0 && host.NetHost is null)
+            {
+                if (includeDepthsPity && _depthsPity is { } pityMessage)
+                    service.SendMessage(pityMessage);
                 service.SendMessage(snapshot);
+            }
             return;
         }
+        if (includeDepthsPity && _depthsPity is { } pity)
+            service.SendMessage(pity);
         service.SendMessage(snapshot);
     }
 
     private static void SendToJoiningPlayer(ulong playerId)
     {
-        if (_service is { IsConnected: true } service && _snapshot is { } snapshot)
+        if (_service is not { IsConnected: true } service)
+            return;
+        if (_depthsPity is { } pityMessage)
+            service.SendMessage(pityMessage, playerId);
+        if (_snapshot is { } snapshot)
             service.SendMessage(snapshot, playerId);
+    }
+
+    private static void ReceiveDepthsPity(ThingsDepthsPityMessage message, ulong senderId)
+    {
+        if (_service is not INetClientGameService client || client.NetClient?.HostNetId != senderId)
+            return;
+        if (message.Revision == 0)
+            return;
+        if (_depthsPity is { } previous && message.Revision <= previous.Revision)
+            return;
+        if (_snapshot is { Locked: true } && message.ForceDepths != (_depthsPity?.ForceDepths ?? false))
+        {
+            RejectIncompatibleSession("Host attempted to change locked Depths pity state.");
+            return;
+        }
+        _depthsPity = message;
+        Log.Info($"STS2_Things: host Depths pity state applied (revision {message.Revision}, forceDepths={message.ForceDepths}).");
     }
 
     private static void Receive(ThingsConfigSnapshotMessage message, ulong senderId)

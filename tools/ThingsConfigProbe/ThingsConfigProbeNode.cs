@@ -5,13 +5,20 @@ using System.Text.Json;
 using Godot;
 using GodotFileAccess = Godot.FileAccess;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Acts;
 using MegaCrit.Sts2.Core.Models.CardPools;
+using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Models.Encounters;
+using MegaCrit.Sts2.Core.Multiplayer;
+using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardLibrary;
+using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Random;
@@ -74,6 +81,7 @@ public partial class ThingsConfigProbeNode : Node
             VerifyConflictRule();
             VerifyForceImpliesEnabled();
             VerifyGuaranteedDepths();
+            VerifyDepthsOrderingAndPity();
             VerifyCatalogGating();
             VerifyBossForcing();
             VerifyActualBossSelection();
@@ -336,6 +344,399 @@ public partial class ThingsConfigProbeNode : Node
         Assert(!ThingsModConfig.GuaranteedDepthsEnabled,
             "ResetAll did not restore GuaranteedDepthsEnabled to false.");
     }
+
+    private static void VerifyDepthsOrderingAndPity()
+    {
+        const BindingFlags NonPublicStatic = BindingFlags.NonPublic | BindingFlags.Static;
+        Assembly implAssembly = typeof(STS2_ThingsInit).Assembly;
+        Type catalogPatchType = implAssembly.GetType("STS2_Things.Hooks.DepthsActCatalogPatch", throwOnError: true)!;
+        MethodInfo buildCatalog = catalogPatchType.GetMethod("BuildDeterministicCatalog", NonPublicStatic)!;
+        MethodInfo catalogPostfix = catalogPatchType.GetMethod("Postfix", NonPublicStatic)!;
+        MethodInfo invalidateActsByIndex = catalogPatchType.GetMethod("InvalidateActsByIndexCache", NonPublicStatic)!;
+
+        // 1) Multi-mod Act 2 ordering determinism (load-order independence + in-place mutation cache safety).
+        var alphaAct2 = new SyntheticAlphaAct2();
+        var zuluAct2 = new SyntheticZuluAct2();
+        ActModel overgrowth = ModelDb.Act<Overgrowth>();
+        ActModel underdocks = ModelDb.Act<Underdocks>();
+        ActModel hive = ModelDb.Act<Hive>();
+        ActModel depths = ModelDb.Act<ThingsDepths>();
+        ActModel glory = ModelDb.Act<Glory>();
+
+        ActModel[] loadOrderA = [overgrowth, underdocks, hive, zuluAct2, depths, alphaAct2, glory];
+        ActModel[] loadOrderB = [glory, alphaAct2, depths, zuluAct2, hive, underdocks, overgrowth];
+        ActModel[] sortedA = (ActModel[])buildCatalog.Invoke(null, [loadOrderA])!;
+        ActModel[] sortedB = (ActModel[])buildCatalog.Invoke(null, [loadOrderB])!;
+        Assert(sortedA.Select(a => a.Id).SequenceEqual(sortedB.Select(a => a.Id)),
+            "DepthsActCatalogPatch produced different act orders for opposite multi-mod load orders.");
+        ActModel[] act2Order = sortedA.Where(a => a.Index == 1).ToArray();
+        Assert(act2Order.SequenceEqual([hive, alphaAct2, zuluAct2, depths]),
+            $"Act 2 deterministic order mismatch: [{string.Join(", ", act2Order.Select(a => a.Id.Entry))}].");
+
+        // In-place mutation of the same List<ActModel> with identical Count must NOT serve a stale cached array.
+        var mutableSource = new List<ActModel> { overgrowth, underdocks, hive, alphaAct2, glory };
+        object?[] firstPostfixArgs = [mutableSource];
+        catalogPostfix.Invoke(null, firstPostfixArgs);
+        ActModel[] firstResult = ((IEnumerable<ActModel>)firstPostfixArgs[0]!).ToArray();
+        Assert(firstResult.Contains(alphaAct2) && !firstResult.Contains(zuluAct2) && firstResult.Contains(depths),
+            "DepthsActCatalogPatch.Postfix did not include initial Act 2 set.");
+
+        mutableSource[3] = zuluAct2;
+        object?[] secondPostfixArgs = [mutableSource];
+        catalogPostfix.Invoke(null, secondPostfixArgs);
+        ActModel[] secondResult = ((IEnumerable<ActModel>)secondPostfixArgs[0]!).ToArray();
+        Assert(secondResult.Contains(zuluAct2) && !secondResult.Contains(alphaAct2) && secondResult.Contains(depths),
+            "DepthsActCatalogPatch.Postfix served a stale cached array after in-place element replacement.");
+
+        // Out-of-order cached ModelDb._actsByIndex (even when ThingsDepths is present) must be invalidated.
+        FieldInfo actsByIndexField = typeof(ModelDb).GetField("_actsByIndex", NonPublicStatic)!;
+        actsByIndexField.SetValue(null, new List<List<ActModel>>
+        {
+            new() { overgrowth, underdocks },
+            new() { depths, hive },
+            new() { glory },
+        });
+        invalidateActsByIndex.Invoke(null, null);
+        Assert(ModelDb.ActsByIndex[1][0] is Hive && ModelDb.ActsByIndex[1][1] is ThingsDepths,
+            "InvalidateActsByIndexCache did not rebuild out-of-order Act 2 cache.");
+
+        // 2) Anti-streak pity threshold = 2, 100-seed determinism, Daily exemption, and disk persistence.
+        Assert(DepthsActPityTracker.PityMissThreshold == 2,
+            $"Expected PityMissThreshold=2, got {DepthsActPityTracker.PityMissThreshold}.");
+        Assert(DepthsActPityTracker.ConsecutiveNonDepthsAct2Visits == 0 && !DepthsActPityTracker.IsPityTriggered,
+            "TestMode must keep DepthsActPityTracker isolated at 0 by default.");
+
+        Type pityType = typeof(DepthsActPityTracker);
+        MethodInfo configureForTest = pityType.GetMethod("ConfigureForTest", NonPublicStatic)!;
+        MethodInfo reloadFromDiskForTest = pityType.GetMethod("ReloadFromDiskForTest", NonPublicStatic)!;
+        MethodInfo resetForTest = pityType.GetMethod("ResetForTest", NonPublicStatic)!;
+        MethodInfo recordAct2Outcome = pityType.GetMethod("RecordAct2Outcome", NonPublicStatic)!;
+        MethodInfo recordAct2Entry = pityType.GetMethod("RecordAct2Entry", NonPublicStatic)!;
+        MethodInfo pushRunStartGameMode = pityType.GetMethod("PushRunStartGameMode", NonPublicStatic)!;
+        MethodInfo popRunStartGameMode = pityType.GetMethod("PopRunStartGameMode", NonPublicStatic)!;
+        MethodInfo prepareRunForGameMode = typeof(MultiplayerConfig).GetMethod("PrepareRunForGameMode", NonPublicStatic)!;
+
+        string pityStatePath = Path.Combine(OS.GetUserDataDir(), "mod_configs", "test_depths_pity.json");
+        if (File.Exists(pityStatePath))
+            File.Delete(pityStatePath);
+
+        ResetAll();
+        MultiplayerConfig.Clear();
+
+        try
+        {
+            // Baseline (misses=0): normal 50/50 across 100 random seeds.
+            configureForTest.Invoke(null, [true, pityStatePath, 0, null, true]);
+            Assert(!DepthsActPityTracker.IsPityTriggered, "Misses=0 must not trigger pity.");
+            var seenMiss0 = new HashSet<Type>();
+            var baseline100 = new Dictionary<uint, (List<ActModel> Acts, int NextRng)>();
+            for (uint seed = 1; seed <= 100; seed++)
+            {
+                var rng = new Rng(seed + 1000);
+                List<ActModel> acts = ActModel.GetRandomList(rng, UnlockState.all, isMultiplayer: false).ToList();
+                seenMiss0.Add(acts[1].GetType());
+                baseline100[seed] = (acts, rng.NextInt());
+            }
+            Assert(seenMiss0.Contains(typeof(Hive)) && seenMiss0.Contains(typeof(ThingsDepths)),
+                "Misses=0 did not roll both Hive and ThingsDepths across 100 seeds.");
+
+            // Misses=1: still normal 50/50 matching baseline identically.
+            configureForTest.Invoke(null, [true, pityStatePath, 1, null, true]);
+            Assert(!DepthsActPityTracker.IsPityTriggered, "Misses=1 must not trigger pity.");
+            var seenMiss1 = new HashSet<Type>();
+            for (uint seed = 1; seed <= 100; seed++)
+            {
+                var rng = new Rng(seed + 1000);
+                List<ActModel> acts = ActModel.GetRandomList(rng, UnlockState.all, isMultiplayer: false).ToList();
+                seenMiss1.Add(acts[1].GetType());
+                var (baseActs, baseRng) = baseline100[seed];
+                Assert(acts[1].Id == baseActs[1].Id && rng.NextInt() == baseRng,
+                    $"Misses=1 altered normal roll or RNG for seed {seed}.");
+            }
+            Assert(seenMiss1.Contains(typeof(Hive)) && seenMiss1.Contains(typeof(ThingsDepths)),
+                "Misses=1 did not roll both Hive and ThingsDepths across 100 seeds.");
+
+            // Misses=2: ALWAYS ThingsDepths across 100 random seeds with zero RNG drift.
+            configureForTest.Invoke(null, [true, pityStatePath, 2, null, true]);
+            Assert(DepthsActPityTracker.IsPityTriggered, "Misses=2 must activate pity.");
+            for (uint seed = 1; seed <= 100; seed++)
+            {
+                var rng = new Rng(seed + 1000);
+                List<ActModel> acts = ActModel.GetRandomList(rng, UnlockState.all, isMultiplayer: false).ToList();
+                int nextRng = rng.NextInt();
+                var (baseActs, baseRng) = baseline100[seed];
+                Assert(acts[1] is ThingsDepths,
+                    $"Misses=2 failed to force ThingsDepths for seed {seed} (got {acts[1].Id}).");
+                Assert(acts[0].Id == baseActs[0].Id && acts[2].Id == baseActs[2].Id,
+                    $"Misses=2 altered Act 1 or Act 3 for seed {seed}.");
+                Assert(nextRng == baseRng,
+                    $"Misses=2 drifted downstream RNG consumption for seed {seed}.");
+            }
+
+            // Daily run exemption: even with misses=2, GameMode.Daily does NOT force Depths.
+            object dailyScope = pushRunStartGameMode.Invoke(null, [GameMode.Daily])!;
+            try
+            {
+                var seenDaily = new HashSet<Type>();
+                for (uint seed = 1; seed <= 64; seed++)
+                {
+                    List<ActModel> acts = ActModel.GetRandomList(new Rng(seed + 1000), UnlockState.all, isMultiplayer: false).ToList();
+                    seenDaily.Add(acts[1].GetType());
+                }
+                Assert(seenDaily.Contains(typeof(Hive)) && seenDaily.Contains(typeof(ThingsDepths)),
+                    "GameMode.Daily was unexpectedly overridden by Depths anti-streak pity.");
+            }
+            finally
+            {
+                popRunStartGameMode.Invoke(null, [dailyScope]);
+            }
+
+            // 3) Commit timing, Act 1 death preservation, save/reload dedup, Daily neutrality, and reset on Depths.
+            configureForTest.Invoke(null, [true, pityStatePath, 0, null, true]);
+            Assert((bool)recordAct2Outcome.Invoke(null, [hive, "PITY_RUN_1|1000", null])! &&
+                   DepthsActPityTracker.ConsecutiveNonDepthsAct2Visits == 1,
+                "First non-Depths Act 2 entry did not increment counter to 1.");
+            Assert(!(bool)recordAct2Outcome.Invoke(null, [hive, "PITY_RUN_1|1000", null])! &&
+                   DepthsActPityTracker.ConsecutiveNonDepthsAct2Visits == 1,
+                "Re-entering the same Act 2 run key double-incremented the counter.");
+
+            // Reload from disk and verify counter + runKey dedup survive restart.
+            reloadFromDiskForTest.Invoke(null, null);
+            Assert(DepthsActPityTracker.ConsecutiveNonDepthsAct2Visits == 1,
+                "Disk reload did not restore ConsecutiveNonDepthsAct2Visits=1.");
+            Assert(!(bool)recordAct2Outcome.Invoke(null, [hive, "PITY_RUN_1|1000", null])! &&
+                   DepthsActPityTracker.ConsecutiveNonDepthsAct2Visits == 1,
+                "Disk-reloaded LastRecordedRunKey failed to prevent duplicate count.");
+
+            Assert((bool)recordAct2Outcome.Invoke(null, [hive, "PITY_RUN_2|2000", null])! &&
+                   DepthsActPityTracker.ConsecutiveNonDepthsAct2Visits == 2 &&
+                   DepthsActPityTracker.IsPityTriggered,
+                "Second consecutive non-Depths Act 2 entry did not reach pity threshold 2.");
+
+            // Act 1 death / never entering Act 2 must NOT consume or reset pity; Daily Act 2 is neutral;
+            // entering Depths resets to 0; same RunState re-entry does not double-increment.
+            RunState depthsRun = ProbeRuntimeApi.CreateForNewRun(
+                [Player.CreateForNewRun<Ironclad>(UnlockState.all, 1UL)],
+                [overgrowth.ToMutable(), depths.ToMutable(), glory.ToMutable()],
+                [],
+                GameMode.Standard,
+                0,
+                "PITY_ACT1_DEATH");
+            RunState dailyDepthsRun = ProbeRuntimeApi.CreateForNewRun(
+                [Player.CreateForNewRun<Ironclad>(UnlockState.all, 1UL)],
+                [overgrowth.ToMutable(), depths.ToMutable(), glory.ToMutable()],
+                [],
+                GameMode.Daily,
+                0,
+                "PITY_DAILY_NEUTRAL");
+            RunState sameHiveRun = ProbeRuntimeApi.CreateForNewRun(
+                [Player.CreateForNewRun<Ironclad>(UnlockState.all, 1UL)],
+                [overgrowth.ToMutable(), hive.ToMutable(), glory.ToMutable()],
+                [],
+                GameMode.Standard,
+                0,
+                "PITY_SAME_STATE");
+            try
+            {
+                SetRunManagerStateForTest(depthsRun);
+                recordAct2Entry.Invoke(null, [RunManager.Instance, 0]);
+                Assert(DepthsActPityTracker.ConsecutiveNonDepthsAct2Visits == 2 && DepthsActPityTracker.IsPityTriggered,
+                    "Entering Act 1 (without reaching Act 2) unexpectedly altered pity counter.");
+
+                SetRunManagerStateForTest(dailyDepthsRun);
+                recordAct2Entry.Invoke(null, [RunManager.Instance, 1]);
+                Assert(DepthsActPityTracker.ConsecutiveNonDepthsAct2Visits == 2 && DepthsActPityTracker.IsPityTriggered,
+                    "Entering Act 2 in GameMode.Daily unexpectedly altered pity counter.");
+
+                SetRunManagerStateForTest(depthsRun);
+                recordAct2Entry.Invoke(null, [RunManager.Instance, 1]);
+                Assert(DepthsActPityTracker.ConsecutiveNonDepthsAct2Visits == 0 && !DepthsActPityTracker.IsPityTriggered,
+                    "Reaching ThingsDepths in Act 2 did not reset pity counter to 0.");
+
+                SetRunManagerStateForTest(sameHiveRun);
+                recordAct2Entry.Invoke(null, [RunManager.Instance, 1]);
+                recordAct2Entry.Invoke(null, [RunManager.Instance, 1]);
+                Assert(DepthsActPityTracker.ConsecutiveNonDepthsAct2Visits == 1,
+                    "Repeated Act 2 entry on the same RunState double-incremented the counter.");
+            }
+            finally
+            {
+                SetRunManagerStateForTest(null);
+            }
+
+            // 4) Multiplayer host pity sync round-trip via native NetMessageBus.
+            typeof(MessageTypes).GetMethod("Initialize")?.Invoke(null, null);
+            var bus = new NetMessageBus(new PacketReader(), new PacketWriter());
+            TMessage RoundTripNet<TMessage>(TMessage message) where TMessage : struct, INetMessage
+            {
+                byte[] bytes = bus.SerializeMessage(1, message, out int length)[..length];
+                Assert(bus.TryDeserializeMessage(bytes, out INetMessage? decoded, out ulong? sender) && sender == 1,
+                    $"Native message bus could not round-trip {typeof(TMessage).Name}.");
+                return (TMessage)decoded!;
+            }
+
+            // Case A: Host misses=2, Client misses=0 -> BOTH force ThingsDepths identically without toggling config.
+            configureForTest.Invoke(null, [true, null, 2, null, true]);
+            var (hostOn, hostOnWire) = ConfigNetworkFake.Host();
+            MultiplayerConfig.Bind(hostOn);
+            Assert(MultiplayerConfig.PrepareRun(hostOn), "Host could not prepare run with pity active.");
+            Assert(hostOnWire.Sent.Last() is ThingsConfigSnapshotMessage,
+                "PrepareRun must send ThingsConfigSnapshotMessage last on the wire.");
+            ThingsDepthsPityMessage hostPityOn = hostOnWire.Sent.OfType<ThingsDepthsPityMessage>().Last();
+            var hostFinalSnapOn = (ThingsConfigSnapshotMessage)hostOnWire.Sent.Last();
+            Assert(hostPityOn.ForceDepths && MultiplayerConfig.SessionDepthsPityActive,
+                "Host with misses=2 did not activate SessionDepthsPityActive.");
+            Assert(!ThingsModConfig.GuaranteedDepthsEnabled,
+                "Host Depths pity must not mutate the user-facing FeatureGuaranteedDepthsEnabled setting.");
+
+            var hostOnResults = new List<(ModelId Act0, ModelId Act1, ModelId Act2, int NextRng)>();
+            for (uint seed = 1; seed <= 64; seed++)
+            {
+                var rng = new Rng(seed + 5000);
+                List<ActModel> acts = ActModel.GetRandomList(rng, UnlockState.all, isMultiplayer: true).ToList();
+                Assert(acts[1] is ThingsDepths,
+                    $"MP Host with pity=true failed to force ThingsDepths on seed {seed}.");
+                hostOnResults.Add((acts[0].Id, acts[1].Id, acts[2].Id, rng.NextInt()));
+            }
+            MultiplayerConfig.Clear();
+
+            configureForTest.Invoke(null, [true, null, 0, null, true]);
+            var (clientOn, clientOnWire) = ConfigNetworkFake.Peer();
+            MultiplayerConfig.Bind(clientOn);
+            clientOnWire.Deliver(RoundTripNet(new ThingsDepthsPityMessage { Revision = 99, ForceDepths = false }), sender: 999);
+            Assert(!MultiplayerConfig.HasDepthsPity, "Non-host sender was allowed to set Depths pity state.");
+            clientOnWire.Deliver(RoundTripNet(hostPityOn));
+            clientOnWire.Deliver(RoundTripNet(hostFinalSnapOn));
+            Assert(MultiplayerConfig.PrepareRun(clientOn) && MultiplayerConfig.SessionDepthsPityActive &&
+                   !ThingsModConfig.GuaranteedDepthsEnabled,
+                "Client did not apply Host's active Depths pity snapshot cleanly.");
+            for (uint seed = 1; seed <= 64; seed++)
+            {
+                var rng = new Rng(seed + 5000);
+                List<ActModel> acts = ActModel.GetRandomList(rng, UnlockState.all, isMultiplayer: true).ToList();
+                var expected = hostOnResults[(int)(seed - 1)];
+                Assert(acts[0].Id == expected.Act0 &&
+                       acts[1].Id == expected.Act1 &&
+                       acts[2].Id == expected.Act2 &&
+                       rng.NextInt() == expected.NextRng,
+                    $"MP Client diverged from Host under active pity on seed {seed}.");
+            }
+            clientOnWire.Deliver(RoundTripNet(new ThingsDepthsPityMessage
+            {
+                Revision = hostPityOn.Revision + 1,
+                ForceDepths = false,
+            }));
+            Assert(clientOnWire.DisconnectReason == NetError.ModMismatch && !MultiplayerConfig.IsActive,
+                "Client accepted an illegal post-lock Depths pity flip.");
+            MultiplayerConfig.Clear();
+
+            // Case B: Host misses=0, Client misses=2 -> Client MUST follow Host (ForceDepths=false).
+            configureForTest.Invoke(null, [true, null, 0, null, true]);
+            var (hostOff, hostOffWire) = ConfigNetworkFake.Host();
+            MultiplayerConfig.Bind(hostOff);
+            Assert(MultiplayerConfig.PrepareRun(hostOff), "Host could not prepare run with pity inactive.");
+            ThingsDepthsPityMessage hostPityOff = hostOffWire.Sent.OfType<ThingsDepthsPityMessage>().Last();
+            var hostFinalSnapOff = (ThingsConfigSnapshotMessage)hostOffWire.Sent.Last();
+            Assert(!hostPityOff.ForceDepths && !MultiplayerConfig.SessionDepthsPityActive,
+                "Host with misses=0 unexpectedly activated SessionDepthsPityActive.");
+
+            var hostOffResults = new List<(ModelId Act0, ModelId Act1, ModelId Act2, int NextRng)>();
+            var seenHostOffAct2 = new HashSet<Type>();
+            for (uint seed = 1; seed <= 64; seed++)
+            {
+                var rng = new Rng(seed + 7000);
+                List<ActModel> acts = ActModel.GetRandomList(rng, UnlockState.all, isMultiplayer: true).ToList();
+                seenHostOffAct2.Add(acts[1].GetType());
+                hostOffResults.Add((acts[0].Id, acts[1].Id, acts[2].Id, rng.NextInt()));
+            }
+            Assert(seenHostOffAct2.Contains(typeof(Hive)) && seenHostOffAct2.Contains(typeof(ThingsDepths)),
+                "MP Host with misses=0 did not roll both Hive and ThingsDepths.");
+            MultiplayerConfig.Clear();
+
+            configureForTest.Invoke(null, [true, null, 2, null, true]);
+            Assert(DepthsActPityTracker.IsPityTriggered, "Client local pity setup failed.");
+            var (clientOff, clientOffWire) = ConfigNetworkFake.Peer();
+            MultiplayerConfig.Bind(clientOff);
+            clientOffWire.Deliver(RoundTripNet(hostPityOff));
+            clientOffWire.Deliver(RoundTripNet(hostFinalSnapOff));
+            Assert(MultiplayerConfig.PrepareRun(clientOff) && !MultiplayerConfig.SessionDepthsPityActive,
+                "Client did not follow Host's ForceDepths=false.");
+            for (uint seed = 1; seed <= 64; seed++)
+            {
+                var rng = new Rng(seed + 7000);
+                List<ActModel> acts = ActModel.GetRandomList(rng, UnlockState.all, isMultiplayer: true).ToList();
+                var expected = hostOffResults[(int)(seed - 1)];
+                Assert(acts[0].Id == expected.Act0 &&
+                       acts[1].Id == expected.Act1 &&
+                       acts[2].Id == expected.Act2 &&
+                       rng.NextInt() == expected.NextRng,
+                    $"MP Client with local misses=2 desynced from Host (misses=0) on seed {seed}.");
+            }
+            MultiplayerConfig.Clear();
+
+            // Case C: Host misses=2 in GameMode.Daily -> Host sends ForceDepths=false.
+            configureForTest.Invoke(null, [true, null, 2, null, true]);
+            var (dailyHost, dailyHostWire) = ConfigNetworkFake.Host();
+            Assert((bool)prepareRunForGameMode.Invoke(null, [dailyHost, GameMode.Daily, false])!,
+                "Host could not prepare Daily run.");
+            ThingsDepthsPityMessage dailyPity = dailyHostWire.Sent.OfType<ThingsDepthsPityMessage>().Last();
+            Assert(!dailyPity.ForceDepths && !MultiplayerConfig.SessionDepthsPityActive,
+                "MP Host unexpectedly activated Depths pity for GameMode.Daily.");
+            MultiplayerConfig.Clear();
+
+            GD.Print("Depths ordering & anti-streak pity: PASS");
+        }
+        finally
+        {
+            SetRunManagerStateForTest(null);
+            MultiplayerConfig.Clear();
+            resetForTest.Invoke(null, null);
+            if (File.Exists(pityStatePath))
+                File.Delete(pityStatePath);
+            ResetAll();
+        }
+    }
+
+    private static void SetRunManagerStateForTest(RunState? state)
+    {
+        FieldInfo? stateField = typeof(RunManager).GetField("_state", BindingFlags.NonPublic | BindingFlags.Instance);
+        if (stateField is not null)
+        {
+            stateField.SetValue(RunManager.Instance, state);
+            return;
+        }
+
+        PropertyInfo? stateProp = typeof(RunManager).GetProperty("State", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        stateProp?.SetValue(RunManager.Instance, state);
+    }
+
+    private abstract class SyntheticModAct2 : ActModel
+    {
+        public override int Index => 1;
+        public override bool IsDefault => false;
+        public override Color MapTraveledColor => Colors.White;
+        public override Color MapUntraveledColor => Colors.White;
+        public override Color MapBgColor => Colors.White;
+        public override string[] BgMusicOptions => [];
+        public override string[] MusicBankPaths => [];
+        public override string AmbientSfx => string.Empty;
+        protected override int BaseNumberOfRooms => 14;
+        public override string ChestSpineSkinNameNormal => string.Empty;
+        public override string ChestSpineSkinNameStroke => string.Empty;
+        public override string ChestOpenSfx => string.Empty;
+        public override IEnumerable<EncounterModel> BossDiscoveryOrder => [];
+        public override IEnumerable<AncientEventModel> AllAncients => [];
+        public override IEnumerable<EventModel> AllEvents => [];
+        public override IEnumerable<EncounterModel> GenerateAllEncounters() => [];
+        public override bool IsUnlocked(UnlockState unlockState) => true;
+        public override IEnumerable<AncientEventModel> GetUnlockedAncients(UnlockState state) => [];
+        protected override void ApplyActDiscoveryOrderModifications(UnlockState unlockState) { }
+        public override MapPointTypeCounts GetMapPointTypes(Rng mapRng) => ModelDb.Act<Hive>().GetMapPointTypes(mapRng);
+    }
+
+    private sealed class SyntheticAlphaAct2 : SyntheticModAct2 { }
+
+    private sealed class SyntheticZuluAct2 : SyntheticModAct2 { }
 
 
     // ---- 门控集成（补丁已随 STS2_ThingsInit.Initialize 安装）----

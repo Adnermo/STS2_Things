@@ -23,6 +23,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Bestiary;
 using MegaCrit.Sts2.Core.Nodes.Vfx.Utilities;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.ValueProps;
+using ExternalCombatSimulationGuard = STS2_Things.Compatibility.ExternalCombatSimulationGuard;
 using STS2_Things.Core.Models;
 using STS2_Things.Encounters;
 using STS2_Things.Platform;
@@ -292,6 +293,12 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
     {
         if (creature == Creature && Phase == 1 && !IsDefeated)
         {
+            if (ExternalCombatSimulationGuard.IsActive(Creature))
+            {
+                if (Creature.CurrentHp <= 0)
+                    Creature.SetCurrentHpInternal(1);
+                return;
+            }
             if (_isEnrageLocked)
             {
                 if (Creature.CurrentHp <= 0)
@@ -321,7 +328,7 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
         Creature? dealer,
         CardModel? cardSource)
     {
-        if (_applyingEnrageHp || target != Creature || Phase != 1 || _isEnrageLocked || IsDefeated || !Creature.IsAlive)
+        if (_applyingEnrageHp || target != Creature || Phase != 1 || _isEnrageLocked || IsDefeated || !Creature.IsAlive || ExternalCombatSimulationGuard.IsActive(Creature))
             return;
         if (Creature.CurrentHp <= EnrageHpThreshold)
             await EnterEnrageLockAsync();
@@ -329,7 +336,7 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
 
     private async Task EnterEnrageLockAsync()
     {
-        if (_isEnrageLocked || Phase != 1 || IsDefeated)
+        if (_isEnrageLocked || Phase != 1 || IsDefeated || ExternalCombatSimulationGuard.IsActive(Creature))
             return;
 
         _savedEnrageMaxHp = Creature.MaxHp;
@@ -742,7 +749,7 @@ public sealed class ThingsCaveGodBody : ThingsMonsterModel
 
     public override async Task AfterCurrentHpChanged(Creature creature, decimal delta)
     {
-        if (_applyingEnrageHp || creature != Creature)
+        if (_applyingEnrageHp || creature != Creature || ExternalCombatSimulationGuard.IsActive(Creature))
             return;
         SyncTremorVisual();
         if (delta >= 0 || IsDefeated || !Creature.IsAlive)

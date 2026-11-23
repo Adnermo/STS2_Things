@@ -29,6 +29,8 @@ internal static class ActLikeIt2Compatibility
     private const int DepthsActIndex = 1;
     private const string ActLikeIt2HarmonyId = "ActLikeIt2";
 
+    internal static bool IsInstalled { get; private set; }
+
     internal static void Install(Assembly assembly, Harmony harmony)
     {
         Type? registryType = assembly.GetType("ActLikeIt2.ActRegistry", false);
@@ -84,6 +86,7 @@ internal static class ActLikeIt2Compatibility
 
         InstallGuaranteedDepthsInterop(assembly, harmony);
         InstallBlitzGenerationGuard(harmony);
+        IsInstalled = true;
     }
 
     private static void InstallGuaranteedDepthsInterop(Assembly assembly, Harmony harmony)
@@ -137,7 +140,7 @@ internal static class ActLikeIt2Compatibility
         if (__exception is not null)
             return __exception;
 
-        DepthsGuaranteedActPatch.ApplyGuaranteedDepths(ref __result);
+        DepthsGuaranteedActPatch.ApplyExplicitGuaranteedDepths(ref __result);
         return null;
     }
 

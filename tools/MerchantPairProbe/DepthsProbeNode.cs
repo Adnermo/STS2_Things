@@ -72,7 +72,7 @@ public partial class DepthsProbeNode : Node
                 Assert(pair.MonstersWithSlots.Count == 2 && pair.MonstersWithSlots.All(p=>p.Item1 is FakeMerchantMonster), "Two native merchants");
                 Assert(!ReferenceEquals(pair.MonstersWithSlots[0].Item1,pair.MonstersWithSlots[1].Item1), "Separate mutable monsters");
                 Assert(pair.Slots.SequenceEqual(new[]{"merchant_left","merchant_right"}), "Distinct slots");
-                Assert(pair.MinGoldReward == 300 && pair.MaxGoldReward == 300, "Existing encounter reward retained once");
+                Assert(pair.MinGoldReward == 120 && pair.MaxGoldReward == 120, "Updated encounter gold reward is 120");
                 var room = new CombatRoom(pair,run);
                 foreach(var p in party){room.CombatState.AddPlayer(p);}
                 Assert(party.All(p=>p.PlayerCombatState==null), "EventLayoutType.Combat layout state starts with null PlayerCombatState before SetUpCombat");
@@ -104,11 +104,23 @@ public partial class DepthsProbeNode : Node
             Assert(ModelDb.Event<ThingsRobberyFakeMerchant>().IsShared && ModelDb.Event<ThingsRobberyFakeMerchant>().LayoutType==EventLayoutType.Combat,
                 "Native shared combat event layout retained");
             Assert(ModelDb.Event<ThingsRobberyFakeMerchant>().CanonicalEncounter is ThingsRobberyFakeMerchantEncounter, "Event points to pair encounter");
+            Assert(ThingsRobberyFakeMerchant.StealDamage == 7 && ThingsRobberyFakeMerchant.GoldsCount == 45 && ThingsRobberyFakeMerchant.TrueRelicsCount == 1,
+                "Shifty Shop constants reflect 7 steal damage, 45 gold, and 1 true relic");
+            System.Reflection.MethodInfo generateInitialOptions = typeof(EventModel).GetMethod("GenerateInitialOptions", BindingFlags.Instance | BindingFlags.NonPublic)!;
             foreach(string lang in new[]{"zhs","eng"})
             {
                 SaveManager.Instance.SettingsSave.Language=lang;LocManager.Initialize();
                 var model=ModelDb.Event<ThingsRobberyFakeMerchant>();
                 Assert(model.InitialDescription.GetFormattedText().Contains(lang=="zhs"?"两名":"Two merchants"), "Pair introductory text");
+                var mutableEvent = (ThingsRobberyFakeMerchant)model.ToMutable();
+                var initialOptions = (IReadOnlyList<EventOption>)generateInitialOptions.Invoke(mutableEvent, null)!;
+                Assert(initialOptions.Count == 4 && initialOptions.Select(o => o.TextKey).SequenceEqual(new[]
+                {
+                    "THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.TAKERELICS",
+                    "THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.TAKEGOLDS",
+                    "THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.BEGINFIGHT",
+                    "THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.LEAVE",
+                }), $"Shifty Shop exposes 4 options ({lang})");
                 var desc=new LocString("events","THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.BEGINFIGHT.description");
                 model.DynamicVars.AddTo(desc);
                 Assert(desc.GetFormattedText().Contains(lang=="zhs"?"两名":"2 Fake Merchants"), "Battle option advertises both enemies");

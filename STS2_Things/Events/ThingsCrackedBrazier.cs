@@ -22,13 +22,12 @@ namespace STS2_Things.Events;
 
 /// <summary>
 /// Depths event offering Tezcatara's Ember (0 cost + Eternal + +3 Attack damage) for 10 Max HP + Eternal Burn,
-/// 9-HP Removal that grants a Common Relic if the burned card was Rare, or a 10-HP Heal.
+/// 9-HP Removal that grants a Common Relic if the burned card was Rare, or leaving.
 /// </summary>
 public sealed class ThingsCrackedBrazier : ThingsEventModel
 {
     public const int TemperMaxHpLoss = 10;
     public const int BurnDamage = 9;
-    public const int WarmHeal = 10;
     internal const string EternalKeywordSavedPropertyName = nameof(ThingsEternalKeyword);
 
     private bool _settling;
@@ -53,7 +52,6 @@ public sealed class ThingsCrackedBrazier : ThingsEventModel
     [
         new MaxHpVar(TemperMaxHpLoss),
         new DamageVar("BurnDamage", BurnDamage, ValueProp.Unblockable | ValueProp.Unpowered),
-        new HealVar("WarmHeal", WarmHeal),
         new LocalizedStringVar("Burn", static _ => new LocString("cards", "BURN.title").GetFormattedText()),
     ];
 
@@ -65,7 +63,7 @@ public sealed class ThingsCrackedBrazier : ThingsEventModel
             && player.Deck.Cards.Any(CanTemper));
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "TEMPER", "BURN_CARD", "WARM_HANDS");
+        DepthsEventDefaults.DescribeOptions(this, "TEMPER", "BURN_CARD", "LEAVE");
 
     public override IEnumerable<string> GetAssetPaths(IRunState runState) =>
         base.GetAssetPaths(runState)
@@ -124,7 +122,7 @@ public sealed class ThingsCrackedBrazier : ThingsEventModel
         [
             temperOption,
             burnOption,
-            new EventOption(this, WarmHands, InitialOptionKey("WARM_HANDS")),
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
     }
 
@@ -225,12 +223,12 @@ public sealed class ThingsCrackedBrazier : ThingsEventModel
         Finish("BURN_CARD.description");
     }
 
-    private async Task WarmHands()
+    private Task Leave()
     {
         if (!BeginSettlement())
-            return;
-        await CreatureCmd.Heal(EventOwner.Creature, WarmHeal);
-        Finish("WARM_HANDS.description");
+            return Task.CompletedTask;
+        Finish("LEAVE.description");
+        return Task.CompletedTask;
     }
 
     private void Finish(string pageSuffix)

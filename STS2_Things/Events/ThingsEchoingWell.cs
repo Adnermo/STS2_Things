@@ -20,8 +20,7 @@ namespace STS2_Things.Events;
 
 public sealed class ThingsEchoingWell : ThingsEventModel
 {
-    private const int SpiralCost = 45;
-    private const int ListenHeal = 10;
+    public const int SpiralCost = 60;
     private bool _settling;
 
     protected override void AfterCloned()
@@ -31,10 +30,10 @@ public sealed class ThingsEchoingWell : ThingsEventModel
     }
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
-        [new IntVar("Combats", 3), new GoldVar("SpiralGold", SpiralCost), new HealVar(ListenHeal)];
+        [new IntVar("Combats", 3), new GoldVar("SpiralGold", SpiralCost)];
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "RECORD", "SPIRAL", "LISTEN");
+        DepthsEventDefaults.DescribeOptions(this, "RECORD", "SPIRAL", "LEAVE");
 
     // Native free-cost modifiers do not turn either kind of X cost into zero.
     private static bool CanRecord(CardModel card) => card.IsRemovable &&
@@ -69,7 +68,7 @@ public sealed class ThingsEchoingWell : ThingsEventModel
             new EventOption(this, spiralKey == "SPIRAL" ? CarveSpiral : null,
                 InitialOptionKey(spiralKey),
                 HoverTipFactory.FromEnchantment<Spiral>()),
-            new EventOption(this, Listen, InitialOptionKey("LISTEN")),
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
     }
 
@@ -117,12 +116,12 @@ public sealed class ThingsEchoingWell : ThingsEventModel
         Finish("SPIRAL");
     }
 
-    private async Task Listen()
+    private Task Leave()
     {
-        if (IsFinished || _settling) return;
+        if (IsFinished || _settling) return Task.CompletedTask;
         _settling = true;
-        await CreatureCmd.Heal(EventOwner.Creature, DynamicVars.Heal.BaseValue);
-        Finish("LISTEN");
+        Finish("LEAVE");
+        return Task.CompletedTask;
     }
 
     private void Finish(string page)

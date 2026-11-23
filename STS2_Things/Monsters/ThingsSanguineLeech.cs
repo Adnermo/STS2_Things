@@ -31,6 +31,8 @@ public sealed class ThingsSanguineLeech : ThingsSpineMonster
     public const string ReinfestMoveId = "REINFEST_MOVE";
     private int _openingPhase;
     private MoveState? _reinfest;
+    private ConditionalBranchState? _reinfestGate;
+    private MonsterState? _resumeState;
     private bool _reinfestPending;
     private int _parasiteFeedRound = -1;
     private int _parasiteEndTurnTriggersThisRound;
@@ -64,6 +66,8 @@ public sealed class ThingsSanguineLeech : ThingsSpineMonster
         base.AfterCloned();
         _openingPhase = 0;
         _reinfest = null;
+        _reinfestGate = null;
+        _resumeState = null;
         _reinfestPending = false;
         _parasiteFeedRound = -1;
         _parasiteEndTurnTriggersThisRound = 0;
@@ -120,16 +124,32 @@ public sealed class ThingsSanguineLeech : ThingsSpineMonster
 
     private void PrepareReinfestation()
     {
-        if (!_reinfestPending || _reinfest == null || !Creature.IsAlive ||
-            IsPerformingMove || !NextMove.CanTransitionAway || CombatManager.Instance.IsOverOrEnding) return;
-        // Insert without advancing or resetting the normal cycle. Stun uses a
-        // follow-up ID; a stun that resumes this insertion must retain its cursor.
-        MonsterState resume = NextMove.FollowUpState ?? MoveStateMachine!.States[NextMove.FollowUpStateId!];
-        if (resume != _reinfest) _reinfest.FollowUpState = resume;
-        // The mandatory insertion survives the native next-turn roll. Further
-        // requests during it keep the same saved normal action.
-        SetMoveImmediate(_reinfest);
+        if (!_reinfestPending || _reinfest == null || _reinfestGate == null || !Creature.IsAlive ||
+            IsPerformingMove || NextMove == null || NextMove.Id == "UNSET_MOVE" ||
+            !NextMove.CanTransitionAway || CombatManager.Instance.IsOverOrEnding) return;
+        if (MoveStateMachine is not { } stateMachine || stateMachine.States.ContainsKey(NextMove.Id)) return;
+
+        // Transient overrides (e.g., native Stun or ThingsSurrender's DEBUFF_WEAK) are not registered
+        // in MoveStateMachine.States and bypass our cycle branches via FollowUpStateId. Once the override
+        // has executed (CanTransitionAway == true), preserve its resume target and route its follow-up
+        // through _reinfestGate so the next RollMove naturally enters REINFEST_MOVE.
+        MonsterState? followUp = NextMove.FollowUpState
+            ?? (!string.IsNullOrEmpty(NextMove.FollowUpStateId) && stateMachine.States.TryGetValue(NextMove.FollowUpStateId, out MonsterState? resolved)
+                ? resolved
+                : null);
+        if (followUp is MoveState resumeMove && resumeMove != _reinfest)
+            _resumeState = resumeMove;
+        NextMove.FollowUpState = _reinfestGate;
+    }
+
+    private bool TryConsumeReinfestation(MonsterState? nextNormal)
+    {
+        if (nextNormal != null)
+            _resumeState = nextNormal;
+        if (!_reinfestPending)
+            return false;
         _reinfestPending = false;
+        return true;
     }
 
     protected override void AddExtraAnimationStates(CreatureAnimator animator, AnimState idle)
@@ -145,14 +165,32 @@ public sealed class ThingsSanguineLeech : ThingsSpineMonster
             new("INFEST_MOVE", Infest, new StatusIntent(1)),
             new("SIP_AGAIN_MOVE", Sip, new SingleAttackIntent(BiteDamage)),
             new("CURL_MOVE", Curl, new DefendIntent())];
-        for (int i = 0; i < cycle.Length; i++) cycle[i].FollowUpState = cycle[(i + 1) % cycle.Length];
         _reinfestPending = false;
-        _reinfest = new MoveState(ReinfestMoveId, Infest, new StatusIntent(1))
+        _resumeState = cycle[_openingPhase];
+        // Leave MustPerformOnceBeforeTransitioning false so native overrides (ThingsSurrender, Whistle/Stun)
+        // can interrupt REINFEST_MOVE during the player turn and resume it cleanly next turn.
+        _reinfest = new MoveState(ReinfestMoveId, Infest, new StatusIntent(1));
+        _reinfestGate = new ConditionalBranchState("REINFEST_GATE");
+        _reinfestGate.AddState(_reinfest, () => TryConsumeReinfestation(null));
+        foreach (MoveState state in cycle)
         {
-            MustPerformOnceBeforeTransitioning = true,
-            FollowUpState = cycle[_openingPhase],
-        };
-        return new MonsterMoveStateMachine([.. cycle, _reinfest], cycle[_openingPhase]);
+            MoveState captured = state;
+            _reinfestGate.AddState(captured, () => ReferenceEquals(_resumeState, captured));
+        }
+        _reinfestGate.AddState(cycle[_openingPhase], () => true);
+        _reinfest.FollowUpState = _reinfestGate;
+
+        List<MonsterState> states = [.. cycle, _reinfest, _reinfestGate];
+        for (int i = 0; i < cycle.Length; i++)
+        {
+            MoveState nextNormal = cycle[(i + 1) % cycle.Length];
+            var branch = new ConditionalBranchState($"AFTER_{cycle[i].Id}");
+            branch.AddState(_reinfest, () => TryConsumeReinfestation(nextNormal));
+            branch.AddState(nextNormal, () => true);
+            cycle[i].FollowUpState = branch;
+            states.Add(branch);
+        }
+        return new MonsterMoveStateMachine(states, cycle[_openingPhase]);
     }
 
     private Task WaitForPose(string animation, float moment, float fallback)
@@ -183,10 +221,12 @@ public sealed class ThingsSanguineLeech : ThingsSpineMonster
     {
         SfxCmd.Play(CastSfx);
         await Begin("Cast", "cast", ParasiteRelease);
+        HashSet<ulong> deliveredPlayers = [];
         foreach (Creature target in targets.Where(c => c.IsAlive))
         {
+            if (!CombatState.IsLiveCombat() || CombatManager.Instance.IsOverOrEnding) return;
             Player? player = target.Player ?? target.PetOwner;
-            if (player == null || player.Creature.IsDead) continue;
+            if (player == null || player.Creature.IsDead || !deliveredPlayers.Add(player.NetId)) continue;
             ICombatState? combatState = target.CombatState;
             if (combatState != null)
             {

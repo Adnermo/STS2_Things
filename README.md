@@ -6,7 +6,7 @@
 
 原创第二章「深处」 · 8 位专属 Boss · 38 个跨章节事件与 5 款联机小游戏 · 单包双版本零依赖运行
 
-[![Version](https://img.shields.io/badge/Version-v2.0.9-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
+[![Version](https://img.shields.io/badge/Version-v2.0.10-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
 [![STS2 Support](https://img.shields.io/badge/STS2-v0.111.0%20%7C%20v0.111.1%20%7C%20v0.113.1%20Beta-1565c0?style=flat-square)](docs/DUAL_VERSION_SUPPORT.md)
 [![Steam Workshop](https://img.shields.io/badge/Steam-Workshop-1b2838?style=flat-square&logo=steam)](https://steamcommunity.com/sharedfiles/filedetails/?id=3747607944)
 [![Direct Mirror](https://img.shields.io/badge/国内直链-网盘下载-00838f?style=flat-square)](https://pan.adnermo.online/STS2_Things/latest)
@@ -211,6 +211,7 @@ STS2_Things/
 
 完整历史版本记录请参阅 **[CHANGELOG.md](CHANGELOG.md)** 或 **[`docs/releases/`](docs/releases/)**。
 
+- **`v2.0.10`**（[完整说明](docs/releases/release-2.0.10.md)）：回调收音水母基础回音伤害至 `5/6`（开局每段 `7/8`，2 攻击总计 `21/24`）并重写「收音」中英文主文案直述重放规则；重构吸血血蛭再寄生分支为 `REINFEST_GATE` 修复血蛭之母唤子后卡死并加固宠物去重/槽位校验；彻底修复自制 Boss 战曲战后不停止；新增百科大全巨型/多部件 Boss 外观排版；新增第二幕「深处」随机进入保底并梳理修复 25+ 事件随机准入；修复外部战斗模拟模组/人面柱转嫁、灵魂异鱼籽碰撞箱、盲蟹墨瓶与第三方卡面模组兼容。
 - **`v2.0.9`**（[完整说明](docs/releases/release-2.0.9.md)）：下调腐化之遗（The Legacy）血量（`240/260`，恐惧 `+25`）与输出压迫感（「回音」`13/15`、「血弹」`2×4 / 2×5`、「强化」力量 `+1/+2`、「衰竭」1 层易伤与 3 张状态牌）；重制渊墨巨蛸 5 套 Spine 动画流畅度与性能（CPU 裁剪降 88%）并修复卡顿闪烁；为渊墨巨蛸与活体巨岩新增专属图标的半血锁血 Buff（「深渊锁潮」/「熔核锁印」），渊墨巨蛸二阶段锁血后直接补满全部 4 条触手并下调触手血量；修复始源利齿之眼同回合加力致意图跳变、下调始源雾菇双人血量与校准 15 条音效；盛碗虫族母玩家回合召唤物改为眩晕 1 回合；地图横路调整为三幕 `50/100/150` 金币（联机每人支付），并修复永恒词条持久化、血蛭之母唤醒、缴械投降与血条层级遮挡。
 - **`v2.0.8`**（[完整说明](docs/releases/release-2.0.8.md)）：完整适配 `ActLikeIt2`（Act Like It 2 v0.2.6）零硬依赖接入第二幕「深处」与「必定遇到深处」联动并修复 Blitz 深处房间生成；精调人面塔全石面力量联动与「悲叹」全石面增伤、活体巨岩一阶段破防倒地扩至 2 回合、腐化之遗重塑为一层暗渠高难 Boss（死亡律动固定 2 层不叠加、外壳收紧与攻防强化）；全面平衡多项恐惧模式章节支配（Dominion）并修复瀑布巨兽支配错误赋予灵鱼卵子体自爆的问题；开启个人网盘边缘缓存。
 - **`v2.0.7`**（[完整说明](docs/releases/release-2.0.7.md)）：始源雾菇召唤物「始源利齿之眼」经 `IllusionPower` 复活后先眩晕 1 回合再恢复错峰招式（`illusion1` 牵制 / `illusion2` 双噬），并同步包含 `v2.0.6` 全部更新。

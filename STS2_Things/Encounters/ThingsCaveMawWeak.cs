@@ -11,7 +11,7 @@ public sealed class ThingsCaveMawWeak : EncounterModel
     public override bool IsWeak => true;
     public override IEnumerable<EncounterTag> Tags => [DepthsEncounterTags.CaveMaw];
     public override bool HasScene => true;
-    protected override bool HasCustomBackground => true;
+    protected override bool HasCustomBackground => false;
     public override IReadOnlyList<string> Slots => ["maw"];
     public override IEnumerable<MonsterModel> AllPossibleMonsters => [ModelDb.Monster<ThingsCaveMaw>()];
     protected override IReadOnlyList<(MonsterModel, string?)> GenerateMonsters() =>

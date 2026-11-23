@@ -554,10 +554,10 @@ public partial class DepthsProbeNode
             var player = b.Players[0];
             player.Creature.SetMaxHpInternal(1000);
             player.Creature.SetCurrentHpInternal(1000);
-            int expectedHit = ascension == 0 ? 10 : 11;
+            int expectedHit = ascension == 0 ? 7 : 8;
             int expectedSkillBlock = ascension == 0 ? 7 : 8;
             Assert(jelly.NextMove.Intents.OfType<SingleAttackIntent>().Single().GetTotalDamage([player.Creature], jelly.Creature) == expectedHit,
-                "Radio Jellyfish opening intent reflects 10 (A0) / 11 (A9+) damage.");
+                "Radio Jellyfish opening intent reflects 7 (A0) / 8 (A9+) damage.");
             Assert(jelly.ShieldPerSkill == expectedSkillBlock,
                 "Radio Jellyfish opening ShieldPerSkill reflects 7 (A0) / 8 (A8+) Block.");
 
@@ -585,7 +585,7 @@ public partial class DepthsProbeNode
                 $"Radio Jellyfish Playback deals {expectedHit}x2 damage for one recorded Attack plus finale.");
             DeactivateSyntheticCombat();
         }
-        GD.Print("PASS Reverse Salamander Surging Flow + Reflux (155/173 HP, 2/3 Str, 10/14 Block) & Radio Jellyfish 10/11 damage and 7/8 Skill Block.");
+        GD.Print("PASS Reverse Salamander Surging Flow + Reflux (155/173 HP, 2/3 Str, 10/14 Block) & Radio Jellyfish 7/8 damage and 7/8 Skill Block.");
     }
 
     private static async Task VerifyBowlbugProgenitorMechanics()

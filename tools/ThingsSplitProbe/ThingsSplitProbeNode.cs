@@ -841,6 +841,15 @@ public partial class ThingsSplitProbeNode : Node
         skillPartner.Deck.AddInternal(mixedRun.CreateCard<DefendIronclad>(skillPartner), silent: true);
         Assert(!eventModel.IsAllowed(mixedRun),
             "Cutting It Close accepted multiplayer with a Skill-only partner.");
+
+        Player lowHp = CreateIroncladPlayer(110UL);
+        RunState lowHpRun = RunState.CreateForTest([lowHp], seed: "THINGS_SPLIT_EVENT_LOW_HP");
+        lowHp.Creature.SetCurrentHpInternal(ThingsCuttingItClose.ImproviseDamage);
+        Assert(!eventModel.IsAllowed(lowHpRun),
+            $"Cutting It Close accepted a player with HP <= {ThingsCuttingItClose.ImproviseDamage}.");
+        lowHp.Creature.SetCurrentHpInternal(ThingsCuttingItClose.ImproviseDamage + 1);
+        Assert(eventModel.IsAllowed(lowHpRun),
+            $"Cutting It Close rejected a player with HP > {ThingsCuttingItClose.ImproviseDamage}.");
     }
 
     private static async Task VerifyImproviseSelectionFilter()
@@ -879,6 +888,7 @@ public partial class ThingsSplitProbeNode : Node
         Player player = CreateIroncladRunPlayer();
         CardModel original = player.Deck.Cards.OfType<StrikeIronclad>().First();
         CardModel[] deckBefore = player.Deck.Cards.ToArray();
+        int hpBefore = player.Creature.CurrentHp;
 
         ThingsCuttingItClose eventModel = await CreateStartedEvent(player);
         Assert(eventModel.CurrentOptions.Count == 2,
@@ -902,6 +912,9 @@ public partial class ThingsSplitProbeNode : Node
             .Where(card => deckBefore.All(previous => !ReferenceEquals(previous, card)))
             .ToArray();
 
+        Assert(player.Creature.CurrentHp == hpBefore - ThingsCuttingItClose.ImproviseDamage,
+            $"Improvise changed HP from {hpBefore} to {player.Creature.CurrentHp}, " +
+            $"expected {hpBefore - ThingsCuttingItClose.ImproviseDamage}.");
         Assert(deckAfter.Length == deckBefore.Length + 1,
             "Improvise did not increase the deck size by exactly one.");
         Assert(deckAfter.All(card => !ReferenceEquals(card, original)),
@@ -931,6 +944,7 @@ public partial class ThingsSplitProbeNode : Node
         Player player = CreateIroncladRunPlayer();
         CardModel original = player.Deck.Cards.OfType<StrikeIronclad>().First();
         CardModel[] deckBefore = player.Deck.Cards.ToArray();
+        int hpBefore = player.Creature.CurrentHp;
 
         ThingsCuttingItClose eventModel = await CreateStartedEvent(player);
         Assert(eventModel.CurrentOptions.Count == 2,
@@ -950,6 +964,9 @@ public partial class ThingsSplitProbeNode : Node
         }
 
         CardModel[] deckAfter = player.Deck.Cards.ToArray();
+        Assert(player.Creature.CurrentHp == hpBefore - ThingsCuttingItClose.ThrowDamage,
+            $"Throw changed HP from {hpBefore} to {player.Creature.CurrentHp}, " +
+            $"expected {hpBefore - ThingsCuttingItClose.ThrowDamage}.");
         Assert(deckAfter.Length == deckBefore.Length - 1,
             "Throw did not decrease the deck size by exactly one.");
         Assert(deckAfter.All(card => !ReferenceEquals(card, original)),
@@ -970,6 +987,7 @@ public partial class ThingsSplitProbeNode : Node
         player.AddRelicInternal(ModelDb.Relic<MoltenEgg>().ToMutable(), silent: true);
         CardModel original = player.Deck.Cards.OfType<StrikeIronclad>().First();
         CardModel[] deckBefore = player.Deck.Cards.ToArray();
+        int hpBefore = player.Creature.CurrentHp;
 
         ThingsCuttingItClose eventModel = await CreateStartedEvent(player);
         var selector = new TestCardSelector();
@@ -979,6 +997,9 @@ public partial class ThingsSplitProbeNode : Node
             await eventModel.CurrentOptions[0].Chosen();
         }
 
+        Assert(player.Creature.CurrentHp == hpBefore - ThingsCuttingItClose.ImproviseDamage,
+            $"Molten Egg Improvise changed HP from {hpBefore} to {player.Creature.CurrentHp}, " +
+            $"expected {hpBefore - ThingsCuttingItClose.ImproviseDamage}.");
         CardModel[] addedCards = player.Deck.Cards
             .Where(card => deckBefore.All(previous => !ReferenceEquals(previous, card)))
             .ToArray();
@@ -1002,6 +1023,7 @@ public partial class ThingsSplitProbeNode : Node
     {
         Player player = CreateIroncladRunPlayer();
         CardModel[] deckBefore = player.Deck.Cards.ToArray();
+        int hpBefore = player.Creature.CurrentHp;
         ThingsCuttingItClose eventModel = await CreateStartedEvent(player);
         EventOption option = eventModel.CurrentOptions[0];
         var selector = new TestCardSelector();
@@ -1011,6 +1033,8 @@ public partial class ThingsSplitProbeNode : Node
             await option.Chosen();
         }
 
+        Assert(player.Creature.CurrentHp == hpBefore,
+            $"An empty Improvise selection changed HP from {hpBefore} to {player.Creature.CurrentHp}.");
         AssertSameDeck(deckBefore, player.Deck.Cards,
             "An empty Improvise selection changed the player's deck.");
         Assert(option.WasChosen,
@@ -1024,6 +1048,7 @@ public partial class ThingsSplitProbeNode : Node
     {
         Player player = CreateIroncladRunPlayer();
         CardModel[] deckBefore = player.Deck.Cards.ToArray();
+        int hpBefore = player.Creature.CurrentHp;
         ThingsCuttingItClose eventModel = await CreateStartedEvent(player);
         EventOption option = eventModel.CurrentOptions[1];
         var selector = new TestCardSelector();
@@ -1033,6 +1058,8 @@ public partial class ThingsSplitProbeNode : Node
             await option.Chosen();
         }
 
+        Assert(player.Creature.CurrentHp == hpBefore,
+            $"An empty Throw selection changed HP from {hpBefore} to {player.Creature.CurrentHp}.");
         AssertSameDeck(deckBefore, player.Deck.Cards,
             "An empty Throw selection changed the player's deck.");
         Assert(option.WasChosen,
@@ -1080,6 +1107,8 @@ public partial class ThingsSplitProbeNode : Node
             throwingPlayer.Deck.Cards.OfType<StrikeIronclad>().First();
         CardModel[] improviseDeckBefore = improvisingPlayer.Deck.Cards.ToArray();
         CardModel[] throwDeckBefore = throwingPlayer.Deck.Cards.ToArray();
+        int improviseHpBefore = improvisingPlayer.Creature.CurrentHp;
+        int throwHpBefore = throwingPlayer.Creature.CurrentHp;
 
         ThingsCuttingItClose improviseEvent = await CreateStartedEvent(improvisingPlayer);
         ThingsCuttingItClose throwEvent = await CreateStartedEvent(throwingPlayer);
@@ -1107,6 +1136,10 @@ public partial class ThingsSplitProbeNode : Node
 
         Assert(improviseEvent.IsFinished && throwEvent.IsFinished,
             "Two multiplayer Cutting It Close instances did not both finish.");
+        Assert(improvisingPlayer.Creature.CurrentHp == improviseHpBefore - ThingsCuttingItClose.ImproviseDamage,
+            "The multiplayer Improvise owner did not take ImproviseDamage.");
+        Assert(throwingPlayer.Creature.CurrentHp == throwHpBefore - ThingsCuttingItClose.ThrowDamage,
+            "The multiplayer Throw owner did not take ThrowDamage.");
         Assert(improvisingDeckAfter.Length == improviseDeckBefore.Length + 1 &&
                multiplayerCopies.Length == 2 &&
                multiplayerCopies.All(card => card.Enchantment is ThingsSplit),

@@ -19,13 +19,13 @@ using STS2_Things.Core.Models;
 namespace STS2_Things.Events;
 
 /// <summary>
-/// Act 1 (Overgrowth / Underdocks) event: apply vanilla Inky enchantment to a targeted Attack
-/// for 6 HP damage, transform 1 non-Curse card into a random Colorless card, or heal 8 HP.
+/// Act 1 (Overgrowth / Underdocks) event: apply vanilla Inky enchantment to an enemy-targeting Attack or Skill
+/// for 10 HP damage, transform 1 non-Curse card into a random Colorless card for 7 HP damage, or leave.
 /// </summary>
 public sealed class ThingsBlindCrabInkwell : ThingsEventModel
 {
-    public const int PinchDamage = 6;
-    public const int RinseHeal = 8;
+    public const int PinchDamage = 10;
+    public const int RewriteDamage = 7;
     public const int InkyWeakAmount = 1;
 
     private bool _settling;
@@ -39,7 +39,7 @@ public sealed class ThingsBlindCrabInkwell : ThingsEventModel
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
         new DamageVar("PinchDamage", PinchDamage, ValueProp.Unblockable | ValueProp.Unpowered),
-        new HealVar("RinseHeal", RinseHeal),
+        new DamageVar("RewriteDamage", RewriteDamage, ValueProp.Unblockable | ValueProp.Unpowered),
     ];
 
     public override bool IsAllowed(IRunState runState) =>
@@ -50,12 +50,12 @@ public sealed class ThingsBlindCrabInkwell : ThingsEventModel
             && player.Deck.Cards.Any(IsInkyCandidate));
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "SOAK", "REWRITE", "RINSE");
+        DepthsEventDefaults.DescribeOptions(this, "SOAK", "REWRITE", "LEAVE");
 
-    // Inky reads cardPlay.Target unless TargetType == AllEnemies, so exclude RandomEnemy/Self attacks.
+    // Inky reads cardPlay.Target unless TargetType == AllEnemies, so exclude RandomEnemy/Self/Ally cards.
     private static bool IsInkyCandidate(CardModel? card) =>
         card != null
-        && card.Type == CardType.Attack
+        && card.Type is CardType.Attack or CardType.Skill
         && card.TargetType is TargetType.AnyEnemy or TargetType.AllEnemies
         && ModelDb.Enchantment<Inky>().CanEnchant(card);
 
@@ -90,13 +90,14 @@ public sealed class ThingsBlindCrabInkwell : ThingsEventModel
         bool canRewrite = EventOwner.Deck.Cards.Any(card => CanRewrite(EventOwner, card));
         EventOption rewriteOption = canRewrite
             ? new EventOption(this, RewriteCard, InitialOptionKey("REWRITE"))
+                .ThatDoesDamage(RewriteDamage)
             : new EventOption(this, null, InitialOptionKey("REWRITE_NO_CARD"));
 
         return
         [
             soakOption,
             rewriteOption,
-            new EventOption(this, RinseHands, InitialOptionKey("RINSE")),
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
     }
 
@@ -190,6 +191,13 @@ public sealed class ThingsBlindCrabInkwell : ThingsEventModel
             return;
         }
 
+        await ThingsEventHelpers.DealUnblockableDamageAsync(player, RewriteDamage);
+        if (player.Creature.IsDead)
+        {
+            Finish("REWRITE.loss");
+            return;
+        }
+
         CardModel replacement = CardFactory.CreateRandomCardForTransform(
             selected,
             GetColorlessTransformPool(player, selected),
@@ -199,12 +207,12 @@ public sealed class ThingsBlindCrabInkwell : ThingsEventModel
         Finish("REWRITE.description");
     }
 
-    private async Task RinseHands()
+    private Task Leave()
     {
         if (!BeginSettlement())
-            return;
-        await CreatureCmd.Heal(EventOwner.Creature, RinseHeal);
-        Finish("RINSE.description");
+            return Task.CompletedTask;
+        Finish("LEAVE.description");
+        return Task.CompletedTask;
     }
 
     private void Finish(string pageSuffix)

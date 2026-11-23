@@ -11,7 +11,7 @@ public sealed class ThingsSilkSnailEncounter : EncounterModel
     public override bool IsWeak => false;
     public override IEnumerable<EncounterTag> Tags => [DepthsEncounterTags.SilkMoth, DepthsEncounterTags.Snail];
     public override bool HasScene => true;
-    protected override bool HasCustomBackground => true;
+    protected override bool HasCustomBackground => false;
     public override IReadOnlyList<string> Slots => ["moth", "rock", "slime"];
     public override IEnumerable<MonsterModel> AllPossibleMonsters =>
         [ModelDb.Monster<ThingsSilkMoth>(), ModelDb.Monster<ThingsRockSnail>(), ModelDb.Monster<ThingsSlimeSnail>()];

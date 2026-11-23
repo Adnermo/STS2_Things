@@ -229,10 +229,10 @@ func _verify_event_localization(language: String) -> void:
 
 	var table := parsed as Dictionary
 	var expected_prefix_counts := {
-		"THINGS_ROBBERY_FAKE_MERCHANT.": 13,
+		"THINGS_ROBBERY_FAKE_MERCHANT.": 18,
 		"THINGS_BACKROOMS.": 28,
 		"THINGS_MEDUSA.": 18,
-		"THINGS_CUTTING_IT_CLOSE.": 15,
+		"THINGS_CUTTING_IT_CLOSE.": 18,
 	}
 	for prefix in expected_prefix_counts:
 		var actual_count := 0
@@ -254,14 +254,14 @@ func _verify_event_localization(language: String) -> void:
 			"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.description": "Guaranteed genuine!",
 			"THINGS_ROBBERY_FAKE_MERCHANT.pages.TAKEGOLDS.description": "genuine gold",
 			"THINGS_BACKROOMS.pages.SEARCH_FAIL.description": "This place is learning you.",
-			"THINGS_MEDUSA.pages.GREET.description": "Keep it away from your teeth.",
+			"THINGS_MEDUSA.pages.GREET.description": "unpetrified",
 		}
 	else:
 		required_fragments = {
 			"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.description": "如假包换！",
 			"THINGS_ROBBERY_FAKE_MERCHANT.pages.TAKEGOLDS.description": "真金子",
 			"THINGS_BACKROOMS.pages.SEARCH_FAIL.description": "这里正一点点记住你。",
-			"THINGS_MEDUSA.pages.GREET.description": "别往牙上磕。",
+			"THINGS_MEDUSA.pages.GREET.description": "完好无损地离开",
 		}
 	for key in required_fragments:
 		if not table.has(key) or not str(table[key]).contains(required_fragments[key]):
@@ -270,8 +270,8 @@ func _verify_event_localization(language: String) -> void:
 	_verify_event_narrative_wraps(table, path)
 
 	var required_placeholders := {
-		"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.TAKERELICS.description": ["{FakeRelicsCount}"],
-		"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.TAKEGOLDS.description": ["{GoldsCount}"],
+		"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.TAKERELICS.description": ["{StealDamage}", "{FakeRelicsCount}"],
+		"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.TAKEGOLDS.description": ["{StealDamage}", "{GoldsCount}"],
 		"THINGS_ROBBERY_FAKE_MERCHANT.pages.INITIAL.options.BEGINFIGHT.description": ["{TrueRelicsCount}"],
 		"THINGS_BACKROOMS.pages.INITIAL.options.SEARCH_EXIT.description": ["{HpLoss}", "{SearchChance}"],
 		"THINGS_BACKROOMS.pages.INITIAL.options.REST.description": ["{MaxHpLoss}", "{Heal}"],

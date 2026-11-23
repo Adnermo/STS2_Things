@@ -55,6 +55,7 @@ public partial class LeechMotherProbeNode : Node
             await KillSleeping();
             await FullHandAndStun();
             await SingleSlotBroodFallback();
+            await BroodSameTurnExhaustAndStunSafe();
             DeactivateSyntheticCombat();
             GD.Print($"Leech Mother probe: PASS ({_checks} assertions)"); GetTree().Quit();
         }
@@ -201,6 +202,35 @@ public partial class LeechMotherProbeNode : Node
         var parasites=f.Players[0].PlayerCombatState!.Hand.Cards.OfType<ThingsLeechParasite>().ToArray();
         Assert(parasites.Length==2 && parasites.All(c=>c.OwnerLeech==spawned),
             "When only one brood slot is free, both Brood parasites fallback-bind to the single spawned leech");
+    }
+    private static async Task BroodSameTurnExhaustAndStunSafe()
+    {
+        var f = await Scenario(players: 1, ascension: 20);
+        await f.Mother.Wake();
+        f.State.CurrentSide = CombatSide.Enemy;
+        await f.Mother.PerformMove();
+        var brood = f.State.Enemies.Select(c => c.Monster).OfType<ThingsSanguineLeech>().ToArray();
+        Assert(brood.Length == 2 && brood.All(l => l.NextMove.Id == "UNSET_MOVE"),
+            "Freshly brooded leeches begin the spawn enemy turn on UNSET_MOVE");
+        var parasites = f.Players[0].PlayerCombatState!.Hand.Cards.OfType<ThingsLeechParasite>().ToArray();
+        Assert(parasites.Length == 2, "Brood delivers 2 parasites");
+        // Exhaust brood[0]'s parasite immediately during the same enemy turn before RollMove.
+        await CardCmd.Exhaust(Choice, parasites[0], skipVisuals: true);
+        await EnemyEnd(f);
+        Assert(brood[0].NextMove.Id == "UNSET_MOVE" && brood[0].NextMove.FollowUpState == null,
+            "EnemyEnd with pending reinfest must not throw or mutate UNSET_MOVE on newly brooded leech");
+        foreach (var l in brood) l.RollMove(f.Players.Select(p => p.Creature));
+        Assert(brood[0].NextMove.Id == "SIP_MOVE" && brood[1].NextMove.Id == "SIP_AGAIN_MOVE",
+            "Brooded leeches roll their normal opening phases cleanly");
+        // Stun brood[1] and exhaust its parasite while stunned; must transition cleanly to REINFEST_MOVE.
+        await CreatureCmd.Stun(brood[1].Creature);
+        await CardCmd.Exhaust(Choice, parasites[1], skipVisuals: true);
+        foreach (var l in brood) await l.PerformMove();
+        await EnemyEnd(f);
+        foreach (var l in brood) l.RollMove(f.Players.Select(p => p.Creature));
+        Assert(brood[0].NextMove.Id == ThingsSanguineLeech.ReinfestMoveId &&
+               brood[1].NextMove.Id == ThingsSanguineLeech.ReinfestMoveId,
+            "Both same-turn-exhausted and stunned brooded leeches transition safely to REINFEST_MOVE without softlocking");
     }
     private static void Assert(bool value,string message) { if(!value)throw new Exception(message);_checks++; }
     private sealed record Fixture(RunState Run,CombatRoom Room,ThingsLeechMotherEncounter Encounter,ThingsLeechMother Mother,List<Player> Players)

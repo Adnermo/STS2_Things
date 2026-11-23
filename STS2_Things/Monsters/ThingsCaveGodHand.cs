@@ -28,6 +28,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Vfx.Utilities;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Cards;
+using ExternalCombatSimulationGuard = STS2_Things.Compatibility.ExternalCombatSimulationGuard;
 using STS2_Things.Core.Models;
 using STS2_Things.Encounters;
 using STS2_Things.Platform;
@@ -307,6 +308,12 @@ public abstract class ThingsCaveGodHand : ThingsMonsterModel
     public override async Task AfterPreventingDeath(Creature creature)
     {
         if (creature != Creature || Body is not { IsDefeated: false } body) return;
+        if (ExternalCombatSimulationGuard.IsActive(Creature))
+        {
+            if (Creature.CurrentHp <= 0)
+                Creature.SetCurrentHpInternal(1);
+            return;
+        }
         await HandleArmDefeatedAsync(body);
     }
 
@@ -328,6 +335,8 @@ public abstract class ThingsCaveGodHand : ThingsMonsterModel
 
     private async Task HandleArmDefeatedAsync(ThingsCaveGodBody body)
     {
+        if (ExternalCombatSimulationGuard.IsActive(Creature))
+            return;
         if (IsDown)
         {
             if (Creature.CurrentHp <= 0)

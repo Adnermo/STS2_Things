@@ -9,15 +9,16 @@ using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Core.Models;
 
 namespace STS2_Things.Events;
 
 public sealed class ThingsNarrowGate : ThingsEventModel
 {
-    private const int RerollCost = 25;
-    private const int CandidateCount = 3;
-    private const int RestHeal = 12;
+    public const int SqueezeDamage = 7;
+    public const int RerollCost = 35;
+    public const int CandidateCount = 3;
     private CardModel[]? _candidates;
     private HashSet<CardModel> _seenCandidates = [];
     private int _rerollCount;
@@ -44,18 +45,19 @@ public sealed class ThingsNarrowGate : ThingsEventModel
     private bool HasAlternatives => Removable.Any(card => !_seenCandidates.Contains(card));
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
-        [new GoldVar(RerollCost), new HealVar(RestHeal), new DynamicVar("Candidates", CandidateCount)];
+        [new GoldVar(RerollCost), new DamageVar("SqueezeDamage", SqueezeDamage, ValueProp.Unblockable | ValueProp.Unpowered), new DynamicVar("Candidates", CandidateCount)];
     public override bool IsAllowed(IRunState runState) =>
         runState.Players.Count > 0
         && runState.Players.All(player =>
             !player.Creature.IsDead
+            && player.Creature.CurrentHp > SqueezeDamage
             && player.Deck.Cards.Count > 1
             && player.Deck.Cards.Any(card => card.IsRemovable));
     public override IEnumerable<LocString> GameInfoOptions
     {
         get
         {
-            foreach (var text in DepthsEventDefaults.DescribeOptions(this, "REMOVE_CARD", "REROLL", "REST"))
+            foreach (var text in DepthsEventDefaults.DescribeOptions(this, "REMOVE_CARD", "REROLL", "LEAVE"))
             {
                 text.Add("Card", L10NLookup("THINGS_NARROW_GATE.card").GetFormattedText());
                 yield return text;
@@ -96,12 +98,12 @@ public sealed class ThingsNarrowGate : ThingsEventModel
                 title.Add("Card", card.Title);
                 description.Add("Card", card.Title);
                 options.Add(new EventOption(this, () => RemoveCard(card), title, description, key,
-                    [HoverTipFactory.FromCard(card)]).ThatHasDynamicTitle());
+                    [HoverTipFactory.FromCard(card)]).ThatDoesDamage(SqueezeDamage).ThatHasDynamicTitle());
             }
             else if (i == 0 && !CanRemove)
             {
                 // An empty/one-card deck must still have a way to finish.
-                options.Add(new EventOption(this, Rest, InitialOptionKey("REST")));
+                options.Add(new EventOption(this, Leave, InitialOptionKey("LEAVE")));
             }
             else options.Add(new EventOption(this, null, InitialOptionKey("REMOVE_LOCKED")));
         }
@@ -119,6 +121,12 @@ public sealed class ThingsNarrowGate : ThingsEventModel
             return;
         }
         _settling = true;
+        await ThingsEventHelpers.DealUnblockableDamageAsync(EventOwner, SqueezeDamage);
+        if (EventOwner.Creature.IsDead)
+        {
+            SetEventFinished(L10NLookup("THINGS_NARROW_GATE.pages.REMOVED.loss"));
+            return;
+        }
         await CardPileCmd.RemoveFromDeck(card);
         SetEventFinished(L10NLookup("THINGS_NARROW_GATE.pages.REMOVED.description"));
     }
@@ -152,11 +160,11 @@ public sealed class ThingsNarrowGate : ThingsEventModel
         SetEventState(description, GenerateInitialOptions());
     }
 
-    private async Task Rest()
+    private Task Leave()
     {
-        if (IsFinished || _settling) return;
+        if (IsFinished || _settling) return Task.CompletedTask;
         _settling = true;
-        await CreatureCmd.Heal(EventOwner.Creature, RestHeal);
-        SetEventFinished(L10NLookup("THINGS_NARROW_GATE.pages.REST.description"));
+        SetEventFinished(L10NLookup("THINGS_NARROW_GATE.pages.LEAVE.description"));
+        return Task.CompletedTask;
     }
 }

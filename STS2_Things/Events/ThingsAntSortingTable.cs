@@ -18,13 +18,12 @@ namespace STS2_Things.Events;
 
 /// <summary>
 /// Hive event offering batch duplicate removal (two matching cards for 18 HP damage),
-/// Goopy enchantment on a Defend card for Gold, or a small Max HP gain.
+/// Goopy enchantment on a Defend card for Gold, or leaving.
 /// </summary>
 public sealed class ThingsAntSortingTable : ThingsEventModel
 {
     public const int CullDamage = 18;
-    public const int GlueGoldCost = 45;
-    public const int ChitinMaxHpGain = 2;
+    public const int GlueGoldCost = 60;
 
     private bool _settling;
 
@@ -38,7 +37,6 @@ public sealed class ThingsAntSortingTable : ThingsEventModel
     [
         new DamageVar("CullDamage", CullDamage, ValueProp.Unblockable | ValueProp.Unpowered),
         new GoldVar(GlueGoldCost),
-        new MaxHpVar("ChitinMaxHp", ChitinMaxHpGain),
     ];
 
     public override bool IsAllowed(IRunState runState) =>
@@ -49,7 +47,7 @@ public sealed class ThingsAntSortingTable : ThingsEventModel
                 || (player.Gold >= GlueGoldCost && player.Deck.Cards.Any(CanApplyGoopy))));
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "CULL", "GLUE", "POWDER");
+        DepthsEventDefaults.DescribeOptions(this, "CULL", "GLUE", "LEAVE");
 
     public override IEnumerable<string> GetAssetPaths(IRunState runState) =>
         base.GetAssetPaths(runState)
@@ -103,7 +101,7 @@ public sealed class ThingsAntSortingTable : ThingsEventModel
         [
             cullOption,
             glueOption,
-            new EventOption(this, TakeChitinPowder, InitialOptionKey("POWDER")),
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
     }
 
@@ -220,12 +218,12 @@ public sealed class ThingsAntSortingTable : ThingsEventModel
         Finish("GLUE.description");
     }
 
-    private async Task TakeChitinPowder()
+    private Task Leave()
     {
         if (!BeginSettlement())
-            return;
-        await CreatureCmd.GainMaxHp(EventOwner.Creature, ChitinMaxHpGain);
-        Finish("POWDER.description");
+            return Task.CompletedTask;
+        Finish("LEAVE.description");
+        return Task.CompletedTask;
     }
 
     private void Finish(string pageSuffix)

@@ -17,13 +17,12 @@ namespace STS2_Things.Events;
 
 /// <summary>
 /// Depths event offering vanilla late-game card enchantments (Royally Approved or Clone)
-/// in exchange for Max HP or Gold, plus a small thematic Gold fallback.
+/// in exchange for Max HP or Gold, or leaving.
 /// </summary>
 public sealed class ThingsGildedPress : ThingsEventModel
 {
-    public const int SealMaxHpLoss = 7;
-    public const int MoldGoldCost = 55;
-    public const int ScrapeGold = 30;
+    public const int SealMaxHpLoss = 8;
+    public const int MoldGoldCost = 75;
 
     private bool _settling;
 
@@ -37,20 +36,19 @@ public sealed class ThingsGildedPress : ThingsEventModel
     [
         new MaxHpVar(SealMaxHpLoss),
         new GoldVar(MoldGoldCost),
-        new GoldVar("ScrapeGold", ScrapeGold),
     ];
 
     public override bool IsAllowed(IRunState runState) =>
         runState.Players.Count > 0
         && runState.Players.All(player =>
             !player.Creature.IsDead
-            && player.Gold >= MoldGoldCost
-            && player.Creature.MaxHp > SealMaxHpLoss
-            && (player.Deck.Cards.Any(CanApplyEnchantment<RoyallyApproved>)
-                || player.Deck.Cards.Any(CanApplyEnchantment<Clone>)));
+            && ((player.Creature.MaxHp > SealMaxHpLoss
+                    && player.Deck.Cards.Any(CanApplyEnchantment<RoyallyApproved>))
+                || (player.Gold >= MoldGoldCost
+                    && player.Deck.Cards.Any(CanApplyEnchantment<Clone>))));
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "SEAL", "WAX_MOLD", "SCRAPE_GOLD");
+        DepthsEventDefaults.DescribeOptions(this, "SEAL", "WAX_MOLD", "LEAVE");
 
     public override IEnumerable<string> GetAssetPaths(IRunState runState) =>
         base.GetAssetPaths(runState)
@@ -109,7 +107,7 @@ public sealed class ThingsGildedPress : ThingsEventModel
         [
             sealOption,
             moldOption,
-            new EventOption(this, ScrapeGoldDust, InitialOptionKey("SCRAPE_GOLD")),
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
     }
 
@@ -187,12 +185,12 @@ public sealed class ThingsGildedPress : ThingsEventModel
         static player => PlayerCmd.LoseGold(MoldGoldCost, player, GoldLossType.Spent),
         canKill: false);
 
-    private async Task ScrapeGoldDust()
+    private Task Leave()
     {
         if (!BeginSettlement())
-            return;
-        await PlayerCmd.GainGold(ScrapeGold, EventOwner);
-        Finish("SCRAPE_GOLD.description");
+            return Task.CompletedTask;
+        Finish("LEAVE.description");
+        return Task.CompletedTask;
     }
 
     private void Finish(string pageSuffix)

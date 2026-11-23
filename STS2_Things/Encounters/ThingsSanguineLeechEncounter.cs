@@ -11,7 +11,7 @@ public sealed class ThingsSanguineLeechEncounter : EncounterModel
     public override bool IsWeak => false;
     public override IEnumerable<EncounterTag> Tags => [DepthsEncounterTags.Leech];
     public override bool HasScene => true;
-    protected override bool HasCustomBackground => true;
+    protected override bool HasCustomBackground => false;
     public override IReadOnlyList<string> Slots => ["first", "second", "third"];
     public override IEnumerable<MonsterModel> AllPossibleMonsters => [ModelDb.Monster<ThingsSanguineLeech>()];
     protected override IReadOnlyList<(MonsterModel, string?)> GenerateMonsters()

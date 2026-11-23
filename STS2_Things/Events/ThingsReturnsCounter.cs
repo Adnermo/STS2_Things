@@ -66,11 +66,11 @@ public sealed class ThingsReturnsCounter : ThingsEventModel
         runState.Players.Count > 0
         && runState.Players.All(player =>
             !player.Creature.IsDead
-            && (player.GetRelic<ThingsReturnReceipt>() == null
-                || player.GetRelic<ThingsNarrowViewfinder>() == null)
-            && player.Gold >= RummageCost
-            && player.Creature.CurrentHp > ViewfinderDamage
-            && player.Creature.MaxHp > ReceiptMaxHpLoss);
+            && ((player.GetRelic<ThingsReturnReceipt>() == null
+                    && player.Creature.MaxHp > ReceiptMaxHpLoss)
+                || (player.GetRelic<ThingsNarrowViewfinder>() == null
+                    && player.Creature.CurrentHp > ViewfinderDamage)
+                || player.Gold >= RummageCost));
 
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "RECEIPT", "VIEWFINDER", "RUMMAGE", "LEAVE");

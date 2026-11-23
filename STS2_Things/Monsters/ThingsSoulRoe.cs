@@ -44,6 +44,7 @@ public sealed class ThingsSoulRoe : ThingsSpineMonster
         "event:/sfx/enemy/enemy_attacks/soul_fysh/soul_fysh_die";
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Magic;
     public override Vector2 ExtraDeathVfxPadding => new(2.2f, 5.0f);
+    public override float HpBarSizeReduction => 48f;
 
     private static readonly string[] _visualVariants =
     [
@@ -73,10 +74,10 @@ public sealed class ThingsSoulRoe : ThingsSpineMonster
 
     // ========== 血量 ==========
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 6, 4);
+        AscensionLevel.ToughEnemies, 5, 3);
 
     public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 8, 6);
+        AscensionLevel.ToughEnemies, 6, 5);
 
     /// <summary>入场第一回合是否眩晕（死亡生成时设为 true）</summary>
     public bool StartStunned
@@ -186,13 +187,12 @@ public sealed class ThingsSoulRoe : ThingsSpineMonster
         await FinishMotion("power_up");
     }
 
-    // ========== Beckon: 暖金点亮鱼籽 + 给玩家弃牌堆 +1 Beckon ==========
+    // ========== Beckon: 暖金点亮鱼籽 + 给玩家弃牌堆 +1 虚无消耗呼唤 ==========
     private async Task BeckonMove(IReadOnlyList<Creature> targets)
     {
         SfxCmd.Play(CastSfx);
         await BeginMotion("Cast", "cast", BeckonBrightPeak);
-        await CardPileCmd.AddToCombatAndPreview<Beckon>(
-            targets, PileType.Discard, 1, null);
+        await ThingsSoulRoes.AddFleetingBeckonsAndPreviewAsync(targets, 1);
         await FinishMotion("cast");
     }
 

@@ -3,7 +3,6 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Gold;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Events;
-using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
@@ -18,21 +17,18 @@ namespace STS2_Things.Events;
 
 /// <summary>
 /// Glory (Act 3) event offering Imbued (Innate bottom-auto-play Skill) for Gold,
-/// Perfect Fit (top of shuffled draw pile) for Max HP, or a free Potion (with Gold fallback).
+/// Perfect Fit (top of shuffled draw pile) for Max HP, or leaving.
 /// </summary>
 public sealed class ThingsChronometerRig : ThingsEventModel
 {
-    public const int GearGoldCost = 75;
+    public const int GearGoldCost = 95;
     public const int PinMaxHpLoss = 8;
-    public const int OilFallbackGold = 35;
 
-    private PotionModel? _oilPotion;
     private bool _settling;
 
     protected override void AfterCloned()
     {
         base.AfterCloned();
-        _oilPotion = null;
         _settling = false;
     }
 
@@ -40,7 +36,6 @@ public sealed class ThingsChronometerRig : ThingsEventModel
     [
         new GoldVar(GearGoldCost),
         new MaxHpVar(PinMaxHpLoss),
-        new GoldVar("FallbackGold", OilFallbackGold),
     ];
 
     public override bool IsAllowed(IRunState runState) =>
@@ -51,7 +46,7 @@ public sealed class ThingsChronometerRig : ThingsEventModel
                 || (player.Creature.MaxHp > PinMaxHpLoss && player.Deck.Cards.Any(CanEnchant<PerfectFit>))));
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "GEAR", "PIN", "OIL_POTION");
+        DepthsEventDefaults.DescribeOptions(this, "GEAR", "PIN", "LEAVE");
 
     public override IEnumerable<string> GetAssetPaths(IRunState runState) =>
         base.GetAssetPaths(runState)
@@ -60,13 +55,6 @@ public sealed class ThingsChronometerRig : ThingsEventModel
 
     private static bool CanEnchant<TEnchantment>(CardModel? card) where TEnchantment : EnchantmentModel =>
         card != null && ModelDb.Enchantment<TEnchantment>().CanEnchant(card);
-
-    protected override Task BeforeEventStarted(bool isPreFinished)
-    {
-        if (!isPreFinished && EventOwner != null)
-            _oilPotion ??= PotionFactory.CreateRandomPotionOutOfCombat(EventOwner, Rng);
-        return Task.CompletedTask;
-    }
 
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()
     {
@@ -113,12 +101,12 @@ public sealed class ThingsChronometerRig : ThingsEventModel
                 .ThatDecreasesMaxHp(PinMaxHpLoss),
         };
 
-        bool canTakePotion = ThingsEventHelpers.CanReceivePotion(EventOwner, _oilPotion);
-        EventOption oilOption = canTakePotion
-            ? new EventOption(this, TakeOilPotion, InitialOptionKey("OIL_POTION"))
-            : new EventOption(this, TakeOilFallbackGold, InitialOptionKey("OIL_GOLD"));
-
-        return [gearOption, pinOption, oilOption];
+        return
+        [
+            gearOption,
+            pinOption,
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
+        ];
     }
 
     private bool BeginSettlement()
@@ -189,27 +177,12 @@ public sealed class ThingsChronometerRig : ThingsEventModel
         static player => player.Creature.MaxHp > PinMaxHpLoss,
         player => LoseEventOwnerMaxHpAsync(new ThrowingPlayerChoiceContext(), PinMaxHpLoss));
 
-    private async Task TakeOilPotion()
+    private Task Leave()
     {
         if (!BeginSettlement())
-            return;
-        if (ThingsEventHelpers.CanReceivePotion(EventOwner, _oilPotion))
-        {
-            await PotionCmd.TryToProcure(_oilPotion!.ToMutable(), EventOwner);
-            Finish("OIL_POTION.description");
-            return;
-        }
-
-        await PlayerCmd.GainGold(OilFallbackGold, EventOwner);
-        Finish("OIL_GOLD.description");
-    }
-
-    private async Task TakeOilFallbackGold()
-    {
-        if (!BeginSettlement())
-            return;
-        await PlayerCmd.GainGold(OilFallbackGold, EventOwner);
-        Finish("OIL_GOLD.description");
+            return Task.CompletedTask;
+        Finish("LEAVE.description");
+        return Task.CompletedTask;
     }
 
     private void Finish(string pageSuffix)

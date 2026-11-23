@@ -18,8 +18,8 @@ public sealed class ThingsRobberyFakeMerchantEncounter : EncounterModel
     protected override bool HasCustomBackground => true;
     public override IReadOnlyList<string> Slots => ["merchant_left", "merchant_right"];
     public override IEnumerable<MonsterModel> AllPossibleMonsters => [ModelDb.Monster<FakeMerchantMonster>()];
-    public override int MinGoldReward => 300;
-    public override int MaxGoldReward => 300;
+    public override int MinGoldReward => 120;
+    public override int MaxGoldReward => 120;
 
     protected override IReadOnlyList<(MonsterModel, string?)> GenerateMonsters() =>
     [

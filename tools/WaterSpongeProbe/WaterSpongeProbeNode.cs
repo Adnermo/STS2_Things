@@ -392,8 +392,7 @@ public partial class WaterSpongeProbeNode : Node
             int before = s.Player.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().Count();
             s.Leeches[0].RollMove(s.Players.Select(p => p.Creature));
             Assert(s.Leeches[0].NextMove.Id == ThingsSanguineLeech.ReinfestMoveId, "Owner leech announces refill for the next turn, even after a normal Infest.");
-            s.Leeches[0].RollMove(s.Players.Select(p => p.Creature));
-            Assert(s.Leeches[0].NextMove.Id == ThingsSanguineLeech.ReinfestMoveId, "A mandatory refill cannot be rolled past before acting.");
+            Assert(s.Leeches[0].NextMove.CanTransitionAway, "Reinfest turn must stay natively interruptible by Surrender/Stun during the player turn.");
             s.Leeches[1].RollMove(s.Players.Select(p => p.Creature));
             string secondNormalMove = cycle[(phase + 2) % cycle.Length];
             Assert(s.Leeches[1].NextMove.Id == secondNormalMove, "Other leech keeps its normal cycle when Leech #0's parasite is exhausted.");
@@ -460,12 +459,12 @@ public partial class WaterSpongeProbeNode : Node
         // Clearing again while a refill is already advertised must schedule
         // another refill next turn, without changing the current action.
         await CardCmd.Exhaust(Choice, await AddParasiteToDraw(stunned, stunned.Player, waiting.Creature), skipVisuals: true);
-        Assert(waiting.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && !waiting.NextMove.CanTransitionAway,
-            "A new clear leaves the currently advertised refill intact.");
+        Assert(waiting.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && waiting.NextMove.CanTransitionAway,
+            "A new clear leaves the currently advertised refill intact and interruptible.");
         await waiting.PerformMove();
         await EndEnemySide(stunned, waiting.Creature);
         waiting.RollMove(stunned.Players.Select(p => p.Creature));
-        Assert(waiting.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && !waiting.NextMove.CanTransitionAway,
+        Assert(waiting.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && waiting.NextMove.CanTransitionAway,
             "A clear on a refill turn schedules another refill for the following turn.");
         await waiting.PerformMove();
         // Model a nested exhaust after the current Infest has begun; native hooks
@@ -477,7 +476,7 @@ public partial class WaterSpongeProbeNode : Node
         performing.SetValue(waiting, false);
         await EndEnemySide(stunned, waiting.Creature);
         waiting.RollMove(stunned.Players.Select(p => p.Creature));
-        Assert(waiting.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && !waiting.NextMove.CanTransitionAway, "Nested request re-arms the refill for the following action.");
+        Assert(waiting.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && waiting.NextMove.CanTransitionAway, "Nested request re-arms the refill for the following action.");
         await waiting.PerformMove();
         await EndEnemySide(stunned, waiting.Creature);
         waiting.RollMove(stunned.Players.Select(p => p.Creature));

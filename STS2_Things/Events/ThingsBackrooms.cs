@@ -13,6 +13,7 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Relics;
+using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes;
@@ -25,6 +26,9 @@ namespace STS2_Things.Events;
 
 public sealed class ThingsBackrooms : ThingsEventModel
 {
+    public const int FirstSearchDamage = 2;
+    public const int RestMaxHpLoss = 5;
+
     // 搜索伤害/概率统一以 DynamicVars 为唯一数据源，避免与实例字段不同步
     private int SearchDamage => (int)DynamicVars.HpLoss.BaseValue;
     private int SearchChance => (int)DynamicVars["SearchChance"].BaseValue;
@@ -33,12 +37,19 @@ public sealed class ThingsBackrooms : ThingsEventModel
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
-        new HpLossVar(2m),       // 寻找出口初始扣血
-        new IntVar("SearchChance", 10), // 初始概率10%
-        new IntVar("MaxHpLoss", 5),     // 原地休息失去最大生命
-        new HealVar(25),         // 原地休息恢复生命
-        new CardsVar(2)          // 附魔消散选择牌数
+        new HpLossVar(FirstSearchDamage), // 寻找出口初始扣血
+        new IntVar("SearchChance", 10),   // 初始概率10%
+        new IntVar("MaxHpLoss", RestMaxHpLoss), // 原地休息失去最大生命
+        new HealVar(25),                  // 原地休息恢复生命
+        new CardsVar(2)                   // 附魔消散选择牌数
     ];
+
+    public override bool IsAllowed(IRunState runState) =>
+        runState.Players.Count > 0
+        && runState.Players.All(player =>
+            !player.Creature.IsDead
+            && (player.Creature.CurrentHp > FirstSearchDamage
+                || player.Creature.MaxHp > RestMaxHpLoss));
 
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()
     {
@@ -108,8 +119,10 @@ public sealed class ThingsBackrooms : ThingsEventModel
         SetEventState(
             L10NLookup($"{Id.Entry}.pages.EXIT.description"),
             [
-                new EventOption(this, canEnchant ? EnchantDissolve : null, $"{Id.Entry}.pages.EXIT.options.ENCHANT_DISSOLVE"),
-                new EventOption(this, ownsAlmondWater ? null : TakeAlmondWater, $"{Id.Entry}.pages.EXIT.options.TAKE_ALMOND_WATER"),
+                new EventOption(this, canEnchant ? EnchantDissolve : null, $"{Id.Entry}.pages.EXIT.options.ENCHANT_DISSOLVE",
+                    HoverTipFactory.FromEnchantment<ThingsDisperse>()),
+                new EventOption(this, ownsAlmondWater ? null : TakeAlmondWater, $"{Id.Entry}.pages.EXIT.options.TAKE_ALMOND_WATER",
+                    HoverTipFactory.FromRelic<ThingsAlmondWater>()),
                 new EventOption(this, Leave, $"{Id.Entry}.pages.EXIT.options.LEAVE")
             ]
         );

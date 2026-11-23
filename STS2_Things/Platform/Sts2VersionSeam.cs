@@ -5,7 +5,6 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
-using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
@@ -368,17 +367,6 @@ public static class Sts2VersionSeam
         NCard.FindOnTable(card)?.PlayRandomizeCostAnim();
     }
 
-    private static readonly AccessTools.FieldRef<NCard, TextureRect?>? CardPortraitField =
-        AccessTools.Field(typeof(NCard), "_portrait") != null
-            ? AccessTools.FieldRefAccess<NCard, TextureRect?>("_portrait")
-            : null;
-
-    private static readonly AccessTools.FieldRef<NCard, TextureRect?>? CardAncientPortraitField =
-        AccessTools.Field(typeof(NCard), "_ancientPortrait") != null
-            ? AccessTools.FieldRefAccess<NCard, TextureRect?>("_ancientPortrait")
-            : null;
-
-#if !STS2_V113_1
     private static readonly Func<CardModel, string?>? CardPortraitPngPathGetter =
         CreateCardPortraitPngPathGetter();
 
@@ -389,50 +377,24 @@ public static class Sts2VersionSeam
             return null;
         return (Func<CardModel, string?>)Delegate.CreateDelegate(typeof(Func<CardModel, string?>), getter);
     }
-#endif
 
+    /// <summary>
+    /// Loads a card's standalone portrait PNG directly via <see cref="ResourceLoader"/> on both
+    /// v111.1 and v113.1. Intentionally avoids <c>CardModel.BigPortrait</c> and
+    /// <c>PreloadManager.Cache.GetTexture2D</c> so unpreloaded portraits are never registered in
+    /// <c>_missedCacheAssets</c> and disposed on room transitions.
+    /// </summary>
     public static Texture2D? TryGetBigCardPortrait(CardModel? card)
     {
         if (card == null || !card.HasPortrait)
             return null;
 
-#if STS2_V113_1
-        return card.BigPortrait;
-#else
         string? pngPath = CardPortraitPngPathGetter?.Invoke(card);
-        if (string.IsNullOrEmpty(pngPath))
-            return null;
-        return PreloadManager.Cache.GetTexture2D(pngPath);
-#endif
-    }
-
-    public static Texture2D? GetCurrentCardPortraitTexture(NCard? cardNode)
-    {
-        if (cardNode == null || !GodotObject.IsInstanceValid(cardNode) || cardNode.Model == null)
+        if (string.IsNullOrWhiteSpace(pngPath) || !ResourceLoader.Exists(pngPath))
             return null;
 
-        TextureRect? rect = cardNode.Model.Rarity == CardRarity.Ancient
-            ? (CardAncientPortraitField != null ? CardAncientPortraitField(cardNode) : cardNode.GetNodeOrNull<TextureRect>("%AncientPortrait"))
-            : (CardPortraitField != null ? CardPortraitField(cardNode) : cardNode.GetNodeOrNull<TextureRect>("%Portrait"));
-        return rect != null && GodotObject.IsInstanceValid(rect) ? rect.Texture : null;
-    }
-
-    public static void ApplyCardPortraitTexture(NCard? cardNode, Texture2D? texture)
-    {
-        if (cardNode == null || !GodotObject.IsInstanceValid(cardNode) || cardNode.Model == null)
-            return;
-        if (texture == null || !GodotObject.IsInstanceValid(texture))
-            return;
-
-#if STS2_V113_1
-        cardNode.SetPortraitTexture(texture);
-#else
-        TextureRect? rect = cardNode.Model.Rarity == CardRarity.Ancient
-            ? (CardAncientPortraitField != null ? CardAncientPortraitField(cardNode) : cardNode.GetNodeOrNull<TextureRect>("%AncientPortrait"))
-            : (CardPortraitField != null ? CardPortraitField(cardNode) : cardNode.GetNodeOrNull<TextureRect>("%Portrait"));
-        if (rect != null && GodotObject.IsInstanceValid(rect))
-            rect.Texture = texture;
-#endif
+        Texture2D? texture = ResourceLoader.Load<Texture2D>(pngPath, null, ResourceLoader.CacheMode.Reuse);
+        return texture != null && GodotObject.IsInstanceValid(texture) ? texture : null;
     }
 
     public static bool IsDread()

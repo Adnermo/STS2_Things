@@ -23,10 +23,10 @@ metadata/_edit_lock_ = true
 unique_name_in_owner = true
 layout_mode = 3
 anchors_preset = 0
-offset_left = -39.04
-offset_top = -66.08
-offset_right = 39.04
-offset_bottom = 8
+offset_left = -64.0
+offset_top = -86.0
+offset_right = 64.0
+offset_bottom = 10.0
 mouse_filter = 2
 
 [node name="CenterPos" type="Marker2D" parent="."]
@@ -35,4 +35,4 @@ position = Vector2(0, -29.4)
 
 [node name="IntentPos" type="Marker2D" parent="."]
 unique_name_in_owner = true
-position = Vector2(0, -68)
+position = Vector2(0, -82)

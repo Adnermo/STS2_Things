@@ -15,6 +15,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.ValueProps;
@@ -55,6 +56,7 @@ public sealed class ThingsLeechMother : ThingsSpineMonster
     public override DamageSfxType TakeDamageSfxType => DamageSfxType.Magic;
     public override IEnumerable<string> AssetPaths => base.AssetPaths.Concat(
         ModelDb.Monster<ThingsSanguineLeech>().AssetPaths).Concat([
+            SceneHelper.GetScenePath("vfx/vfx_sleeping"),
             ModelDb.Power<ThingsLeechMotherSlumberPower>().ResolvedBigIconPath,
             ModelDb.Power<PlatingPower>().ResolvedBigIconPath,
             ModelDb.Card<ThingsLeechParasite>().PortraitPath]).Distinct();
@@ -191,29 +193,39 @@ public sealed class ThingsLeechMother : ThingsSpineMonster
         for (int i = 0; i < 2; i++)
         {
             string slot = i == 0 ? "brood_front" : "brood_rear";
-            if (!Creature.IsAlive || !CombatState.IsLiveCombat()) return;
-            string? validSlot = CombatState.Encounter?.Slots.Contains(slot) == true ? slot : null;
+            if (!Creature.IsAlive || !CombatState.IsLiveCombat() || CombatManager.Instance.IsOverOrEnding) return;
+            bool encounterHasSlot = CombatState.Encounter?.HasScene == true &&
+                CombatState.Encounter.Slots.Contains(slot);
+            bool sceneHasSlot = NCombatRoom.Instance is not { } combatRoom ||
+                (combatRoom.GetNodeOrNull<Control>("%EnemyContainer") is { } enemyContainer &&
+                 enemyContainer.FindChild(slot, recursive: true, owned: false) is Marker2D);
+            string? validSlot = encounterHasSlot && sceneHasSlot ? slot : null;
             if (validSlot != null && CombatState.Enemies.Any(c => c.IsAlive && c.SlotName == validSlot)) continue;
             var leech = (ThingsSanguineLeech)ModelDb.Monster<ThingsSanguineLeech>().ToMutable();
             leech.SetOpeningPhase(i == 0 ? 0 : 2);
             leech.SuppressOpeningParasites(CombatState.Players);
             await CreatureCmd.Add(leech, CombatState, CombatSide.Enemy, validSlot);
             spawnedLeeches.Add(leech.Creature);
+            if (!leech.Creature.IsAlive || !CombatState.IsLiveCombat() || CombatManager.Instance.IsOverOrEnding) continue;
             // BeforeCombatStart is not dispatched for mid-combat summons.
             // Initialize only the hidden native reinfestation hook, without extra cards.
             await leech.BeforeCombatStart();
         }
         Creature? firstLeech = spawnedLeeches.ElementAtOrDefault(0);
         Creature? secondLeech = spawnedLeeches.ElementAtOrDefault(1) ?? firstLeech;
+        HashSet<ulong> deliveredPlayers = [];
         foreach (Creature target in targets.Where(c => c.IsAlive))
         {
+            if (!CombatState.IsLiveCombat() || CombatManager.Instance.IsOverOrEnding) return;
             Player? player = target.Player ?? target.PetOwner;
-            if (player == null || player.Creature.IsDead) continue;
+            if (player == null || player.Creature.IsDead || !deliveredPlayers.Add(player.NetId)) continue;
             ICombatState? combatState = target.CombatState;
             if (combatState != null)
             {
                 for (int i = 0; i < 2; i++)
                 {
+                    if (!combatState.IsLiveCombat() || CombatManager.Instance.IsOverOrEnding || player.Creature.IsDead)
+                        break;
                     var card = combatState.CreateCard<ThingsLeechParasite>(player);
                     card.BindOwnerLeech(i == 0 ? firstLeech : secondLeech);
                     await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Hand, null);

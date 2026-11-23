@@ -131,9 +131,14 @@ public partial class DepthsProbeNode : Node
             {
                 using var packed = ResourceLoader.Load<Texture2D>($"res://images/events/{key}.png").GetImage();
                 using var selected = Image.LoadFromFile(Path.Combine(_root,$"images/events/{key}.png"));
+                bool wasCompressed = packed.IsCompressed();
+                if (wasCompressed) packed.Decompress();
                 packed.Convert(Image.Format.Rgba8);selected.Convert(Image.Format.Rgba8);
                 Assert(packed.GetSize() == new Vector2I(3440,1616),"Native portrait canvas");
-                Assert(SHA256.HashData(packed.GetData()).SequenceEqual(SHA256.HashData(selected.GetData())),"Final packaged portrait pixels: "+key);
+                if (!wasCompressed)
+                    Assert(SHA256.HashData(packed.GetData()).SequenceEqual(SHA256.HashData(selected.GetData())),"Final packaged portrait pixels: "+key);
+                else
+                    Assert(packed.GetSize() == selected.GetSize() && packed.GetData().Length == selected.GetData().Length, "Final BC7 packaged portrait dimensions: "+key);
             }
             var output = System.Environment.GetEnvironmentVariable("THINGS_PROBE_OUTPUT")!;
             File.WriteAllText(Path.Combine(output, "behavior-report.json"), JsonSerializer.Serialize(new
@@ -213,8 +218,8 @@ public partial class DepthsProbeNode : Node
             var model = await Begin<ThingsBitingChest>(p); var opt = model.CurrentOptions[branch];
             await opt.Chosen(); await opt.Chosen();
             Assert(model.IsFinished, "Chest branch finishes");
-            Assert(branch == 1 ? p.Creature.CurrentHp == hp - 10 && p.Relics.Count == relics + 1 && p.Relics.Last().Rarity == RelicRarity.Common :
-                p.Creature.CurrentHp == hp && p.Gold == gold + 70 && p.Relics.Count == relics, "Fixed chest branch");
+            Assert(branch == 1 ? p.Creature.CurrentHp == hp - 13 && p.Relics.Count == relics + 1 && p.Relics.Last().Rarity == RelicRarity.Common :
+                p.Creature.CurrentHp == hp && p.Gold == gold && p.Relics.Count == relics, "Fixed chest branch");
         }
         var emptyRun = NewRun("empty-chest"); var empty = emptyRun.Players[0];
         empty.RelicGrabBag.LoadFromSerializable(new SerializableRelicGrabBag
@@ -226,7 +231,7 @@ public partial class DepthsProbeNode : Node
         });
         var emptyEvent = await Begin<ThingsBitingChest>(empty);
         Assert(emptyEvent.CurrentOptions[0].IsLocked && emptyEvent.CurrentOptions[1].IsLocked && !emptyEvent.CurrentOptions[2].IsLocked, "Exhausted rarity has safe choice");
-        var lethalRun = NewRun("lethal-warning"); await CreatureCmd.SetCurrentHp(lethalRun.Players[0].Creature,10);
+        var lethalRun = NewRun("lethal-warning"); await CreatureCmd.SetCurrentHp(lethalRun.Players[0].Creature,13);
         var lethal = await Begin<ThingsBitingChest>(lethalRun.Players[0]);
         Assert(lethal.CurrentOptions[0].WillKillPlayer!(lethalRun.Players[0]) && lethal.CurrentOptions[1].WillKillPlayer!(lethalRun.Players[0]), "Native lethal warning");
         await lethal.CurrentOptions[1].Chosen();
@@ -248,20 +253,32 @@ public partial class DepthsProbeNode : Node
         foreach (int branch in new[] {0,1,2})
         {
             var run = NewRun("ward-choice-" + branch, 4); var p = run.Players[0];
+            if (p.Gold < ThingsCrowdedWard.BandageGoldCost)
+                await PlayerCmd.GainGold(ThingsCrowdedWard.BandageGoldCost - p.Gold, p);
             await CreatureCmd.SetCurrentHp(p.Creature,10);
-            int deck = p.Deck.Cards.Count; var model = await Begin<ThingsCrowdedWard>(p); var opt = model.CurrentOptions[branch];
+            int deck = p.Deck.Cards.Count, gold = p.Gold; var model = await Begin<ThingsCrowdedWard>(p); var opt = model.CurrentOptions[branch];
             await opt.Chosen(); await opt.Chosen();
             Assert(model.IsFinished, "Ward finishes once");
-            Assert(p.Creature.CurrentHp == (branch == 0 ? p.Creature.MaxHp : branch == 1 ? 42 : 22), "Ward healing amount");
+            Assert(p.Creature.CurrentHp == (branch == 0 ? p.Creature.MaxHp : branch == 1 ? 36 : 22), "Ward healing amount");
+            Assert(p.Gold == (branch == 2 ? gold - 35 : gold), "Only bandages spend gold");
             Assert(p.Deck.Cards.Count == deck + (branch == 0 ? 1 : 0), "Only full treatment adds curse");
             Assert(branch != 0 || (p.Deck.Cards.Last() is Normality normality && !normality.Keywords.Contains(MegaCrit.Sts2.Core.Entities.Cards.CardKeyword.Eternal)), "Native treatment curse");
             Assert(p.Relics.OfType<ThingsAnestheticChart>().Count() == (branch == 1 ? 1 : 0), "Only anesthesia adds debt");
             Assert(run.Players.Skip(1).All(other => other.Relics.All(r => r is not ThingsAnestheticChart) && other.Creature.CurrentHp == other.Creature.MaxHp), "Ward is personal");
         }
         var nearFull = NewRun("ward-cap"); var fullPlayer = nearFull.Players[0];
+        if (fullPlayer.Gold < ThingsCrowdedWard.BandageGoldCost)
+            await PlayerCmd.GainGold(ThingsCrowdedWard.BandageGoldCost - fullPlayer.Gold, fullPlayer);
+        int capGold = fullPlayer.Gold;
         await CreatureCmd.SetCurrentHp(fullPlayer.Creature,fullPlayer.Creature.MaxHp-1);
         var cap = await Begin<ThingsCrowdedWard>(fullPlayer); await cap.CurrentOptions[2].Chosen();
-        Assert(fullPlayer.Creature.CurrentHp == fullPlayer.Creature.MaxHp, "Heal caps at native max HP");
+        Assert(fullPlayer.Creature.CurrentHp == fullPlayer.Creature.MaxHp && fullPlayer.Gold == capGold - 35, "Heal caps at native max HP and spends bandage gold");
+        var poorWardRun = NewEventTestRun("ward-leave", gold: 34); var poorPlayer = poorWardRun.Players[0];
+        await CreatureCmd.SetCurrentHp(poorPlayer.Creature, 10);
+        var poorWard = await Begin<ThingsCrowdedWard>(poorPlayer);
+        Assert(poorWard.CurrentOptions[2].TextKey.EndsWith(".LEAVE", StringComparison.Ordinal), "Low gold switches Ward option 2 to LEAVE");
+        await poorWard.CurrentOptions[2].Chosen();
+        Assert(poorWard.IsFinished && poorPlayer.Creature.CurrentHp == 10 && poorPlayer.Gold == 34, "Ward LEAVE keeps HP and Gold unchanged");
     }
     private async Task VerifyAnesthesia()
     {

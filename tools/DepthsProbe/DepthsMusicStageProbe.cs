@@ -1,11 +1,14 @@
 using System.Reflection;
 using Godot;
+using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Acts;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Nodes.Audio;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.TestSupport;
 using STS2_Things.Acts;
 using STS2_Things.Audio;
 using STS2_Things.Config;
@@ -92,6 +95,15 @@ public partial class DepthsProbeNode
                 func stop_custom_music() -> void:
                     pass
 
+                func load_act_bank(_bank: String, _verify: String) -> bool:
+                    return true
+
+                func update_ambience(_ambience: String) -> void:
+                    pass
+
+                func stop_ambience() -> void:
+                    pass
+
                 func unload_act_banks() -> void:
                     pass
                 """,
@@ -144,6 +156,12 @@ public partial class DepthsProbeNode
             var room = new CombatRoom(canonical.ToMutable(), run);
             run.Players[0].ResetCombatState();
             room.CombatState.AddPlayer(run.Players[0]);
+            room.Encounter.GenerateMonstersWithSlots(run);
+            foreach ((MonsterModel monster, string? slot) in room.Encounter.MonstersWithSlots)
+            {
+                Creature enemy = room.CombatState.CreateCreature(monster, CombatSide.Enemy, slot);
+                room.CombatState.AddCreature(enemy);
+            }
             run.PushRoom(room);
             return room;
         }
@@ -344,7 +362,132 @@ public partial class DepthsProbeNode
             Assert(DepthsActMusicController.CurrentStage == DepthsActMusicController.Stage.Inactive,
                 "Advancing to Act 3 deactivates DepthsActMusicController.");
 
-            GD.Print("PASS Depths multi-stage BGM: 4 QOA loops, SplitMix64 seed & Floor-8 suite evolution, Explore/Combat/Muffled-LPF/Event/Ancient/Treasure/Campfire/Merchant/Elite/Boss transitions, and live config toggle.");
+            // Stage O: Custom Mod Boss WAV full lifecycle (victory fade-out, instant-win race, defeat StopMusic,
+            // StopCustomMusic, non-mod PlayCustomMusic, Act transition, and same-Act fallback).
+            Type customMusicType = typeof(NativeSfxPlayer).Assembly.GetType("STS2_Things.Audio.CustomMusicPlayPatch")
+                ?? throw new InvalidOperationException("Missing STS2_Things.Audio.CustomMusicPlayPatch.");
+            PropertyInfo fadeProp = customMusicType.GetProperty("CombatEndFadeOutSeconds", MusicPrivateStatic)
+                ?? throw new MissingMemberException("CustomMusicPlayPatch.CombatEndFadeOutSeconds");
+            PropertyInfo suppressedProp = customMusicType.GetProperty("SuppressedNativeTrackForModMusic", MusicPrivateStatic)
+                ?? throw new MissingMemberException("CustomMusicPlayPatch.SuppressedNativeTrackForModMusic");
+            float originalFadeSeconds = (float)fadeProp.GetValue(null)!;
+            bool previousTestMode = TestMode.IsOn;
+            musicController.SetRunState(run);
+
+            try
+            {
+                TestMode.IsOn = false;
+                run.CurrentActIndex = 0; // Act 1 Overgrowth (vanilla Act)
+                musicController.UpdateMusic();
+                Assert(proxy.Get("last_progress").AsInt32() == 0, "Act 1 UpdateMusic sets Progress=0.");
+
+                // O1: Start Mod WAV Boss -> plays after UpdateTrack(), fades out & stops on Boss victory!
+                fadeProp.SetValue(null, 0.04f);
+                var fogmogRoom = PushCombatRoom(ModelDb.Encounter<ThingsOriginFogmogBossEncounter>());
+                ActivateSyntheticCombat(fogmogRoom.CombatState);
+                string fogmogTrack = fogmogRoom.Encounter.CustomBgm;
+                musicController.PlayCustomMusic(fogmogTrack);
+                Assert(proxy.Get("_musicEv").VariantType == Variant.Type.Nil,
+                    "Mod boss PlayCustomMusic suppresses native FMOD track.");
+                musicController.UpdateTrack();
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                Assert(NativeSfxPlayer.HasActiveMusic && NativeSfxPlayer.ActiveMusicPath == fogmogTrack,
+                    $"Mod boss track should actively play during combat (active={NativeSfxPlayer.HasActiveMusic}, path={NativeSfxPlayer.ActiveMusicPath}).");
+
+                // Boss defeated -> CombatManager.EndCombatInternal clears IsInProgress and calls UpdateTrack()
+                DeactivateSyntheticCombat();
+                int updatesBeforeVictory = proxy.Get("update_calls").AsInt32();
+                musicController.UpdateTrack();
+                Assert(NativeSfxPlayer.ActiveMusicPath == null,
+                    "Boss victory UpdateTrack immediately clears ActiveMusicPath and starts fade-out.");
+                Assert(proxy.Get("update_calls").AsInt32() == updatesBeforeVictory && proxy.Get("_musicEv").VariantType == Variant.Type.Nil,
+                    "Post-boss rewards room stays calm (does not prematurely restart Act FMOD music).");
+
+                // Wait for 0.04s fade-out tween to finish releasing the AudioStreamPlayer (time-bounded for fast headless FPS)
+                ulong fadeDeadlineMs = Time.GetTicksMsec() + 1000UL;
+                while (NativeSfxPlayer.HasActiveMusic && Time.GetTicksMsec() < fadeDeadlineMs)
+                    await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                Assert(!NativeSfxPlayer.HasActiveMusic && !NativeSfxPlayer.IsMusicFadingOut,
+                    "Mod boss WAV completely stops and frees its AudioStreamPlayer after victory fade-out.");
+
+                // O2: Act transition after Boss victory -> new Act music stays at Progress=0 and clears suppression
+                await fogmogRoom.Exit(run);
+                PopAllRooms();
+                run.CurrentActIndex = 2; // Glory (distinct track from Act 1)
+                musicController.UpdateMusic();
+                Assert(proxy.Get("last_progress").AsInt32() == 0 && !(bool)suppressedProp.GetValue(null)!,
+                    "Act transition after mod boss starts next Act at Progress=0 and clears native suppression.");
+
+                // O3: Same-frame / Turn-0 instant victory race -> deferred PlayMusic never revives after combat end
+                run.CurrentActIndex = 0;
+                musicController.UpdateMusic();
+                var beetleRoom = PushCombatRoom(ModelDb.Encounter<ThingsScaleBeetleBossEncounter>());
+                ActivateSyntheticCombat(beetleRoom.CombatState);
+                musicController.PlayCustomMusic(beetleRoom.Encounter.CustomBgm);
+                musicController.UpdateTrack(); // schedules deferred PlayMusic (ActiveMusicPath already set via _musicStartPending)
+                DeactivateSyntheticCombat();
+                musicController.UpdateTrack(); // immediately cancels pending start before deferred frame executes
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                Assert(!NativeSfxPlayer.HasActiveMusic && NativeSfxPlayer.ActiveMusicPath == null,
+                    "Instant victory before deferred PlayMusic frame must cancel playback completely.");
+
+                // O4: Boss defeat / Game Over / Quit to Menu -> NRunMusicController.StopMusic() stops WAV immediately
+                ActivateSyntheticCombat(beetleRoom.CombatState);
+                musicController.PlayCustomMusic(beetleRoom.Encounter.CustomBgm);
+                musicController.UpdateTrack();
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                Assert(NativeSfxPlayer.HasActiveMusic, "Boss WAV running before defeat StopMusic check.");
+                musicController.StopMusic();
+                Assert(!NativeSfxPlayer.HasActiveMusic && NativeSfxPlayer.ActiveMusicPath == null,
+                    "NRunMusicController.StopMusic() immediately stops custom boss WAV on defeat or return to menu.");
+                DeactivateSyntheticCombat();
+
+                // O5: StopCustomMusic() & non-mod PlayCustomMusic() stop custom boss WAV immediately
+                musicController.UpdateMusic();
+                ActivateSyntheticCombat(beetleRoom.CombatState);
+                musicController.PlayCustomMusic(beetleRoom.Encounter.CustomBgm);
+                musicController.UpdateTrack();
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                musicController.StopCustomMusic();
+                Assert(!NativeSfxPlayer.HasActiveMusic, "StopCustomMusic() stops custom boss WAV immediately.");
+
+                musicController.PlayCustomMusic(beetleRoom.Encounter.CustomBgm);
+                musicController.UpdateTrack();
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                musicController.PlayCustomMusic("event:/music/act1_boss_vantom");
+                Assert(!NativeSfxPlayer.HasActiveMusic, "Non-mod PlayCustomMusic() stops any active mod boss WAV.");
+                DeactivateSyntheticCombat();
+
+                // O6: Leaving a mod WAV boss into a same-Act normal room restores the Act FMOD track
+                musicController.UpdateMusic();
+                ActivateSyntheticCombat(beetleRoom.CombatState);
+                musicController.PlayCustomMusic(beetleRoom.Encounter.CustomBgm);
+                musicController.UpdateTrack();
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                DeactivateSyntheticCombat();
+                musicController.UpdateTrack();
+                await beetleRoom.Exit(run);
+                PopAllRooms();
+                EventModel act1Event = ModelDb.Act<Overgrowth>().AllEvents.First();
+                run.PushRoom(new EventRoom(act1Event));
+                int updatesBeforeSameActReturn = proxy.Get("update_calls").AsInt32();
+                musicController.UpdateTrack();
+                Assert(proxy.Get("update_calls").AsInt32() == updatesBeforeSameActReturn + 1 &&
+                       proxy.Get("last_progress").AsInt32() == 4 &&
+                       !(bool)suppressedProp.GetValue(null)!,
+                    $"Same-Act return after mod boss restores native Act FMOD track and applies room Progress=4 (got {proxy.Get("last_progress").AsInt32()}).");
+            }
+            finally
+            {
+                TestMode.IsOn = previousTestMode;
+                fadeProp.SetValue(null, originalFadeSeconds);
+                NativeSfxPlayer.StopMusic();
+            }
+
+            GD.Print("PASS Depths multi-stage BGM & custom boss WAV lifecycle: 4 QOA loops, SplitMix64 seed & Floor-8 suite evolution, Explore/Combat/Muffled-LPF/Event/Ancient/Treasure/Campfire/Merchant/Elite/Boss transitions, boss victory fade-out, defeat/menu StopMusic, Act transition, and same-Act fallback.");
         }
         finally
         {

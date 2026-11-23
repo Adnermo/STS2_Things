@@ -7,9 +7,11 @@ using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
@@ -17,6 +19,7 @@ using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using STS2_Things.Encounters;
 using STS2_Things.Powers;
 using STS2_Things.Visuals;
@@ -67,12 +70,57 @@ public sealed class ThingsSoulRoes : ThingsSpineMonster
             .Append(ModelDb.Power<StrengthPower>().ResolvedBigIconPath)
             .Distinct();
 
-    // ========== 血量：普通进阶 80~88，高进阶 90~96（原数值翻倍） ==========
+    // ========== 血量：普通进阶 66~72，高进阶 74~80 ==========
     public override int MinInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 90, 80);
+        AscensionLevel.ToughEnemies, 74, 66);
 
     public override int MaxInitialHp => AscensionHelper.GetValueIfAscension(
-        AscensionLevel.ToughEnemies, 96, 88);
+        AscensionLevel.ToughEnemies, 80, 72);
+
+    /// <summary>
+    ///     为目标玩家弃牌堆生成带「虚无 + 消耗」词条的呼唤（Beckon）并触发原生加牌预览。
+    ///     供灵魂异鱼卵与灵魂异鱼籽共用。
+    /// </summary>
+    internal static async Task AddFleetingBeckonsAndPreviewAsync(
+        IEnumerable<Creature> targets,
+        int count,
+        PileType pileType = PileType.Discard,
+        CardPilePosition position = CardPilePosition.Bottom)
+    {
+        foreach (Creature target in targets)
+        {
+            Player? player = target.Player ?? target.PetOwner;
+            if (player == null || player.Creature.IsDead)
+                continue;
+
+            var added = new List<CardPileAddResult>(count);
+            for (int i = 0; i < count; i++)
+            {
+                CardModel? beckon = target.CombatState?.CreateCard<Beckon>(player);
+                if (beckon == null)
+                    continue;
+
+                beckon.AddKeyword(CardKeyword.Ethereal);
+                beckon.AddKeyword(CardKeyword.Exhaust);
+                added.Add(await CardPileCmd.AddGeneratedCardToCombat(beckon, pileType, null, position));
+            }
+
+            if (added.Count > 0 && LocalContext.IsMe(player))
+            {
+                if (pileType == PileType.Hand)
+                {
+                    await Cmd.Wait(0.1f);
+                    continue;
+                }
+
+                CardPreviewStyle style = added.Count <= 5
+                    ? CardPreviewStyle.HorizontalLayout
+                    : CardPreviewStyle.MessyLayout;
+                CardCmd.PreviewCardPileAdd(added, 1.2f, style);
+                await Cmd.Wait(1f);
+            }
+        }
+    }
 
     private Task WaitForPose(string animation, float moment, float fallback)
         => WaitForSpineMomentAsync(animation, moment, fallback);
@@ -143,14 +191,13 @@ public sealed class ThingsSoulRoes : ThingsSpineMonster
         return new MonsterMoveStateMachine(list, beckonStrMove);
     }
 
-    // ========== 回合1: 暖金点亮 + 2 张 Beckon + 自身 +1 力量 ==========
+    // ========== 回合1: 暖金点亮 + 2 张虚无消耗呼唤 + 自身 +1 力量 ==========
     private async Task BeckonStrengthMove(IReadOnlyList<Creature> targets)
     {
         SfxCmd.Play(CastSfx);
         await BeginMotion("Cast", "cast", BeckonRelease);
 
-        await CardPileCmd.AddToCombatAndPreview<Beckon>(
-            targets, PileType.Discard, 2, null);
+        await AddFleetingBeckonsAndPreviewAsync(targets, 2);
 
         await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(),
             Creature, 1m, Creature, null);

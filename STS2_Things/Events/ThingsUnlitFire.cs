@@ -17,8 +17,7 @@ namespace STS2_Things.Events;
 
 public sealed class ThingsUnlitFire : ThingsEventModel
 {
-    public const int FuelCost = 40;
-    public const int CharcoalHeal = 9;
+    public const int FuelCost = 55;
     private List<RestSiteOption> _options = [];
     private bool CanMakePlan => !EventOwner.Creature.IsDead && EventOwner.GetRelic<ThingsBorrowedEmber>() == null &&
         ThingsBorrowedEmber.FindNextRestSites(EventOwner.RunState).Count > 0;
@@ -30,13 +29,15 @@ public sealed class ThingsUnlitFire : ThingsEventModel
     }
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
-    [new HealVar(0m), new GoldVar(FuelCost), new IntVar("BonusHeal", ThingsBorrowedEmber.KindledHeal), new IntVar("CharcoalHeal", CharcoalHeal)];
+    [new HealVar(0m), new GoldVar(FuelCost), new IntVar("BonusHeal", ThingsBorrowedEmber.KindledHeal)];
 
-    public override bool IsAllowed(IRunState runState) => ThingsBorrowedEmber.FindNextRestSites(runState).Count > 0 &&
-        runState.Players.Any(player => !player.Creature.IsDead && player.GetRelic<ThingsBorrowedEmber>() == null);
+    public override bool IsAllowed(IRunState runState) =>
+        ThingsBorrowedEmber.FindNextRestSites(runState).Count > 0
+        && runState.Players.Count > 0
+        && runState.Players.All(player => !player.Creature.IsDead && player.GetRelic<ThingsBorrowedEmber>() == null);
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "BORROW", "FUEL", "CHARCOAL");
+        DepthsEventDefaults.DescribeOptions(this, "BORROW", "FUEL", "LEAVE");
 
     protected override Task BeforeEventStarted(bool isPreFinished)
     {
@@ -72,7 +73,7 @@ public sealed class ThingsUnlitFire : ThingsEventModel
         [
             new EventOption(this, canBorrow ? BorrowRestAndSmith : null, InitialOptionKey(borrowKey), PlanTips(false)),
             new EventOption(this, fuel ? AddFuel : null, InitialOptionKey(fuel ? "FUEL" : "FUEL_LOCKED"), PlanTips(true)),
-            new EventOption(this, TakeCharcoal, InitialOptionKey("CHARCOAL")),
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
     }
 
@@ -109,11 +110,11 @@ public sealed class ThingsUnlitFire : ThingsEventModel
         Finish("FUEL");
     }
 
-    private async Task TakeCharcoal()
+    private Task Leave()
     {
-        if (IsFinished) return;
-        await CreatureCmd.Heal(EventOwner.Creature, DynamicVars["CharcoalHeal"].BaseValue);
-        Finish("CHARCOAL");
+        if (IsFinished) return Task.CompletedTask;
+        Finish("LEAVE");
+        return Task.CompletedTask;
     }
 
     private void Finish(string page) => SetEventFinished(L10NLookup($"THINGS_UNLIT_FIRE.pages.{page}.description"));

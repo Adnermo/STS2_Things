@@ -934,6 +934,31 @@ def main() -> int:
             "dual-version compatibility seam missing '#if STS2_V111_1' or '#if STS2_V113_1'",
         )
 
+    # Guard against third-party card portrait interference (c3a2716c) and missed-cache disposal (b053fbd6).
+    seam_code = re.sub(r"(?s)/\*.*?\*/|//[^\n]*", "", seam_text)
+    for forbidden_seam_call in (".BigPortrait", "PreloadManager.Cache.GetTexture2D"):
+        if forbidden_seam_call in seam_code:
+            fail(
+                errors,
+                f"Platform/Sts2VersionSeam.cs must not call {forbidden_seam_call} (pollutes PreloadManager.Cache._missedCacheAssets)",
+            )
+    if "ResourceLoader.Load<Texture2D>(pngPath, null, ResourceLoader.CacheMode.Reuse)" not in seam_code:
+        fail(
+            errors,
+            "Platform/Sts2VersionSeam.cs TryGetBigCardPortrait must load PortraitPngPath via ResourceLoader.Load<Texture2D>(..., CacheMode.Reuse)",
+        )
+    forbidden_portrait_patch_re = re.compile(
+        r"\[HarmonyPatch\(\s*typeof\(\s*(?:NUpgradePreview|NPreviewCardHolder|NCardGridSelectionScreen|NGridCardHolder|NCardHolder|NEnchantPreview|NTransformPreview)\s*\)"
+        r'|\[HarmonyPatch\(\s*typeof\(\s*CardCmd\s*\)\s*,\s*(?:"PreviewInternal"|nameof\([^)]*PreviewInternal\))'
+    )
+    for cs_path in sorted(SOURCE.rglob("*.cs")):
+        cs_code = re.sub(r"(?s)/\*.*?\*/|//[^\n]*", "", cs_path.read_text(encoding="utf-8", errors="replace"))
+        if forbidden_portrait_patch_re.search(cs_code):
+            fail(
+                errors,
+                f"{cs_path.relative_to(ROOT)} must not register Harmony patches on card preview/grid/holder UI (breaks third-party portrait mods)",
+            )
+
     build_text = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8-sig")
     for required in (
         "build_quirky_hopper_texture.py",
@@ -4034,6 +4059,7 @@ def main() -> int:
         ROOT / "images/atlases/relic_atlas.sprites/almod_water.tres",
         SOURCE / ".godot",
         SOURCE / "Monsters/MonsterRegistrar.cs",
+        SOURCE / "Hooks/CrispCardPortraitPatch.cs",
     ]
     for path in stale_paths:
         if path.exists():

@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Core.Localization;
 using STS2_Things.Core.Models;
 using STS2_Things.Enchantments;
@@ -18,15 +19,22 @@ namespace STS2_Things.Events;
 
 public sealed class ThingsCuttingItClose : ThingsEventModel
 {
+    public const int ImproviseDamage = 8;
+    public const int ThrowDamage = 6;
+
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
+        new DamageVar("ImproviseDamage", ImproviseDamage, ValueProp.Unblockable | ValueProp.Unpowered),
+        new DamageVar("ThrowDamage", ThrowDamage, ValueProp.Unblockable | ValueProp.Unpowered),
         new LocalizedStringVar("Enchantment", static _ => ModelDb.Enchantment<ThingsSplit>().Title.GetFormattedText())
     ];
 
     public override bool IsAllowed(IRunState runState)
     {
         var split = ModelDb.Enchantment<ThingsSplit>();
-        return runState.Players.All(player => player.Deck.Cards.Any(card => IsSplitCandidate(split, card)));
+        return runState.Players.Count > 0 &&
+               runState.Players.All(player => !player.Creature.IsDead && player.Creature.CurrentHp > ImproviseDamage) &&
+               runState.Players.All(player => player.Deck.Cards.Any(card => IsSplitCandidate(split, card)));
     }
 
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()
@@ -34,17 +42,29 @@ public sealed class ThingsCuttingItClose : ThingsEventModel
         var split = ModelDb.Enchantment<ThingsSplit>();
         bool canSplit = EventOwner.Deck.Cards.Any(card => IsSplitCandidate(split, card));
         bool canThrow = EventOwner.Deck.Cards.Any(card => card.IsRemovable);
+        EventOption improviseOption = new(
+            this,
+            canSplit ? Improvise : null,
+            InitialOptionKey(canSplit ? "IMPROVISE" : "IMPROVISE_LOCKED"),
+            HoverTipFactory.FromEnchantment<ThingsSplit>());
+        if (canSplit)
+        {
+            improviseOption.ThatDoesDamage(ImproviseDamage);
+        }
+
+        EventOption throwOption = new(
+            this,
+            canThrow ? Throw : null,
+            InitialOptionKey(canThrow ? "THROW" : "THROW_LOCKED"));
+        if (canThrow)
+        {
+            throwOption.ThatDoesDamage(ThrowDamage);
+        }
+
         var options = new List<EventOption>
         {
-            new EventOption(
-                this,
-                canSplit ? Improvise : null,
-                InitialOptionKey(canSplit ? "IMPROVISE" : "IMPROVISE_LOCKED"),
-                HoverTipFactory.FromEnchantment<ThingsSplit>()),
-            new EventOption(
-                this,
-                canThrow ? Throw : null,
-                InitialOptionKey(canThrow ? "THROW" : "THROW_LOCKED"))
+            improviseOption,
+            throwOption
         };
         if (!canSplit && !canThrow)
         {
@@ -77,6 +97,13 @@ public sealed class ThingsCuttingItClose : ThingsEventModel
             return;
         }
 
+        await ThingsEventHelpers.DealUnblockableDamageAsync(EventOwner, ImproviseDamage);
+        if (EventOwner.Creature.IsDead)
+        {
+            SetEventFinished(L10NLookup("THINGS_CUTTING_IT_CLOSE.pages.IMPROVISE.loss"));
+            return;
+        }
+
         CardModel[] copies =
         [
             EventOwner.RunState.CloneCard(selected),
@@ -105,6 +132,13 @@ public sealed class ThingsCuttingItClose : ThingsEventModel
         if (selected is null)
         {
             FinishWithoutCard();
+            return;
+        }
+
+        await ThingsEventHelpers.DealUnblockableDamageAsync(EventOwner, ThrowDamage);
+        if (EventOwner.Creature.IsDead)
+        {
+            SetEventFinished(L10NLookup("THINGS_CUTTING_IT_CLOSE.pages.THROW.loss"));
             return;
         }
 

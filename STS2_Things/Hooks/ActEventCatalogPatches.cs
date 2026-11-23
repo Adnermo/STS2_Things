@@ -29,7 +29,6 @@ internal static class ThingsEventCatalog
     private static (string EnabledKey, EventModel Event)[]? _depthsCandidates;
     private static (string EnabledKey, EventModel Event)[]? _gloryCandidates;
 
-    private static CachedEventCatalog? _sharedAct1Cache;
     private static CachedEventCatalog? _overgrowthCache;
     private static CachedEventCatalog? _underdocksCache;
     private static CachedEventCatalog? _hiveCache;
@@ -44,11 +43,6 @@ internal static class ThingsEventCatalog
             (ThingsModConfig.EventCuttingItCloseEnabled, ModelDb.Event<ThingsCuttingItClose>()),
             (ThingsModConfig.EventBlindCrabInkwellEnabled, ModelDb.Event<ThingsBlindCrabInkwell>()),
         ];
-
-    public static IEnumerable<EventModel> AddOvergrowthAndUnderdocksEvents(IEnumerable<EventModel> source)
-    {
-        return AddCached(ref _sharedAct1Cache, source, GetSharedAct1Candidates());
-    }
 
     public static IEnumerable<EventModel> AddOvergrowthEvents(IEnumerable<EventModel> source)
     {

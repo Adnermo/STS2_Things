@@ -15,7 +15,7 @@ public sealed class ThingsChromaticSlimeWeak : EncounterModel
     public override bool IsWeak => false;
     public override IEnumerable<EncounterTag> Tags => [DepthsEncounterTags.ChromaticSlime];
     public override bool HasScene => true;
-    protected override bool HasCustomBackground => true;
+    protected override bool HasCustomBackground => false;
 
     public override float GetCameraScaling() => 0.94f;
 

@@ -253,6 +253,164 @@ public partial class DepthsProbeNode
                 $"ThingsSurrender on transient NextMove must resolve FollowUpStateId ({initialLoggedId}), got {monster.NextMove.FollowUpStateId}.");
         });
 
+        // 4b) Sanguine Leech parasite-triggered REINFEST_MOVE + ThingsSurrender:
+        //     Playing parasite switches Leech into REINFEST_MOVE next turn; ThingsSurrender MUST override REINFEST_MOVE to DEBUFF_WEAK,
+        //     prevent infestation that turn, resume REINFEST_MOVE next turn, and then resume the saved normal cycle move.
+        await RunCase("SanguineLeech.SurrenderOverridesReinfestMoveAndResumesCycle", async () =>
+        {
+            var b = await StrongBattle(ModelDb.Encounter<ThingsSanguineLeechWeak>(), players: 1, ascension: 0, seed: "leech-reinfest-surrender");
+            Player player = b.Players[0];
+            player.PlayerCombatState!.Energy = 99;
+            player.Creature.SetMaxHpInternal(1000);
+            player.Creature.SetCurrentHpInternal(900);
+            ThingsSanguineLeech leech = (ThingsSanguineLeech)b.Enemies[0].Monster!;
+            string[] cycle = ["SIP_MOVE", "INFEST_MOVE", "SIP_AGAIN_MOVE", "CURL_MOVE"];
+            string openingMove = cycle[leech.OpeningPhase];
+            string nextNormalMove = cycle[(leech.OpeningPhase + 1) % cycle.Length];
+            Assert(leech.NextMove.Id == openingMove, $"Expected opening move {openingMove}, got {leech.NextMove.Id}.");
+
+            // Turn 1: Play a parasite bound to leech[0].
+            var parasite1 = b.State.CreateCard<ThingsLeechParasite>(player);
+            parasite1.BindOwnerLeech(leech.Creature);
+            await CardPileCmd.AddGeneratedCardToCombat(parasite1, PileType.Hand, null);
+            await CardCmd.AutoPlay(Choice, parasite1, null, skipCardPileVisuals: true);
+            Assert(leech.NextMove.Id == openingMove,
+                $"Playing parasite on Turn 1 must keep Turn 1 move ({openingMove}), got {leech.NextMove.Id}.");
+
+            // Enemy Turn 1 -> Turn 2 RollMove enters REINFEST_MOVE (interruptible!).
+            b.State.CurrentSide = CombatSide.Enemy;
+            await leech.PerformMove();
+            await SideEnded(b, CombatSide.Enemy, b.Enemies);
+            b.State.CurrentSide = CombatSide.Player;
+            leech.RollMove(b.Players.Select(p => p.Creature));
+            Assert(leech.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && leech.NextMove.CanTransitionAway,
+                $"Turn 2 must roll interruptible REINFEST_MOVE, got id={leech.NextMove.Id}, canTransition={leech.NextMove.CanTransitionAway}.");
+            Assert(leech.MoveStateMachine!.StateLog.Last().Id == ThingsSanguineLeech.ReinfestMoveId,
+                $"Turn 2 StateLog must record REINFEST_MOVE, got {leech.MoveStateMachine.StateLog.Last().Id}.");
+
+            // Turn 2: Play ThingsSurrender on the leech during its REINFEST_MOVE turn!
+            int hpBefore = player.Creature.CurrentHp;
+            int parasitesBefore = player.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().Count();
+            var surrender1 = b.State.CreateCard<ThingsSurrender>(player);
+            await CardPileCmd.AddGeneratedCardToCombat(surrender1, PileType.Hand, null);
+            await CardCmd.AutoPlay(Choice, surrender1, leech.Creature, skipCardPileVisuals: true);
+
+            Assert(player.Creature.CurrentHp == hpBefore + 3,
+                $"ThingsSurrender must heal 3 HP, got {player.Creature.CurrentHp - hpBefore}.");
+            Assert(leech.NextMove.Id == "DEBUFF_WEAK" && !leech.NextMove.CanTransitionAway,
+                $"ThingsSurrender must override REINFEST_MOVE to DEBUFF_WEAK, got {leech.NextMove.Id} (canTransition={leech.NextMove.CanTransitionAway}).");
+            Assert(leech.NextMove.FollowUpStateId == ThingsSanguineLeech.ReinfestMoveId,
+                $"ThingsSurrender on REINFEST_MOVE must set FollowUpStateId=REINFEST_MOVE, got {leech.NextMove.FollowUpStateId}.");
+
+            // Enemy Turn 2: Performs DEBUFF_WEAK (applies Weak, adds NO parasite).
+            b.State.CurrentSide = CombatSide.Enemy;
+            await leech.PerformMove();
+            await SideEnded(b, CombatSide.Enemy, b.Enemies);
+            Assert(player.Creature.GetPower<WeakPower>()?.Amount >= 1,
+                "DEBUFF_WEAK on Turn 2 must apply Weak.");
+            Assert(player.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().Count() == parasitesBefore,
+                "Surrendered REINFEST_MOVE must NOT add a parasite on Turn 2.");
+
+            // Turn 3: RollMove resumes REINFEST_MOVE; test a second ThingsSurrender + another parasite clear on the same turn!
+            b.State.CurrentSide = CombatSide.Player;
+            leech.RollMove(b.Players.Select(p => p.Creature));
+            Assert(leech.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && leech.NextMove.CanTransitionAway,
+                $"Turn 3 RollMove after DEBUFF_WEAK must resume interruptible REINFEST_MOVE, got {leech.NextMove.Id}.");
+
+            var surrender2 = b.State.CreateCard<ThingsSurrender>(player);
+            await CardPileCmd.AddGeneratedCardToCombat(surrender2, PileType.Hand, null);
+            await CardCmd.AutoPlay(Choice, surrender2, leech.Creature, skipCardPileVisuals: true);
+            var parasite2 = b.State.CreateCard<ThingsLeechParasite>(player);
+            parasite2.BindOwnerLeech(leech.Creature);
+            await CardPileCmd.AddGeneratedCardToCombat(parasite2, PileType.Hand, null);
+            await CardCmd.AutoPlay(Choice, parasite2, null, skipCardPileVisuals: true);
+            Assert(leech.NextMove.Id == "DEBUFF_WEAK",
+                $"Playing another parasite after ThingsSurrender on Turn 3 must keep DEBUFF_WEAK, got {leech.NextMove.Id}.");
+
+            b.State.CurrentSide = CombatSide.Enemy;
+            await leech.PerformMove();
+            await SideEnded(b, CombatSide.Enemy, b.Enemies);
+
+            // Turn 4: RollMove resumes REINFEST_MOVE and performs it.
+            b.State.CurrentSide = CombatSide.Player;
+            leech.RollMove(b.Players.Select(p => p.Creature));
+            Assert(leech.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId,
+                $"Turn 4 RollMove must be REINFEST_MOVE, got {leech.NextMove.Id}.");
+            int parasitesBeforeInfest = player.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().Count();
+            b.State.CurrentSide = CombatSide.Enemy;
+            await leech.PerformMove();
+            await SideEnded(b, CombatSide.Enemy, b.Enemies);
+            Assert(player.PlayerCombatState.Hand.Cards.OfType<ThingsLeechParasite>().Count() == parasitesBeforeInfest + 1,
+                "Resumed REINFEST_MOVE on Turn 4 must generate a bound parasite.");
+
+            // Turn 5: Must resume the saved normal cycle move (no infinite REINFEST_MOVE loop).
+            b.State.CurrentSide = CombatSide.Player;
+            leech.RollMove(b.Players.Select(p => p.Creature));
+            Assert(leech.NextMove.Id == nextNormalMove,
+                $"Turn 5 RollMove after resumed REINFEST_MOVE must return to saved normal move {nextNormalMove}, got {leech.NextMove.Id}.");
+        });
+
+        // 4c) Reverse order (ThingsSurrender BEFORE parasite on Turn 1) + native Stun (Whistle) on REINFEST_MOVE:
+        //     Turn 1 performs DEBUFF_WEAK -> Turn 2 rolls REINFEST_MOVE -> native Stun overrides REINFEST_MOVE ->
+        //     Turn 3 performs REINFEST_MOVE -> Turn 4 resumes Turn 1's postponed opening move.
+        await RunCase("SanguineLeech.SurrenderBeforeParasiteAndNativeStunOnReinfest", async () =>
+        {
+            var b = await StrongBattle(ModelDb.Encounter<ThingsSanguineLeechWeak>(), players: 1, ascension: 0, seed: "leech-surrender-before-parasite");
+            Player player = b.Players[0];
+            player.PlayerCombatState!.Energy = 99;
+            player.Creature.SetMaxHpInternal(1000);
+            player.Creature.SetCurrentHpInternal(900);
+            ThingsSanguineLeech leech = (ThingsSanguineLeech)b.Enemies[0].Monster!;
+            string openingMove = leech.NextMove.Id;
+
+            // Turn 1: Play ThingsSurrender FIRST, then play bound parasite.
+            var surrender = b.State.CreateCard<ThingsSurrender>(player);
+            await CardPileCmd.AddGeneratedCardToCombat(surrender, PileType.Hand, null);
+            await CardCmd.AutoPlay(Choice, surrender, leech.Creature, skipCardPileVisuals: true);
+            Assert(leech.NextMove.Id == "DEBUFF_WEAK" && leech.NextMove.FollowUpStateId == openingMove,
+                $"ThingsSurrender on Turn 1 must queue DEBUFF_WEAK -> {openingMove}, got {leech.NextMove.Id} -> {leech.NextMove.FollowUpStateId}.");
+
+            var parasite = b.State.CreateCard<ThingsLeechParasite>(player);
+            parasite.BindOwnerLeech(leech.Creature);
+            await CardPileCmd.AddGeneratedCardToCombat(parasite, PileType.Hand, null);
+            await CardCmd.AutoPlay(Choice, parasite, null, skipCardPileVisuals: true);
+            Assert(leech.NextMove.Id == "DEBUFF_WEAK",
+                $"Playing parasite after ThingsSurrender on Turn 1 must not clobber DEBUFF_WEAK, got {leech.NextMove.Id}.");
+
+            // Enemy Turn 1 -> Turn 2 rolls REINFEST_MOVE.
+            b.State.CurrentSide = CombatSide.Enemy;
+            await leech.PerformMove();
+            await SideEnded(b, CombatSide.Enemy, b.Enemies);
+            b.State.CurrentSide = CombatSide.Player;
+            leech.RollMove(b.Players.Select(p => p.Creature));
+            Assert(leech.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId && leech.NextMove.CanTransitionAway,
+                $"Turn 2 after DEBUFF_WEAK + parasite must roll interruptible REINFEST_MOVE, got {leech.NextMove.Id}.");
+
+            // Turn 2: Native Whistle-style Stun (nextMoveId = null) must also override REINFEST_MOVE and follow up with REINFEST_MOVE!
+            await CreatureCmd.Stun(leech.Creature);
+            Assert(leech.NextMove.Id == MonsterModel.stunnedMoveId && leech.NextMove.FollowUpStateId == ThingsSanguineLeech.ReinfestMoveId,
+                $"Native Stun on REINFEST_MOVE must set STUNNED -> REINFEST_MOVE, got {leech.NextMove.Id} -> {leech.NextMove.FollowUpStateId}.");
+
+            b.State.CurrentSide = CombatSide.Enemy;
+            await leech.PerformMove();
+            await SideEnded(b, CombatSide.Enemy, b.Enemies);
+
+            // Turn 3: Resumes and performs REINFEST_MOVE.
+            b.State.CurrentSide = CombatSide.Player;
+            leech.RollMove(b.Players.Select(p => p.Creature));
+            Assert(leech.NextMove.Id == ThingsSanguineLeech.ReinfestMoveId,
+                $"Turn 3 after Stun must resume REINFEST_MOVE, got {leech.NextMove.Id}.");
+            b.State.CurrentSide = CombatSide.Enemy;
+            await leech.PerformMove();
+            await SideEnded(b, CombatSide.Enemy, b.Enemies);
+
+            // Turn 4: Resumes Turn 1's postponed opening move!
+            b.State.CurrentSide = CombatSide.Player;
+            leech.RollMove(b.Players.Select(p => p.Creature));
+            Assert(leech.NextMove.Id == openingMove,
+                $"Turn 4 after Turn 1 Surrender -> Turn 2 Stun -> Turn 3 Reinfest must resume {openingMove}, got {leech.NextMove.Id}.");
+        });
+
         // 5) Report 9cb59828: BossStateDisplayLayerPatch clamps mid-combat summon (ThingsOriginEyeWithTeeth) against third-party Z overrides & resets %Intents on combat end.
         await RunCase("BossStateDisplayLayerPatch.ClampsMidCombatSummonAndResetsOnCombatEnd", async () =>
         {

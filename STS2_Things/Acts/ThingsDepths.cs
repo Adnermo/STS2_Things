@@ -42,8 +42,10 @@ public sealed class ThingsDepths : ActModel
         get
         {
             EventModel[] hiveEvents = ModelDb.Act<Hive>().AllEvents.ToArray();
-            EventModel[] customEvents = ThingsEventCatalog.AddDepthsEvents(
-                hiveEvents.Where(e => e.GetType().Assembly != typeof(ActModel).Assembly)).ToArray();
+            EventModel[] thirdPartyEvents = hiveEvents.Where(e =>
+                e.GetType().Assembly != typeof(ActModel).Assembly
+                && e.GetType().Assembly != typeof(ThingsDepths).Assembly).ToArray();
+            EventModel[] customEvents = ThingsEventCatalog.AddDepthsEvents(thirdPartyEvents).ToArray();
             return customEvents.Length > 0
                 ? customEvents
                 : hiveEvents.Where(e => e.GetType().Assembly == typeof(ActModel).Assembly);

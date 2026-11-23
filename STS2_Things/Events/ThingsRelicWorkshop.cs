@@ -13,6 +13,7 @@ using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Core.Localization;
 using STS2_Things.Core.Models;
 
@@ -21,9 +22,9 @@ namespace STS2_Things.Events;
 /// <summary>A personal, previewed Uncommon exchange, sale, or card reforge using native rules.</summary>
 public sealed class ThingsRelicWorkshop : ThingsEventModel
 {
-    private const int TradeCost = 40;
-    private const int SaleGold = 220;
-    private const int RestHeal = 10;
+    public const int TradeCost = 65;
+    public const int SaleGold = 150;
+    public const int ReforgeDamage = 8;
     private const int PageSize = 3;
     private RelicModel? _offer;
     private bool _settling;
@@ -41,7 +42,8 @@ public sealed class ThingsRelicWorkshop : ThingsEventModel
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
-        new GoldVar(TradeCost), new IntVar("SaleGold", SaleGold), new HealVar(RestHeal),
+        new GoldVar(TradeCost), new IntVar("SaleGold", SaleGold),
+        new DamageVar("ReforgeDamage", ReforgeDamage, ValueProp.Unblockable | ValueProp.Unpowered),
         new LocalizedStringVar("Offer", static owner =>
             owner is ThingsRelicWorkshop { _offer: { } r }
                 ? r.Title.GetFormattedText()
@@ -109,7 +111,8 @@ public sealed class ThingsRelicWorkshop : ThingsEventModel
             HasTransformableCard
                 ? new EventOption(this, ReforgeCard, InitialOptionKey("REFORGE"),
                     HoverTipFactory.Static(StaticHoverTip.Transform))
-                : new EventOption(this, WorkshopRest, InitialOptionKey("REFORGE_REST")),
+                    .ThatDoesDamage(ReforgeDamage)
+                : new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
     }
 
@@ -186,15 +189,21 @@ public sealed class ThingsRelicWorkshop : ThingsEventModel
             await Back();
             return;
         }
+        await ThingsEventHelpers.DealUnblockableDamageAsync(EventOwner, ReforgeDamage);
+        if (EventOwner.Creature.IsDead)
+        {
+            SetEventFinished(L10NLookup("THINGS_RELIC_WORKSHOP.pages.REFORGE.loss"));
+            return;
+        }
         await CardCmd.TransformToRandom(selected, Rng, CardPreviewStyle.EventLayout);
         SetEventFinished(L10NLookup("THINGS_RELIC_WORKSHOP.pages.REFORGE.description"));
     }
 
-    private async Task WorkshopRest()
+    private Task Leave()
     {
-        if (IsFinished || _settling) return;
+        if (IsFinished || _settling) return Task.CompletedTask;
         _settling = true;
-        await CreatureCmd.Heal(EventOwner.Creature, RestHeal);
-        SetEventFinished(L10NLookup("THINGS_RELIC_WORKSHOP.pages.REFORGE_REST.description"));
+        SetEventFinished(L10NLookup("THINGS_RELIC_WORKSHOP.pages.LEAVE.description"));
+        return Task.CompletedTask;
     }
 }

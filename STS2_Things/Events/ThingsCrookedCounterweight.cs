@@ -1,6 +1,5 @@
 using MegaCrit.Sts2.Core.CardSelection;
 using MegaCrit.Sts2.Core.Commands;
-using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
@@ -19,13 +18,12 @@ namespace STS2_Things.Events;
 
 /// <summary>
 /// Depths event balancing deck weight vs speed: apply Weighted (+1 cost, 2x damage/block),
-/// Slumbering Essence (cost -1 per turn retained in hand), or upgrade a basic/common card.
+/// Slumbering Essence (cost -1 per turn retained in hand), or leaving.
 /// </summary>
 public sealed class ThingsCrookedCounterweight : ThingsEventModel
 {
-    public const int WeightDamage = 8;
-    public const int WatchMaxHpLoss = 5;
-    public const int ShimFallbackHeal = 8;
+    public const int WeightDamage = 11;
+    public const int WatchMaxHpLoss = 7;
 
     private bool _settling;
 
@@ -39,7 +37,6 @@ public sealed class ThingsCrookedCounterweight : ThingsEventModel
     [
         new DamageVar("WeightDamage", WeightDamage, ValueProp.Unblockable | ValueProp.Unpowered),
         new MaxHpVar(WatchMaxHpLoss),
-        new HealVar("FallbackHeal", ShimFallbackHeal),
     ];
 
     public override bool IsAllowed(IRunState runState) =>
@@ -50,7 +47,7 @@ public sealed class ThingsCrookedCounterweight : ThingsEventModel
                 || (player.Creature.MaxHp > WatchMaxHpLoss && player.Deck.Cards.Any(CanEnchant<SlumberingEssence>))));
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "WEIGHT", "WATCH", "SHIM_UPGRADE");
+        DepthsEventDefaults.DescribeOptions(this, "WEIGHT", "WATCH", "LEAVE");
 
     public override IEnumerable<string> GetAssetPaths(IRunState runState) =>
         base.GetAssetPaths(runState)
@@ -59,11 +56,6 @@ public sealed class ThingsCrookedCounterweight : ThingsEventModel
 
     private static bool CanEnchant<TEnchantment>(CardModel? card) where TEnchantment : EnchantmentModel =>
         card != null && ModelDb.Enchantment<TEnchantment>().CanEnchant(card);
-
-    private static List<CardModel> GetShimCandidates(Player player) =>
-        player.Deck.Cards
-            .Where(card => card.IsUpgradable && card.Rarity is CardRarity.Basic or CardRarity.Common)
-            .ToList();
 
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()
     {
@@ -103,12 +95,12 @@ public sealed class ThingsCrookedCounterweight : ThingsEventModel
                 .ThatDecreasesMaxHp(WatchMaxHpLoss),
         };
 
-        bool hasShimCard = GetShimCandidates(EventOwner).Count > 0;
-        EventOption shimOption = hasShimCard
-            ? new EventOption(this, ShimUpgrade, InitialOptionKey("SHIM_UPGRADE"))
-            : new EventOption(this, ShimHeal, InitialOptionKey("SHIM_HEAL"));
-
-        return [weightOption, watchOption, shimOption];
+        return
+        [
+            weightOption,
+            watchOption,
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
+        ];
     }
 
     private bool BeginSettlement()
@@ -188,29 +180,12 @@ public sealed class ThingsCrookedCounterweight : ThingsEventModel
         static player => player.Creature.MaxHp > WatchMaxHpLoss,
         player => LoseEventOwnerMaxHpAsync(new ThrowingPlayerChoiceContext(), WatchMaxHpLoss));
 
-    private async Task ShimUpgrade()
+    private Task Leave()
     {
         if (!BeginSettlement())
-            return;
-        List<CardModel> candidates = GetShimCandidates(EventOwner);
-        if (candidates.Count == 0 || Rng.NextItem(candidates) is not { } picked)
-        {
-            _settling = false;
-            SetEventState(InitialDescription, GenerateInitialOptions());
-            return;
-        }
-
-        CardCmd.Upgrade(picked, CardPreviewStyle.EventLayout);
-        Finish("SHIM_UPGRADE.description");
-        await Task.CompletedTask;
-    }
-
-    private async Task ShimHeal()
-    {
-        if (!BeginSettlement())
-            return;
-        await CreatureCmd.Heal(EventOwner.Creature, ShimFallbackHeal);
-        Finish("SHIM_HEAL.description");
+            return Task.CompletedTask;
+        Finish("LEAVE.description");
+        return Task.CompletedTask;
     }
 
     private void Finish(string pageSuffix)

@@ -249,37 +249,41 @@ public partial class DepthsProbeNode : Node
             var cr = BeginEventForPlayer<ThingsChronometerRig>(p, run);
             AssertTextClean(cr.Title.GetFormattedText(), $"CR Title ({lang})");
             AssertTextClean(cr.Description!.GetFormattedText(), $"CR Init ({lang})");
-            foreach (string opt in new[] { "GEAR", "GEAR_NO_CARD", "GEAR_NO_GOLD", "PIN", "PIN_LOW_HP", "PIN_NO_CARD", "OIL_POTION", "OIL_GOLD" })
+            foreach (string opt in new[] { "GEAR", "GEAR_NO_CARD", "GEAR_NO_GOLD", "PIN", "PIN_LOW_HP", "PIN_NO_CARD", "LEAVE" })
                 AssertTextClean(FormatEventLoc(cr, $"THINGS_CHRONOMETER_RIG.pages.INITIAL.options.{opt}.description"), $"CR opt {opt} ({lang})");
-            foreach (string page in new[] { "GEAR.description", "PIN.description", "PIN.loss", "OIL_POTION.description", "OIL_GOLD.description", "ABORTED.description" })
+            AssertTextClean(FormatEventLoc(cr, "THINGS_CHRONOMETER_RIG.pages.INITIAL.options.LEAVE.title"), $"CR opt LEAVE title ({lang})");
+            foreach (string page in new[] { "GEAR.description", "PIN.description", "PIN.loss", "LEAVE.description", "ABORTED.description" })
                 AssertTextClean(FormatEventLoc(cr, $"THINGS_CHRONOMETER_RIG.pages.{page}"), $"CR page {page} ({lang})");
 
             var sg = BeginEventForPlayer<ThingsSilveredGallery>(p, run);
             AssertTextClean(sg.Title.GetFormattedText(), $"SG Title ({lang})");
             AssertTextClean(sg.Description!.GetFormattedText(), $"SG Init ({lang})");
-            foreach (string opt in new[] { "DUPLICATE_RARE", "DUPLICATE_ANY", "DUPLICATE_LOCKED", "PAWN", "PAWN_NO_RELIC", "PAWN_NO_CARD", "PAWN_NO_GOLD", "POLISH_UPGRADE", "POLISH_HEAL" })
+            foreach (string opt in new[] { "DUPLICATE_RARE", "DUPLICATE_ANY", "DUPLICATE_LOCKED", "PAWN", "PAWN_NO_RELIC", "PAWN_NO_CARD", "PAWN_NO_GOLD", "LEAVE" })
                 AssertTextClean(FormatEventLoc(sg, $"THINGS_SILVERED_GALLERY.pages.INITIAL.options.{opt}.description"), $"SG opt {opt} ({lang})");
-            foreach (string page in new[] { "DUPLICATE.description", "DUPLICATE.loss", "PAWN.description", "POLISH_UPGRADE.description", "POLISH_HEAL.description", "ABORTED.description" })
+            AssertTextClean(FormatEventLoc(sg, "THINGS_SILVERED_GALLERY.pages.INITIAL.options.LEAVE.title"), $"SG opt LEAVE title ({lang})");
+            foreach (string page in new[] { "DUPLICATE.description", "DUPLICATE.loss", "PAWN.description", "LEAVE.description", "ABORTED.description" })
                 AssertTextClean(FormatEventLoc(sg, $"THINGS_SILVERED_GALLERY.pages.{page}"), $"SG page {page} ({lang})");
 
             var cb = BeginEventForPlayer<ThingsCrackedBrazier>(p, run);
             AssertTextClean(cb.Title.GetFormattedText(), $"CB Title ({lang})");
             AssertTextClean(cb.Description!.GetFormattedText(), $"CB Init ({lang})");
-            foreach (string opt in new[] { "TEMPER", "TEMPER_LOW_HP", "TEMPER_NO_CARD", "BURN_CARD", "BURN_NO_CARD", "WARM_HANDS" })
+            foreach (string opt in new[] { "TEMPER", "TEMPER_LOW_HP", "TEMPER_NO_CARD", "BURN_CARD", "BURN_NO_CARD", "LEAVE" })
                 AssertTextClean(FormatEventLoc(cb, $"THINGS_CRACKED_BRAZIER.pages.INITIAL.options.{opt}.description"), $"CB opt {opt} ({lang})");
-            foreach (string page in new[] { "TEMPER.description", "TEMPER.loss", "BURN_CARD.description", "BURN_CARD.loss", "BURN_RARE.description", "WARM_HANDS.description", "ABORTED.description" })
+            AssertTextClean(FormatEventLoc(cb, "THINGS_CRACKED_BRAZIER.pages.INITIAL.options.LEAVE.title"), $"CB opt LEAVE title ({lang})");
+            foreach (string page in new[] { "TEMPER.description", "TEMPER.loss", "BURN_CARD.description", "BURN_CARD.loss", "BURN_RARE.description", "LEAVE.description", "ABORTED.description" })
                 AssertTextClean(FormatEventLoc(cb, $"THINGS_CRACKED_BRAZIER.pages.{page}"), $"CB page {page} ({lang})");
 
             var sw = BeginEventForPlayer<ThingsSiltWinch>(p, run);
             AssertTextClean(sw.Title.GetFormattedText(), $"SW Title ({lang})");
             AssertTextClean(sw.Description!.GetFormattedText(), $"SW Init ({lang})");
-            foreach (string opt in new[] { "HAUL_1", "CUT_POUCH" })
+            foreach (string opt in new[] { "HAUL_1", "LEAVE" })
                 AssertTextClean(FormatEventLoc(sw, $"THINGS_SILT_WINCH.pages.INITIAL.options.{opt}.description"), $"SW opt {opt} ({lang})");
+            AssertTextClean(FormatEventLoc(sw, "THINGS_SILT_WINCH.pages.INITIAL.options.LEAVE.title"), $"SW opt LEAVE title ({lang})");
             foreach (string sub in new[]
             {
                 "DEPTH_2.description", "DEPTH_2.options.HAUL_2_POTION.description", "DEPTH_2.options.HAUL_2_GOLD.description", "DEPTH_2.options.STOP_1.description",
                 "DEPTH_3.description", "DEPTH_3.options.HAUL_3.description", "DEPTH_3.options.HAUL_3_LOW_HP.description", "DEPTH_3.options.HAUL_3_EMPTY.description", "DEPTH_3.options.STOP_2.description",
-                "HAUL_1.loss", "HAUL_2.loss", "HAUL_3.description", "HAUL_3.loss", "STOP_1.description", "STOP_2.description", "CUT_POUCH.description"
+                "HAUL_1.loss", "HAUL_2.loss", "HAUL_3.description", "HAUL_3.loss", "STOP_1.description", "STOP_2.description", "LEAVE.description"
             })
                 AssertTextClean(FormatEventLoc(sw, $"THINGS_SILT_WINCH.pages.{sub}"), $"SW sub {sub} ({lang})");
         }
@@ -287,7 +291,7 @@ public partial class DepthsProbeNode : Node
 
     private async Task VerifyChronometerRigAsync()
     {
-        // Option 1: Gear (Imbued on Skill for 75 Gold) + cancel before spending Gold
+        // Option 1: Gear (Imbued on Skill for 95 Gold) + cancel before spending Gold
         RunState run1 = SetupTestRun("cr-gear");
         Player p1 = run1.Players[0];
         p1.Gold = 100;
@@ -305,8 +309,9 @@ public partial class DepthsProbeNode : Node
         var pickDefend = new ProbeCardSelector(targetPredicate: c => c == defend);
         using (ProbeRuntimeApi.UseSelector(pickDefend))
             await ev1.CurrentOptions[0].Chosen();
-        Assert(ev1.IsFinished && p1.Gold == 100 - ThingsChronometerRig.GearGoldCost && defend.Enchantment is Imbued,
-            "Gear deducts 75 Gold and enchants Defend with Imbued");
+        Assert(ev1.IsFinished && ThingsChronometerRig.GearGoldCost == 95
+               && p1.Gold == 100 - ThingsChronometerRig.GearGoldCost && defend.Enchantment is Imbued,
+            "Gear deducts 95 Gold and enchants Defend with Imbued");
 
         // Option 2: Pin (PerfectFit for 8 Max HP) + cancel before Max HP loss
         RunState run2 = SetupTestRun("cr-pin");
@@ -320,28 +325,21 @@ public partial class DepthsProbeNode : Node
 
         using (ProbeRuntimeApi.UseSelector(new ProbeCardSelector(targetPredicate: c => c == bash)))
             await ev2.CurrentOptions[1].Chosen();
-        Assert(ev2.IsFinished && p2.Creature.MaxHp == maxHpBefore - ThingsChronometerRig.PinMaxHpLoss && bash.Enchantment is PerfectFit,
+        Assert(ev2.IsFinished && ThingsChronometerRig.PinMaxHpLoss == 8
+               && p2.Creature.MaxHp == maxHpBefore - ThingsChronometerRig.PinMaxHpLoss && bash.Enchantment is PerfectFit,
             "Pin deducts 8 Max HP and enchants Bash with PerfectFit");
 
-        // Option 3: Oil Potion + fallback 35 Gold when potion slots full
-        RunState run3 = SetupTestRun("cr-oil");
+        // Option 3: Leave (pure leave, 0 potions added and 0 gold gained)
+        RunState run3 = SetupTestRun("cr-leave");
         Player p3 = run3.Players[0];
         int potsBefore = p3.Potions.Count();
+        int gBefore = p3.Gold;
         var ev3 = BeginEventForPlayer<ThingsChronometerRig>(p3, run3);
+        Assert(!ev3.CurrentOptions[2].IsLocked && ev3.CurrentOptions[2].TextKey.Contains("LEAVE", StringComparison.Ordinal),
+            "ChronometerRig option 3 is pure LEAVE");
         await ev3.CurrentOptions[2].Chosen();
-        Assert(ev3.IsFinished && p3.Potions.Count() == potsBefore + 1, "Oil option grants 1 random potion");
-
-        RunState run4 = SetupTestRun("cr-oil-full");
-        Player p4 = run4.Players[0];
-        while (p4.HasOpenPotionSlots)
-            await PotionCmd.TryToProcure(ModelDb.Potion<BlockPotion>().ToMutable(), p4);
-        int gBefore = p4.Gold;
-        var ev4 = BeginEventForPlayer<ThingsChronometerRig>(p4, run4);
-        Assert(ev4.CurrentOptions[2].TextKey.Contains("OIL_GOLD", StringComparison.Ordinal),
-            "ChronometerRig switches option 3 to OIL_GOLD when potion belt is full");
-        await ev4.CurrentOptions[2].Chosen();
-        Assert(ev4.IsFinished && p4.Gold == gBefore + ThingsChronometerRig.OilFallbackGold,
-            "Full-belt fallback grants 35 Gold");
+        Assert(ev3.IsFinished && p3.Potions.Count() == potsBefore && p3.Gold == gBefore,
+            "Leave finishes cleanly with 0 potions added and 0 gold gained");
 
         // Locks check: low gold & low max HP
         RunState runLocks = SetupTestRun("cr-locks");
@@ -349,8 +347,9 @@ public partial class DepthsProbeNode : Node
         pLocks.Gold = ThingsChronometerRig.GearGoldCost - 1;
         pLocks.Creature.SetMaxHpInternal(ThingsChronometerRig.PinMaxHpLoss);
         var evLocks = BeginEventForPlayer<ThingsChronometerRig>(pLocks, runLocks);
-        Assert(evLocks.CurrentOptions[0].IsLocked && evLocks.CurrentOptions[1].IsLocked && !evLocks.CurrentOptions[2].IsLocked,
-            "Low gold & low Max HP lock options 0 and 1 cleanly");
+        Assert(evLocks.CurrentOptions[0].IsLocked && evLocks.CurrentOptions[1].IsLocked
+               && !evLocks.CurrentOptions[2].IsLocked && evLocks.CurrentOptions[2].TextKey.Contains("LEAVE", StringComparison.Ordinal),
+            "Low gold & low Max HP lock options 0 and 1 cleanly while leaving LEAVE unlocked");
     }
 
     private async Task VerifySilveredGalleryAsync()
@@ -413,26 +412,18 @@ public partial class DepthsProbeNode : Node
                && p2.Relics[^1].Rarity == RelicRarity.Rare,
             "Pawn spends 95 Gold, removes upgraded Strike, and grants 1 Rare Relic");
 
-        // Option 3: Polish upgrade + fallback heal
-        RunState run3 = SetupTestRun("sg-polish");
+        // Option 3: Leave (pure leave, 0 upgrades and 0 healing)
+        RunState run3 = SetupTestRun("sg-leave");
         Player p3 = run3.Players[0];
-        var ev3 = BeginEventForPlayer<ThingsSilveredGallery>(p3, run3);
+        p3.Creature.SetCurrentHpInternal(40);
         int upgradedCountBefore = p3.Deck.Cards.Count(c => c.IsUpgraded);
+        var ev3 = BeginEventForPlayer<ThingsSilveredGallery>(p3, run3);
+        Assert(!ev3.CurrentOptions[2].IsLocked && ev3.CurrentOptions[2].TextKey.Contains("LEAVE", StringComparison.Ordinal),
+            "SilveredGallery option 3 is pure LEAVE");
         await ev3.CurrentOptions[2].Chosen();
-        Assert(ev3.IsFinished && p3.Deck.Cards.Count(c => c.IsUpgraded) == upgradedCountBefore + 1,
-            "Polish upgrades 1 random card");
-
-        RunState run4 = SetupTestRun("sg-polish-heal");
-        Player p4 = run4.Players[0];
-        foreach (CardModel card in p4.Deck.Cards)
-            if (card.IsUpgradable) CardCmd.Upgrade(card);
-        p4.Creature.SetCurrentHpInternal(40);
-        var ev4 = BeginEventForPlayer<ThingsSilveredGallery>(p4, run4);
-        Assert(ev4.CurrentOptions[2].TextKey.Contains("POLISH_HEAL", StringComparison.Ordinal),
-            "All upgraded falls back to POLISH_HEAL");
-        await ev4.CurrentOptions[2].Chosen();
-        Assert(ev4.IsFinished && p4.Creature.CurrentHp == 40 + ThingsSilveredGallery.PolishFallbackHeal,
-            "Polish heal grants 10 HP");
+        Assert(ev3.IsFinished && p3.Deck.Cards.Count(c => c.IsUpgraded) == upgradedCountBefore
+               && p3.Creature.CurrentHp == 40,
+            "Leave finishes cleanly with 0 upgrades and 0 healing");
     }
 
     private async Task VerifyCrackedBrazierAsync()
@@ -534,19 +525,21 @@ public partial class DepthsProbeNode : Node
                && p3.Relics[^1].Rarity == RelicRarity.Common,
             $"Burning Rare card grants 1 bonus Common Relic (hp={p3.Creature.CurrentHp}, expected={hp3 - ThingsCrackedBrazier.BurnDamage + maxHpGain3}, relic={p3.Relics[^1].Id.Entry})");
 
-        // Option 3: Warm Hands -> Heal 10 HP
-        RunState run4 = SetupTestRun("cb-warm");
+        // Option 3: Leave (pure leave, 0 healing)
+        RunState run4 = SetupTestRun("cb-leave");
         Player p4 = run4.Players[0];
         p4.Creature.SetCurrentHpInternal(40);
         var ev4 = BeginEventForPlayer<ThingsCrackedBrazier>(p4, run4);
+        Assert(!ev4.CurrentOptions[2].IsLocked && ev4.CurrentOptions[2].TextKey.Contains("LEAVE", StringComparison.Ordinal),
+            "CrackedBrazier option 3 is pure LEAVE");
         await ev4.CurrentOptions[2].Chosen();
-        Assert(ev4.IsFinished && p4.Creature.CurrentHp == 40 + ThingsCrackedBrazier.WarmHeal,
-            "Warm Hands heals 10 HP");
+        Assert(ev4.IsFinished && p4.Creature.CurrentHp == 40,
+            "Leave finishes cleanly with 0 healing");
     }
 
     private async Task VerifySiltWinchAsync()
     {
-        // Full 3-stage escalation: Haul 1 (5 dmg + 3 upgraded Common/Uncommon card choices) -> Haul 2 (10 dmg + 45G + Potion) -> Haul 3 (10 Max HP + Uncommon/Rare Relic + Decay)
+        // Full 3-stage escalation: Haul 1 (8 dmg + 3 upgraded Common/Uncommon card choices) -> Haul 2 (12 dmg + 45G + Potion) -> Haul 3 (10 Max HP + Uncommon/Rare Relic + Decay)
         RunState run1 = SetupTestRun("sw-deep");
         Player p1 = run1.Players[0];
         p1.Gold = 50;
@@ -562,8 +555,9 @@ public partial class DepthsProbeNode : Node
         using (ProbeRuntimeApi.UseSelector(rewardSel))
             await ev1.CurrentOptions[0].Chosen();
 
-        Assert(!ev1.IsFinished && p1.Creature.CurrentHp == hp0 - ThingsSiltWinch.Pull1Damage,
-            "Haul 1 deals 5 HP damage and keeps event open on DEPTH_2");
+        Assert(!ev1.IsFinished && ThingsSiltWinch.Pull1Damage == 8
+               && p1.Creature.CurrentHp == hp0 - ThingsSiltWinch.Pull1Damage,
+            "Haul 1 deals 8 HP damage and keeps event open on DEPTH_2");
         Assert(rewardSel.LastRewardCards.Count == 3
                && rewardSel.LastRewardCards.All(c => c.Rarity is CardRarity.Common or CardRarity.Uncommon && (!c.IsUpgradable || c.IsUpgraded)),
             "Haul 1 offers 3 upgraded Common/Uncommon card choices");
@@ -572,9 +566,10 @@ public partial class DepthsProbeNode : Node
             "DEPTH_2 offers HAUL_2_POTION and STOP_1");
 
         await ev1.CurrentOptions[0].Chosen();
-        Assert(!ev1.IsFinished && p1.Creature.CurrentHp == hp0 - ThingsSiltWinch.Pull1Damage - ThingsSiltWinch.Pull2Damage
+        Assert(!ev1.IsFinished && ThingsSiltWinch.Pull2Damage == 12
+               && p1.Creature.CurrentHp == hp0 - ThingsSiltWinch.Pull1Damage - ThingsSiltWinch.Pull2Damage
                && p1.Gold == 50 + ThingsSiltWinch.Pull2Gold && p1.Potions.Count() == potsBefore + 1,
-            "Haul 2 deals 10 HP damage, grants 45 Gold + 1 Potion, and transitions to DEPTH_3");
+            "Haul 2 deals 12 HP damage, grants 45 Gold + 1 Potion, and transitions to DEPTH_3");
         Assert(ev1.CurrentOptions.Count == 2, "DEPTH_3 offers HAUL_3 and STOP_2");
 
         await ev1.CurrentOptions[0].Chosen();
@@ -601,7 +596,7 @@ public partial class DepthsProbeNode : Node
         await evFull.CurrentOptions[1].Chosen();
         Assert(evFull.IsFinished, "STOP_2 finishes event cleanly");
 
-        // Early STOP_1 works + lossless Cut Loose Pouch grants 25 Gold
+        // Early STOP_1 works + pure LEAVE grants 0 Gold
         RunState runStop1 = SetupTestRun("sw-stop1");
         Player pStop1 = runStop1.Players[0];
         var evStop1 = BeginEventForPlayer<ThingsSiltWinch>(pStop1, runStop1);
@@ -610,13 +605,16 @@ public partial class DepthsProbeNode : Node
         await evStop1.CurrentOptions[1].Chosen();
         Assert(evStop1.IsFinished, "STOP_1 finishes cleanly after Haul 1");
 
-        RunState runPouch = SetupTestRun("sw-pouch");
-        Player pPouch = runPouch.Players[0];
-        int gBefore = pPouch.Gold;
-        var evPouch = BeginEventForPlayer<ThingsSiltWinch>(pPouch, runPouch);
-        await evPouch.CurrentOptions[1].Chosen();
-        Assert(evPouch.IsFinished && pPouch.Gold == gBefore + ThingsSiltWinch.PouchGold,
-            "Cut Loose Pouch grants 25 Gold");
+        RunState runLeave = SetupTestRun("sw-leave");
+        Player pLeave = runLeave.Players[0];
+        int gBefore = pLeave.Gold;
+        var evLeave = BeginEventForPlayer<ThingsSiltWinch>(pLeave, runLeave);
+        Assert(evLeave.CurrentOptions.Count == 2 && !evLeave.CurrentOptions[1].IsLocked
+               && evLeave.CurrentOptions[1].TextKey.Contains("LEAVE", StringComparison.Ordinal),
+            "SiltWinch option 2 is pure LEAVE");
+        await evLeave.CurrentOptions[1].Chosen();
+        Assert(evLeave.IsFinished && pLeave.Gold == gBefore,
+            "Leave finishes cleanly with 0 gold gained");
     }
 
     private async Task RenderLiveUiAsync()

@@ -35,9 +35,27 @@ public partial class PortraitCompatibilityProbeNode : Node
         try
         {
             _args = OS.GetCmdlineUserArgs();
-            Require(_args.Length >= 4, "Expected native PCK, Things PCK, foreign DLL and implementation DLL.");
             AssemblyLoadContext context = AssemblyLoadContext.GetLoadContext(GetType().Assembly)!;
             context.Resolving += ResolveDependency;
+
+            if (_args.Contains("--standalone"))
+            {
+                string[] positional = _args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
+                Require(positional.Length >= 3, "Standalone mode expects native PCK, Things PCK and implementation DLL.");
+                Require(ProjectSettings.LoadResourcePack(positional[0]), "Native pack mounts.");
+                Require(ProjectSettings.LoadResourcePack(positional[1]), "Things pack mounts.");
+                Assembly standaloneImpl = context.LoadFromAssemblyPath(Path.GetFullPath(positional[2]));
+                InitializeCompatibility(standaloneImpl);
+                VerifyNoPreviewOrGridPortraitPatches(standaloneImpl);
+                InitializeNativeModelDb(standaloneImpl);
+                VerifyThingsCardsExposeNativeFullResPortraits(standaloneImpl);
+                await VerifyBigCardPortraitDoesNotPolluteMissedCache(standaloneImpl);
+                GD.Print($"PORTRAIT_COMPAT_PASS checks={_checks} mod=standalone combined=false order=Things-only cases={string.Join(',', Cases)}");
+                GetTree().Quit();
+                return;
+            }
+
+            Require(_args.Length >= 4, "Expected native PCK, Things PCK, foreign DLL and implementation DLL.");
             Require(ProjectSettings.LoadResourcePack(_args[0]), "Native pack mounts.");
             Require(ProjectSettings.LoadResourcePack(_args[1]), "Things pack mounts.");
             Require(ProjectSettings.LoadResourcePack(Path.ChangeExtension(_args[2], ".pck")), "Foreign portrait pack mounts.");
@@ -71,7 +89,7 @@ public partial class PortraitCompatibilityProbeNode : Node
             if (!baseline && !early) InitializeCompatibility(implementation!);
             if (baseline && _args.Contains("--cards"))
             {
-                await NativeCards(implementation!, foreign);
+                await NativeCards(implementation!, foreign, baseline: true);
                 throw new Exception("Baseline unexpectedly survived native pooled-card reuse after resource unloading.");
             }
             ExpiredDefault("DefaultPortraitStates", "STS2_Things.Cards.ThingsLeechParasite");
@@ -82,6 +100,7 @@ public partial class PortraitCompatibilityProbeNode : Node
             NullDefault();
             InitializeCompatibility(implementation!);
             ValidDefault();
+            VerifyNoPreviewOrGridPortraitPatches(implementation!);
             if (_secondForeign != null)
             {
                 foreach (Assembly extra in new[] { _secondForeign, _thirdForeign }.OfType<Assembly>())
@@ -97,14 +116,14 @@ public partial class PortraitCompatibilityProbeNode : Node
                 ValidDefault();
                 Cases.Add("independent-mod-caches");
             }
-            if (_args.Contains("--cards")) await NativeCards(implementation!, foreign);
+            if (_args.Contains("--cards")) await NativeCards(implementation!, foreign, baseline: false);
             GD.Print($"PORTRAIT_COMPAT_PASS checks={_checks} mod={_foreignNamespace} combined={_secondForeign != null} order={(early ? "Things-first" : "Foreign-first")} cases={string.Join(',', Cases)}");
             GetTree().Quit();
         }
         catch (Exception exception)
         {
             Exception cause = exception is TargetInvocationException { InnerException: { } inner } ? inner : exception;
-            GD.Print($"PORTRAIT_COMPAT_FAIL type={cause.GetType().FullName} stack={cause.StackTrace}");
+            GD.Print($"PORTRAIT_COMPAT_FAIL type={cause.GetType().FullName} msg={cause.Message} inner={cause.InnerException?.Message} stack={cause.StackTrace}");
             GetTree().Quit(1);
         }
     }
@@ -196,7 +215,7 @@ public partial class PortraitCompatibilityProbeNode : Node
         Cases.Add("null-default");
     }
 
-    private async Task NativeCards(Assembly implementation, Assembly foreign)
+    private static void InitializeNativeModelDb(Assembly implementation)
     {
         TestMode.TurnOnInternal();
         SaveManager.Instance.InitSettingsDataForTest();
@@ -207,6 +226,7 @@ public partial class PortraitCompatibilityProbeNode : Node
         Type[] modTypes = implementation.GetTypes();
         typeof(ReflectionHelper).GetField("_modTypes", PrivateStatic)!.SetValue(null, modTypes);
         RegisterProbeMod(implementation);
+        RegisterThingsCardPools(implementation);
         PropertyInfo? managerState = typeof(ModManager).GetProperty("State", BindingFlags.Public | BindingFlags.Static);
         managerState?.SetValue(null, Enum.Parse(managerState.PropertyType, "Initialized"));
         typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Modding.AssemblyInfo")?.GetMethod("Init")?.Invoke(null, null);
@@ -217,7 +237,18 @@ public partial class PortraitCompatibilityProbeNode : Node
             .GetMethod("Init")!.Invoke(null, null);
         typeof(ModelDb).GetMethod("InitIds")!.Invoke(null, null);
         LocManager.Initialize();
+    }
+
+    private async Task NativeCards(Assembly implementation, Assembly foreign, bool baseline)
+    {
+        InitializeNativeModelDb(implementation);
         InitializeForeign(foreign);
+
+        if (!baseline)
+        {
+            VerifyThingsCardsExposeNativeFullResPortraits(implementation);
+            await VerifyBigCardPortraitDoesNotPolluteMissedCache(implementation);
+        }
 
         var pool = NodePool.Init<NCard>("res://scenes/cards/card.tscn", 0);
         CardModel Card(Type type) => ((CardModel)typeof(ModelDb).GetMethod("Card")!

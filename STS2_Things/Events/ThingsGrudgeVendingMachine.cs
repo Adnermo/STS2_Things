@@ -19,16 +19,16 @@ namespace STS2_Things.Events;
 
 /// <summary>
 /// Depths event featuring a spiteful vending cabinet: buy 1 of 3 shown potions,
-/// escalate up to 3 kicks (Gold -> Common Relic for 8 HP -> Rare Relic + Shame for 14 HP),
-/// or take jammed loose change from the return slot.
+/// escalate up to 3 kicks (Gold for 6 HP -> Common Relic for 12 HP -> Rare Relic + Shame for 18 HP),
+/// or leave.
 /// </summary>
 public sealed class ThingsGrudgeVendingMachine : ThingsEventModel
 {
-    public const int CoinCost = 35;
-    public const int Kick1Gold = 45;
-    public const int Kick2Damage = 8;
-    public const int Kick3Damage = 14;
-    public const int ReturnSlotGold = 18;
+    public const int CoinCost = 55;
+    public const int Kick1Damage = 6;
+    public const int Kick1Gold = 35;
+    public const int Kick2Damage = 12;
+    public const int Kick3Damage = 18;
 
     private PotionModel[]? _vendingPotions;
     private bool _previousPotionPermission;
@@ -47,10 +47,10 @@ public sealed class ThingsGrudgeVendingMachine : ThingsEventModel
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
         new GoldVar(CoinCost),
+        new DamageVar("Kick1Damage", Kick1Damage, ValueProp.Unblockable | ValueProp.Unpowered),
         new GoldVar("Kick1Gold", Kick1Gold),
         new DamageVar("Kick2Damage", Kick2Damage, ValueProp.Unblockable | ValueProp.Unpowered),
         new DamageVar("Kick3Damage", Kick3Damage, ValueProp.Unblockable | ValueProp.Unpowered),
-        new GoldVar("ReturnGold", ReturnSlotGold),
         new LocalizedStringVar("Curse", static _ => new LocString("cards", "SHAME.title").GetFormattedText()),
     ];
 
@@ -58,11 +58,11 @@ public sealed class ThingsGrudgeVendingMachine : ThingsEventModel
         runState.Players.Count > 0
         && runState.Players.All(player =>
             !player.Creature.IsDead
-            && player.Gold >= CoinCost
-            && player.Creature.CurrentHp > Kick2Damage);
+            && (player.Gold >= CoinCost
+                || player.Creature.CurrentHp > Kick1Damage));
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "INSERT_COIN", "KICK_ONCE", "COIN_RETURN");
+        DepthsEventDefaults.DescribeOptions(this, "INSERT_COIN", "KICK_ONCE", "LEAVE");
 
     private bool CanReceive(PotionModel potion) =>
         EventOwner.HasOpenPotionSlots
@@ -114,9 +114,18 @@ public sealed class ThingsGrudgeVendingMachine : ThingsEventModel
         return
         [
             coinOption,
-            new EventOption(this, KickOnce, InitialOptionKey("KICK_ONCE")),
-            new EventOption(this, TakeReturnCoin, InitialOptionKey("COIN_RETURN")),
+            new EventOption(this, KickOnce, InitialOptionKey("KICK_ONCE"))
+                .ThatDoesDamage(Kick1Damage),
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
+    }
+
+    private bool BeginSettlement()
+    {
+        if (IsFinished || _settling || EventOwner.Creature.IsDead)
+            return false;
+        _settling = true;
+        return true;
     }
 
     private Task ShowPotionTray()
@@ -178,9 +187,15 @@ public sealed class ThingsGrudgeVendingMachine : ThingsEventModel
 
     private async Task KickOnce()
     {
-        if (IsFinished || _settling || EventOwner.Creature.IsDead)
+        if (!BeginSettlement())
             return;
-        _settling = true;
+        await ThingsEventHelpers.DealUnblockableDamageAsync(EventOwner, Kick1Damage);
+        if (EventOwner.Creature.IsDead)
+        {
+            Finish("KICK_1.loss");
+            return;
+        }
+
         await PlayerCmd.GainGold(Kick1Gold, EventOwner);
         _settling = false;
 
@@ -285,13 +300,12 @@ public sealed class ThingsGrudgeVendingMachine : ThingsEventModel
         return Task.CompletedTask;
     }
 
-    private async Task TakeReturnCoin()
+    private Task Leave()
     {
-        if (IsFinished || _settling || EventOwner.Creature.IsDead)
-            return;
-        _settling = true;
-        await PlayerCmd.GainGold(ReturnSlotGold, EventOwner);
-        Finish("COIN_RETURN.description");
+        if (!BeginSettlement())
+            return Task.CompletedTask;
+        Finish("LEAVE.description");
+        return Task.CompletedTask;
     }
 
     private async Task ObtainRelic(RelicRarity rarity)

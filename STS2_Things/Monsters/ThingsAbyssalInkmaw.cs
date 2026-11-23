@@ -24,6 +24,7 @@ using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Nodes.Vfx.Utilities;
 using MegaCrit.Sts2.Core.ValueProps;
 using STS2_Things.Cards;
+using ExternalCombatSimulationGuard = STS2_Things.Compatibility.ExternalCombatSimulationGuard;
 using STS2_Things.Core.Models;
 using STS2_Things.Encounters;
 using STS2_Things.Platform;
@@ -358,6 +359,12 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
     {
         if (creature == Creature && Phase == 1 && !_deathHandled)
         {
+            if (ExternalCombatSimulationGuard.IsActive(Creature))
+            {
+                if (Creature.CurrentHp <= 0)
+                    Creature.SetCurrentHpInternal(1);
+                return;
+            }
             // Direct kill paths such as DoomPower.DoomKill bypass ModifyHpLostAfterOstyLate
             // and drop CurrentHp to 0 via LoseHpInternal before calling ShouldDie/AfterPreventingDeath.
             // CreatureCmd.KillWithoutCheckingWinCondition recurses and throws InvalidOperationException
@@ -392,7 +399,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
         Creature? dealer,
         CardModel? cardSource)
     {
-        if (_applyingPhase2Hp || target != Creature || !Creature.IsAlive || _deathHandled)
+        if (_applyingPhase2Hp || target != Creature || !Creature.IsAlive || _deathHandled || ExternalCombatSimulationGuard.IsActive(Creature))
             return;
 
         if (result.TotalDamage > 0)
@@ -404,7 +411,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
 
     public override async Task AfterCurrentHpChanged(Creature creature, decimal delta)
     {
-        if (_applyingPhase2Hp || creature != Creature)
+        if (_applyingPhase2Hp || creature != Creature || ExternalCombatSimulationGuard.IsActive(Creature))
             return;
         if (Creature.IsAlive && Phase == 1 && !_phase2Pending && Creature.CurrentHp <= Phase2HpThreshold)
             await EnterPhase2LockAsync();
@@ -412,7 +419,7 @@ public sealed class ThingsAbyssalInkmaw : ThingsMonsterModel
 
     private async Task EnterPhase2LockAsync()
     {
-        if (Phase != 1 || _phase2Pending || _deathHandled)
+        if (Phase != 1 || _phase2Pending || _deathHandled || ExternalCombatSimulationGuard.IsActive(Creature))
             return;
 
         _savedPhase2MaxHp = Creature.MaxHp;

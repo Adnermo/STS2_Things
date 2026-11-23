@@ -9,7 +9,9 @@ using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.ValueProps;
+using STS2_Things.Compatibility;
 using STS2_Things.Core.Models;
 using STS2_Things.Monsters;
 
@@ -33,6 +35,7 @@ public sealed class ThingsHumanFaceColumnPower : ThingsPowerModel
         public bool IsBypassingReduction;
         public decimal StagedNegatedDamage;
         public ValueProp? StagedProps;
+        public bool StagedReductionSkipped;
         public readonly Queue<PendingRedirect> PendingRedirects = new();
         public PendingRedirect? LastEnqueuedRedirect;
     }
@@ -58,14 +61,17 @@ public sealed class ThingsHumanFaceColumnPower : ThingsPowerModel
         }
     }
 
-    internal void StageModifyNegatedDamage(decimal negated, ValueProp props)
+    internal void StageModifyNegatedDamage(decimal negated, ValueProp props, bool reductionSkipped = false)
     {
         if (!IsMutable)
             return;
         RedirectData data = GetInternalData<RedirectData>();
         data.StagedNegatedDamage = Math.Max(0m, negated);
         data.StagedProps = props;
+        data.StagedReductionSkipped = reductionSkipped;
     }
+
+    private decimal GetDamageFactor() => Level >= 2 ? 0.5m : Level == 1 ? 0.75m : 1m;
 
     protected override string SmartDescriptionLocKey => !IsMutable ? base.SmartDescriptionLocKey :
         Level switch
@@ -80,7 +86,7 @@ public sealed class ThingsHumanFaceColumnPower : ThingsPowerModel
     {
         if (target != Owner || IsBypassingReduction)
             return 1m;
-        return Level >= 2 ? 0.5m : Level == 1 ? 0.75m : 1m;
+        return GetDamageFactor();
     }
 
     public override Task BeforeDamageReceived(
@@ -91,17 +97,30 @@ public sealed class ThingsHumanFaceColumnPower : ThingsPowerModel
         Creature? dealer,
         CardModel? cardSource)
     {
-        if (target != Owner || !IsMutable)
+        if (target != Owner || !IsMutable || ExternalCombatSimulationGuard.IsActive(Owner))
             return Task.CompletedTask;
 
         RedirectData data = GetInternalData<RedirectData>();
         decimal staged = data.StagedNegatedDamage;
         ValueProp? stagedProps = data.StagedProps;
+        bool reductionSkipped = data.StagedReductionSkipped;
         data.StagedNegatedDamage = 0m;
         data.StagedProps = null;
+        data.StagedReductionSkipped = false;
 
         if (Level < 1 || Owner.Monster is not ThingsHumanFaceColumn column)
             return Task.CompletedTask;
+
+        if (staged <= 0m &&
+            !reductionSkipped &&
+            amount > 0m &&
+            !data.IsBypassingReduction &&
+            !Owner.HasPower<IntangiblePower>())
+        {
+            decimal factor = GetDamageFactor();
+            if (factor > 0m && factor < 1m)
+                staged = Math.Max(0m, decimal.Truncate(amount / factor) - decimal.Truncate(amount));
+        }
 
         Creature? bottom = column.BottomLivingCreature;
         if (bottom == null || bottom == Owner)
@@ -121,7 +140,7 @@ public sealed class ThingsHumanFaceColumnPower : ThingsPowerModel
         Creature target,
         CardModel? cardSource)
     {
-        if (target != Owner || !IsMutable)
+        if (target != Owner || !IsMutable || ExternalCombatSimulationGuard.IsActive(Owner))
             return;
 
         RedirectData data = GetInternalData<RedirectData>();
@@ -151,10 +170,12 @@ public sealed class ThingsHumanFaceColumnPower : ThingsPowerModel
         bool wasRemovalPrevented,
         float deathAnimLength)
     {
-        if (creature == Owner && IsMutable)
+        if (creature == Owner && IsMutable && !ExternalCombatSimulationGuard.IsActive(Owner))
         {
             RedirectData data = GetInternalData<RedirectData>();
             data.StagedNegatedDamage = 0m;
+            data.StagedProps = null;
+            data.StagedReductionSkipped = false;
             data.PendingRedirects.Clear();
             data.LastEnqueuedRedirect = null;
         }

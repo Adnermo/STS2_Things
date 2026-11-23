@@ -17,13 +17,12 @@ namespace STS2_Things.Events;
 
 /// <summary>
 /// Glory (Act 3) event offering full-fidelity duplication of a Rare card (or any card fallback)
-/// for 16 HP, trading 95 Gold + 1 Upgraded card for a Rare Relic, or a free random Upgrade.
+/// for 16 HP, trading 95 Gold + 1 Upgraded card for a Rare Relic, or leaving.
 /// </summary>
 public sealed class ThingsSilveredGallery : ThingsEventModel
 {
     public const int DuplicateDamage = 16;
     public const int PawnGoldCost = 95;
-    public const int PolishFallbackHeal = 10;
 
     private bool _settling;
 
@@ -37,19 +36,20 @@ public sealed class ThingsSilveredGallery : ThingsEventModel
     [
         new DamageVar("TwinDamage", DuplicateDamage, ValueProp.Unblockable | ValueProp.Unpowered),
         new GoldVar(PawnGoldCost),
-        new HealVar("FallbackHeal", PolishFallbackHeal),
     ];
 
     public override bool IsAllowed(IRunState runState) =>
         runState.Players.Count > 0
         && runState.Players.All(player =>
             !player.Creature.IsDead
-            && player.Gold >= PawnGoldCost
-            && player.Creature.CurrentHp > DuplicateDamage
-            && player.Deck.Cards.Any(IsCloneable));
+            && ((player.Creature.CurrentHp > DuplicateDamage && player.Deck.Cards.Any(IsCloneable))
+                || (player.Gold >= PawnGoldCost
+                    && player.Deck.Cards.Any(IsPawnCandidate)
+                    && (!player.RelicGrabBag.IsPopulated
+                        || ThingsEventHelpers.HasGrabBagRelic(player, RelicRarity.Rare)))));
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "DUPLICATE_RARE", "PAWN", "POLISH_UPGRADE");
+        DepthsEventDefaults.DescribeOptions(this, "DUPLICATE_RARE", "PAWN", "LEAVE");
 
     private static bool IsCloneable(CardModel card) => card.Type != CardType.Quest;
 
@@ -93,12 +93,12 @@ public sealed class ThingsSilveredGallery : ThingsEventModel
             _ => new EventOption(this, PawnForRareRelic, InitialOptionKey("PAWN")),
         };
 
-        bool hasUpgradable = EventOwner.Deck.Cards.Any(card => card.IsUpgradable);
-        EventOption polishOption = hasUpgradable
-            ? new EventOption(this, PolishUpgrade, InitialOptionKey("POLISH_UPGRADE"))
-            : new EventOption(this, PolishHeal, InitialOptionKey("POLISH_HEAL"));
-
-        return [dupOption, pawnOption, polishOption];
+        return
+        [
+            dupOption,
+            pawnOption,
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
+        ];
     }
 
     private bool BeginSettlement()
@@ -185,28 +185,12 @@ public sealed class ThingsSilveredGallery : ThingsEventModel
         Finish("PAWN.description");
     }
 
-    private Task PolishUpgrade()
+    private Task Leave()
     {
         if (!BeginSettlement())
             return Task.CompletedTask;
-        List<CardModel> upgradable = EventOwner.Deck.Cards.Where(card => card.IsUpgradable).ToList();
-        if (upgradable.Count == 0 || Rng.NextItem(upgradable) is not { } picked)
-        {
-            CancelToInitial();
-            return Task.CompletedTask;
-        }
-
-        CardCmd.Upgrade(picked, CardPreviewStyle.EventLayout);
-        Finish("POLISH_UPGRADE.description");
+        Finish("LEAVE.description");
         return Task.CompletedTask;
-    }
-
-    private async Task PolishHeal()
-    {
-        if (!BeginSettlement())
-            return;
-        await CreatureCmd.Heal(EventOwner.Creature, PolishFallbackHeal);
-        Finish("POLISH_HEAL.description");
     }
 
     private void Finish(string pageSuffix)

@@ -19,7 +19,7 @@ public sealed class ThingsMycelialBank : ThingsEventModel
     [
         new HpLossVar(ThingsMycelialDeposit.ShortPrincipal), new HealVar(ThingsMycelialDeposit.ShortRepayment),
         new IntVar("Payments", ThingsMycelialDeposit.ShortPayments), new IntVar("MaxHpCost", ThingsMycelialDeposit.LongPrincipal),
-        new IntVar("MaxHpReturn", ThingsMycelialDeposit.LongRepayment), new IntVar("SampleMaxHp", 3),
+        new IntVar("MaxHpReturn", ThingsMycelialDeposit.LongRepayment),
     ];
 
     public override bool IsAllowed(IRunState runState) =>
@@ -40,13 +40,13 @@ public sealed class ThingsMycelialBank : ThingsEventModel
     }
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "SHORT", "LONG", "SAMPLE_SEED");
+        DepthsEventDefaults.DescribeOptions(this, "SHORT", "LONG", "LEAVE");
 
     protected override IReadOnlyList<EventOption> GenerateInitialOptions() =>
     [
         new EventOption(this, CanShort ? DepositShort : null, InitialOptionKey(CanShort ? "SHORT" : "SHORT_LOCKED"), Terms(false)),
         new EventOption(this, CanLong ? DepositLong : null, InitialOptionKey(CanLong ? "LONG" : "LONG_LOCKED"), Terms(true)),
-        new EventOption(this, SampleSeed, InitialOptionKey("SAMPLE_SEED")),
+        new EventOption(this, Leave, InitialOptionKey("LEAVE")),
     ];
 
     private async Task DepositShort()
@@ -73,11 +73,11 @@ public sealed class ThingsMycelialBank : ThingsEventModel
         await RelicCmd.Obtain(receipt, EventOwner);
     }
 
-    private async Task SampleSeed()
+    private Task Leave()
     {
-        if (IsFinished) return;
-        await CreatureCmd.GainMaxHp(EventOwner.Creature, DynamicVars["SampleMaxHp"].BaseValue);
-        Finish("SAMPLE_SEED");
+        if (IsFinished) return Task.CompletedTask;
+        Finish("LEAVE");
+        return Task.CompletedTask;
     }
 
     private void Finish(string page) => SetEventFinished(L10NLookup($"THINGS_MYCELIAL_BANK.pages.{page}.description"));

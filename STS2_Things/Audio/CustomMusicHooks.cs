@@ -4,6 +4,9 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Nodes.Audio;
+using MegaCrit.Sts2.Core.Rooms;
+using MegaCrit.Sts2.Core.Runs;
+using STS2_Things.Acts;
 
 namespace STS2_Things.Audio;
 
@@ -11,10 +14,14 @@ namespace STS2_Things.Audio;
 /// Routes mod-owned res:// music through Godot. The native controller requests
 /// the custom track while combat is still being assembled, so actual playback
 /// waits for its post-setup track update to avoid room-transition cleanup.
+/// Playback fades out when combat ends and hard-stops on room exit, act change,
+/// or run music shutdown.
 /// </summary>
 [HarmonyPatch(typeof(NRunMusicController), nameof(NRunMusicController.PlayCustomMusic))]
 internal static class CustomMusicPlayPatch
 {
+    internal static float CombatEndFadeOutSeconds { get; set; } = 1.5f;
+
     internal const string GravetideTheme =
         "res://music/gravetide_slug/gravetide_slug_boss_theme.wav";
 
@@ -41,6 +48,7 @@ internal static class CustomMusicPlayPatch
     private static WeakReference<CombatState>? _pendingCombatState;
 
     internal static string? PendingTrack => _pendingTrack;
+    internal static bool SuppressedNativeTrackForModMusic { get; set; }
 
     internal static bool TryGetAuthoredVolumeDb(string? customMusic, out float volumeDb)
     {
@@ -96,23 +104,36 @@ internal static class CustomMusicPlayPatch
                ReferenceEquals(expected, active);
     }
 
+    internal static void StopModMusicImmediate(bool clearSuppressedNativeTrack, bool stopSequentialLoop = false)
+    {
+        StartAfterCombatSetup = false;
+        if (clearSuppressedNativeTrack)
+            SuppressedNativeTrackForModMusic = false;
+        if (stopSequentialLoop)
+            NativeSfxPlayer.StopSequentialLoop();
+        NativeSfxPlayer.StopMusic();
+    }
+
     [HarmonyPrefix]
     private static bool Prefix(NRunMusicController __instance, string customMusic)
     {
         try
         {
             if (!IsModMusicTrack(customMusic))
+            {
+                StopModMusicImmediate(clearSuppressedNativeTrack: true);
                 return true;
+            }
 
             if (!ModMusicPolicy.Enabled)
             {
-                StartAfterCombatSetup = false;
-                NativeSfxPlayer.StopMusic();
+                StopModMusicImmediate(clearSuppressedNativeTrack: true);
                 return false;
             }
 
             _pendingTrack = customMusic;
             StartAfterCombatSetup = true;
+            SuppressedNativeTrackForModMusic = true;
             __instance.GetNodeOrNull<Node>("Proxy")?.Call("stop_music");
             NativeSfxPlayer.StopMusic();
             return false;
@@ -125,14 +146,60 @@ internal static class CustomMusicPlayPatch
     }
 }
 
+#if STS2_V113_1
+[HarmonyPatch(
+    typeof(NRunMusicController),
+    nameof(NRunMusicController.UpdateTrack),
+    new[] { typeof(RoomType) })]
+#else
 [HarmonyPatch(
     typeof(NRunMusicController),
     nameof(NRunMusicController.UpdateTrack),
     new Type[] { })]
+#endif
 internal static class CustomMusicStartAfterCombatSetupPatch
 {
+    [HarmonyPrefix]
+    private static void Prefix(NRunMusicController __instance)
+    {
+        try
+        {
+            if (!CustomMusicPlayPatch.SuppressedNativeTrackForModMusic ||
+                CustomMusicPlayPatch.StartAfterCombatSetup ||
+                NativeSfxPlayer.ActiveMusicPath != null)
+                return;
+
+            IRunState? runState = RunManager.Instance.DebugOnlyGetState();
+            AbstractRoom? room = runState?.CurrentRoom;
+            if (room == null)
+                return;
+
+            if (room.IsVictoryRoom)
+            {
+                // The Architect victory room stays silent like vanilla.
+                CustomMusicPlayPatch.SuppressedNativeTrackForModMusic = false;
+                NativeSfxPlayer.StopMusic();
+                return;
+            }
+
+            if (room is MapRoom || room is CombatRoom { Encounter.HasBgm: true })
+                return;
+
+            // Leaving a mod-BGM boss room into another room in the same Act: restore the native Act track
+            // before UpdateTrack applies the new room's Progress parameter.
+            CustomMusicPlayPatch.SuppressedNativeTrackForModMusic = false;
+            NativeSfxPlayer.StopMusic();
+            if (!(runState!.Act is ThingsDepths && ModMusicPolicy.Enabled))
+                __instance.StopCustomMusic();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"[CustomMusicStartAfterCombatSetupPatch] Prefix error: {ex.Message}");
+        }
+    }
+
     [HarmonyPostfix]
-    private static void Postfix()
+    private static void Postfix(NRunMusicController __instance)
     {
         try
         {
@@ -143,10 +210,18 @@ internal static class CustomMusicStartAfterCombatSetupPatch
                     NativeSfxPlayer.StopMusic();
                 return;
             }
+
             if (!CustomMusicPlayPatch.IsPendingForActiveCombat())
             {
                 if (CustomMusicPlayPatch.StartAfterCombatSetup && !CombatManager.Instance.IsInProgress)
                     CustomMusicPlayPatch.StartAfterCombatSetup = false;
+
+                if (!CombatManager.Instance.IsInProgress &&
+                    CustomMusicPlayPatch.IsModMusicTrack(NativeSfxPlayer.ActiveMusicPath))
+                {
+                    NativeSfxPlayer.FadeOutAndStopMusic(CustomMusicPlayPatch.CombatEndFadeOutSeconds);
+                    DepthsActMusicController.NotifyCustomMusicStopped(__instance);
+                }
                 return;
             }
 
@@ -161,5 +236,45 @@ internal static class CustomMusicStartAfterCombatSetupPatch
         {
             Log.Warn($"[CustomMusicStartAfterCombatSetupPatch] Postfix error: {ex.Message}");
         }
+    }
+}
+
+[HarmonyPatch(typeof(NRunMusicController), nameof(NRunMusicController.StopCustomMusic))]
+internal static class CustomMusicStopCustomPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix()
+    {
+        CustomMusicPlayPatch.StopModMusicImmediate(clearSuppressedNativeTrack: true);
+    }
+}
+
+[HarmonyPatch(typeof(NRunMusicController), nameof(NRunMusicController.StopMusic))]
+internal static class CustomMusicStopPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix()
+    {
+        CustomMusicPlayPatch.StopModMusicImmediate(clearSuppressedNativeTrack: true, stopSequentialLoop: true);
+    }
+}
+
+[HarmonyPatch(typeof(NRunMusicController), nameof(NRunMusicController._ExitTree))]
+internal static class CustomMusicExitTreePatch
+{
+    [HarmonyPrefix]
+    private static void Prefix()
+    {
+        CustomMusicPlayPatch.StopModMusicImmediate(clearSuppressedNativeTrack: true, stopSequentialLoop: true);
+    }
+}
+
+[HarmonyPatch(typeof(NRunMusicController), nameof(NRunMusicController.UpdateMusic))]
+internal static class CustomMusicUpdateActPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix()
+    {
+        CustomMusicPlayPatch.StopModMusicImmediate(clearSuppressedNativeTrack: true);
     }
 }

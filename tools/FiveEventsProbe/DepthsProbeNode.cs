@@ -304,33 +304,45 @@ public partial class DepthsProbeNode : Node
             var gp = BeginEventForPlayer<ThingsGildedPress>(p, run);
             AssertTextClean(gp.Title.GetFormattedText(), $"GP Title ({lang})");
             AssertTextClean(gp.Description!.GetFormattedText(), $"GP Init ({lang})");
-            foreach (string opt in new[] { "SEAL", "SEAL_LOW_HP", "SEAL_NO_CARD", "WAX_MOLD", "WAX_MOLD_NO_CARD", "WAX_MOLD_NO_GOLD", "SCRAPE_GOLD" })
+            foreach (string opt in new[] { "SEAL", "SEAL_LOW_HP", "SEAL_NO_CARD", "WAX_MOLD", "WAX_MOLD_NO_CARD", "WAX_MOLD_NO_GOLD", "LEAVE" })
                 AssertTextClean(FormatEventLoc(gp, $"THINGS_GILDED_PRESS.pages.INITIAL.options.{opt}.description"), $"GP opt {opt} ({lang})");
+            AssertTextClean(FormatEventLoc(gp, "THINGS_GILDED_PRESS.pages.INITIAL.options.LEAVE.title"), $"GP opt LEAVE title ({lang})");
+            AssertTextClean(FormatEventLoc(gp, "THINGS_GILDED_PRESS.pages.LEAVE.description"), $"GP page LEAVE ({lang})");
 
             var cc = BeginEventForPlayer<ThingsCrookedCounterweight>(p, run);
             AssertTextClean(cc.Title.GetFormattedText(), $"CC Title ({lang})");
             AssertTextClean(cc.Description!.GetFormattedText(), $"CC Init ({lang})");
-            foreach (string opt in new[] { "WEIGHT", "WEIGHT_NO_CARD", "WATCH", "WATCH_LOW_HP", "WATCH_NO_CARD", "SHIM_UPGRADE", "SHIM_HEAL" })
+            foreach (string opt in new[] { "WEIGHT", "WEIGHT_NO_CARD", "WATCH", "WATCH_LOW_HP", "WATCH_NO_CARD", "LEAVE" })
                 AssertTextClean(FormatEventLoc(cc, $"THINGS_CROOKED_COUNTERWEIGHT.pages.INITIAL.options.{opt}.description"), $"CC opt {opt} ({lang})");
+            AssertTextClean(FormatEventLoc(cc, "THINGS_CROOKED_COUNTERWEIGHT.pages.INITIAL.options.LEAVE.title"), $"CC opt LEAVE title ({lang})");
+            AssertTextClean(FormatEventLoc(cc, "THINGS_CROOKED_COUNTERWEIGHT.pages.LEAVE.description"), $"CC page LEAVE ({lang})");
 
             var ast = BeginEventForPlayer<ThingsAntSortingTable>(p, run);
             AssertTextClean(ast.Title.GetFormattedText(), $"AST Title ({lang})");
             AssertTextClean(ast.Description!.GetFormattedText(), $"AST Init ({lang})");
-            foreach (string opt in new[] { "CULL", "CULL_NO_PAIRS", "GLUE", "GLUE_NO_CARD", "GLUE_NO_GOLD", "POWDER" })
+            foreach (string opt in new[] { "CULL", "CULL_NO_PAIRS", "GLUE", "GLUE_NO_CARD", "GLUE_NO_GOLD", "LEAVE" })
                 AssertTextClean(FormatEventLoc(ast, $"THINGS_ANT_SORTING_TABLE.pages.INITIAL.options.{opt}.description"), $"AST opt {opt} ({lang})");
+            AssertTextClean(FormatEventLoc(ast, "THINGS_ANT_SORTING_TABLE.pages.INITIAL.options.LEAVE.title"), $"AST opt LEAVE title ({lang})");
+            AssertTextClean(FormatEventLoc(ast, "THINGS_ANT_SORTING_TABLE.pages.LEAVE.description"), $"AST page LEAVE ({lang})");
 
             var gvm = BeginEventForPlayer<ThingsGrudgeVendingMachine>(p, run);
             AssertTextClean(gvm.Title.GetFormattedText(), $"GVM Title ({lang})");
             AssertTextClean(gvm.Description!.GetFormattedText(), $"GVM Init ({lang})");
-            foreach (string opt in new[] { "INSERT_COIN", "COIN_FULL", "COIN_NO_GOLD", "KICK_ONCE", "COIN_RETURN" })
+            foreach (string opt in new[] { "INSERT_COIN", "COIN_FULL", "COIN_NO_GOLD", "KICK_ONCE", "LEAVE" })
                 AssertTextClean(FormatEventLoc(gvm, $"THINGS_GRUDGE_VENDING_MACHINE.pages.INITIAL.options.{opt}.description"), $"GVM opt {opt} ({lang})");
+            AssertTextClean(FormatEventLoc(gvm, "THINGS_GRUDGE_VENDING_MACHINE.pages.INITIAL.options.LEAVE.title"), $"GVM opt LEAVE title ({lang})");
+            AssertTextClean(FormatEventLoc(gvm, "THINGS_GRUDGE_VENDING_MACHINE.pages.LEAVE.description"), $"GVM page LEAVE ({lang})");
+            AssertTextClean(FormatEventLoc(gvm, "THINGS_GRUDGE_VENDING_MACHINE.pages.KICK_1.loss"), $"GVM Kick1 loss ({lang})");
             AssertTextClean(FormatEventLoc(gvm, "THINGS_GRUDGE_VENDING_MACHINE.pages.KICK_2.options.KICK_THRICE.description"), $"GVM Kick3 ({lang})");
 
             var bci = BeginEventForPlayer<ThingsBlindCrabInkwell>(p, run);
             AssertTextClean(bci.Title.GetFormattedText(), $"BCI Title ({lang})");
             AssertTextClean(bci.Description!.GetFormattedText(), $"BCI Init ({lang})");
-            foreach (string opt in new[] { "SOAK", "SOAK_NO_CARD", "REWRITE", "REWRITE_NO_CARD", "RINSE" })
+            foreach (string opt in new[] { "SOAK", "SOAK_NO_CARD", "REWRITE", "REWRITE_NO_CARD", "LEAVE" })
                 AssertTextClean(FormatEventLoc(bci, $"THINGS_BLIND_CRAB_INKWELL.pages.INITIAL.options.{opt}.description"), $"BCI opt {opt} ({lang})");
+            AssertTextClean(FormatEventLoc(bci, "THINGS_BLIND_CRAB_INKWELL.pages.INITIAL.options.LEAVE.title"), $"BCI opt LEAVE title ({lang})");
+            AssertTextClean(FormatEventLoc(bci, "THINGS_BLIND_CRAB_INKWELL.pages.LEAVE.description"), $"BCI page LEAVE ({lang})");
+            AssertTextClean(FormatEventLoc(bci, "THINGS_BLIND_CRAB_INKWELL.pages.REWRITE.loss"), $"BCI Rewrite loss ({lang})");
 
             EnchantmentModel w = ModelDb.Enchantment<ThingsWeighted>().ToMutable();
             AssertTextClean(w.Title.GetFormattedText(), $"Weighted Title ({lang})");
@@ -363,8 +375,9 @@ public partial class DepthsProbeNode : Node
         var pickStrike = new ProbeCardSelector(targetPredicate: c => c == strike);
         using (ProbeRuntimeApi.UseSelector(pickStrike))
             await ev1.CurrentOptions[0].Chosen();
-        Assert(ev1.IsFinished && p.Creature.MaxHp == maxHpBefore - ThingsGildedPress.SealMaxHpLoss,
-            "SEAL deducts 7 Max HP and finishes");
+        Assert(ev1.IsFinished && ThingsGildedPress.SealMaxHpLoss == 8
+               && p.Creature.MaxHp == maxHpBefore - ThingsGildedPress.SealMaxHpLoss,
+            "SEAL deducts 8 Max HP and finishes");
         Assert(strike.Enchantment is RoyallyApproved
                && strike.Keywords.Contains(CardKeyword.Innate)
                && strike.Keywords.Contains(CardKeyword.Retain),
@@ -380,22 +393,25 @@ public partial class DepthsProbeNode : Node
         var pickBash = new ProbeCardSelector(targetPredicate: c => c == bash);
         using (ProbeRuntimeApi.UseSelector(pickBash))
             await ev2.CurrentOptions[1].Chosen();
-        Assert(ev2.IsFinished && p2.Gold == 100 - ThingsGildedPress.MoldGoldCost && bash.Enchantment is Clone,
-            "Wax Mold deducts 55 Gold and grants Clone");
+        Assert(ev2.IsFinished && ThingsGildedPress.MoldGoldCost == 75
+               && p2.Gold == 100 - ThingsGildedPress.MoldGoldCost && bash.Enchantment is Clone,
+            "Wax Mold deducts 75 Gold and grants Clone");
 
         var cloneOption = new CloneRestSiteOption(p2);
         bool cloneOk = await cloneOption.OnSelect();
         Assert(cloneOk && p2.Deck.Cards.Count(c => c.Id == bash.Id) == bashCountBefore + 1,
             "Clone enchantment allows duplicating the cloned card at RestSite");
 
-        // Scrape Gold fallback
-        RunState run3 = SetupTestRun("gp-gold");
+        // Leave option (pure leave, 0 gold gained)
+        RunState run3 = SetupTestRun("gp-leave");
         Player p3 = run3.Players[0];
         int gBefore = p3.Gold;
         var ev3 = BeginEventForPlayer<ThingsGildedPress>(p3, run3);
+        Assert(!ev3.CurrentOptions[2].IsLocked && ev3.CurrentOptions[2].TextKey.Contains("LEAVE", StringComparison.Ordinal),
+            "GildedPress option 3 is pure LEAVE");
         await ev3.CurrentOptions[2].Chosen();
-        Assert(ev3.IsFinished && p3.Gold == gBefore + ThingsGildedPress.ScrapeGold,
-            "Scrape Gold grants 30 Gold");
+        Assert(ev3.IsFinished && p3.Gold == gBefore,
+            "Leave finishes cleanly with 0 gold gained");
 
         // Low gold & low max HP locks
         RunState runLocked = SetupTestRun("gp-locks");
@@ -403,8 +419,9 @@ public partial class DepthsProbeNode : Node
         pLocked.Creature.SetMaxHpInternal(ThingsGildedPress.SealMaxHpLoss);
         pLocked.Gold = ThingsGildedPress.MoldGoldCost - 1;
         var evLocked = BeginEventForPlayer<ThingsGildedPress>(pLocked, runLocked);
-        Assert(evLocked.CurrentOptions[0].IsLocked && evLocked.CurrentOptions[1].IsLocked && !evLocked.CurrentOptions[2].IsLocked,
-            "Low Max HP + low Gold locks Options 0 & 1 while leaving Scrape Gold open");
+        Assert(evLocked.CurrentOptions[0].IsLocked && evLocked.CurrentOptions[1].IsLocked
+               && !evLocked.CurrentOptions[2].IsLocked && evLocked.CurrentOptions[2].TextKey.Contains("LEAVE", StringComparison.Ordinal),
+            "Low Max HP + low Gold locks Options 0 & 1 while leaving LEAVE open");
     }
 
     private async Task VerifyCrookedCounterweightAsync()
@@ -430,8 +447,9 @@ public partial class DepthsProbeNode : Node
         int strikeCostBefore = strike.EnergyCost.GetWithModifiers(CostModifiers.None);
         using (ProbeRuntimeApi.UseSelector(new ProbeCardSelector(targetPredicate: c => c == strike)))
             await ev1.CurrentOptions[0].Chosen();
-        Assert(ev1.IsFinished && p.Creature.CurrentHp == hpBefore - ThingsCrookedCounterweight.WeightDamage,
-            "Weight deals 8 HP damage and finishes");
+        Assert(ev1.IsFinished && ThingsCrookedCounterweight.WeightDamage == 11
+               && p.Creature.CurrentHp == hpBefore - ThingsCrookedCounterweight.WeightDamage,
+            "Weight deals 11 HP damage and finishes");
         Assert(strike.Enchantment is ThingsWeighted
                && strike.EnergyCost.GetWithModifiers(CostModifiers.None) == strikeCostBefore + 1,
             "ThingsWeighted permanently increases cost by +1");
@@ -480,29 +498,24 @@ public partial class DepthsProbeNode : Node
         var ev2 = BeginEventForPlayer<ThingsCrookedCounterweight>(p2, run2);
         using (ProbeRuntimeApi.UseSelector(new ProbeCardSelector(targetPredicate: c => c == bludgeon)))
             await ev2.CurrentOptions[1].Chosen();
-        Assert(ev2.IsFinished && p2.Creature.MaxHp == maxHp2 - ThingsCrookedCounterweight.WatchMaxHpLoss
+        Assert(ev2.IsFinished && ThingsCrookedCounterweight.WatchMaxHpLoss == 7
+               && p2.Creature.MaxHp == maxHp2 - ThingsCrookedCounterweight.WatchMaxHpLoss
                && bludgeon.Enchantment is SlumberingEssence,
-            "Watch deducts 5 Max HP and grants SlumberingEssence");
+            "Watch deducts 7 Max HP and grants SlumberingEssence");
 
-        // Option 3: Shim Upgrade + Shim Heal fallback
-        RunState run3 = SetupTestRun("cc-shim");
+        // Option 3: Leave (pure leave, 0 upgrades and 0 healing)
+        RunState run3 = SetupTestRun("cc-leave");
         Player p3 = run3.Players[0];
         p3.Creature.SetCurrentHpInternal(40);
         int hp3 = p3.Creature.CurrentHp;
         int upgradedBefore = p3.Deck.Cards.Count(c => c.IsUpgraded);
         var ev3 = BeginEventForPlayer<ThingsCrookedCounterweight>(p3, run3);
+        Assert(!ev3.CurrentOptions[2].IsLocked && ev3.CurrentOptions[2].TextKey.Contains("LEAVE", StringComparison.Ordinal),
+            "CrookedCounterweight option 3 is pure LEAVE");
         await ev3.CurrentOptions[2].Chosen();
-        Assert(ev3.IsFinished && p3.Deck.Cards.Count(c => c.IsUpgraded) == upgradedBefore + 1,
-            "Shim upgrades 1 Basic/Common card");
-
-        foreach (CardModel c in p3.Deck.Cards.Where(c => c.IsUpgradable && c.Rarity is CardRarity.Basic or CardRarity.Common))
-            CardCmd.Upgrade(c);
-        var ev3Heal = BeginEventForPlayer<ThingsCrookedCounterweight>(p3, run3);
-        Assert(ev3Heal.CurrentOptions[2].Title.LocEntryKey.Contains("SHIM_HEAL"),
-            "Shim falls back to SHIM_HEAL when no Basic/Common card is upgradable");
-        await ev3Heal.CurrentOptions[2].Chosen();
-        Assert(p3.Creature.CurrentHp == hp3 + ThingsCrookedCounterweight.ShimFallbackHeal,
-            "Shim fallback heals 8 HP");
+        Assert(ev3.IsFinished && p3.Deck.Cards.Count(c => c.IsUpgraded) == upgradedBefore
+               && p3.Creature.CurrentHp == hp3,
+            "Leave finishes cleanly with 0 upgrades and 0 healing");
     }
 
     private async Task VerifyAntSortingTableAsync()
@@ -546,8 +559,8 @@ public partial class DepthsProbeNode : Node
         Assert(evLethal.IsFinished && pLethal.Creature.IsDead,
             "18 HP damage kills 18 HP player cleanly on Cull");
 
-        // Lock when no duplicate removable cards remain + Glue (Goopy) + Powder (+2 Max HP)
-        RunState run2 = SetupTestRun("ast-glue-powder");
+        // Lock when no duplicate removable cards remain + Glue (Goopy) + pure LEAVE
+        RunState run2 = SetupTestRun("ast-glue-leave");
         Player p2 = run2.Players[0];
         p2.Gold = 100;
         HashSet<ModelId> seen = [];
@@ -563,25 +576,28 @@ public partial class DepthsProbeNode : Node
 
         using (ProbeRuntimeApi.UseSelector(new ProbeCardSelector(targetPredicate: c => c == defend)))
             await evNoPairs.CurrentOptions[1].Chosen();
-        Assert(evNoPairs.IsFinished && p2.Gold == 100 - ThingsAntSortingTable.GlueGoldCost
+        Assert(evNoPairs.IsFinished && ThingsAntSortingTable.GlueGoldCost == 60
+               && p2.Gold == 100 - ThingsAntSortingTable.GlueGoldCost
                && defend.Enchantment is Goopy && defend.Keywords.Contains(CardKeyword.Exhaust),
-            "Glue deducts 45 Gold and grants Goopy + Exhaust to Defend");
+            "Glue deducts 60 Gold and grants Goopy + Exhaust to Defend");
 
         int maxHp2Before = p2.Creature.MaxHp;
-        var evPowder = BeginEventForPlayer<ThingsAntSortingTable>(p2, run2);
-        await evPowder.CurrentOptions[2].Chosen();
-        Assert(evPowder.IsFinished && p2.Creature.MaxHp == maxHp2Before + ThingsAntSortingTable.ChitinMaxHpGain,
-            "Powder grants +2 Max HP");
+        var evLeave = BeginEventForPlayer<ThingsAntSortingTable>(p2, run2);
+        Assert(!evLeave.CurrentOptions[2].IsLocked && evLeave.CurrentOptions[2].TextKey.Contains("LEAVE", StringComparison.Ordinal),
+            "AntSortingTable option 3 is pure LEAVE");
+        await evLeave.CurrentOptions[2].Chosen();
+        Assert(evLeave.IsFinished && p2.Creature.MaxHp == maxHp2Before,
+            "Leave finishes cleanly with 0 Max HP gained");
     }
 
     private async Task VerifyGrudgeVendingMachineAsync()
     {
-        // Case 1: Buy Potion via TRAY sub-page & Return Coin
+        // Case 1: Buy Potion via TRAY sub-page & pure LEAVE
         RunState run1 = SetupTestRun("gvm-buy");
         Player p1 = run1.Players[0];
         p1.Gold = 100;
         var ev1 = BeginEventForPlayer<ThingsGrudgeVendingMachine>(p1, run1);
-        Assert(!ev1.CurrentOptions[0].IsLocked, "Insert Coin unlocked when gold >= 35 and open potion slots");
+        Assert(!ev1.CurrentOptions[0].IsLocked, "Insert Coin unlocked when gold >= 55 and open potion slots");
         await ev1.CurrentOptions[0].Chosen();
         Assert(!ev1.IsFinished && ev1.CurrentOptions.Count >= 2,
             "Insert Coin opens potion tray sub-page with potion choices + BACK");
@@ -591,22 +607,25 @@ public partial class DepthsProbeNode : Node
 
         await ev1.CurrentOptions[0].Chosen();
         await ev1.CurrentOptions[0].Chosen(); // Pick 1st offered potion
-        Assert(ev1.IsFinished && p1.Gold == 100 - ThingsGrudgeVendingMachine.CoinCost
+        Assert(ev1.IsFinished && ThingsGrudgeVendingMachine.CoinCost == 55
+               && p1.Gold == 100 - ThingsGrudgeVendingMachine.CoinCost
                && p1.Potions.Any(),
-            "Buying potion deducts 35 Gold and adds 1 chosen Potion");
+            "Buying potion deducts 55 Gold and adds 1 chosen Potion");
 
-        // Full potion belt locks INSERT_COIN with COIN_FULL
+        // Full potion belt locks INSERT_COIN with COIN_FULL, while LEAVE finishes with 0 gold gained
         while (p1.HasOpenPotionSlots)
             await PotionCmd.TryToProcure(ModelDb.Potion<BlockPotion>().ToMutable(), p1);
         var evFull = BeginEventForPlayer<ThingsGrudgeVendingMachine>(p1, run1);
         Assert(evFull.CurrentOptions[0].IsLocked && evFull.CurrentOptions[0].Title.LocEntryKey.Contains("COIN_FULL"),
             "Full potion belt locks Option 0 with COIN_FULL");
-        int gBeforeRet = p1.Gold;
+        Assert(!evFull.CurrentOptions[2].IsLocked && evFull.CurrentOptions[2].TextKey.Contains("LEAVE", StringComparison.Ordinal),
+            "GrudgeVendingMachine option 3 is pure LEAVE");
+        int gBeforeLeave = p1.Gold;
         await evFull.CurrentOptions[2].Chosen();
-        Assert(evFull.IsFinished && p1.Gold == gBeforeRet + ThingsGrudgeVendingMachine.ReturnSlotGold,
-            "Coin Return grants 18 Gold");
+        Assert(evFull.IsFinished && p1.Gold == gBeforeLeave,
+            "Leave finishes cleanly with 0 gold gained");
 
-        // Case 2: 3-Kick progression (45 Gold -> -8 HP + Common Relic -> -14 HP + Rare Relic + 1 Shame curse)
+        // Case 2: 3-Kick progression (-6 HP + 35 Gold -> -12 HP + Common Relic -> -18 HP + Rare Relic + 1 Shame curse)
         RunState runKick = SetupTestRun("gvm-kick3");
         Player pK = runKick.Players[0];
         int gKick0 = pK.Gold;
@@ -614,32 +633,53 @@ public partial class DepthsProbeNode : Node
         int hp0 = pK.Creature.CurrentHp;
         var evKick = BeginEventForPlayer<ThingsGrudgeVendingMachine>(pK, runKick);
         await evKick.CurrentOptions[1].Chosen(); // KICK_ONCE
-        Assert(!evKick.IsFinished && pK.Gold == gKick0 + ThingsGrudgeVendingMachine.Kick1Gold
+        Assert(!evKick.IsFinished
+               && ThingsGrudgeVendingMachine.Kick1Damage == 6
+               && ThingsGrudgeVendingMachine.Kick1Gold == 35
+               && pK.Creature.CurrentHp == hp0 - ThingsGrudgeVendingMachine.Kick1Damage
+               && pK.Gold == gKick0 + ThingsGrudgeVendingMachine.Kick1Gold
                && evKick.CurrentOptions.Count == 2,
-            "Kick 1 grants 45 Gold and reveals KICK_TWICE / STOP");
+            "Kick 1 deals 6 HP damage, grants 35 Gold, and reveals KICK_TWICE / STOP");
 
+        int maxHpBeforeKick2 = pK.Creature.MaxHp;
         await evKick.CurrentOptions[0].Chosen(); // KICK_TWICE
-        Assert(!evKick.IsFinished && pK.Creature.CurrentHp == hp0 - ThingsGrudgeVendingMachine.Kick2Damage
+        int maxHpGainKick2 = Math.Max(0, pK.Creature.MaxHp - maxHpBeforeKick2);
+        Assert(!evKick.IsFinished
+               && ThingsGrudgeVendingMachine.Kick2Damage == 12
+               && pK.Creature.CurrentHp == hp0 - ThingsGrudgeVendingMachine.Kick1Damage - ThingsGrudgeVendingMachine.Kick2Damage + maxHpGainKick2
                && pK.Relics.Count == relic0 + 1,
-            "Kick 2 deals 8 HP damage, grants Common relic, and opens KICK_THRICE / STOP");
+            "Kick 2 deals 12 HP damage, grants Common relic, and opens KICK_THRICE / STOP");
         Assert(pK.Relics[^1].Rarity == RelicRarity.Common, "Kick 2 relic has Common rarity");
 
         int hpAfterKick2 = pK.Creature.CurrentHp;
+        int maxHpBeforeKick3 = pK.Creature.MaxHp;
         await evKick.CurrentOptions[0].Chosen(); // KICK_THRICE
-        Assert(evKick.IsFinished && pK.Creature.CurrentHp == hpAfterKick2 - ThingsGrudgeVendingMachine.Kick3Damage,
-            "Kick 3 deals 14 HP damage and finishes event");
+        int maxHpGainKick3 = Math.Max(0, pK.Creature.MaxHp - maxHpBeforeKick3);
+        Assert(evKick.IsFinished
+               && ThingsGrudgeVendingMachine.Kick3Damage == 18
+               && pK.Creature.CurrentHp == hpAfterKick2 - ThingsGrudgeVendingMachine.Kick3Damage + maxHpGainKick3,
+            "Kick 3 deals 18 HP damage and finishes event");
         Assert(pK.Relics.Count == relic0 + 2 && pK.Relics[^1].Rarity == RelicRarity.Rare,
             "Kick 3 grants Rare relic");
         Assert(pK.Deck.Cards.Count(c => c is Shame) == 1,
             "Kick 3 adds exactly 1 Shame curse to Deck");
 
-        // Early stop on Kick 1 & lethal Kick 3 check
+        // Early stop on Kick 1 & lethal Kick 1 / Kick 3 checks
         RunState runStop = SetupTestRun("gvm-kick-stop");
         Player pStop = runStop.Players[0];
         var evStop = BeginEventForPlayer<ThingsGrudgeVendingMachine>(pStop, runStop);
         await evStop.CurrentOptions[1].Chosen();
         await evStop.CurrentOptions[1].Chosen(); // STOP
         Assert(evStop.IsFinished, "STOP after Kick 1 finishes cleanly");
+
+        RunState runDead1 = SetupTestRun("gvm-kick1-lethal");
+        Player pDead1 = runDead1.Players[0];
+        pDead1.Creature.SetCurrentHpInternal(ThingsGrudgeVendingMachine.Kick1Damage);
+        int goldBeforeDeath1 = pDead1.Gold;
+        var evDead1 = BeginEventForPlayer<ThingsGrudgeVendingMachine>(pDead1, runDead1);
+        await evDead1.CurrentOptions[1].Chosen();
+        Assert(pDead1.Creature.IsDead && evDead1.IsFinished && pDead1.Gold == goldBeforeDeath1,
+            "Lethal Kick 1 kills player without granting Kick1Gold post-mortem");
 
         RunState runDead = SetupTestRun("gvm-kick3-lethal");
         Player pDead = runDead.Players[0];
@@ -655,28 +695,34 @@ public partial class DepthsProbeNode : Node
 
     private async Task VerifyBlindCrabInkwellAsync()
     {
-        // Case 1: Soak Attack with Inky (-6 HP) + verify target filtering + verify combat Weak application!
+        // Case 1: Soak Attack / enemy-targeting Skill with Inky (-10 HP) + verify target filtering + verify combat Weak application!
         RunState run1 = SetupTestRun("bci-inky");
         Player p1 = run1.Players[0];
         CardModel strike = p1.Deck.Cards.First(c => c is StrikeIronclad);
         CardModel randomAttack = run1.CreateCard<SwordBoomerang>(p1); // TargetType.RandomEnemy -> must be excluded!
+        CardModel taunt = run1.CreateCard<Taunt>(p1); // TargetType.AnyEnemy Skill -> must be included!
+        CardModel shockwave = run1.CreateCard<Shockwave>(p1); // TargetType.AllEnemies Skill -> must be included!
         CardModel defend = p1.Deck.Cards.First(c => c is DefendIronclad);
         await CardPileCmd.Add(randomAttack, PileType.Deck);
+        await CardPileCmd.Add(taunt, PileType.Deck);
+        await CardPileCmd.Add(shockwave, PileType.Deck);
 
         var ev1 = BeginEventForPlayer<ThingsBlindCrabInkwell>(p1, run1);
         var cancelSel = new ProbeCardSelector(-1);
         using (ProbeRuntimeApi.UseSelector(cancelSel))
             await ev1.CurrentOptions[0].Chosen();
         Assert(!ev1.IsFinished && !cancelSel.LastOffered.Contains(defend) && !cancelSel.LastOffered.Contains(randomAttack)
-               && cancelSel.LastOffered.Contains(strike),
-            "Inky excludes Defends and RandomEnemy attacks while including Strike");
+               && cancelSel.LastOffered.Contains(strike) && cancelSel.LastOffered.Contains(taunt)
+               && cancelSel.LastOffered.Contains(shockwave),
+            "Inky excludes Defend (Self) and SwordBoomerang (RandomEnemy) while including Strike, Taunt (AnyEnemy Skill), and Shockwave (AllEnemies Skill)");
 
         int hpBefore = p1.Creature.CurrentHp;
         using (ProbeRuntimeApi.UseSelector(new ProbeCardSelector(targetPredicate: c => c == strike)))
             await ev1.CurrentOptions[0].Chosen();
-        Assert(ev1.IsFinished && p1.Creature.CurrentHp == hpBefore - ThingsBlindCrabInkwell.PinchDamage
+        Assert(ev1.IsFinished && ThingsBlindCrabInkwell.PinchDamage == 10
+               && p1.Creature.CurrentHp == hpBefore - ThingsBlindCrabInkwell.PinchDamage
                && strike.Enchantment is Inky,
-            "Soak deals 6 HP damage and grants Inky to Strike");
+            "Soak deals 10 HP damage and grants Inky to Strike");
 
         // Verify Inky applies WeakPower in combat cleanly
         EncounterModel enc = ModelDb.Encounter<ThingsLanternFishWeak>().ToMutable();
@@ -708,33 +754,103 @@ public partial class DepthsProbeNode : Node
             DetachPlayers(room, run1);
         }
 
-        // Case 2: Rewrite 1 non-Curse card -> 1 Colorless card (strictly 1 card!)
+        // Case 1b: Soak AnyEnemy Skill (Taunt) with Inky cleanly + verify combat Weak application
+        RunState run1Skill = SetupTestRun("bci-inky-skill");
+        Player p1Skill = run1Skill.Players[0];
+        CardModel tauntSkill = run1Skill.CreateCard<Taunt>(p1Skill);
+        CardModel randomAttackSkill = run1Skill.CreateCard<SwordBoomerang>(p1Skill);
+        CardModel defendSkill = p1Skill.Deck.Cards.First(c => c is DefendIronclad);
+        await CardPileCmd.Add(tauntSkill, PileType.Deck);
+        await CardPileCmd.Add(randomAttackSkill, PileType.Deck);
+
+        var ev1Skill = BeginEventForPlayer<ThingsBlindCrabInkwell>(p1Skill, run1Skill);
+        int hpSkillBefore = p1Skill.Creature.CurrentHp;
+        var skillSel = new ProbeCardSelector(targetPredicate: c => c == tauntSkill);
+        using (ProbeRuntimeApi.UseSelector(skillSel))
+            await ev1Skill.CurrentOptions[0].Chosen();
+        Assert(ev1Skill.IsFinished && p1Skill.Creature.CurrentHp == hpSkillBefore - ThingsBlindCrabInkwell.PinchDamage
+               && tauntSkill.Enchantment is Inky
+               && skillSel.LastOffered.Contains(tauntSkill)
+               && !skillSel.LastOffered.Contains(defendSkill)
+               && !skillSel.LastOffered.Contains(randomAttackSkill),
+            "Soak enchants AnyEnemy Skill (Taunt) with Inky while excluding Defend and SwordBoomerang");
+
+        EncounterModel encSkill = ModelDb.Encounter<ThingsLanternFishWeak>().ToMutable();
+        CombatRoom roomSkill = CreateCombatRoom(encSkill, run1Skill);
+        p1Skill.PopulateCombatState(run1Skill.Rng.Shuffle, roomSkill.CombatState);
+        ActivateSyntheticCombat(roomSkill.CombatState);
+        try
+        {
+            CardModel combatTaunt = PileType.Draw.GetPile(p1Skill).Cards.First(c => c is Taunt && c.Enchantment is Inky);
+            Creature enemy = roomSkill.CombatState.Enemies.First();
+            CardPlay fakePlay = new()
+            {
+                Card = combatTaunt,
+                Player = p1Skill,
+                Target = enemy,
+                ResultPile = PileType.Discard,
+                Resources = new ResourceInfo { EnergySpent = 1, EnergyValue = 1, StarsSpent = 0, StarValue = 0 },
+                IsAutoPlay = false,
+                PlayIndex = 0,
+                PlayCount = 1,
+            };
+            await combatTaunt.Enchantment!.OnPlay(new BlockingPlayerChoiceContext(), fakePlay);
+            Assert(enemy.GetPowerAmount<WeakPower>() == ThingsBlindCrabInkwell.InkyWeakAmount,
+                "Inky-enchanted Taunt applies 1 Weak in combat");
+        }
+        finally
+        {
+            DeactivateSyntheticCombat();
+            DetachPlayers(roomSkill, run1Skill);
+        }
+
+        // Case 2: Rewrite 1 non-Curse card -> 1 Colorless card (-7 HP; cancel preserves HP)
         RunState run2 = SetupTestRun("bci-rewrite");
         Player p2 = run2.Players[0];
         CardModel injury = run2.CreateCard<Injury>(p2);
         await CardPileCmd.Add(injury, PileType.Deck);
         CardModel strike2 = p2.Deck.Cards.First(c => c is StrikeIronclad);
         int deckCount2 = p2.Deck.Cards.Count;
+        int hp2Before = p2.Creature.CurrentHp;
 
         var ev2 = BeginEventForPlayer<ThingsBlindCrabInkwell>(p2, run2);
+        using (ProbeRuntimeApi.UseSelector(new ProbeCardSelector(-1)))
+            await ev2.CurrentOptions[1].Chosen();
+        Assert(!ev2.IsFinished && p2.Creature.CurrentHp == hp2Before && p2.Deck.Cards.Contains(strike2),
+            "Canceling Rewrite keeps event open and preserves HP");
+
         var rewriteSelector = new ProbeCardSelector(targetPredicate: c => c == strike2);
         using (ProbeRuntimeApi.UseSelector(rewriteSelector))
             await ev2.CurrentOptions[1].Chosen();
-        Assert(ev2.IsFinished && p2.Deck.Cards.Count == deckCount2,
-            "Rewrite transforms 1 card without changing total deck size");
+        Assert(ev2.IsFinished && ThingsBlindCrabInkwell.RewriteDamage == 7
+               && p2.Creature.CurrentHp == hp2Before - ThingsBlindCrabInkwell.RewriteDamage
+               && p2.Deck.Cards.Count == deckCount2,
+            "Rewrite deals 7 HP damage and transforms 1 card without changing total deck size");
         Assert(!rewriteSelector.LastOffered.Contains(injury),
             "Rewrite excludes Curse cards");
         Assert(!p2.Deck.Cards.Contains(strike2) && p2.Deck.Cards.Any(c => c.Pool is ColorlessCardPool),
             "Rewrite transforms chosen Strike into 1 random Colorless card");
 
-        // Case 3: Rinse (+8 HP)
-        RunState run3 = SetupTestRun("bci-rinse");
+        RunState run2Lethal = SetupTestRun("bci-rewrite-lethal");
+        Player p2Lethal = run2Lethal.Players[0];
+        p2Lethal.Creature.SetCurrentHpInternal(ThingsBlindCrabInkwell.RewriteDamage);
+        CardModel strikeLethal = p2Lethal.Deck.Cards.First(c => c is StrikeIronclad);
+        var ev2Lethal = BeginEventForPlayer<ThingsBlindCrabInkwell>(p2Lethal, run2Lethal);
+        using (ProbeRuntimeApi.UseSelector(new ProbeCardSelector(targetPredicate: c => c == strikeLethal)))
+            await ev2Lethal.CurrentOptions[1].Chosen();
+        Assert(p2Lethal.Creature.IsDead && ev2Lethal.IsFinished && p2Lethal.Deck.Cards.Contains(strikeLethal),
+            "Lethal Rewrite kills player without transforming card post-mortem");
+
+        // Case 3: Leave (pure leave, 0 healing)
+        RunState run3 = SetupTestRun("bci-leave");
         Player p3 = run3.Players[0];
         p3.Creature.SetCurrentHpInternal(40);
         var ev3 = BeginEventForPlayer<ThingsBlindCrabInkwell>(p3, run3);
+        Assert(!ev3.CurrentOptions[2].IsLocked && ev3.CurrentOptions[2].TextKey.Contains("LEAVE", StringComparison.Ordinal),
+            "BlindCrabInkwell option 3 is pure LEAVE");
         await ev3.CurrentOptions[2].Chosen();
-        Assert(ev3.IsFinished && p3.Creature.CurrentHp == 40 + ThingsBlindCrabInkwell.RinseHeal,
-            "Rinse heals 8 HP");
+        Assert(ev3.IsFinished && p3.Creature.CurrentHp == 40,
+            "Leave finishes cleanly with 0 healing");
     }
 
     private async Task RenderLiveUiAsync()

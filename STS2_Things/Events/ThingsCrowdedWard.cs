@@ -1,4 +1,5 @@
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Entities.Gold;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
@@ -14,8 +15,9 @@ namespace STS2_Things.Events;
 
 public sealed class ThingsCrowdedWard : ThingsEventModel
 {
-    public const int LocalHeal = 32;
+    public const int LocalHeal = 26;
     public const int BandageHeal = 12;
+    public const int BandageGoldCost = 35;
     private bool _settling;
 
     protected override void AfterCloned()
@@ -27,6 +29,7 @@ public sealed class ThingsCrowdedWard : ThingsEventModel
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [
         new HealVar("LocalHeal", LocalHeal), new HealVar("BandageHeal", BandageHeal),
+        new GoldVar("BandageGold", BandageGoldCost),
         new IntVar("Combats", ThingsAnestheticChart.Duration), new IntVar("Cards", ThingsAnestheticChart.DrawPenalty),
         new LocalizedStringVar("Curse", static _ => new LocString("cards", "NORMALITY.title").GetFormattedText()),
     ];
@@ -44,7 +47,9 @@ public sealed class ThingsCrowdedWard : ThingsEventModel
         new EventOption(this, Treat, InitialOptionKey("TREAT"), HoverTipFactory.FromCardWithCardHoverTips<Normality>()),
         new EventOption(this, Anesthetize, InitialOptionKey("ANESTHETIZE"),
             HoverTipFactory.FromRelic(ModelDb.Relic<ThingsAnestheticChart>())),
-        new EventOption(this, TakeBandages, InitialOptionKey("BANDAGES")),
+        EventOwner.Gold >= BandageGoldCost
+            ? new EventOption(this, TakeBandages, InitialOptionKey("BANDAGES"))
+            : new EventOption(this, Leave, InitialOptionKey("LEAVE")),
     ];
 
     private bool BeginSettlement()
@@ -75,8 +80,22 @@ public sealed class ThingsCrowdedWard : ThingsEventModel
 
     private async Task TakeBandages()
     {
+        if (IsFinished || _settling) return;
+        if (EventOwner.Gold < BandageGoldCost)
+        {
+            SetEventState(InitialDescription, GenerateInitialOptions());
+            return;
+        }
         if (!BeginSettlement()) return;
+        await PlayerCmd.LoseGold(BandageGoldCost, Owner!, GoldLossType.Spent);
         await CreatureCmd.Heal(Owner!.Creature, BandageHeal);
         SetEventFinished(L10NLookup("THINGS_CROWDED_WARD.pages.BANDAGES.description"));
+    }
+
+    private Task Leave()
+    {
+        if (!BeginSettlement()) return Task.CompletedTask;
+        SetEventFinished(L10NLookup("THINGS_CROWDED_WARD.pages.LEAVE.description"));
+        return Task.CompletedTask;
     }
 }

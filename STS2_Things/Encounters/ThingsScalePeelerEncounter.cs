@@ -11,7 +11,7 @@ public sealed class ThingsScalePeelerEncounter : EncounterModel
     public override bool IsWeak => false;
     public override IEnumerable<EncounterTag> Tags => [DepthsEncounterTags.ScalePeeler, DepthsEncounterTags.Snail];
     public override bool HasScene => true;
-    protected override bool HasCustomBackground => true;
+    protected override bool HasCustomBackground => false;
     public override IReadOnlyList<string> Slots => ["peeler", "rock", "slime"];
     public override IEnumerable<MonsterModel> AllPossibleMonsters =>
         [ModelDb.Monster<ThingsScalePeeler>(), ModelDb.Monster<ThingsRockSnail>(), ModelDb.Monster<ThingsSlimeSnail>()];

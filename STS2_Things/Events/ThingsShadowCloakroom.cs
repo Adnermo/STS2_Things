@@ -1,4 +1,3 @@
-using Godot;
 using MegaCrit.Sts2.Core.CardSelection;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -10,7 +9,6 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
 using STS2_Things.Core.Models;
@@ -18,12 +16,11 @@ using STS2_Things.Relics;
 
 namespace STS2_Things.Events;
 
-/// <summary>A per-player deposit, coat swap, and unclaimed colorless pocket item.</summary>
+/// <summary>A per-player deposit and coat swap cloakroom.</summary>
 public sealed class ThingsShadowCloakroom : ThingsEventModel
 {
-    private const int DepositCost = 25;
-    private const int SwapCost = 45;
-    private const int FallbackHeal = 8;
+    public const int DepositCost = 45;
+    public const int SwapCost = 70;
     private bool _settling;
 
     protected override void AfterCloned()
@@ -36,7 +33,7 @@ public sealed class ThingsShadowCloakroom : ThingsEventModel
         [new GoldVar(DepositCost), new GoldVar("SwapGold", SwapCost), new CardsVar(1)];
 
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "DEPOSIT", "SWAP_COAT", "CLAIM_LOST");
+        DepthsEventDefaults.DescribeOptions(this, "DEPOSIT", "SWAP_COAT", "LEAVE");
 
     private static bool CanDeposit(CardModel card) => card.IsRemovable && card.IsUpgradable &&
         card.Type is CardType.Attack or CardType.Skill or CardType.Power;
@@ -53,8 +50,8 @@ public sealed class ThingsShadowCloakroom : ThingsEventModel
         && runState.Players.All(player =>
             !player.Creature.IsDead
             && player.GetRelic<ThingsShadowClaimTicket>() == null
-            && player.Gold >= SwapCost
-            && (HasEligibleCard(player) || HasSwappableCard(player)));
+            && ((player.Gold >= DepositCost && HasEligibleCard(player))
+                || (player.Gold >= SwapCost && HasSwappableCard(player))));
 
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()
     {
@@ -69,7 +66,7 @@ public sealed class ThingsShadowCloakroom : ThingsEventModel
                 ModelDb.Relic<ThingsShadowClaimTicket>().HoverTips),
             new EventOption(this, swapKey == "SWAP_COAT" ? SwapCoat : null, InitialOptionKey(swapKey),
                 HoverTipFactory.Static(StaticHoverTip.Transform)),
-            new EventOption(this, ClaimLost, InitialOptionKey("CLAIM_LOST")),
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
     }
 
@@ -128,25 +125,12 @@ public sealed class ThingsShadowCloakroom : ThingsEventModel
         Finish("SWAP_COAT");
     }
 
-    private async Task ClaimLost()
+    private Task Leave()
     {
-        if (IsFinished || _settling) return;
+        if (IsFinished || _settling) return Task.CompletedTask;
         _settling = true;
-        CardCreationOptions options = CardCreationOptions
-            .ForNonCombatWithDefaultOdds([ModelDb.CardPool<ColorlessCardPool>()])
-            .WithFlags(CardCreationFlags.NoUpgradeRoll | CardCreationFlags.NoCardPoolModifications)
-            .WithRngOverride(Rng);
-        CardCreationResult? pick = CardFactory.CreateForReward(EventOwner, 1, options).FirstOrDefault();
-        if (pick != null)
-        {
-            CardPileAddResult added = await CardPileCmd.Add(pick.Card, PileType.Deck);
-            CardCmd.PreviewCardPileAdd(added, 1.2f, CardPreviewStyle.EventLayout);
-        }
-        else
-        {
-            await CreatureCmd.Heal(EventOwner.Creature, FallbackHeal);
-        }
-        Finish("CLAIM_LOST");
+        Finish("LEAVE");
+        return Task.CompletedTask;
     }
 
     private void Finish(string page)

@@ -207,11 +207,29 @@ public partial class DepthsProbeNode : Node
                 VerifyResources();await RenderCampSeats();await ReleaseProbeResources();
                 GD.Print($"Depths camp seating probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
             }
+            if(OS.GetCmdlineUserArgs().Contains("--bestiary-boss-only"))
+            {
+                await DepthsBestiaryBossRegression.RunAsync(this, Assert);await ReleaseProbeResources();
+                GD.Print($"Depths bestiary boss probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
+            }
+            if(OS.GetCmdlineUserArgs().Contains("--event-random-only"))
+            {
+                DepthsEventRandomizationRegression.Run(Assert);await ReleaseProbeResources();
+                GD.Print($"Depths event randomization probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
+            }
+            if(OS.GetCmdlineUserArgs().Contains("--external-sim-only"))
+            {
+                await DepthsExternalSimulationRegression.RunAsync(Assert);await ReleaseProbeResources();
+                GD.Print($"Depths external simulation probe: PASS ({_checks} assertions)");GetTree().Quit(0);return;
+            }
             VerifyCatalog();
             VerifyPoolsAndConfig();
             VerifyRoomsAndSaves();
+            DepthsEventRandomizationRegression.Run(Assert);
             await VerifyNativeActProgression();
             VerifyResources();
+            await DepthsBestiaryBossRegression.RunAsync(this, Assert);
+            await DepthsExternalSimulationRegression.RunAsync(Assert);
             await VerifyColumnRules();
             await VerifyHumanFaceTowerRules();
             await VerifyAbyssalInkmawRules();
@@ -505,6 +523,38 @@ public partial class DepthsProbeNode : Node
             backgrounds.Add(bg.BgLayers[0]);
         }
         Assert(backgrounds.Count==9,"Every variant is reachable.");
+        var getBgAssets=typeof(EncounterModel).GetMethod("GetBackgroundAssets",BindingFlags.NonPublic|BindingFlags.Instance)!;
+        var lockedTypes=new HashSet<Type>
+        {
+            typeof(ThingsLanternFishWeak),typeof(ThingsLanternFishEncounter),typeof(ThingsReverseSalamanderElite),
+            typeof(ThingsFleetingEchoWeak),typeof(ThingsHumanFaceColumnEncounter),
+        };
+        var pooledLayers=new HashSet<string>();
+        var nonBossDepths=act.AllWeakEncounters.Concat(act.AllRegularEncounters).Concat(act.AllEliteEncounters).ToArray();
+        Assert(nonBossDepths.Length==20,"Twenty non-boss Depths encounters.");
+        foreach(var enc in nonBossDepths)
+        {
+            var resolved=(BackgroundAssets)getBgAssets.Invoke(enc.ToMutable(),[act,new Rng((uint)enc.Id.Entry.GetHashCode())])!;
+            if(lockedTypes.Contains(enc.GetType()))
+            {
+                Assert(!resolved.BackgroundScenePath.Contains("/things_depths/",StringComparison.OrdinalIgnoreCase),
+                    $"Habitat-locked encounter keeps its custom background: {enc.Id.Entry}");
+            }
+            else
+            {
+                Assert(resolved.BackgroundScenePath.Contains("/things_depths/",StringComparison.OrdinalIgnoreCase),
+                    $"General Depths encounter uses the 9-variant act pool: {enc.Id.Entry}");
+                for(int seed=0;seed<32;seed++)
+                {
+                    var sample=(BackgroundAssets)getBgAssets.Invoke(enc.ToMutable(),[act,new Rng((uint)(seed*747+13))])!;
+                    pooledLayers.Add(sample.BgLayers[0]);
+                }
+            }
+        }
+        Assert(pooledLayers.Count==9 &&
+               pooledLayers.Any(p=>p.Contains("hollow_grotto.tscn",StringComparison.Ordinal)) &&
+               pooledLayers.Any(p=>p.Contains("hollow_grotto_ember.tscn",StringComparison.Ordinal)),
+            $"Pooled Depths encounters reach all 9 cave variants in actual combat (reached {pooledLayers.Count}).");
         using var towerBgDir=DirAccess.Open("res://scenes/backgrounds/things_human_face_tower_boss_encounter/layers");
         Assert(towerBgDir!=null,"Human-Faced Tower background layers directory exists.");
         Assert(ResourceLoader.Exists("res://scenes/backgrounds/things_human_face_tower_boss_encounter/things_human_face_tower_boss_encounter_background.tscn"),

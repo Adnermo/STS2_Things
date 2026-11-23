@@ -11,7 +11,7 @@ public sealed class ThingsSpongeLeechEncounter : EncounterModel
     public override bool IsWeak => false;
     public override IEnumerable<EncounterTag> Tags => [DepthsEncounterTags.Leech, DepthsEncounterTags.Sponge];
     public override bool HasScene => true;
-    protected override bool HasCustomBackground => true;
+    protected override bool HasCustomBackground => false;
     public override IReadOnlyList<string> Slots => ["sponge", "leech_1", "leech_2"];
     public override IEnumerable<MonsterModel> AllPossibleMonsters =>
         [ModelDb.Monster<ThingsWaterSponge>(), ModelDb.Monster<ThingsSanguineLeech>()];

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using Godot;
 using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Combat;
@@ -32,8 +33,11 @@ public static class NativeSfxPlayer
     private static readonly RandomNumberGenerator _variantRng = new();
     private static readonly object _variantRngLock = new();
     private static AudioStreamPlayer? _musicPlayer;
+    private static Tween? _musicFadeTween;
     private static string? _musicPath;
     private static float _musicAuthoredVolumeDb = -6f;
+    private static int _musicGeneration;
+    private static bool _musicStartPending;
     private static AudioStreamPlayer? _seqLooper;
     private static string[]? _seqPaths;
     private static int _seqIndex;
@@ -45,9 +49,12 @@ public static class NativeSfxPlayer
     }
 
     public static bool HasActiveMusic =>
-        _musicPlayer != null && GodotObject.IsInstanceValid(_musicPlayer);
+        _musicStartPending || (_musicPlayer != null && GodotObject.IsInstanceValid(_musicPlayer));
 
     public static string? ActiveMusicPath => HasActiveMusic ? _musicPath : null;
+
+    public static bool IsMusicFadingOut =>
+        _musicFadeTween != null && GodotObject.IsInstanceValid(_musicFadeTween) && _musicFadeTween.IsRunning();
 
     /// <summary>
     /// Rolls a presentation-only probability using the audio RNG. This stream is
@@ -132,7 +139,7 @@ public static class NativeSfxPlayer
 
     internal static void RefreshMusicVolume()
     {
-        if (_musicPlayer != null && GodotObject.IsInstanceValid(_musicPlayer) && _musicPlayer.Playing)
+        if (_musicPath != null && _musicPlayer != null && GodotObject.IsInstanceValid(_musicPlayer) && _musicPlayer.Playing)
         {
             _musicPlayer.VolumeDb = ResolveMusicVolumeDb(_musicAuthoredVolumeDb);
         }
@@ -150,25 +157,49 @@ public static class NativeSfxPlayer
                 return;
             }
 
+            int gen = Interlocked.Increment(ref _musicGeneration);
             _musicPath = resPath;
             _musicAuthoredVolumeDb = volumeDb;
+            _musicStartPending = true;
 
             Callable.From(() =>
             {
                 try
                 {
-                    if (_musicPath == null || !CanPlayAudio() || !string.Equals(_musicPath, resPath, StringComparison.Ordinal))
+                    if (gen != Volatile.Read(ref _musicGeneration) ||
+                        _musicPath == null ||
+                        !CanPlayAudio() ||
+                        !string.Equals(_musicPath, resPath, StringComparison.Ordinal))
+                    {
+                        if (gen == Volatile.Read(ref _musicGeneration))
+                        {
+                            _musicStartPending = false;
+                            _musicPath = null;
+                        }
                         return;
+                    }
 
                     AudioStream? liveStream = GodotObject.IsInstanceValid(stream)
                         ? stream
                         : LoadLoopingMusicStream(resPath);
                     if (liveStream == null || !GodotObject.IsInstanceValid(liveStream))
+                    {
+                        if (gen == Volatile.Read(ref _musicGeneration))
+                        {
+                            _musicStartPending = false;
+                            _musicPath = null;
+                        }
                         return;
+                    }
 
                     var tree = Engine.GetMainLoop() as SceneTree;
                     if (tree?.Root == null || !GodotObject.IsInstanceValid(tree.Root))
                     {
+                        if (gen == Volatile.Read(ref _musicGeneration))
+                        {
+                            _musicStartPending = false;
+                            _musicPath = null;
+                        }
                         Log.Warn("[NativeSfxPlayer] PlayMusic: SceneTree Root is null or invalid!");
                         return;
                     }
@@ -182,12 +213,16 @@ public static class NativeSfxPlayer
                         VolumeDb = ResolveMusicVolumeDb(_musicAuthoredVolumeDb)
                     };
                     _musicPlayer = player;
+                    _musicStartPending = false;
 
                     tree.Root.AddChild(player);
                     player.Finished += () =>
                     {
-                        if (_musicPlayer == player && _musicPath != null &&
-                            GodotObject.IsInstanceValid(player) && player.IsInsideTree())
+                        if (_musicPlayer == player &&
+                            gen == Volatile.Read(ref _musicGeneration) &&
+                            _musicPath != null &&
+                            GodotObject.IsInstanceValid(player) &&
+                            player.IsInsideTree())
                         {
                             player.VolumeDb = ResolveMusicVolumeDb(_musicAuthoredVolumeDb);
                             player.Play();
@@ -197,6 +232,11 @@ public static class NativeSfxPlayer
                 }
                 catch (Exception ex)
                 {
+                    if (gen == Volatile.Read(ref _musicGeneration))
+                    {
+                        _musicStartPending = false;
+                        _musicPath = null;
+                    }
                     Log.Warn($"[NativeSfxPlayer] Main-thread PlayMusic failed: {ex.Message}");
                 }
             }).CallDeferred();
@@ -207,16 +247,98 @@ public static class NativeSfxPlayer
         }
     }
 
-    public static void StopMusic()
+    public static void FadeOutAndStopMusic(float durationSeconds = 1.5f)
     {
+        int gen = Interlocked.Increment(ref _musicGeneration);
         _musicPath = null;
+        _musicStartPending = false;
+
+        void BeginFade()
+        {
+            try
+            {
+                if (gen != Volatile.Read(ref _musicGeneration))
+                    return;
+
+                AudioStreamPlayer? player = _musicPlayer;
+                if (player == null || !GodotObject.IsInstanceValid(player))
+                {
+                    ReleaseMusicPlayer();
+                    return;
+                }
+
+                if (durationSeconds <= 0f || !player.Playing || !player.IsInsideTree())
+                {
+                    ReleaseMusicPlayer();
+                    return;
+                }
+
+                KillMusicFadeTween();
+                Tween tween = player.CreateTween();
+                _musicFadeTween = tween;
+                tween.SetPauseMode(Tween.TweenPauseMode.Process);
+                tween.TweenProperty(
+                        player,
+                        AudioStreamPlayer.PropertyName.VolumeLinear.ToString(),
+                        0f,
+                        durationSeconds)
+                    .SetTrans(Tween.TransitionType.Quad)
+                    .SetEase(Tween.EaseType.In);
+                tween.Finished += () =>
+                {
+                    if (ReferenceEquals(_musicPlayer, player))
+                    {
+                        ReleaseMusicPlayer();
+                    }
+                    else
+                    {
+                        DisposeDetachedMusicPlayer(player);
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"[NativeSfxPlayer] FadeOutAndStopMusic failed: {ex.Message}");
+                ReleaseMusicPlayer();
+            }
+        }
+
         try
         {
+            if (NGame.IsMainThread())
+            {
+                BeginFade();
+            }
+            else
+            {
+                Callable.From(BeginFade).CallDeferred();
+            }
+        }
+        catch (Exception e)
+        {
+            Log.Warn($"[NativeSfxPlayer] FadeOutAndStopMusic dispatch error: {e.Message}");
+        }
+    }
+
+    public static void StopMusic()
+    {
+        int gen = Interlocked.Increment(ref _musicGeneration);
+        _musicPath = null;
+        _musicStartPending = false;
+        try
+        {
+            if (NGame.IsMainThread())
+            {
+                ReleaseMusicPlayer();
+                return;
+            }
+
             Callable.From(() =>
             {
                 try
                 {
-                    ReleaseMusicPlayer();
+                    if (gen == Volatile.Read(ref _musicGeneration))
+                        ReleaseMusicPlayer();
                 }
                 catch (Exception ex)
                 {
@@ -230,17 +352,33 @@ public static class NativeSfxPlayer
         }
     }
 
+    private static void KillMusicFadeTween()
+    {
+        if (_musicFadeTween != null)
+        {
+            if (GodotObject.IsInstanceValid(_musicFadeTween))
+                _musicFadeTween.Kill();
+            _musicFadeTween = null;
+        }
+    }
+
+    private static void DisposeDetachedMusicPlayer(AudioStreamPlayer? player)
+    {
+        if (player == null || !GodotObject.IsInstanceValid(player))
+            return;
+
+        if (player.Playing) player.Stop();
+        player.Stream = null;
+        if (player.IsInsideTree()) player.QueueFree();
+    }
+
     private static void ReleaseMusicPlayer()
     {
+        KillMusicFadeTween();
         if (_musicPlayer == null)
             return;
 
-        if (GodotObject.IsInstanceValid(_musicPlayer))
-        {
-            if (_musicPlayer.Playing) _musicPlayer.Stop();
-            _musicPlayer.Stream = null;
-            if (_musicPlayer.IsInsideTree()) _musicPlayer.QueueFree();
-        }
+        DisposeDetachedMusicPlayer(_musicPlayer);
         _musicPlayer = null;
     }
 

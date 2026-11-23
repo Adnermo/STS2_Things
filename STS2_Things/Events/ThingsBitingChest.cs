@@ -19,8 +19,7 @@ namespace STS2_Things.Events;
 public sealed class ThingsBitingChest : ThingsEventModel
 {
     public const int BiteDamage = 18;
-    public const int WedgeDamage = 10;
-    public const int LooseGold = 70;
+    public const int WedgeDamage = 13;
     private bool _settling;
 
     protected override void AfterCloned()
@@ -33,7 +32,7 @@ public sealed class ThingsBitingChest : ThingsEventModel
     [
         new DamageVar("BiteDamage", BiteDamage, ValueProp.Unblockable | ValueProp.Unpowered),
         new DamageVar("WedgeDamage", WedgeDamage, ValueProp.Unblockable | ValueProp.Unpowered),
-        new GoldVar(LooseGold), new IntVar("Chance", 50),
+        new IntVar("Chance", 50),
         new LocalizedStringVar("Curse", static _ => new LocString("cards", "INJURY.title").GetFormattedText()),
     ];
 
@@ -43,7 +42,7 @@ public sealed class ThingsBitingChest : ThingsEventModel
             !p.Creature.IsDead
             && p.Creature.CurrentHp > WedgeDamage);
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "REACH", "WEDGE", "COINS");
+        DepthsEventDefaults.DescribeOptions(this, "REACH", "WEDGE", "LEAVE");
 
     private bool HasRelic(RelicRarity rarity) => ModelDb.AllRelics.Any(relic =>
         relic.Rarity == rarity && relic.IsAllowed(Owner!.RunState) && Owner.RelicGrabBag.Contains(relic) &&
@@ -73,7 +72,7 @@ public sealed class ThingsBitingChest : ThingsEventModel
         [
             reachOption,
             wedgeOption,
-            new EventOption(this, TakeCoins, InitialOptionKey("COINS")),
+            new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
     }
 
@@ -119,10 +118,11 @@ public sealed class ThingsBitingChest : ThingsEventModel
         await RelicCmd.Obtain(relic.ToMutable(), Owner!);
     }
 
-    private async Task TakeCoins()
+    private Task Leave()
     {
-        if (!BeginSettlement()) return;
-        await PlayerCmd.GainGold(LooseGold, Owner!);
-        SetEventFinished(L10NLookup("THINGS_BITING_CHEST.pages.COINS.description"));
+        if (IsFinished || _settling) return Task.CompletedTask;
+        _settling = true;
+        SetEventFinished(L10NLookup("THINGS_BITING_CHEST.pages.LEAVE.description"));
+        return Task.CompletedTask;
     }
 }

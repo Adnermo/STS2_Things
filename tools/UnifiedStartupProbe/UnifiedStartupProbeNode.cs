@@ -60,8 +60,8 @@ public partial class UnifiedStartupProbeNode : Node
             Type[] modTypes = ReflectionHelper.ModTypes;
             Require(modTypes.Any(t => t.FullName == "STS2_Things.Acts.ThingsDepths"), "ThingsDepths was not discovered.");
             Type initType = modTypes.Single(t => t.FullName == "STS2_ThingsInit");
-            Require((string?)initType.GetField("ModVersion")?.GetValue(null) == "2.0.9",
-                "STS2_ThingsInit.ModVersion is not 2.0.9.");
+            Require((string?)initType.GetField("ModVersion")?.GetValue(null) == "2.0.10",
+                "STS2_ThingsInit.ModVersion is not 2.0.10.");
             Type? assemblyInfo = typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Modding.AssemblyInfo");
             assemblyInfo?.GetMethod("Init")?.Invoke(null, null);
             MethodInfo init = typeof(ModelDb).GetMethods().Single(m => m.Name == "Init");

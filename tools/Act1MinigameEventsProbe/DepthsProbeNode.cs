@@ -1733,18 +1733,19 @@ public partial class DepthsProbeNode : Node
         runPlinko.Players[0].Creature.SetCurrentHpInternal(17);
         Assert(ModelDb.Event<ThingsForestPlinko>().IsAllowed(runPlinko), "ThingsForestPlinko allows HP > 16");
 
-        // 4. ThingsWallCrackLedger: CurrentHp > 8 && owns tradable Rare/Uncommon relic
+        // 4. ThingsWallCrackLedger: CurrentHp > 8 || owns tradable Rare/Uncommon relic
         RunState runLedger = SetupTestRun("gate-ledger");
+        runLedger.Players[0].Creature.SetCurrentHpInternal(8);
         Assert(!ModelDb.Event<ThingsWallCrackLedger>().IsAllowed(runLedger),
-            "ThingsWallCrackLedger blocks when player owns no tradable Rare/Uncommon relic");
+            "ThingsWallCrackLedger blocks HP <= 8 when player owns no tradable Rare/Uncommon relic");
+        runLedger.Players[0].Creature.SetCurrentHpInternal(9);
+        Assert(ModelDb.Event<ThingsWallCrackLedger>().IsAllowed(runLedger),
+            "ThingsWallCrackLedger allows HP > 8 even without tradable Rare/Uncommon relic (Sign Loan usable)");
         RelicModel rareRelic = ModelDb.AllRelics.First(r => r.IsTradable && r.Rarity == RelicRarity.Rare && r.IsAllowed(runLedger)).ToMutable();
         runLedger.Players[0].AddRelicInternal(rareRelic);
         runLedger.Players[0].Creature.SetCurrentHpInternal(8);
-        Assert(!ModelDb.Event<ThingsWallCrackLedger>().IsAllowed(runLedger),
-            "ThingsWallCrackLedger blocks HP <= 8 even with rare relic");
-        runLedger.Players[0].Creature.SetCurrentHpInternal(9);
         Assert(ModelDb.Event<ThingsWallCrackLedger>().IsAllowed(runLedger),
-            "ThingsWallCrackLedger allows HP > 8 with tradable Rare/Uncommon relic");
+            "ThingsWallCrackLedger allows tradable Rare/Uncommon relic even when HP <= 8 (Pawn Relic usable)");
 
         // 5. ThingsSpikedDoor: co-op AND every player CurrentHp > 12
         RunState runDoor = SetupTestRun("gate-door", playerCount: 2);
@@ -1785,28 +1786,34 @@ public partial class DepthsProbeNode : Node
         Assert(ModelDb.Event<ThingsOverstuffedBrood>().IsAllowed(runBrood),
             "ThingsOverstuffedBrood allows HP > 9 && MaxHp > 10");
 
-        // 9. ThingsRelicWorkshop, ThingsMedusa, ThingsSilveredGallery, ThingsShadowCloakroom, ThingsPotionTasting, ThingsGrudgeVendingMachine, ThingsReturnsCounter
+        // 9. ThingsRelicWorkshop, ThingsMedusa, ThingsSilveredGallery, ThingsShadowCloakroom, ThingsPotionTasting, ThingsGrudgeVendingMachine, ThingsGildedPress, ThingsReturnsCounter
         RunState runShop = SetupTestRun("gate-economy");
         Player pe = runShop.Players[0];
-        pe.Gold = 30;
-        Assert(!ModelDb.Event<ThingsRelicWorkshop>().IsAllowed(runShop), "ThingsRelicWorkshop blocks low gold / no tradable relic");
-        Assert(!ModelDb.Event<ThingsMedusa>().IsAllowed(runShop), "ThingsMedusa blocks Gold < 75 without PetrifiedToad");
-        Assert(!ModelDb.Event<ThingsSilveredGallery>().IsAllowed(runShop), "ThingsSilveredGallery blocks Gold < 95");
-        Assert(!ModelDb.Event<ThingsShadowCloakroom>().IsAllowed(runShop), "ThingsShadowCloakroom blocks Gold < 45");
-        Assert(!ModelDb.Event<ThingsPotionTasting>().IsAllowed(runShop), "ThingsPotionTasting blocks Gold < 40 and 0 potions");
-        Assert(!ModelDb.Event<ThingsGrudgeVendingMachine>().IsAllowed(runShop), "ThingsGrudgeVendingMachine blocks Gold < 35");
-        Assert(!ModelDb.Event<ThingsReturnsCounter>().IsAllowed(runShop), "ThingsReturnsCounter blocks Gold < 40");
+        pe.Gold = 20;
+        pe.Creature.SetMaxHpInternal(6);
+        pe.Creature.SetCurrentHpInternal(6);
+        Assert(!ModelDb.Event<ThingsRelicWorkshop>().IsAllowed(runShop), $"ThingsRelicWorkshop blocks Gold < {ThingsRelicWorkshop.TradeCost} / no tradable relic");
+        Assert(!ModelDb.Event<ThingsMedusa>().IsAllowed(runShop), $"ThingsMedusa blocks Gold < {ThingsMedusa.GoldCost} without PetrifiedToad");
+        Assert(!ModelDb.Event<ThingsSilveredGallery>().IsAllowed(runShop), $"ThingsSilveredGallery blocks when both HP <= {ThingsSilveredGallery.DuplicateDamage} and Gold < {ThingsSilveredGallery.PawnGoldCost}");
+        Assert(!ModelDb.Event<ThingsShadowCloakroom>().IsAllowed(runShop), $"ThingsShadowCloakroom blocks Gold < {ThingsShadowCloakroom.DepositCost}");
+        Assert(!ModelDb.Event<ThingsPotionTasting>().IsAllowed(runShop), $"ThingsPotionTasting blocks HP <= {ThingsPotionTasting.SampleDamage}, Gold < {ThingsPotionTasting.PairCost}, and 0 potions");
+        Assert(!ModelDb.Event<ThingsGrudgeVendingMachine>().IsAllowed(runShop), $"ThingsGrudgeVendingMachine blocks when both Gold < {ThingsGrudgeVendingMachine.CoinCost} and HP <= {ThingsGrudgeVendingMachine.Kick1Damage}");
+        Assert(!ModelDb.Event<ThingsGildedPress>().IsAllowed(runShop), $"ThingsGildedPress blocks when MaxHP <= {ThingsGildedPress.SealMaxHpLoss} and Gold < {ThingsGildedPress.MoldGoldCost}");
+        Assert(!ModelDb.Event<ThingsReturnsCounter>().IsAllowed(runShop), $"ThingsReturnsCounter blocks when MaxHP <= {ThingsReturnsCounter.ReceiptMaxHpLoss}, HP <= {ThingsReturnsCounter.ViewfinderDamage}, and Gold < {ThingsReturnsCounter.RummageCost}");
 
+        pe.Creature.SetMaxHpInternal(80);
+        pe.Creature.SetCurrentHpInternal(80);
         pe.Gold = 100;
         RelicModel tradable = ModelDb.AllRelics.First(r => r.IsTradable && r.Rarity == RelicRarity.Common && r.IsAllowed(runShop)).ToMutable();
         pe.AddRelicInternal(tradable);
-        Assert(ModelDb.Event<ThingsRelicWorkshop>().IsAllowed(runShop), "ThingsRelicWorkshop allows tradable relic + Gold >= 40");
-        Assert(ModelDb.Event<ThingsMedusa>().IsAllowed(runShop), "ThingsMedusa allows Gold >= 75 + Steady target");
-        Assert(ModelDb.Event<ThingsSilveredGallery>().IsAllowed(runShop), "ThingsSilveredGallery allows Gold >= 95 + HP > 16");
-        Assert(ModelDb.Event<ThingsShadowCloakroom>().IsAllowed(runShop), "ThingsShadowCloakroom allows Gold >= 45 + eligible card");
-        Assert(ModelDb.Event<ThingsPotionTasting>().IsAllowed(runShop), "ThingsPotionTasting allows Gold >= 40");
-        Assert(ModelDb.Event<ThingsGrudgeVendingMachine>().IsAllowed(runShop), "ThingsGrudgeVendingMachine allows Gold >= 35 + HP > 8");
-        Assert(ModelDb.Event<ThingsReturnsCounter>().IsAllowed(runShop), "ThingsReturnsCounter allows Gold >= 40 + HP/MaxHP safe");
+        Assert(ModelDb.Event<ThingsRelicWorkshop>().IsAllowed(runShop), $"ThingsRelicWorkshop allows tradable relic + Gold >= {ThingsRelicWorkshop.TradeCost}");
+        Assert(ModelDb.Event<ThingsMedusa>().IsAllowed(runShop), $"ThingsMedusa allows Gold >= {ThingsMedusa.GoldCost} + Steady target");
+        Assert(ModelDb.Event<ThingsSilveredGallery>().IsAllowed(runShop), $"ThingsSilveredGallery allows Gold >= {ThingsSilveredGallery.PawnGoldCost} or HP > {ThingsSilveredGallery.DuplicateDamage}");
+        Assert(ModelDb.Event<ThingsShadowCloakroom>().IsAllowed(runShop), $"ThingsShadowCloakroom allows Gold >= {ThingsShadowCloakroom.DepositCost} + eligible card");
+        Assert(ModelDb.Event<ThingsPotionTasting>().IsAllowed(runShop), $"ThingsPotionTasting allows HP > {ThingsPotionTasting.SampleDamage} or Gold >= {ThingsPotionTasting.PairCost}");
+        Assert(ModelDb.Event<ThingsGrudgeVendingMachine>().IsAllowed(runShop), $"ThingsGrudgeVendingMachine allows Gold >= {ThingsGrudgeVendingMachine.CoinCost} or HP > {ThingsGrudgeVendingMachine.Kick1Damage}");
+        Assert(ModelDb.Event<ThingsGildedPress>().IsAllowed(runShop), $"ThingsGildedPress allows MaxHP > {ThingsGildedPress.SealMaxHpLoss} or Gold >= {ThingsGildedPress.MoldGoldCost}");
+        Assert(ModelDb.Event<ThingsReturnsCounter>().IsAllowed(runShop), $"ThingsReturnsCounter allows Gold >= {ThingsReturnsCounter.RummageCost} or HP/MaxHP safe");
     }
 
     private async Task VerifyCloneEnchantmentRestSiteAsync()
@@ -1819,7 +1826,7 @@ public partial class DepthsProbeNode : Node
         Assert(initialOpts.OfType<CloneRestSiteOption>().Count() == 0,
             "Player without Clone-enchanted card or Pael's Growth should not get CloneRestSiteOption");
 
-        // Case 2: Player pays 55 Gold at ThingsGildedPress (WAX_MOLD) to enchant a card with Clone without Pael's Growth.
+        // Case 2: Player pays 75 Gold at ThingsGildedPress (WAX_MOLD) to enchant a card with Clone without Pael's Growth.
         ThingsGildedPress press = BeginEventForPlayer<ThingsGildedPress>(p, run);
         EventOption? waxMold = press.CurrentOptions.FirstOrDefault(o => o.TextKey.EndsWith(".WAX_MOLD"));
         Assert(waxMold != null && !waxMold.IsLocked, "ThingsGildedPress WAX_MOLD option available at 120 Gold");

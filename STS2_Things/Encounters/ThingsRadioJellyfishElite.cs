@@ -8,7 +8,7 @@ public sealed class ThingsRadioJellyfishElite : EncounterModel
 {
     public override RoomType RoomType => RoomType.Elite;
     public override bool HasScene => true;
-    protected override bool HasCustomBackground => true;
+    protected override bool HasCustomBackground => false;
     public override IReadOnlyList<string> Slots => ["jellyfish"];
     public override IEnumerable<MonsterModel> AllPossibleMonsters => [ModelDb.Monster<ThingsRadioJellyfish>()];
     protected override IReadOnlyList<(MonsterModel, string?)> GenerateMonsters() =>

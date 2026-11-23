@@ -37,7 +37,7 @@ internal static class ConfigSessionAttachPatch
         switch (__instance)
         {
             case StartRunLobby start:
-                MultiplayerConfig.Bind(start.NetService);
+                MultiplayerConfig.BindStartLobby(start.NetService, start.GameMode);
                 MultiplayerConfig.SyncPreConnectedClients(start.NetService);
                 break;
             case LoadRunLobby load: MultiplayerConfig.Bind(load.NetService, lockForLoadedRun: true); break;
@@ -61,19 +61,22 @@ internal static class ConfigDailyPreConnectedClientsPatch
 [HarmonyPatch(typeof(StartRunLobby), "BeginRunForAllPlayers")]
 internal static class ConfigHostStartPatch
 {
-    private static bool Prefix(StartRunLobby __instance) => MultiplayerConfig.PrepareRun(__instance.NetService);
+    private static bool Prefix(StartRunLobby __instance) =>
+        MultiplayerConfig.PrepareRunForGameMode(__instance.NetService, __instance.GameMode);
 }
 
 [HarmonyPatch(typeof(StartRunLobby), "BeginRunLocally")]
 internal static class ConfigLocalStartPatch
 {
-    private static bool Prefix(StartRunLobby __instance) => MultiplayerConfig.PrepareRun(__instance.NetService);
+    private static bool Prefix(StartRunLobby __instance) =>
+        MultiplayerConfig.PrepareRunForGameMode(__instance.NetService, __instance.GameMode);
 }
 
 [HarmonyPatch(typeof(LoadRunLobby), "BeginRunLocally")]
 internal static class ConfigLocalResumePatch
 {
-    private static bool Prefix(LoadRunLobby __instance) => MultiplayerConfig.PrepareRun(__instance.NetService);
+    private static bool Prefix(LoadRunLobby __instance) =>
+        MultiplayerConfig.PrepareRunForGameMode(__instance.NetService, GameMode.None, disableDepthsPity: true);
 }
 
 [HarmonyPatch]

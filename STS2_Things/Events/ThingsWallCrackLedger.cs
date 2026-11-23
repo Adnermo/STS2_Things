@@ -58,8 +58,8 @@ public sealed class ThingsWallCrackLedger : ThingsEventModel
         runState.Players.Count > 0
         && runState.Players.All(player =>
             !player.Creature.IsDead
-            && player.Creature.CurrentHp > RefuseDamage
-            && player.Relics.Any(IsPawnableRelic));
+            && (player.Creature.CurrentHp > LoanDamage
+                || player.Relics.Any(IsPawnableRelic)));
 
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "SIGN_LOAN", "PAWN_RELIC", "SHOVE_BACK");
