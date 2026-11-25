@@ -36,12 +36,12 @@ public partial class UnifiedStartupProbeNode : Node
             // Native test mode skips DLL/PCK loading across both v0.111.1 and v0.113.1.
             // Keep real startup behavior until all initialization has completed.
             TestMode.IsOn = false;
-            Require(args[2] is "v111.0" or "v111.1" or "v113.1", $"Invalid target '{args[2]}'; expected 'v111.0', 'v111.1', or 'v113.1'.");
+            Require(args[2] is "v111.0" or "v111.1" or "v114.0", $"Invalid target '{args[2]}'; expected 'v111.0', 'v111.1', or 'v114.0'.");
             string semverString = args[2] switch
             {
                 "v111.0" => "v0.111.0",
                 "v111.1" => "v0.111.1",
-                _ => "v0.113.1",
+                _ => "v0.114.0",
             };
             Require(SemanticVersion.TryFromString(semverString, out var version),
                 "Invalid target version.");
@@ -60,8 +60,8 @@ public partial class UnifiedStartupProbeNode : Node
             Type[] modTypes = ReflectionHelper.ModTypes;
             Require(modTypes.Any(t => t.FullName == "STS2_Things.Acts.ThingsDepths"), "ThingsDepths was not discovered.");
             Type initType = modTypes.Single(t => t.FullName == "STS2_ThingsInit");
-            Require((string?)initType.GetField("ModVersion")?.GetValue(null) == "2.0.10",
-                "STS2_ThingsInit.ModVersion is not 2.0.10.");
+            Require((string?)initType.GetField("ModVersion")?.GetValue(null) == "2.0.11",
+                "STS2_ThingsInit.ModVersion is not 2.0.11.");
             Type? assemblyInfo = typeof(ModelDb).Assembly.GetType("MegaCrit.Sts2.Core.Modding.AssemblyInfo");
             assemblyInfo?.GetMethod("Init")?.Invoke(null, null);
             MethodInfo init = typeof(ModelDb).GetMethods().Single(m => m.Name == "Init");

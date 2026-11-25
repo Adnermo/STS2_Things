@@ -4,7 +4,7 @@
     <LangVersion>13.0</LangVersion>
     <AssemblyName>STS2_Things.Bootstrap</AssemblyName>
     <RootNamespace>STS2_Things.Bootstrap</RootNamespace>
-    <Version>2.0.10</Version>
+    <Version>2.0.11</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -12,8 +12,8 @@
     <Deterministic>true</Deterministic>
     <ImplementationV1111 Condition="'$(ImplementationV1111)' == '' and Exists('..\build\v111.1\STS2_Things.dll')">..\build\v111.1\STS2_Things.dll</ImplementationV1111>
     <ImplementationV1111 Condition="'$(ImplementationV1111)' == ''">..\..\build\v111.1\STS2_Things.dll</ImplementationV1111>
-    <ImplementationV1131 Condition="'$(ImplementationV1131)' == '' and Exists('..\build\v113.1\STS2_Things.dll')">..\build\v113.1\STS2_Things.dll</ImplementationV1131>
-    <ImplementationV1131 Condition="'$(ImplementationV1131)' == ''">..\..\build\v113.1\STS2_Things.dll</ImplementationV1131>
+    <ImplementationV1140 Condition="'$(ImplementationV1140)' == '' and Exists('..\build\v114.0\STS2_Things.dll')">..\build\v114.0\STS2_Things.dll</ImplementationV1140>
+    <ImplementationV1140 Condition="'$(ImplementationV1140)' == ''">..\..\build\v114.0\STS2_Things.dll</ImplementationV1140>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,8 +28,8 @@
 
     <EmbeddedResource Include="$(ImplementationV1111)"
                       LogicalName="STS2_Things.Implementations.v111.1.dll" />
-    <EmbeddedResource Include="$(ImplementationV1131)"
-                      LogicalName="STS2_Things.Implementations.v113.1.dll" />
+    <EmbeddedResource Include="$(ImplementationV1140)"
+                      LogicalName="STS2_Things.Implementations.v114.0.dll" />
   </ItemGroup>
 
   <Target Name="ValidateBootstrapInputs" BeforeTargets="PrepareForBuild;ResolveReferences">
@@ -39,7 +39,7 @@
            Text="Harmony was not found at '$(Sts2DataDir)\0Harmony.dll'." />
     <Error Condition="!Exists('$(ImplementationV1111)')"
            Text="V111.1 implementation was not found at '$(ImplementationV1111)'." />
-    <Error Condition="!Exists('$(ImplementationV1131)')"
-           Text="V113.1 implementation was not found at '$(ImplementationV1131)'." />
+    <Error Condition="!Exists('$(ImplementationV1140)')"
+           Text="V114.0 implementation was not found at '$(ImplementationV1140)'." />
   </Target>
 </Project>

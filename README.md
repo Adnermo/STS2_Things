@@ -6,8 +6,8 @@
 
 原创第二章「深处」 · 8 位专属 Boss · 38 个跨章节事件与 5 款联机小游戏 · 单包双版本零依赖运行
 
-[![Version](https://img.shields.io/badge/Version-v2.0.10-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
-[![STS2 Support](https://img.shields.io/badge/STS2-v0.111.0%20%7C%20v0.111.1%20%7C%20v0.113.1%20Beta-1565c0?style=flat-square)](docs/DUAL_VERSION_SUPPORT.md)
+[![Version](https://img.shields.io/badge/Version-v2.0.11-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
+[![STS2 Support](https://img.shields.io/badge/STS2-v0.111.0%20%7C%20v0.111.1%20%7C%20v0.114.0%20Beta-1565c0?style=flat-square)](docs/DUAL_VERSION_SUPPORT.md)
 [![Steam Workshop](https://img.shields.io/badge/Steam-Workshop-1b2838?style=flat-square&logo=steam)](https://steamcommunity.com/sharedfiles/filedetails/?id=3747607944)
 [![Direct Mirror](https://img.shields.io/badge/国内直链-网盘下载-00838f?style=flat-square)](https://pan.adnermo.online/STS2_Things/latest)
 [![Source Audit](https://github.com/adnermo/STS2_Things/actions/workflows/source-audit.yml/badge.svg)](https://github.com/adnermo/STS2_Things/actions/workflows/source-audit.yml)
@@ -23,8 +23,8 @@
 
 **尖塔：琐事（`STS2_Things`）** 是一款面向《杀戮尖塔 2》（Slay the Spire 2）的原生内容扩展模组。工程完全基于游戏原生 API、Godot 4.5.1 Mono 与 Harmony 构建，**无需安装任何前置依赖库**。
 
-- **双版本统一发行**：所有玩家共用同一套 4 文件统一包，运行时依据客户端真实程序集自动加载 **`v0.111.1`（正式版）** 或 **`v0.113.1`（public-beta）** 对应实现。
-- **全模式深度适配**：完整支持 `v0.113.1` **恐惧模式（Dread）**（全部 8 位模组 Boss 均配有专属章节支配 `Dominion` 与恐惧强化）与 **急速模式（Blitz）**。
+- **双版本统一发行**：所有玩家共用同一套 4 文件统一包，运行时依据客户端真实程序集自动加载 **`v0.111.0 / v0.111.1`（正式版）** 或 **`v0.114.0`（public-beta）** 对应实现。
+- **全模式深度适配**：完整支持 `v0.114.0` **恐惧模式（Dread）**（全部 8 位模组 Boss 均配有专属章节支配 `Dominion` 与恐惧强化）与 **急速模式（Blitz）**。
 - **确定性多人联机与双语支持**：完整适配 1–4 人合作联机与房主配置同步，提供全套**简体中文（`zhs`）**与**英文（`eng`）**原版风格文案，并内置旧版 `1.x` 存档无损迁移（`LegacyIdMigrator`）。
 
 ---
@@ -65,7 +65,7 @@ mods/
 ```
 
 > **提示**
-> - 正式版 `v0.111.1` 与测试版 `v0.113.1` 下载完全相同的统一包，无需手动区分版本。
+> - 正式版 `v0.111.0 / v0.111.1` 与测试版 `v0.114.0` 下载完全相同的统一包，无需手动区分版本。
 > - 多人联机时，房间内所有玩家需保持相同的游戏版本与模组版本。
 
 ---

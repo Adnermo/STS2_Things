@@ -10,7 +10,7 @@ if (args.Length is < 4 or > 5)
 {
     Console.Error.WriteLine(
         "Usage: UnifiedPackageProbe <sts2-data-dir> <bootstrap-dll> " +
-        "<v111.1|v113.1> <expected-implementation-dll> [dependency-data-dir]");
+        "<v111.1|v114.0> <expected-implementation-dll> [dependency-data-dir]");
     return 2;
 }
 
@@ -36,12 +36,12 @@ if (!File.Exists(gamePath) ||
     return 2;
 }
 
-if (expectedTarget is not ("v111.1" or "v113.1"))
-    throw new ArgumentOutOfRangeException(nameof(expectedTarget), expectedTarget, "Expected 'v111.1' or 'v113.1'.");
+if (expectedTarget is not ("v111.1" or "v114.0"))
+    throw new ArgumentOutOfRangeException(nameof(expectedTarget), expectedTarget, "Expected 'v111.1' or 'v114.0'.");
 var expectedResource = expectedTarget switch
 {
     "v111.1" => "STS2_Things.Implementations.v111.1.dll",
-    "v113.1" => "STS2_Things.Implementations.v113.1.dll",
+    "v114.0" => "STS2_Things.Implementations.v114.0.dll",
     _ => throw new ArgumentOutOfRangeException(nameof(expectedTarget), expectedTarget, null)
 };
 const string expectedAssemblyName = "STS2_Things";
@@ -112,7 +112,7 @@ try
     var expectedResources = new[]
     {
         "STS2_Things.Implementations.v111.1.dll",
-        "STS2_Things.Implementations.v113.1.dll"
+        "STS2_Things.Implementations.v114.0.dll"
     };
     if (!resources.SequenceEqual(expectedResources, StringComparer.Ordinal))
     {
@@ -141,9 +141,9 @@ try
     }
     if (implementationAssembly.GetName().Version != bootstrapAssembly.GetName().Version)
         throw new InvalidOperationException("Bootstrap and implementation versions differ.");
-    if (implementationAssembly.GetName().Version != new Version(2, 0, 10, 0))
+    if (implementationAssembly.GetName().Version != new Version(2, 0, 11, 0))
         throw new InvalidOperationException(
-            $"Expected STS2_Things assembly version 2.0.10.0, got {implementationAssembly.GetName().Version}.");
+            $"Expected STS2_Things assembly version 2.0.11.0, got {implementationAssembly.GetName().Version}.");
 
     var implementationTypes = GetLoadableTypes(implementationAssembly);
     var initializer = implementationAssembly.GetType(
@@ -195,22 +195,22 @@ try
     }
 
     var v1111Models = embeddedModelNames["STS2_Things.Implementations.v111.1.dll"];
-    var v1131Models = embeddedModelNames["STS2_Things.Implementations.v113.1.dll"];
-    var v1131SharedModels = v1131Models
+    var v1140Models = embeddedModelNames["STS2_Things.Implementations.v114.0.dll"];
+    var v1140SharedModels = v1140Models
         .Where(name => !(name.StartsWith("STS2_Things.Platform.Dread.", StringComparison.Ordinal)
             && name.EndsWith("Dominion", StringComparison.Ordinal)))
         .ToHashSet(StringComparer.Ordinal);
-    if (!v1111Models.SetEquals(v1131SharedModels))
+    if (!v1111Models.SetEquals(v1140SharedModels))
     {
         throw new InvalidOperationException(
-            "V111.1 and V113.1 shared implementation model sets differ: " +
-            DescribeSetDifference(v1111Models, v1131SharedModels));
+            "V111.1 and V114.0 shared implementation model sets differ: " +
+            DescribeSetDifference(v1111Models, v1140SharedModels));
     }
-    var v1131Dominions = v1131Models.Except(v1131SharedModels, StringComparer.Ordinal).ToArray();
-    if (v1131Dominions.Length < 7)
+    var v1140Dominions = v1140Models.Except(v1140SharedModels, StringComparer.Ordinal).ToArray();
+    if (v1140Dominions.Length < 7)
     {
         throw new InvalidOperationException(
-            $"Expected at least 7 v113.1 Dread DominionModel subclasses, found {v1131Dominions.Length}.");
+            $"Expected at least 7 v114.0 Dread DominionModel subclasses, found {v1140Dominions.Length}.");
     }
 
     VerifyCurrentModAssociation(gameAssembly, implementationAssembly);

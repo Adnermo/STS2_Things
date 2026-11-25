@@ -3,8 +3,8 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
 
-    [ValidateSet('v111.1', 'v113.1')]
-    [string]$TargetVersion = 'v113.1',
+    [ValidateSet('v111.1', 'v114.0')]
+    [string]$TargetVersion = 'v114.0',
 
     [string]$PythonExe = $env:STS2_PYTHON,
 
@@ -137,9 +137,9 @@ if ([string]::IsNullOrWhiteSpace($DataDir)) {
         }
     }
     else {
-        $DataDir = $env:STS2_DATA_DIR_V113_1
+        $DataDir = $env:STS2_DATA_DIR_V114_0
         if ([string]::IsNullOrWhiteSpace($DataDir)) {
-            $candidateDataDir = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v113.1\76cc75b6f097\game\data_sts2_windows_x86_64'
+            $candidateDataDir = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v114\0e151996c7aa\game\data_sts2_windows_x86_64'
             if (Test-Path -LiteralPath $candidateDataDir -PathType Container) {
                 $DataDir = $candidateDataDir
             }
@@ -159,9 +159,9 @@ if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
         }
     }
     else {
-        $SourceRoot = $env:STS2_SOURCE_ROOT_V113_1
+        $SourceRoot = $env:STS2_SOURCE_ROOT_V114_0
         if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
-            $SourceRoot = Join-Path (Split-Path $Root -Parent) 'STS2-V113.1'
+            $SourceRoot = Join-Path (Split-Path $Root -Parent) 'STS2-V114.0'
         }
     }
 }
@@ -187,10 +187,10 @@ if (Test-Path -LiteralPath $releaseInfoPath) {
         $releaseInfo.version -match '^v0\.111\.\d+'
     }
     else {
-        $releaseInfo.version -match '^v0\.113\.\d+'
+        $releaseInfo.version -match '^v0\.114\.\d+'
     }
     if (-not $releaseMatchesTarget) {
-        $expectedRelease = if ($TargetVersion -eq 'v111.1') { 'v0.111.x' } else { 'v0.113.x' }
+        $expectedRelease = if ($TargetVersion -eq 'v111.1') { 'v0.111.x' } else { 'v0.114.x' }
         throw "Target $TargetVersion expects $expectedRelease, but '$dataGameRoot' contains $($releaseInfo.version). Pass the matching -DataDir."
     }
 }

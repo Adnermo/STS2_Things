@@ -759,7 +759,7 @@ def main() -> int:
     root_manifest = json.loads((ROOT / "STS2_Things.json").read_text(encoding="utf-8"))
     target_manifest_paths = {
         "v111.1": ROOT / "manifests" / "v111.1" / "STS2_Things.json",
-        "v113.1": ROOT / "manifests" / "v113.1" / "STS2_Things.json",
+        "v114.0": ROOT / "manifests" / "v114.0" / "STS2_Things.json",
     }
     target_manifests: dict[str, dict] = {}
     for target, path in target_manifest_paths.items():
@@ -778,7 +778,7 @@ def main() -> int:
     if not isinstance(release_version, str) or not re.fullmatch(r"\d+\.\d+\.\d+", release_version):
         fail(errors, "unified manifest version must be a three-part semantic version")
         release_version = ""
-    expected_min_versions = {"v111.1": "v0.111.0", "v113.1": "v0.113.1"}
+    expected_min_versions = {"v111.1": "v0.111.0", "v114.0": "v0.114.0"}
     if project_value("Version") != release_version:
         fail(errors, f"implementation version must be {release_version}")
     for target, manifest in target_manifests.items():
@@ -811,6 +811,7 @@ def main() -> int:
         "Sts2TargetVersion",
         "STS2_V111_1",
         "STS2_V113_1",
+        "STS2_V114_0",
         "<AssemblyName>STS2_Things</AssemblyName>",
         "Unsupported Sts2TargetVersion",
         '<Compile Remove="tools\\**\\*.cs" />',
@@ -900,9 +901,9 @@ def main() -> int:
         bootstrap_project_text = bootstrap_project_path.read_text(encoding="utf-8")
         for required in (
             "STS2_Things.Implementations.v111.1.dll",
-            "STS2_Things.Implementations.v113.1.dll",
+            "STS2_Things.Implementations.v114.0.dll",
             "ImplementationV1111",
-            "ImplementationV1131",
+            "ImplementationV1140",
         ):
             if required not in bootstrap_project_text:
                 fail(errors, f"bootstrap embedding contract missing {required!r}")
@@ -915,7 +916,7 @@ def main() -> int:
             "STS2_Things.Implementations.",
             "AssociateAssemblyWithMod",
             "v111.1",
-            "v113.1",
+            "v114.0",
         ):
             if required not in bootstrap_text:
                 fail(errors, f"bootstrap runtime contract missing {required!r}")
@@ -924,7 +925,7 @@ def main() -> int:
     for snippet in (
         "TargetTag",
         "v111.1",
-        "v113.1",
+        "v114.0",
     ):
         if snippet not in seam_text:
             fail(errors, f"dual-version compatibility seam missing {snippet!r}")
@@ -978,7 +979,7 @@ def main() -> int:
         "build-unified.ps1",
         "build\\unified",
         "DataDirV1111",
-        "DataDirV1131",
+        "DataDirV1140",
         "test-gravetide-slug.ps1",
         "test-merchant-bargain.ps1",
         "test-quirky-hopper.ps1",
@@ -993,9 +994,9 @@ def main() -> int:
         "STS2_Things.Bootstrap.csproj",
         "verify-unified-package.ps1",
         "DataDirV1111",
-        "DataDirV1131",
+        "DataDirV1140",
         "build\\v111.1\\STS2_Things.dll",
-        "build\\v113.1\\STS2_Things.dll",
+        "build\\v114.0\\STS2_Things.dll",
         "build\\unified",
     ):
         if required not in unified_build_text:

@@ -359,12 +359,6 @@ internal static class FoolArrowTargetabilityPatch
             return;
         }
 
-        if (arrowSlot.DestroyAfterImpaled)
-        {
-            arrowSlot.Status = ArrowStatus.Destroyed;
-            return;
-        }
-
         var transientImpaled = (ImpaledPower)ModelDb.Power<ImpaledPower>().ToMutable();
         transientImpaled.Applier = arrowSlot.owner.Creature;
         transientImpaled.AddArrow(arrowSlot);

@@ -38,7 +38,7 @@ using STS2_Things.Monsters;
 namespace STS2_Things.Platform;
 
 /// <summary>
-/// Single authoritative compatibility seam between STS2 v0.111.1 (main) and v0.113.1 (beta).
+/// Single authoritative compatibility seam between STS2 v0.111.1 (main) and v0.114.0 (beta).
 /// Content models (Cards, Events, Monsters, Powers, Relics, Enchantments, Acts) call through
 /// this seam or <c>STS2_Things.Core.Models</c> base classes and never embed <c>#if</c> directives.
 /// </summary>
@@ -69,10 +69,10 @@ public static class Sts2VersionSeam
     ];
 
     public static string TargetTag =>
-#if STS2_V111_1
-        "v111.1";
+#if STS2_V114_0
+        "v114.0";
 #else
-        "v113.1";
+        "v111.1";
 #endif
 
     public static void InitializeBeforeModelDatabase()
@@ -267,8 +267,7 @@ public static class Sts2VersionSeam
                 ArrowSlot arrow = impaled.RemoveFirstArrow();
                 if (arrow.Status == ArrowStatus.Away)
                 {
-                    arrow.Status = arrow.DestroyAfterImpaled ? ArrowStatus.Destroyed : ArrowStatus.Retrieved;
-                    arrow.DestroyAfterImpaled = false;
+                    arrow.Status = ArrowStatus.Retrieved;
                 }
             }
         }

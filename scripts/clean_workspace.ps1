@@ -60,14 +60,14 @@ Get-ChildItem -LiteralPath $projectRoot -File -Force | ForEach-Object {
 $buildRoot = Join-Path $projectRoot 'build'
 Get-ChildItem -LiteralPath $buildRoot -Recurse -File -Force | ForEach-Object {
     $relative = Get-RelativePathCompat $buildRoot $_.FullName
-    if ($relative -match '^(v111\.1|v113\.1|unified|release|deliverables|imagegen)/') { return }
+    if ($relative -match '^(v111\.1|v114\.0|unified|release|deliverables|imagegen)/') { return }
     if ($_.Extension -eq '.log') { Add-Candidate $_ 'old diagnostic log' }
     elseif ($_.Name -match '^(idle(_loop)?|attack|cast|hurt|die|summon|power_up|revive|slam|windup|frame)[_-][0-9]{3,}\.png$') {
         Add-Candidate $_ 'rendered animation frame (rebuildable)'
     }
-    elseif (($relative -match '^v(107(\.\d+)?|108|109|109-probe|110|111|113)/' -or $_.DirectoryName -eq $buildRoot) -and
+    elseif (($relative -match '^v(107(\.\d+)?|108|109|109-probe|110|111|113(\.\d+)?)/' -or $_.DirectoryName -eq $buildRoot) -and
             $_.Extension -in @('.pck', '.dll', '.pdb')) {
-        Add-Candidate $_ 'obsolete diagnostic build; supported builds use v111.1/v113.1/unified'
+        Add-Candidate $_ 'obsolete diagnostic build; supported builds use v111.1/v114.0/unified'
     }
 }
 

@@ -86,8 +86,8 @@ public partial class DepthsProbeNode
             Assert(fool.Creature.Block == blockBefore + 4, "Twine must grant Block when breaking CaveGodHand dislodges arrow.");
         });
 
-        // 2) Cave God Hand broken by TrickShot (returns TrickShot to Hand!) & RainShot (Func<Task> overload).
-        await RunCase("CaveGodHand.LethalTrickShotReturnsCardAndRainShotDislodges", async () =>
+        // 2) Cave God Hand broken by TrickShot (v0.114.0 draws 2 cards on shot) & RainShot (Func<Task> overload).
+        await RunCase("CaveGodHand.LethalTrickShotDrawsAndRainShotDislodges", async () =>
         {
             var b = await CreateFoolBattle(ModelDb.Encounter<ThingsCaveGodBossEncounter>(), "fool-cg-trickshot");
             Player fool = b.Players[0];
@@ -95,6 +95,7 @@ public partial class DepthsProbeNode
             var right = b.Monster<ThingsCaveGodRightHand>();
 
             await CreatureCmd.Damage(Choice, left.Creature, left.Creature.CurrentHp - 8, ValueProp.Unpowered, fool.Creature);
+            int handBefore = PileType.Hand.GetPile(fool).Cards.Count;
             var trickShot = b.State.CreateCard<TrickShot>(fool);
             await CardPileCmd.AddGeneratedCardToCombat(trickShot, PileType.Hand, null);
             await CardCmd.AutoPlay(Choice, trickShot, left.Creature, skipCardPileVisuals: true);
@@ -102,8 +103,8 @@ public partial class DepthsProbeNode
             Assert(left.IsDown, "TrickShot broke left hand.");
             Assert(ArrowCmd.PlayerHasAnyArrows(fool),
                 $"TrickShot breaking CaveGodHand left arrow in status {fool.PlayerCombatState!.Arrows[0].Status}.");
-            Assert(PileType.Hand.GetPile(fool).Cards.Contains(trickShot),
-                "TrickShot must return to Hand after breaking CaveGodHand dislodges the arrow.");
+            Assert(PileType.Hand.GetPile(fool).Cards.Count >= handBefore + 1,
+                $"v0.114.0 TrickShot must draw cards after breaking CaveGodHand (before={handBefore}, after={PileType.Hand.GetPile(fool).Cards.Count}).");
 
             await CreatureCmd.Damage(Choice, right.Creature, right.Creature.CurrentHp - 8, ValueProp.Unpowered, fool.Creature);
             var rainShot = b.State.CreateCard<RainShot>(fool);
@@ -226,13 +227,14 @@ public partial class DepthsProbeNode
             var ctrl = wrath.Controller!;
 
             await CreatureCmd.Damage(Choice, wrath.Creature, wrath.Creature.CurrentHp - 8, ValueProp.Unpowered, fool.Creature);
+            int handBefore = PileType.Hand.GetPile(fool).Cards.Count;
             var trickShot = b.State.CreateCard<TrickShot>(fool);
             await CardPileCmd.AddGeneratedCardToCombat(trickShot, PileType.Hand, null);
             await CardCmd.AutoPlay(Choice, trickShot, wrath.Creature, skipCardPileVisuals: true);
 
             Assert(wrath.Creature.IsDead && ctrl.ActiveFace == lament, "TrickShot shattered Wrath and rotated to Lament.");
             Assert(ArrowCmd.PlayerHasAnyArrows(fool), "Arrow dislodged when shattering Wrath with TrickShot.");
-            Assert(PileType.Hand.GetPile(fool).Cards.Contains(trickShot), "TrickShot returned to Hand after shattering Wrath.");
+            Assert(PileType.Hand.GetPile(fool).Cards.Count >= handBefore + 1, "v0.114.0 TrickShot drew cards after shattering Wrath.");
 
             // Impale Lament, then shatter Lament with EpicRetrieval -> must grant +3 energy!
             var shot = b.State.CreateCard<FoolishShot>(fool);
@@ -364,15 +366,15 @@ public partial class DepthsProbeNode
             Assert(left.IsDown && ArrowCmd.GetAvailableArrowCount(fool2) == 2 && !ArrowCmd.CreatureIsImpaledByArrow(left.Creature),
                 $"Breaking an already-impaled CaveGodHand with a 2nd arrow must return both arrows (available={ArrowCmd.GetAvailableArrowCount(fool2)}).");
 
-            // QuietusPower (DestroyAfterImpaled): breaking CaveGodRightHand while QuietusPower is active must still destroy the shot arrow, never revive it!
-            await PowerCmd.Apply<QuietusPower>(Choice, fool2.Creature, 1m, fool2.Creature, null);
+            // v0.114.0 reworked QuietusPower into a multiplicative arrow-damage buff and removed ArrowStatus.Destroyed.
+            // Verify breaking CaveGodRightHand with QuietusPower active retrieves the arrow cleanly without MissingMethodException.
+            await PowerCmd.Apply<QuietusPower>(Choice, fool2.Creature, 2m, fool2.Creature, null);
             await CreatureCmd.Damage(Choice, right.Creature, right.Creature.CurrentHp - 8, ValueProp.Unpowered, fool2.Creature);
             var s3 = cg.State.CreateCard<FoolishShot>(fool2);
             await CardPileCmd.AddGeneratedCardToCombat(s3, PileType.Hand, null);
             await CardCmd.AutoPlay(Choice, s3, right.Creature, skipCardPileVisuals: true);
-            Assert(right.IsDown && ArrowCmd.GetAvailableArrowCount(fool2) == 1 &&
-                   fool2.PlayerCombatState!.Arrows.Count(a => a.Status == ArrowStatus.Destroyed) == 1,
-                "QuietusPower DestroyAfterImpaled must remain Destroyed even when breaking CaveGodHand.");
+            Assert(right.IsDown && ArrowCmd.GetAvailableArrowCount(fool2) == 2 && !ArrowCmd.CreatureIsImpaledByArrow(right.Creature),
+                $"v0.114.0 breaking CaveGodRightHand with QuietusPower must return the arrow cleanly (available={ArrowCmd.GetAvailableArrowCount(fool2)}).");
         });
 
         // 9) v0.113.1 parity: NImpaledArrowVfx Spine bone anchor + BeforeAnimPlayedInCompendium on HumanFaceColumn.

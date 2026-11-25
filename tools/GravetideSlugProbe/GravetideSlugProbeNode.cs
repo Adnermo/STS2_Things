@@ -60,6 +60,7 @@ public partial class GravetideSlugProbeNode : Node
             await VerifyDeathReplacement();
             await VerifyPreventedDeathDoesNotCreateCorpse();
             await VerifyDigestionContract();
+            await VerifyFestivePopperOpeningKillDigestion();
             await VerifyBossDeathDoesNotLeaveCorpseCombat();
             GD.Print("Gravetide Slug behavior probe: PASS");
             GetTree().Quit(0);
@@ -837,6 +838,77 @@ public partial class GravetideSlugProbeNode : Node
             {
                 DeactivateSyntheticCombat();
             }
+        }
+    }
+
+    private static async Task VerifyFestivePopperOpeningKillDigestion()
+    {
+        Scenario scenario = CreateScenario(1, "GRAVETIDE_FESTIVE_POPPER_T1");
+        Player player = scenario.RunState.Players[0];
+        player.AddRelicInternal(
+            ModelDb.Relic<MegaCrit.Sts2.Core.Models.Relics.FestivePopper>().ToMutable());
+
+        Creature boss = AddMonster(scenario, BossTypeName, "gravetide_boss");
+        Creature slugLeft = AddMonster(scenario, SlugTypeName, "corpse_slug_slot_1");
+        Creature slugRight = AddMonster(scenario, SlugTypeName, "corpse_slug_slot_6");
+
+        ActivateSyntheticCombat(scenario.Room.CombatState);
+        try
+        {
+            await boss.AfterAddedToRoom();
+            await slugLeft.AfterAddedToRoom();
+            await slugRight.AfterAddedToRoom();
+
+            // Simulate the player-reported opening: Festive Popper (9 unpowered AoE damage on Turn 1)
+            // kills a low-HP opening attendant (8 HP) while the other attendant (12 HP) survives.
+            slugLeft.SetMaxHpInternal(8);
+            slugLeft.SetCurrentHpInternal(8);
+            slugRight.SetMaxHpInternal(12);
+            slugRight.SetCurrentHpInternal(12);
+            int bossHpBefore = Math.Max(1, boss.MaxHp - 25);
+            boss.SetCurrentHpInternal(bossHpBefore);
+
+            await Hook.AfterPlayerTurnStart(
+                scenario.Room.CombatState,
+                new BlockingPlayerChoiceContext(),
+                player);
+
+            Assert(slugLeft.IsDead && !scenario.Room.CombatState.ContainsCreature(slugLeft),
+                "Festive Popper Turn 1 damage did not kill the 8 HP Gravetide attendant.");
+            Assert(slugRight.IsAlive && slugRight.CurrentHp == 3,
+                $"Surviving attendant ended at {slugRight.CurrentHp} HP after Festive Popper; expected 3.");
+
+            Creature[] spawnedCorpses = scenario.Room.CombatState.Enemies
+                .Where(creature => creature.Monster?.GetType() == RequireType(CorpseTypeName))
+                .ToArray();
+            Assert(spawnedCorpses.Length == 1 && spawnedCorpses[0].SlotName == "corpse_slug_slot_1",
+                $"Festive Popper opening kill spawned {spawnedCorpses.Length} corpses instead of 1 in corpse_slug_slot_1.");
+            Creature corpse = spawnedCorpses[0];
+
+            int expectedHeal = (int)Math.Ceiling(boss.MaxHp * 0.05m);
+            int bossHpAfterPopper = boss.CurrentHp;
+
+            // Enemy Turn 1 end: Gravetide Digestion must consume the corpse cleanly and exit devour_loop
+            // without throwing (regression guard for v0.114.0 RemoveCreatureWithoutDeathOrEscape).
+            await DispatchAfterSideTurnEndHook(
+                scenario.Room.CombatState,
+                CombatSide.Enemy,
+                scenario.Room.CombatState.Enemies.ToArray());
+
+            Assert(!scenario.Room.CombatState.ContainsCreature(corpse),
+                "Gravetide Digestion did not remove the Festive Popper corpse at enemy turn end.");
+            Assert(!GetIsDevouring(boss),
+                "Gravetide boss remained stuck in devour_loop after consuming the Festive Popper corpse.");
+            Assert(GetStrength(boss) == 1,
+                $"Gravetide boss has {GetStrength(boss)} Strength after consuming the Festive Popper corpse; expected 1.");
+            Assert(boss.CurrentHp == Math.Min(boss.MaxHp, bossHpAfterPopper + expectedHeal),
+                $"Gravetide boss HP is {boss.CurrentHp} after Festive Popper corpse digestion; expected {Math.Min(boss.MaxHp, bossHpAfterPopper + expectedHeal)}.");
+            Assert(scenario.Room.CombatState.EscapedCreatures.Count == 0,
+                "Festive Popper corpse consumption recorded an escaped enemy.");
+        }
+        finally
+        {
+            DeactivateSyntheticCombat();
         }
     }
 

@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('v111.0', 'v111.1', 'v113.1')][string]$TargetVersion = 'v113.1',
+    [ValidateSet('v111.0', 'v111.1', 'v114.0')][string]$TargetVersion = 'v114.0',
     [string]$DataDir = '',
     [string]$RuntimeDependencyDir = '',
     [string]$Package = '',
@@ -21,9 +21,9 @@ if ([string]::IsNullOrWhiteSpace($DataDir)) {
         $DataDir = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v111.1\b0460083b012\game\data_sts2_windows_x86_64'
     }
     else {
-        $v1131Data = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v113.1\76cc75b6f097\game\data_sts2_windows_x86_64'
-        if (Test-Path -LiteralPath $v1131Data -PathType Container) {
-            $DataDir = $v1131Data
+        $v1140Data = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v114\0e151996c7aa\game\data_sts2_windows_x86_64'
+        if (Test-Path -LiteralPath $v1140Data -PathType Container) {
+            $DataDir = $v1140Data
         }
         else {
             $DataDir = 'D:\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64'

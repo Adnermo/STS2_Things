@@ -160,8 +160,15 @@ public partial class DepthsProbeNode
         await CreatureCmd.Damage(Choice, echo, 4, ValueProp.Unpowered, lightningOwner);
         hp = bystander.CurrentHp;
         await CreatureCmd.Damage(Choice, bystander, 6, ValueProp.Move, echo);
+#if STS2_V114_0
+        // v0.114.0 precomputes GetDamageResults before BeforeDamageReceived, so Thorns' Borrowed Shadow
+        // Block (+4) is still granted natively and persists after the triggering 6-damage hit.
+        Assert(bystander.CurrentHp == hp - 6 && bystander.Block == 4 && lightningOwner.Block == 11,
+            "Player Thorns gain Block via Borrowed Shadow under v0.114.0 GetDamageResults ordering.");
+#else
         Assert(bystander.CurrentHp == hp - 2 && bystander.Block == 0 && lightningOwner.Block == 11,
             "Player Thorns gain Block before the triggering hit; blocked damage gives no Block.");
+#endif
 
         await PowerCmd.Remove<PoisonPower>(echo);
         await PowerCmd.Apply<PoisonPower>(Choice, echo, 100, secondPoisonOwner, null);

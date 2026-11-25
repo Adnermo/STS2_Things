@@ -11,9 +11,9 @@ public static class UnifiedBootstrap
 {
     private const string ModId = "STS2_Things";
     private const string V1111Target = "v111.1";
-    private const string V1131Target = "v113.1";
+    private const string V1140Target = "v114.0";
     private const string V1111Resource = "STS2_Things.Implementations.v111.1.dll";
-    private const string V1131Resource = "STS2_Things.Implementations.v113.1.dll";
+    private const string V1140Resource = "STS2_Things.Implementations.v114.0.dll";
     private const string ImplementationAssemblyName = "STS2_Things";
 
     private static readonly object InitLock = new();
@@ -51,7 +51,7 @@ public static class UnifiedBootstrap
         return DetectTarget(gameAssembly) switch
         {
             V1111Target => V1111Resource,
-            V1131Target => V1131Resource,
+            V1140Target => V1140Resource,
             _ => throw new InvalidOperationException("Unsupported STS2 target.")
         };
     }
@@ -84,6 +84,23 @@ public static class UnifiedBootstrap
             binder: null,
             types: [typeof(string)],
             modifiers: null) is not null;
+        bool hasBeforeActEntered = abstractModel.GetMethod(
+            "BeforeActEntered",
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null) is not null;
+        var cardModel = gameAssembly.GetType("MegaCrit.Sts2.Core.Models.CardModel");
+        bool hasV114UpgradeSig = cardModel?.GetMethod(
+            "UpgradeInternal",
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: [typeof(bool)],
+            modifiers: null) is not null;
+        var arrowSlot = gameAssembly.GetType("MegaCrit.Sts2.Core.Entities.FoolArrows.ArrowSlot");
+        bool hasDestroyAfterImpaled = arrowSlot?.GetProperty(
+            "DestroyAfterImpaled",
+            BindingFlags.Instance | BindingFlags.Public) is not null;
 
         if (parameterCounts.SequenceEqual([6]) &&
             hasCombatId &&
@@ -94,9 +111,12 @@ public static class UnifiedBootstrap
             if (deathParameters.Length == 5 &&
                 deathParameters[2].ParameterType.FullName == "MegaCrit.Sts2.Core.Models.CardModel" &&
                 standardMerchantRoom is not null &&
-                hasCompendiumAnimHook)
+                hasCompendiumAnimHook &&
+                hasBeforeActEntered &&
+                hasV114UpgradeSig &&
+                !hasDestroyAfterImpaled)
             {
-                return V1131Target;
+                return V1140Target;
             }
 
             if (deathParameters.Length == 4 &&
@@ -113,13 +133,21 @@ public static class UnifiedBootstrap
             $"CombatId={hasCombatId}, HandshakeManager={hasHandshakeManager}, " +
             $"AfterDeathOverloads={deathHooks.Length}, " +
             $"NStandardMerchantRoom={standardMerchantRoom is not null}, " +
-            $"BeforeAnimPlayedInCompendium={hasCompendiumAnimHook}). " +
-            "Supported targets: v0.111.0, v0.111.1, and v0.113.1.");
+            $"BeforeAnimPlayedInCompendium={hasCompendiumAnimHook}, " +
+            $"BeforeActEntered={hasBeforeActEntered}, " +
+            $"UpgradeInternalBool={hasV114UpgradeSig}, " +
+            $"ArrowDestroyAfterImpaled={hasDestroyAfterImpaled}). " +
+            "Supported targets: v0.111.0, v0.111.1, and v0.114.0.");
     }
 
     private static Assembly LoadImplementation(string target)
     {
-        var resourceName = target == V1111Target ? V1111Resource : V1131Resource;
+        var resourceName = target switch
+        {
+            V1111Target => V1111Resource,
+            V1140Target => V1140Resource,
+            _ => throw new InvalidOperationException($"Unsupported STS2 target '{target}'.")
+        };
         var bootstrapAssembly = typeof(UnifiedBootstrap).Assembly;
         using var stream = bootstrapAssembly.GetManifestResourceStream(resourceName)
             ?? throw new MissingManifestResourceException(

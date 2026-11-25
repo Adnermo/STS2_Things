@@ -9,11 +9,11 @@ param(
 
     [string]$DataDirV1111 = $env:STS2_DATA_DIR_V111_1,
 
-    [string]$DataDirV1131 = $env:STS2_DATA_DIR_V113_1,
+    [string]$DataDirV1140 = $env:STS2_DATA_DIR_V114_0,
 
     [string]$SourceRootV1111 = $env:STS2_SOURCE_ROOT_V111_1,
 
-    [string]$SourceRootV1131 = $env:STS2_SOURCE_ROOT_V113_1,
+    [string]$SourceRootV1140 = $env:STS2_SOURCE_ROOT_V114_0,
 
     [string]$BaseLibRef = $env:STS2_BASELIB_REF,
 
@@ -80,7 +80,7 @@ function Invoke-VersionBuild(
             $DataDir
         }
         else {
-            $DataDirV1131
+            $DataDirV1140
         }
 
         $probeScript = Join-Path $PSScriptRoot 'test-quirky-hopper.ps1'
@@ -175,7 +175,7 @@ function Invoke-VersionBuild(
             throw "$TargetVersion Gravetide Slug probe failed with exit code $LASTEXITCODE"
         }
 
-        if ($TargetVersion -in @('v111.1', 'v113.1')) {
+        if ($TargetVersion -in @('v111.1', 'v114.0')) {
             $merchantProbeScript = Join-Path $PSScriptRoot 'test-merchant-bargain.ps1'
             $merchantProbeArguments = @{
                 TargetVersion = $TargetVersion
@@ -193,7 +193,7 @@ function Invoke-VersionBuild(
         }
     }
 
-    if ($TargetVersion -eq 'v113.1' -and -not $SkipVisualProbe) {
+    if ($TargetVersion -eq 'v114.0' -and -not $SkipVisualProbe) {
         $visualProbeScript = Join-Path $PSScriptRoot 'test-quirky-hopper-visual.ps1'
         $visualProbeArguments = @{}
         if (-not [string]::IsNullOrWhiteSpace($PythonExe)) {
@@ -223,13 +223,13 @@ if ([string]::IsNullOrWhiteSpace($DataDirV1111)) {
     throw 'V111.1 reference directory is required. Pass -DataDirV1111 or set STS2_DATA_DIR_V111_1.'
 }
 
-if ([string]::IsNullOrWhiteSpace($DataDirV1131)) {
-    $candidateDataV1131 = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v113.1\76cc75b6f097\game\data_sts2_windows_x86_64'
-    if (Test-Path -LiteralPath $candidateDataV1131 -PathType Container) {
-        $DataDirV1131 = $candidateDataV1131
+if ([string]::IsNullOrWhiteSpace($DataDirV1140)) {
+    $candidateDataV1140 = 'D:\Things\Things-Workspace\STS2-MCP\.state\runtimes\v114\0e151996c7aa\game\data_sts2_windows_x86_64'
+    if (Test-Path -LiteralPath $candidateDataV1140 -PathType Container) {
+        $DataDirV1140 = $candidateDataV1140
     }
     else {
-        $DataDirV1131 = Join-Path $GameDir 'data_sts2_windows_x86_64'
+        $DataDirV1140 = Join-Path $GameDir 'data_sts2_windows_x86_64'
     }
 }
 
@@ -240,20 +240,20 @@ if ([string]::IsNullOrWhiteSpace($SourceRootV1111)) {
     }
 }
 
-if ([string]::IsNullOrWhiteSpace($SourceRootV1131)) {
-    $candidateSrcV1131 = Join-Path $WorkspaceParent 'STS2-V113.1'
-    if (Test-Path -LiteralPath $candidateSrcV1131 -PathType Container) {
-        $SourceRootV1131 = $candidateSrcV1131
+if ([string]::IsNullOrWhiteSpace($SourceRootV1140)) {
+    $candidateSrcV1140 = Join-Path $WorkspaceParent 'STS2-V114.0'
+    if (Test-Path -LiteralPath $candidateSrcV1140 -PathType Container) {
+        $SourceRootV1140 = $candidateSrcV1140
     }
 }
 
 if ($SkipPck) {
     Invoke-VersionBuild 'v111.1' $DataDirV1111 $SourceRootV1111 $true ''
-    Invoke-VersionBuild 'v113.1' $DataDirV1131 $SourceRootV1131 $true ''
+    Invoke-VersionBuild 'v114.0' $DataDirV1140 $SourceRootV1140 $true ''
 }
 else {
-    Invoke-VersionBuild 'v113.1' $DataDirV1131 $SourceRootV1131 $false ''
-    $sharedPck = Join-Path $Root 'build\v113.1\STS2_Things.pck'
+    Invoke-VersionBuild 'v114.0' $DataDirV1140 $SourceRootV1140 $false ''
+    $sharedPck = Join-Path $Root 'build\v114.0\STS2_Things.pck'
     Invoke-VersionBuild 'v111.1' $DataDirV1111 $SourceRootV1111 $false $sharedPck
 
     $unifiedBuild = Join-Path $PSScriptRoot 'build-unified.ps1'
@@ -261,7 +261,7 @@ else {
         Configuration = $Configuration
         GameDir = $GameDir
         DataDirV1111 = $DataDirV1111
-        DataDirV1131 = $DataDirV1131
+        DataDirV1140 = $DataDirV1140
         Install = $Install
     }
     if (-not [string]::IsNullOrWhiteSpace($PythonExe)) {
@@ -278,14 +278,14 @@ else {
         if ([string]::IsNullOrWhiteSpace($baseLibDll)) {
             $baseLibDll = 'D:\Steam\steamapps\workshop\content\2868840\3737335127\BaseLib\BaseLib.dll'
         }
-        $bridgeDll = Join-Path $Root 'build\v113.1\STS2_Things.BaseLibBridge.dll'
+        $bridgeDll = Join-Path $Root 'build\v114.0\STS2_Things.BaseLibBridge.dll'
         if ((Test-Path -LiteralPath $baseLibDll -PathType Leaf) -and
             (Test-Path -LiteralPath $bridgeDll -PathType Leaf)) {
             Write-Host 'Running the BaseLib config bridge probe...'
             & (Join-Path $PSScriptRoot 'test-baselib-bridge.ps1') `
-                -DataDir $DataDirV1131 `
-                -ImplementationDll (Join-Path $Root 'build\v113.1\STS2_Things.dll') `
-                -RuntimeDependencyDir $DataDirV1131 `
+                -DataDir $DataDirV1140 `
+                -ImplementationDll (Join-Path $Root 'build\v114.0\STS2_Things.dll') `
+                -RuntimeDependencyDir $DataDirV1140 `
                 -BaseLibDll $baseLibDll `
                 -BridgeDll $bridgeDll
             if ($LASTEXITCODE -ne 0) {
@@ -306,9 +306,9 @@ else {
         if (Test-Path -LiteralPath $ritsuLibDll -PathType Leaf) {
             Write-Host 'Running the RitsuLib interop probe...'
             & (Join-Path $PSScriptRoot 'test-ritsulib-interop.ps1') `
-                -DataDir $DataDirV1131 `
-                -ImplementationDll (Join-Path $Root 'build\v113.1\STS2_Things.dll') `
-                -RuntimeDependencyDir $DataDirV1131 `
+                -DataDir $DataDirV1140 `
+                -ImplementationDll (Join-Path $Root 'build\v114.0\STS2_Things.dll') `
+                -RuntimeDependencyDir $DataDirV1140 `
                 -RitsuLibDll $ritsuLibDll
             if ($LASTEXITCODE -ne 0) {
                 throw "RitsuLib interop probe failed with exit code $LASTEXITCODE"
@@ -321,7 +321,7 @@ else {
 }
 
 if ($SkipPck) {
-    Write-Host 'Version-specific implementation artifacts are under build\v111.1 and build\v113.1.'
+    Write-Host 'Version-specific implementation artifacts are under build\v111.1 and build\v114.0.'
 }
 else {
     Write-Host 'Unified subscription artifacts are under build\unified.'

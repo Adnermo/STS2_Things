@@ -6,9 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Sts2TargetVersion Condition="'$(Sts2TargetVersion)' == ''">v113.1</Sts2TargetVersion>
+    <Sts2TargetVersion Condition="'$(Sts2TargetVersion)' == ''">v114.0</Sts2TargetVersion>
     <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v111.1'">$(DefineConstants);STS2_V111_1</DefineConstants>
-    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v113.1'">$(DefineConstants);STS2_V113_1</DefineConstants>
+    <DefineConstants Condition="'$(Sts2TargetVersion)' == 'v114.0'">$(DefineConstants);STS2_V113_1;STS2_V114_0</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="sts2" HintPath="$(Sts2DataDir)/sts2.dll" Private="true" />

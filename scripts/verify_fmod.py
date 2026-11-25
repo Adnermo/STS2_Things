@@ -137,7 +137,11 @@ def quoted_values(text: str, prefix: str) -> list[str]:
 
 
 def act_bank_paths(source_root: Path, act_name: str) -> list[str]:
-    path = source_root / "src" / "Core" / "Models" / "Acts" / f"{act_name}.cs"
+    candidates = [
+        source_root / "src" / "Core" / "Models" / "Acts" / f"{act_name}.cs",
+        source_root / "src" / "MegaCrit.Sts2.Core.Models.Acts" / f"{act_name}.cs",
+    ]
+    path = next((p for p in candidates if p.is_file()), candidates[0])
     text = path.read_text(encoding="utf-8")
     match = re.search(
         r"MusicBankPaths\s*=>\s*new\s+string\[[^\]]*\]\s*\{(?P<body>[^}]*)\}",

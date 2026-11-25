@@ -7,7 +7,7 @@ else {
     'D:\Download\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64_console.exe'
 }
 $Root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$PckBuild = Join-Path $Root 'build\v113.1\STS2_Things.pck'
+$PckBuild = Join-Path $Root 'build\v114.0\STS2_Things.pck'
 $ModDir = 'D:\Steam\steamapps\common\Slay the Spire 2\mods\STS2_Things'
 
 Write-Host "1. Re-importing Godot assets in $Root..."

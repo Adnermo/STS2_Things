@@ -72,7 +72,7 @@ public class ThingsGravetideCorpseSlug : GravetideSlugBase
         float deathAnimLength)
     {
         await Cmd.CustomScaledWait(deathAnimLength, deathAnimLength);
-        if (!corpse.IsAlive)
+        if (!corpse.IsAlive || corpse.CombatState == null || !corpse.CombatState.ContainsCreature(corpse))
             return;
         Sts2VersionSeam.SetCreatureNodeVisible(corpse, visible: true);
     }

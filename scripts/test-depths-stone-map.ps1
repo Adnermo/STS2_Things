@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('v111.1', 'v113.1')][string]$TargetVersion = 'v113.1',
+    [ValidateSet('v111.1', 'v114.0')][string]$TargetVersion = 'v114.0',
     [string]$PackagePck = '',
     [string]$OutputDir = '',
     [string]$GodotExe = ''

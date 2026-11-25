@@ -4,7 +4,12 @@
 
 ---
 
-## 2.x 系列（`v0.111.0 / v0.111.1` + `v0.113.1` 统一包时代）
+## 2.x 系列（`v0.111.0 / v0.111.1` + `v0.114.0` 统一包时代）
+
+### [2.0.11](docs/releases/release-2.0.11.md)
+- **双版本基线升级至 `v0.114.0`（最新 public-beta）+ `v0.111.0 / v0.111.1`（正式版）**：统一四文件包由 `v111.1 + v113.1` 迁至 `v111.1 + v114.0`（退役旧 `v113.1` 测试目标），同步适配 `CardModel.UpgradeInternal(bool)` 等 `v0.114.0` API 变更，单包自动识别加载。
+- **紧急修复 `v0.114.0` 墓潮蛞蝓吞噬尸体永久卡死（含「节日拉炮」开局击杀小蛞蝓 & 玩家 F2 上报）**：修复 `v0.114.0` 移除 `ArrowSlot.DestroyAfterImpaled` / `ArrowStatus.Destroyed` 后 `RemoveCreatureWithoutDeathOrEscape` 与 `FoolArrowTargetabilityPatch` 抛出 `MissingMethodException` 导致的墓潮蛞蝓吞噬软锁、异彩史莱姆分裂异常与愚者箭矢异常；加固尸体显形协程防空引用保护，并补齐「节日拉炮」首回合击杀吞噬回归探针。
+- **第三方战斗求解模组兼容加固**：收紧 `ThingsQuirkyHopperRewardPolicy` 仅在怪癖草蜢房间内生效，避免影响普通战斗中的外部求解/模拟类模组。
 
 ### [2.0.10](docs/releases/release-2.0.10.md)
 - **收音水母（Radio Jellyfish）重放文案重写与数值回调**：基础回音伤害由 `8/9` 回调至 **`5/6`**（开局 1 层每段 `7/8`，打 2 张攻击总计 `21/24` 而非 `30/33`；调频后 `9/10`）；中英文「收音」主框直接明示前 2 张牌重放段数、实时伤害/格挡与每层 `+2`，消除文案歧义。
