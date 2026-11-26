@@ -23,11 +23,11 @@ public sealed class ThingsMycelialBank : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && player.GetRelic<ThingsMycelialDeposit>() == null
-            && player.Creature.CurrentHp > ThingsMycelialDeposit.ShortPrincipal);
+            && (player.Creature.CurrentHp > ThingsMycelialDeposit.ShortPrincipal
+                || player.Creature.MaxHp > ThingsMycelialDeposit.LongPrincipal));
     private bool HasAccount => EventOwner.GetRelic<ThingsMycelialDeposit>() != null;
     private bool CanShort => !HasAccount && !EventOwner.Creature.IsDead && EventOwner.Creature.CurrentHp > ThingsMycelialDeposit.ShortPrincipal;
     private bool CanLong => !HasAccount && !EventOwner.Creature.IsDead && EventOwner.Creature.MaxHp > ThingsMycelialDeposit.LongPrincipal;

@@ -59,7 +59,7 @@ public sealed class ThingsSpikedDoor : ThingsEventModel
 
     public override bool IsAllowed(IRunState runState) =>
         runState.Players.Count > 1
-        && runState.Players.All(player =>
+        && runState.Players.Any(player =>
             !player.Creature.IsDead
             && player.Creature.CurrentHp > PushAllDamage);
 
@@ -79,7 +79,12 @@ public sealed class ThingsSpikedDoor : ThingsEventModel
 
     internal static ulong PickDeterministicScapegoatNetId(IRunState runState)
     {
-        List<Player> ordered = runState.Players.OrderBy(p => p.NetId).ToList();
+        List<Player> ordered = runState.Players
+            .Where(p => !p.Creature.IsDead)
+            .OrderBy(p => p.NetId)
+            .ToList();
+        if (ordered.Count == 0)
+            ordered = runState.Players.OrderBy(p => p.NetId).ToList();
         if (ordered.Count == 0)
             return 0UL;
 

@@ -230,7 +230,7 @@ func _verify_event_localization(language: String) -> void:
 	var table := parsed as Dictionary
 	var expected_prefix_counts := {
 		"THINGS_ROBBERY_FAKE_MERCHANT.": 18,
-		"THINGS_BACKROOMS.": 28,
+		"THINGS_BACKROOMS.": 30,
 		"THINGS_MEDUSA.": 18,
 		"THINGS_CUTTING_IT_CLOSE.": 18,
 	}

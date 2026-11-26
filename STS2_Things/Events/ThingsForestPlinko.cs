@@ -74,10 +74,9 @@ public sealed class ThingsForestPlinko : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
-            && player.Creature.CurrentHp > Tier3HpCost);
+            && player.Creature.CurrentHp > Tier1HpCost);
 
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "DROP_1", "DROP_2", "DROP_3", "LEAVE");
@@ -108,9 +107,12 @@ public sealed class ThingsForestPlinko : ThingsEventModel
     {
         return
         [
-            new EventOption(this, Drop1Async, InitialOptionKey("DROP_1")),
-            new EventOption(this, Drop2Async, InitialOptionKey("DROP_2")),
-            new EventOption(this, Drop3Async, InitialOptionKey("DROP_3")),
+            new EventOption(this, Drop1Async, InitialOptionKey("DROP_1"))
+                .ThatDoesDamage(Tier1HpCost),
+            new EventOption(this, Drop2Async, InitialOptionKey("DROP_2"))
+                .ThatDoesDamage(Tier2HpCost),
+            new EventOption(this, Drop3Async, InitialOptionKey("DROP_3"))
+                .ThatDoesDamage(Tier3HpCost),
             new EventOption(this, LeaveAsync, InitialOptionKey("LEAVE")),
         ];
     }

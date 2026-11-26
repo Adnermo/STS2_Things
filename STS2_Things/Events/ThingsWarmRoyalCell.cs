@@ -49,8 +49,7 @@ public sealed class ThingsWarmRoyalCell : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && player.GetRelic<ThingsAmberCombCore>() == null);
 

@@ -51,8 +51,7 @@ public sealed class ThingsEchoingWell : ThingsEventModel
         !player.Creature.IsDead && player.Deck.Cards.Any(CanSpiral);
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && (CanUse(player) || (player.Gold >= SpiralCost && HasSpiralTarget(player))));
 

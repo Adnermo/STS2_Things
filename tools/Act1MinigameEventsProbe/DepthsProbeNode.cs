@@ -1709,31 +1709,39 @@ public partial class DepthsProbeNode : Node
 
     private void VerifyEncounterGates()
     {
-        // 1. ThingsScalesOfVanity: Gold >= 250 across ALL players + >= 2 removable cards
+        // 1. ThingsScalesOfVanity: any living player with HP > 1 OR (Gold >= 250 && >= 2 removable cards)
         RunState runScales = SetupTestRun("gate-scales", playerCount: 2);
-        runScales.Players[0].Gold = 250;
-        runScales.Players[1].Gold = 249;
+        runScales.Players[0].Gold = 0;
+        runScales.Players[1].Gold = 0;
+        runScales.Players[0].Creature.SetCurrentHpInternal(1);
+        runScales.Players[1].Creature.SetCurrentHpInternal(1);
         Assert(!ModelDb.Event<ThingsScalesOfVanity>().IsAllowed(runScales),
-            "ThingsScalesOfVanity requires Gold >= 250 for ALL players");
-        runScales.Players[1].Gold = 250;
+            "ThingsScalesOfVanity blocks when all players have 1 HP and Gold < 250");
+        runScales.Players[0].Creature.SetCurrentHpInternal(2);
         Assert(ModelDb.Event<ThingsScalesOfVanity>().IsAllowed(runScales),
-            "ThingsScalesOfVanity allows when all players have Gold >= 250 and >= 2 removable cards");
+            "ThingsScalesOfVanity allows when any living player has HP > 1 (BLOOD_WEIGHT/CRAWL_UNDER usable)");
+        runScales.Players[0].Creature.SetCurrentHpInternal(1);
+        runScales.Players[0].Gold = 250;
+        Assert(ModelDb.Event<ThingsScalesOfVanity>().IsAllowed(runScales),
+            "ThingsScalesOfVanity allows when any living player has Gold >= 250 and >= 2 removable cards");
 
-        // 2. ThingsClamClaw: Gold >= 45
-        RunState runClam = SetupTestRun("gate-clam");
-        runClam.Players[0].Gold = 44;
-        Assert(!ModelDb.Event<ThingsClamClaw>().IsAllowed(runClam), "ThingsClamClaw blocks Gold < 45");
-        runClam.Players[0].Gold = 45;
-        Assert(ModelDb.Event<ThingsClamClaw>().IsAllowed(runClam), "ThingsClamClaw allows Gold >= 45");
+        // 2. ThingsClamClaw: any living player with Gold >= Tier1GoldCost (25)
+        RunState runClam = SetupTestRun("gate-clam", playerCount: 2);
+        runClam.Players[0].Gold = ThingsClamClaw.Tier1GoldCost - 1;
+        runClam.Players[1].Gold = 0;
+        Assert(!ModelDb.Event<ThingsClamClaw>().IsAllowed(runClam), "ThingsClamClaw blocks when all players have Gold < 25");
+        runClam.Players[0].Gold = ThingsClamClaw.Tier1GoldCost;
+        Assert(ModelDb.Event<ThingsClamClaw>().IsAllowed(runClam), "ThingsClamClaw allows when any living player has Gold >= 25");
 
-        // 3. ThingsForestPlinko: CurrentHp > 16
-        RunState runPlinko = SetupTestRun("gate-plinko");
-        runPlinko.Players[0].Creature.SetCurrentHpInternal(16);
-        Assert(!ModelDb.Event<ThingsForestPlinko>().IsAllowed(runPlinko), "ThingsForestPlinko blocks HP <= 16");
-        runPlinko.Players[0].Creature.SetCurrentHpInternal(17);
-        Assert(ModelDb.Event<ThingsForestPlinko>().IsAllowed(runPlinko), "ThingsForestPlinko allows HP > 16");
+        // 3. ThingsForestPlinko: any living player with CurrentHp > Tier1HpCost (6)
+        RunState runPlinko = SetupTestRun("gate-plinko", playerCount: 2);
+        runPlinko.Players[0].Creature.SetCurrentHpInternal(ThingsForestPlinko.Tier1HpCost);
+        runPlinko.Players[1].Creature.SetCurrentHpInternal(1);
+        Assert(!ModelDb.Event<ThingsForestPlinko>().IsAllowed(runPlinko), "ThingsForestPlinko blocks when all players have HP <= 6");
+        runPlinko.Players[0].Creature.SetCurrentHpInternal(ThingsForestPlinko.Tier1HpCost + 1);
+        Assert(ModelDb.Event<ThingsForestPlinko>().IsAllowed(runPlinko), "ThingsForestPlinko allows when any living player has HP > 6");
 
-        // 4. ThingsWallCrackLedger: CurrentHp > 8 || owns tradable Rare/Uncommon relic
+        // 4. ThingsWallCrackLedger: any living player with CurrentHp > 8 || owns tradable Rare/Uncommon relic
         RunState runLedger = SetupTestRun("gate-ledger");
         runLedger.Players[0].Creature.SetCurrentHpInternal(8);
         Assert(!ModelDb.Event<ThingsWallCrackLedger>().IsAllowed(runLedger),
@@ -1747,44 +1755,51 @@ public partial class DepthsProbeNode : Node
         Assert(ModelDb.Event<ThingsWallCrackLedger>().IsAllowed(runLedger),
             "ThingsWallCrackLedger allows tradable Rare/Uncommon relic even when HP <= 8 (Pawn Relic usable)");
 
-        // 5. ThingsSpikedDoor: co-op AND every player CurrentHp > 12
+        RunState runLedgerCoop = SetupTestRun("gate-ledger-coop", playerCount: 2);
+        runLedgerCoop.Players[1].Creature.SetCurrentHpInternal(1);
+        Assert(ModelDb.Event<ThingsWallCrackLedger>().IsAllowed(runLedgerCoop),
+            "ThingsWallCrackLedger allows co-op when any living teammate qualifies (1-HP partner gets safe LEAVE fallback)");
+
+        // 5. ThingsSpikedDoor: co-op AND any living player CurrentHp > 12
         RunState runDoor = SetupTestRun("gate-door", playerCount: 2);
         runDoor.Players[1].Creature.SetCurrentHpInternal(12);
-        Assert(!ModelDb.Event<ThingsSpikedDoor>().IsAllowed(runDoor),
-            "ThingsSpikedDoor blocks co-op when any teammate has HP <= 12");
-        runDoor.Players[1].Creature.SetCurrentHpInternal(13);
         Assert(ModelDb.Event<ThingsSpikedDoor>().IsAllowed(runDoor),
-            "ThingsSpikedDoor allows co-op when all players have HP > 12");
+            "ThingsSpikedDoor allows co-op when at least one living teammate has HP > 12");
+        runDoor.Players[0].Creature.SetCurrentHpInternal(12);
+        Assert(!ModelDb.Event<ThingsSpikedDoor>().IsAllowed(runDoor),
+            "ThingsSpikedDoor blocks co-op when NO living player has HP > 12");
 
-        // 6. ThingsCrowdedWard: healing-only event blocks full HP, allows <= 75% MaxHP
-        RunState runWard = SetupTestRun("gate-ward");
+        // 6. ThingsCrowdedWard: healing-only event blocks when all full HP, allows when any <= 75% MaxHP
+        RunState runWard = SetupTestRun("gate-ward", playerCount: 2);
         Assert(!ModelDb.Event<ThingsCrowdedWard>().IsAllowed(runWard),
-            "ThingsCrowdedWard blocks full-HP players");
-        runWard.Players[0].Creature.SetCurrentHpInternal((int)(runWard.Players[0].Creature.MaxHp * 0.75m));
+            "ThingsCrowdedWard blocks when all players are full HP");
+        runWard.Players[1].Creature.SetCurrentHpInternal((int)(runWard.Players[1].Creature.MaxHp * 0.75m));
         Assert(ModelDb.Event<ThingsCrowdedWard>().IsAllowed(runWard),
-            "ThingsCrowdedWard allows injured players (<= 75% MaxHP)");
+            "ThingsCrowdedWard allows when any living teammate is injured (<= 75% MaxHP)");
 
-        // 7. ThingsLendingVine: TotalFloor >= 5 && CurrentHp > 5
-        RunState runVine = SetupTestRun("gate-vine");
+        // 7. ThingsLendingVine: TotalFloor >= 5 && any living player CurrentHp > 5 with removable card
+        RunState runVine = SetupTestRun("gate-vine", playerCount: 2);
         Assert(!ModelDb.Event<ThingsLendingVine>().IsAllowed(runVine),
             "ThingsLendingVine blocks early floors (< 5)");
         for (int f = 0; f < 5; f++)
             runVine.AppendToMapPointHistory(MapPointType.Monster, RoomType.Monster, null);
         runVine.Players[0].Creature.SetCurrentHpInternal(5);
+        runVine.Players[1].Creature.SetCurrentHpInternal(1);
         Assert(!ModelDb.Event<ThingsLendingVine>().IsAllowed(runVine),
-            "ThingsLendingVine blocks HP <= 5 even on floor >= 5");
+            "ThingsLendingVine blocks when all players have HP <= 5 even on floor >= 5");
         runVine.Players[0].Creature.SetCurrentHpInternal(6);
         Assert(ModelDb.Event<ThingsLendingVine>().IsAllowed(runVine),
-            "ThingsLendingVine allows floor >= 5 with HP > 5 and removable card");
+            "ThingsLendingVine allows floor >= 5 when any living teammate has HP > 5 and removable card");
 
-        // 8. ThingsOverstuffedBrood: CurrentHp > 9 && MaxHp > 10
+        // 8. ThingsOverstuffedBrood: any living player CurrentHp > 9 || MaxHp > 10
         RunState runBrood = SetupTestRun("gate-brood");
+        runBrood.Players[0].Creature.SetMaxHpInternal(10);
         runBrood.Players[0].Creature.SetCurrentHpInternal(9);
         Assert(!ModelDb.Event<ThingsOverstuffedBrood>().IsAllowed(runBrood),
-            "ThingsOverstuffedBrood blocks HP <= 9");
-        runBrood.Players[0].Creature.SetCurrentHpInternal(10);
+            "ThingsOverstuffedBrood blocks when HP <= 9 AND MaxHp <= 10");
+        runBrood.Players[0].Creature.SetMaxHpInternal(11);
         Assert(ModelDb.Event<ThingsOverstuffedBrood>().IsAllowed(runBrood),
-            "ThingsOverstuffedBrood allows HP > 9 && MaxHp > 10");
+            "ThingsOverstuffedBrood allows when MaxHp > 10 (CLONE_SAC / REACH_CORE usable)");
 
         // 9. ThingsRelicWorkshop, ThingsMedusa, ThingsSilveredGallery, ThingsShadowCloakroom, ThingsPotionTasting, ThingsGrudgeVendingMachine, ThingsGildedPress, ThingsReturnsCounter
         RunState runShop = SetupTestRun("gate-economy");
@@ -1792,7 +1807,7 @@ public partial class DepthsProbeNode : Node
         pe.Gold = 20;
         pe.Creature.SetMaxHpInternal(6);
         pe.Creature.SetCurrentHpInternal(6);
-        Assert(!ModelDb.Event<ThingsRelicWorkshop>().IsAllowed(runShop), $"ThingsRelicWorkshop blocks Gold < {ThingsRelicWorkshop.TradeCost} / no tradable relic");
+        Assert(!ModelDb.Event<ThingsRelicWorkshop>().IsAllowed(runShop), "ThingsRelicWorkshop blocks when no player owns a tradable relic");
         Assert(!ModelDb.Event<ThingsMedusa>().IsAllowed(runShop), $"ThingsMedusa blocks Gold < {ThingsMedusa.GoldCost} without PetrifiedToad");
         Assert(!ModelDb.Event<ThingsSilveredGallery>().IsAllowed(runShop), $"ThingsSilveredGallery blocks when both HP <= {ThingsSilveredGallery.DuplicateDamage} and Gold < {ThingsSilveredGallery.PawnGoldCost}");
         Assert(!ModelDb.Event<ThingsShadowCloakroom>().IsAllowed(runShop), $"ThingsShadowCloakroom blocks Gold < {ThingsShadowCloakroom.DepositCost}");
@@ -1806,7 +1821,7 @@ public partial class DepthsProbeNode : Node
         pe.Gold = 100;
         RelicModel tradable = ModelDb.AllRelics.First(r => r.IsTradable && r.Rarity == RelicRarity.Common && r.IsAllowed(runShop)).ToMutable();
         pe.AddRelicInternal(tradable);
-        Assert(ModelDb.Event<ThingsRelicWorkshop>().IsAllowed(runShop), $"ThingsRelicWorkshop allows tradable relic + Gold >= {ThingsRelicWorkshop.TradeCost}");
+        Assert(ModelDb.Event<ThingsRelicWorkshop>().IsAllowed(runShop), "ThingsRelicWorkshop allows when any living player owns a tradable relic");
         Assert(ModelDb.Event<ThingsMedusa>().IsAllowed(runShop), $"ThingsMedusa allows Gold >= {ThingsMedusa.GoldCost} + Steady target");
         Assert(ModelDb.Event<ThingsSilveredGallery>().IsAllowed(runShop), $"ThingsSilveredGallery allows Gold >= {ThingsSilveredGallery.PawnGoldCost} or HP > {ThingsSilveredGallery.DuplicateDamage}");
         Assert(ModelDb.Event<ThingsShadowCloakroom>().IsAllowed(runShop), $"ThingsShadowCloakroom allows Gold >= {ThingsShadowCloakroom.DepositCost} + eligible card");

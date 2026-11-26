@@ -67,7 +67,7 @@ public sealed class ThingsRobberyFakeMerchant : ThingsEventModel
     public override bool IsShared => true;
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0 && runState.Players.All(p => !p.Creature.IsDead);
+        runState.Players.Any(p => !p.Creature.IsDead);
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
     [

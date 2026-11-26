@@ -35,22 +35,23 @@ public sealed class ThingsCrowdedWard : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(p =>
-            !p.Creature.IsDead
-            && p.Creature.CurrentHp <= p.Creature.MaxHp * 0.75m);
+        runState.Players.Any(p => !p.Creature.IsDead && p.Creature.CurrentHp <= p.Creature.MaxHp * 0.75m);
     public override IEnumerable<LocString> GameInfoOptions =>
-        DepthsEventDefaults.DescribeOptions(this, "TREAT", "ANESTHETIZE", "BANDAGES");
+        DepthsEventDefaults.DescribeOptions(this, "TREAT", "ANESTHETIZE", "BANDAGES", "LEAVE");
 
-    protected override IReadOnlyList<EventOption> GenerateInitialOptions() =>
-    [
-        new EventOption(this, Treat, InitialOptionKey("TREAT"), HoverTipFactory.FromCardWithCardHoverTips<Normality>()),
-        new EventOption(this, Anesthetize, InitialOptionKey("ANESTHETIZE"),
-            HoverTipFactory.FromRelic(ModelDb.Relic<ThingsAnestheticChart>())),
-        EventOwner.Gold >= BandageGoldCost
-            ? new EventOption(this, TakeBandages, InitialOptionKey("BANDAGES"))
-            : new EventOption(this, Leave, InitialOptionKey("LEAVE")),
-    ];
+    protected override IReadOnlyList<EventOption> GenerateInitialOptions()
+    {
+        var options = new List<EventOption>
+        {
+            new EventOption(this, Treat, InitialOptionKey("TREAT"), HoverTipFactory.FromCardWithCardHoverTips<Normality>()),
+            new EventOption(this, Anesthetize, InitialOptionKey("ANESTHETIZE"),
+                HoverTipFactory.FromRelic(ModelDb.Relic<ThingsAnestheticChart>())),
+        };
+        if (EventOwner.Gold >= BandageGoldCost)
+            options.Add(new EventOption(this, TakeBandages, InitialOptionKey("BANDAGES")));
+        options.Add(new EventOption(this, Leave, InitialOptionKey("LEAVE")));
+        return options;
+    }
 
     private bool BeginSettlement()
     {

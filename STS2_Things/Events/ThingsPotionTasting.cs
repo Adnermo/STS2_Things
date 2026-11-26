@@ -44,8 +44,7 @@ public sealed class ThingsPotionTasting : ThingsEventModel
          new GoldVar(PairCost),
          new MaxHpVar("BarterMaxHpLoss", BarterMaxHpLoss)];
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(p =>
+        runState.Players.Any(p =>
             !p.Creature.IsDead
             && (p.Creature.CurrentHp > SampleDamage
                 || p.Gold >= PairCost

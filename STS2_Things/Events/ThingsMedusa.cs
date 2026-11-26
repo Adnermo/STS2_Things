@@ -42,8 +42,7 @@ public sealed class ThingsMedusa : ThingsEventModel
         card != null && ModelDb.Enchantment<Steady>().CanEnchant(card);
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && (player.GetRelic<PetrifiedToad>() != null
                 || (player.Gold >= GoldCost && player.Deck.Cards.Any(CanSteady))));

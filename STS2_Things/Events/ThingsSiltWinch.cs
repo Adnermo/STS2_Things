@@ -53,8 +53,7 @@ public sealed class ThingsSiltWinch : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && player.Creature.CurrentHp > Pull1Damage);
 

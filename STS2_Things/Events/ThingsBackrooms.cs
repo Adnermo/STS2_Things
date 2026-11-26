@@ -45,8 +45,7 @@ public sealed class ThingsBackrooms : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && (player.Creature.CurrentHp > FirstSearchDamage
                 || player.Creature.MaxHp > RestMaxHpLoss));
@@ -58,12 +57,19 @@ public sealed class ThingsBackrooms : ThingsEventModel
                 .ThatDecreasesMaxHp(MaxHpLoss)
             : new EventOption(this, null, InitialOptionKey("REST_LOCKED"));
 
-        return
-        [
+        var options = new List<EventOption>
+        {
             new EventOption(this, SearchExit, InitialOptionKey("SEARCH_EXIT"))
                 .ThatDoesDamage(SearchDamage),
             restOption
-        ];
+        };
+
+        if (EventOwner.Creature.CurrentHp <= FirstSearchDamage && !CanRest)
+        {
+            options.Add(new EventOption(this, Leave, InitialOptionKey("LEAVE")));
+        }
+
+        return options;
     }
 
     private async Task SearchExit()
@@ -182,6 +188,8 @@ public sealed class ThingsBackrooms : ThingsEventModel
 
     private Task Leave()
     {
+        if (IsFinished)
+            return Task.CompletedTask;
         SetEventFinished(L10NLookup($"{Id.Entry}.pages.LEAVE.description"));
         return Task.CompletedTask;
     }

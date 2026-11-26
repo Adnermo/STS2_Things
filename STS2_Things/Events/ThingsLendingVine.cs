@@ -59,8 +59,7 @@ public sealed class ThingsLendingVine : ThingsEventModel
 
     public override bool IsAllowed(IRunState runState) =>
         runState.TotalFloor >= MinFloor
-        && runState.Players.Count > 0
-        && runState.Players.All(player =>
+        && runState.Players.Any(player =>
             !player.Creature.IsDead
             && player.Creature.CurrentHp > InitialHpLoss
             && player.Deck.Cards.Any(card => card.IsRemovable));

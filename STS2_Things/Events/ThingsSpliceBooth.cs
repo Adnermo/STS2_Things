@@ -44,8 +44,7 @@ public sealed class ThingsSpliceBooth : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && ((player.Creature.MaxHp > OverclockMaxHpLoss && player.Deck.Cards.Any(CanOverclock))
                 || (player.Creature.CurrentHp > RewireDamage

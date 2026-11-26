@@ -71,8 +71,7 @@ public sealed class ThingsBilgeMines : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player => !player.Creature.IsDead);
+        runState.Players.Any(player => !player.Creature.IsDead);
 
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "SWEEP", "SWEEP_PAID", "SKIM_EDGE");

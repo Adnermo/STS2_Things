@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -55,8 +56,7 @@ public sealed class ThingsWallCrackLedger : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && (player.Creature.CurrentHp > LoanDamage
                 || player.Relics.Any(IsPawnableRelic)));
@@ -114,7 +114,18 @@ public sealed class ThingsWallCrackLedger : ThingsEventModel
                 InitialOptionKey("SHOVE_BACK"))
             .ThatDoesDamage(RefuseDamage);
 
-        return [loanOption, pawnOption, shoveOption];
+        var options = new List<EventOption>
+        {
+            loanOption,
+            pawnOption,
+            shoveOption,
+        };
+        if (pawnRelic == null && EventOwner.Creature.CurrentHp <= Math.Min(LoanDamage, RefuseDamage))
+        {
+            options.Add(new EventOption(this, LeaveAsync, InitialOptionKey("LEAVE")));
+        }
+
+        return options;
     }
 
     private bool BeginSettlement()
@@ -191,6 +202,15 @@ public sealed class ThingsWallCrackLedger : ThingsEventModel
         }
 
         Finish("SHOVE_BACK.description");
+    }
+
+    private Task LeaveAsync()
+    {
+        if (!BeginSettlement())
+            return Task.CompletedTask;
+
+        Finish("LEAVE.description");
+        return Task.CompletedTask;
     }
 
     private void Finish(string pageSuffix)

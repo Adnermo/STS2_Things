@@ -73,10 +73,9 @@ public sealed class ThingsClamClaw : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
-            && player.Gold >= Tier2GoldCost);
+            && player.Gold >= Tier1GoldCost);
 
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "GRAB_1", "GRAB_2", "GRAB_3", "LEAVE");

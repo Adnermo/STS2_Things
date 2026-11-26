@@ -815,8 +815,8 @@ public partial class ThingsSplitProbeNode : Node
         RunState multiplayerRun = RunState.CreateForTest(
             [multiplayerEligible, multiplayerEmpty],
             seed: "THINGS_SPLIT_EVENT_MULTIPLAYER_EMPTY");
-        Assert(!eventModel.IsAllowed(multiplayerRun),
-            "Cutting It Close accepted multiplayer when one player had no candidate cards.");
+        Assert(eventModel.IsAllowed(multiplayerRun),
+            "Cutting It Close allows multiplayer when at least one living player has candidate cards (empty partner gets LEAVE).");
 
         Player powerOnly = CreateIroncladPlayer(105UL);
         RunState powerOnlyRun = RunState.CreateForTest(
@@ -839,8 +839,8 @@ public partial class ThingsSplitProbeNode : Node
         skillPartner.Deck.Clear(silent: true);
         RunState mixedRun = RunState.CreateForTest([attackPartner, skillPartner], seed: "THINGS_SPLIT_EVENT_SKILL_PARTNER");
         skillPartner.Deck.AddInternal(mixedRun.CreateCard<DefendIronclad>(skillPartner), silent: true);
-        Assert(!eventModel.IsAllowed(mixedRun),
-            "Cutting It Close accepted multiplayer with a Skill-only partner.");
+        Assert(eventModel.IsAllowed(mixedRun),
+            "Cutting It Close allows multiplayer when at least one living partner has Attack split candidates.");
 
         Player lowHp = CreateIroncladPlayer(110UL);
         RunState lowHpRun = RunState.CreateForTest([lowHp], seed: "THINGS_SPLIT_EVENT_LOW_HP");

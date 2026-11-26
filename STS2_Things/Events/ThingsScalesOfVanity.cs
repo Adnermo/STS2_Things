@@ -67,11 +67,11 @@ public sealed class ThingsScalesOfVanity : ThingsEventModel
     }
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
-            && player.Gold >= MinGoldRequired
-            && player.Deck.Cards.Count(card => card.IsRemovable) >= RemoveCardCount);
+            && ((player.Gold >= MinGoldRequired
+                    && player.Deck.Cards.Count(card => card.IsRemovable) >= RemoveCardCount)
+                || player.Creature.CurrentHp > 1));
 
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "EMPTY_PURSE", "BLOOD_WEIGHT", "CRAWL_UNDER");

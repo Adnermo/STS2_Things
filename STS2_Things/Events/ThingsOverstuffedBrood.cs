@@ -52,11 +52,10 @@ public sealed class ThingsOverstuffedBrood : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
-            && player.Creature.CurrentHp > FleeDamage
-            && player.Creature.MaxHp > CloneMaxHpLoss);
+            && (player.Creature.CurrentHp > FleeDamage
+                || player.Creature.MaxHp > CloneMaxHpLoss));
 
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "REACH_CORE", "CLONE_SAC", "SLASH_FLEE");

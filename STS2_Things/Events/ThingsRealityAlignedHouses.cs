@@ -45,8 +45,10 @@ public sealed class ThingsRealityAlignedHouses : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(p => !p.Creature.IsDead && p.Creature.CurrentHp > MergeDamage);
+        runState.Players.Any(p =>
+            !p.Creature.IsDead
+            && (p.Creature.CurrentHp > InitialRoadHpLoss
+                || p.Creature.MaxHp > AddressMaxHpLoss));
 
     // Keep 1.19.0 localization keys available to old run histories, but publish
     // only the new options in the native game-information catalogue.

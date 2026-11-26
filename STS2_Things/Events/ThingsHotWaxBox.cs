@@ -45,8 +45,7 @@ public sealed class ThingsHotWaxBox : ThingsEventModel
 
     public override bool IsAllowed(IRunState runState) =>
         FindMaxNonBossRoomsBeforeBoss(runState) >= ThingsHotWaxParcel.CombatsNeeded
-        && runState.Players.Count > 0
-        && runState.Players.All(player =>
+        && runState.Players.Any(player =>
             !player.Creature.IsDead
             && player.GetRelic<ThingsHotWaxParcel>() == null
             && player.GetRelic<ThingsChilledWaxParcel>() == null);
@@ -234,6 +233,12 @@ public sealed class ThingsHotWaxBox : ThingsEventModel
     {
         if (!BeginSettlement())
             return;
+        if (OwnsAnyParcel())
+        {
+            _settling = false;
+            SetEventState(InitialDescription, GenerateInitialOptions());
+            return;
+        }
         var parcel = (ThingsHotWaxParcel)ModelDb.Relic<ThingsHotWaxParcel>().ToMutable();
         parcel.InitializeQuest(EventOwner.RunState.TotalFloor);
         await RelicCmd.Obtain(parcel, EventOwner);
@@ -244,7 +249,8 @@ public sealed class ThingsHotWaxBox : ThingsEventModel
     {
         if (!BeginSettlement())
             return;
-        if (EventOwner.Gold < ChilledGoldCost ||
+        if (OwnsAnyParcel() ||
+            EventOwner.Gold < ChilledGoldCost ||
             !HasReachableEliteWithinWindow(EventOwner.RunState, ThingsChilledWaxParcel.WindowRooms))
         {
             _settling = false;

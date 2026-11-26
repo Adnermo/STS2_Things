@@ -39,8 +39,7 @@ public sealed class ThingsChronometerRig : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && ((player.Gold >= GearGoldCost && player.Deck.Cards.Any(CanEnchant<Imbued>))
                 || (player.Creature.MaxHp > PinMaxHpLoss && player.Deck.Cards.Any(CanEnchant<PerfectFit>))));

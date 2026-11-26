@@ -37,10 +37,7 @@ public sealed class ThingsBitingChest : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(p =>
-            !p.Creature.IsDead
-            && p.Creature.CurrentHp > WedgeDamage);
+        runState.Players.Any(p => !p.Creature.IsDead && p.Creature.CurrentHp > WedgeDamage);
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "REACH", "WEDGE", "LEAVE");
 

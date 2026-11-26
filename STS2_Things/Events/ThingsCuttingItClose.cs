@@ -32,9 +32,10 @@ public sealed class ThingsCuttingItClose : ThingsEventModel
     public override bool IsAllowed(IRunState runState)
     {
         var split = ModelDb.Enchantment<ThingsSplit>();
-        return runState.Players.Count > 0 &&
-               runState.Players.All(player => !player.Creature.IsDead && player.Creature.CurrentHp > ImproviseDamage) &&
-               runState.Players.All(player => player.Deck.Cards.Any(card => IsSplitCandidate(split, card)));
+        return runState.Players.Any(player =>
+            !player.Creature.IsDead
+            && player.Creature.CurrentHp > ImproviseDamage
+            && player.Deck.Cards.Any(card => IsSplitCandidate(split, card)));
     }
 
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()
@@ -66,7 +67,10 @@ public sealed class ThingsCuttingItClose : ThingsEventModel
             improviseOption,
             throwOption
         };
-        if (!canSplit && !canThrow)
+        bool hasNonLethalChoice =
+            (canSplit && EventOwner.Creature.CurrentHp > ImproviseDamage)
+            || (canThrow && EventOwner.Creature.CurrentHp > ThrowDamage);
+        if (!hasNonLethalChoice)
         {
             options.Add(new EventOption(this, Leave, "THINGS_POLITE_MAW.pages.INITIAL.options.LEAVE"));
         }

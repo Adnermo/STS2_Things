@@ -51,10 +51,8 @@ public sealed class ThingsRelicWorkshop : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
-            && player.Gold >= TradeCost
             && player.Relics.Any(relic => relic.IsTradable));
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "TRADE", "SELL", "REFORGE");
@@ -104,8 +102,8 @@ public sealed class ThingsRelicWorkshop : ThingsEventModel
         if (canSell)
             sellOption.ThatWontSaveToChoiceHistory();
 
-        return
-        [
+        var options = new List<EventOption>
+        {
             tradeOption,
             sellOption,
             HasTransformableCard
@@ -113,7 +111,12 @@ public sealed class ThingsRelicWorkshop : ThingsEventModel
                     HoverTipFactory.Static(StaticHoverTip.Transform))
                     .ThatDoesDamage(ReforgeDamage)
                 : new EventOption(this, Leave, InitialOptionKey("LEAVE")),
-        ];
+        };
+        if (!canSell && HasTransformableCard && EventOwner.Creature.CurrentHp <= ReforgeDamage)
+        {
+            options.Add(new EventOption(this, Leave, InitialOptionKey("LEAVE")));
+        }
+        return options;
     }
 
     private Task ShowRelics(bool selling, int page)

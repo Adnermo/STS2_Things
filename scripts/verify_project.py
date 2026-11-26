@@ -1063,7 +1063,8 @@ def main() -> int:
         [
             "public sealed class ThingsCuttingItClose : ThingsEventModel",
             "public override bool IsAllowed(IRunState runState)",
-            "runState.Players.All(player => player.Deck.Cards.Any(card => IsSplitCandidate(split, card)))",
+            "runState.Players.Any(player =>",
+            "player.Deck.Cards.Any(card => IsSplitCandidate(split, card))",
             "ModelDb.Enchantment<ThingsSplit>()",
             "CardSelectCmd.FromDeckForEnchantment(",
             "card => card is not null && IsSplitCandidate(split, card)",

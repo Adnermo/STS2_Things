@@ -96,7 +96,7 @@ public sealed class ThingsBronzeCauldron : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 1 && runState.Players.All(player => !player.Creature.IsDead);
+        runState.Players.Count > 1 && runState.Players.Any(player => !player.Creature.IsDead);
 
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "SHARE", "SCRAMBLE");
@@ -233,17 +233,21 @@ public sealed class ThingsBronzeCauldron : ThingsEventModel
         if (holder.Session == null || holder.FloorStamp != floorStamp)
         {
             bool isHost = RunManager.Instance?.NetService.Type != NetGameType.Client;
-            ulong localId = LocalContext.NetId ?? runState.Players[0].NetId;
+            List<Player> participants = runState.Players.Where(p => !p.Creature.IsDead).ToList();
+            if (participants.Count == 0)
+                participants = runState.Players.ToList();
+            ulong localId = LocalContext.NetId ?? participants[0].NetId;
             uint sharedSeed = ComputeSharedCauldronSeed(runState);
 
             holder.FloorStamp = floorStamp;
-            holder.Session = new BronzeCauldronMinigame(runState.Players, localId, isHost, sharedSeed);
+            holder.Session = new BronzeCauldronMinigame(participants, localId, isHost, sharedSeed);
             holder.OverlayLaunched = false;
             ThingsEventMinigameSync.AttachCauldronSession(holder.Session);
         }
 
         bool shouldLaunch = false;
-        if (LocalContext.IsMe(EventOwner) && !holder.OverlayLaunched)
+        bool localPlayerDead = runState.Players.Any(p => LocalContext.IsMe(p) && p.Creature.IsDead);
+        if (!holder.OverlayLaunched && (LocalContext.IsMe(EventOwner) || (holder.Session.IsHostAuthority && localPlayerDead)))
         {
             holder.OverlayLaunched = true;
             shouldLaunch = true;

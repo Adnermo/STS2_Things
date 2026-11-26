@@ -122,9 +122,16 @@ public partial class NCaveGodBossBackground : Node2D
     private Tween? _weakHurtTween;
     private Tween? _weakFlashTween;
     private TextureRect? _cachedRedBgNode;
+    private Control? _cachedFarLayerNode;
+    private bool _hasSyncedFarBackdrop;
+    private Vector2 _lastFarViewportSize;
+    private Transform2D _lastFarParentGlobal;
     private Tween? _bgTransitionTween;
     private Tween? _releaseTween;
     private bool _presentationEnded;
+
+    private static readonly Vector2 FarBackdropNominalSize = new(2880f, 1440f);
+    private const float FarBackdropOverscanMargin = 1.02f;
 
     // Z-order is owned by code, not the scene: native background scenes must rely on tree order
     // (scripts/verify_project.py rejects z_index in *_background.tscn).
@@ -353,6 +360,8 @@ public partial class NCaveGodBossBackground : Node2D
         base._Process(delta);
         if (_presentationEnded) return;
 
+        SyncFarBackdropToViewport();
+
         if (CombatManager.Instance.IsInProgress && NCombatRoom.Instance is { } room)
             UpdateHandAnchors(room.CreatureNodes);
 
@@ -463,6 +472,8 @@ public partial class NCaveGodBossBackground : Node2D
         _armsContactRig = null;
         _leftHandCreatureMarker = null;
         _rightHandCreatureMarker = null;
+        _cachedFarLayerNode = null;
+        _hasSyncedFarBackdrop = false;
         HideFrontFistOverlay();
         ClearMainEntries();
         ClearAllStolenCards();
@@ -546,8 +557,55 @@ public partial class NCaveGodBossBackground : Node2D
         SetupArmsSprite(_armsController);
 
         Callable.From(AlignStageAndPlayers).CallDeferred();
+        Callable.From(SyncFarBackdropToViewport).CallDeferred();
 
         Log.Info("[CaveGodBackground] Dual-pass CaveGod Spine controllers initialized.");
+    }
+
+    private void SyncFarBackdropToViewport()
+    {
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || _presentationEnded)
+            return;
+
+        if (GetParent() is not Control bgRoot || !GodotObject.IsInstanceValid(bgRoot))
+            return;
+        if (bgRoot.GetParent() is not CanvasItem bgParent || !GodotObject.IsInstanceValid(bgParent))
+            return;
+        if (bgParent.Name != "BgContainer" && NCombatRoom.Instance == null)
+            return;
+
+        if (_cachedFarLayerNode == null || !GodotObject.IsInstanceValid(_cachedFarLayerNode))
+        {
+            _cachedFarLayerNode = bgRoot.GetNodeOrNull<Control>("%Layer_00") ?? bgRoot.GetNodeOrNull<Control>("Layer_00");
+            _hasSyncedFarBackdrop = false;
+        }
+        if (_cachedFarLayerNode == null || !GodotObject.IsInstanceValid(_cachedFarLayerNode))
+            return;
+
+        Vector2 viewportSize = bgRoot.GetViewportRect().Size;
+        if (viewportSize.X < 1f || viewportSize.Y < 1f)
+            return;
+
+        Transform2D rootGlobal = bgRoot.GetGlobalTransform();
+        if (_hasSyncedFarBackdrop && viewportSize == _lastFarViewportSize && rootGlobal == _lastFarParentGlobal)
+            return;
+
+        Vector2 rootScale = rootGlobal.Scale.Abs();
+        if (rootScale.X <= 0.001f || rootScale.Y <= 0.001f)
+            return;
+
+        float targetGlobalScale = MathF.Max(
+            viewportSize.X / FarBackdropNominalSize.X,
+            viewportSize.Y / FarBackdropNominalSize.Y) * FarBackdropOverscanMargin;
+        Vector2 targetCenterGlobal = viewportSize * 0.5f;
+
+        _cachedFarLayerNode.PivotOffset = Vector2.Zero;
+        _cachedFarLayerNode.Scale = new Vector2(targetGlobalScale / rootScale.X, targetGlobalScale / rootScale.Y);
+        _cachedFarLayerNode.Position = rootGlobal.AffineInverse() * targetCenterGlobal;
+
+        _lastFarViewportSize = viewportSize;
+        _lastFarParentGlobal = rootGlobal;
+        _hasSyncedFarBackdrop = true;
     }
 
     private void OnCombatEnded(CombatRoom room)

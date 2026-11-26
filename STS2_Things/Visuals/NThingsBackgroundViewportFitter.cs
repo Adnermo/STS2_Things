@@ -6,17 +6,19 @@ namespace STS2_Things.Visuals;
 
 /// <summary>
 /// Dynamically scales and centers custom STS2_Things combat backgrounds to cover the live viewport
-/// with a tight 1.04x overscan safety margin across 16:9, 16:10, 21:9, and 4:3 displays, eliminating
-/// excessive 1.25x-1.44x zoom-in/cropping while compensating BgContainer scale and tracking camera shake.
+/// with a tight 1.015x overscan safety margin across 16:9, 16:10, 21:9, and 4:3 displays, eliminating
+/// excessive 1.25x-1.44x zoom-in/cropping while compensating BgContainer scale and clamping camera shake
+/// inside the available overscan margin so edges never expose black bars.
 /// </summary>
 [GlobalClass]
 public partial class NThingsBackgroundViewportFitter : Node
 {
-    public const float OverscanMargin = 1.04f;
+    public const float OverscanMargin = 1.015f;
 
     private Vector2 _nominalSize = new(2764.8f, 1296.0f);
     private Vector2? _initialScenePos;
     private Viewport? _connectedViewport;
+    private Window? _connectedRootWindow;
     private Control? _bgControl;
     private CanvasItem? _bgParent;
     private Control? _sceneContainer;
@@ -45,6 +47,15 @@ public partial class NThingsBackgroundViewportFitter : Node
             viewport.SizeChanged += OnViewportSizeChanged;
         }
 
+        Window? rootWindow = GetTree()?.Root;
+        if (rootWindow != null && !ReferenceEquals(rootWindow, viewport))
+        {
+            _connectedRootWindow = rootWindow;
+            rootWindow.SizeChanged += OnViewportSizeChanged;
+        }
+
+        // Sync immediately to prevent a 1-frame oversized pop on combat entry, then re-sync after layout settles.
+        SyncTransform();
         Callable.From(SyncTransform).CallDeferred();
     }
 
@@ -52,7 +63,10 @@ public partial class NThingsBackgroundViewportFitter : Node
     {
         if (_connectedViewport != null && GodotObject.IsInstanceValid(_connectedViewport))
             _connectedViewport.SizeChanged -= OnViewportSizeChanged;
+        if (_connectedRootWindow != null && GodotObject.IsInstanceValid(_connectedRootWindow))
+            _connectedRootWindow.SizeChanged -= OnViewportSizeChanged;
         _connectedViewport = null;
+        _connectedRootWindow = null;
         _initialScenePos = null;
         _bgControl = null;
         _bgParent = null;
@@ -146,7 +160,14 @@ public partial class NThingsBackgroundViewportFitter : Node
             _initialScenePos ??= scenePos;
             Vector2 deltaPos = scenePos - _initialScenePos.Value;
             if (deltaPos.LengthSquared() <= 4096f)
-                nativeShake = deltaPos;
+            {
+                Vector2 spareHalfSpan = (_nominalSize * targetGlobalScale - viewportSize) * 0.5f;
+                float maxShakeX = MathF.Max(0f, spareHalfSpan.X - 2f);
+                float maxShakeY = MathF.Max(0f, spareHalfSpan.Y - 2f);
+                nativeShake = new Vector2(
+                    Mathf.Clamp(deltaPos.X, -maxShakeX, maxShakeX),
+                    Mathf.Clamp(deltaPos.Y, -maxShakeY, maxShakeY));
+            }
         }
 
         Vector2 targetCenterGlobal = viewportSize * 0.5f + nativeShake;

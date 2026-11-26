@@ -468,20 +468,37 @@ internal static class DepthsEventRandomizationRegression
         cloakPlayer.AddRelicInternal(ModelDb.Relic<ThingsShadowClaimTicket>().ToMutable());
         assert(!ModelDb.Event<ThingsShadowCloakroom>().IsAllowed(cloakRun),
             "ThingsShadowCloakroom rejects player who already holds ThingsShadowClaimTicket.");
+        // 7) Multiplayer Players.Any relaxation: one eligible teammate allows event even when partner is 1 HP / 0 Gold / dead.
+        RunState coopAnyRun = CreateRun("gate-coop-any", playerCount: 2);
+        coopAnyRun.Players[0].Gold = ThingsShadowCloakroom.DepositCost;
+        coopAnyRun.Players[1].Gold = 0;
+        coopAnyRun.Players[1].Creature.SetCurrentHpInternal(1m);
+        assert(ModelDb.Event<ThingsWallCrackLedger>().IsAllowed(coopAnyRun),
+            "ThingsWallCrackLedger allows co-op party when one teammate has HP > 8 even if partner is at 1 HP.");
+        assert(ModelDb.Event<ThingsShadowCloakroom>().IsAllowed(coopAnyRun),
+            "ThingsShadowCloakroom allows co-op party when one teammate has >= 45 Gold even if partner has 0 Gold.");
+        assert(ModelDb.Event<ThingsCrowdedWard>().IsAllowed(coopAnyRun),
+            "ThingsCrowdedWard allows co-op party when one teammate is <= 75% HP even if partner is at full HP.");
+        coopAnyRun.Players[1].Creature.SetCurrentHpInternal(0m);
+        assert(ModelDb.Event<ThingsWallCrackLedger>().IsAllowed(coopAnyRun),
+            "ThingsWallCrackLedger does not block living teammates when a partner is dead.");
+        coopAnyRun.Players[0].Creature.SetCurrentHpInternal(ThingsWallCrackLedger.LoanDamage);
+        assert(!ModelDb.Event<ThingsWallCrackLedger>().IsAllowed(coopAnyRun),
+            "ThingsWallCrackLedger rejects co-op party when NO living teammate qualifies.");
     }
 
     private static void VerifyThingsBackroomsAndUnlitFireGates(Action<bool, string> assert)
     {
-        // 1) ThingsBackrooms: rejects lethal 1-HP / 5-MaxHP (and 2-HP / 5-MaxHP) players; enforces Players.All.
+        // 1) ThingsBackrooms: solo rejects lethal 1-HP / 5-MaxHP (and 2-HP / 5-MaxHP); co-op uses Players.Any.
         RunState lethalRun = CreateRun("gate-things-backrooms-lethal");
         Player lethalPlayer = lethalRun.Players[0];
         lethalPlayer.Creature.SetMaxHpInternal(ThingsBackrooms.RestMaxHpLoss);
         lethalPlayer.Creature.SetCurrentHpInternal(1m);
         assert(!ModelDb.Event<ThingsBackrooms>().IsAllowed(lethalRun),
-            "ThingsBackrooms rejects lethal 1-HP / 5-MaxHP player.");
+            "ThingsBackrooms rejects lethal 1-HP / 5-MaxHP solo player.");
         lethalPlayer.Creature.SetCurrentHpInternal(ThingsBackrooms.FirstSearchDamage);
         assert(!ModelDb.Event<ThingsBackrooms>().IsAllowed(lethalRun),
-            "ThingsBackrooms rejects lethal 2-HP / 5-MaxHP player.");
+            "ThingsBackrooms rejects lethal 2-HP / 5-MaxHP solo player.");
         lethalPlayer.Creature.SetCurrentHpInternal(ThingsBackrooms.FirstSearchDamage + 1);
         assert(ModelDb.Event<ThingsBackrooms>().IsAllowed(lethalRun),
             "ThingsBackrooms allows 3-HP / 5-MaxHP player (can survive first search).");
@@ -493,10 +510,14 @@ internal static class DepthsEventRandomizationRegression
         RunState coopLethalRun = CreateRun("gate-things-backrooms-coop", playerCount: 2);
         coopLethalRun.Players[1].Creature.SetMaxHpInternal(ThingsBackrooms.RestMaxHpLoss);
         coopLethalRun.Players[1].Creature.SetCurrentHpInternal(1m);
+        assert(ModelDb.Event<ThingsBackrooms>().IsAllowed(coopLethalRun),
+            "ThingsBackrooms allows co-op party when one teammate qualifies (1-HP/5-MaxHP partner gets safe LEAVE fallback).");
+        coopLethalRun.Players[0].Creature.SetMaxHpInternal(ThingsBackrooms.RestMaxHpLoss);
+        coopLethalRun.Players[0].Creature.SetCurrentHpInternal(1m);
         assert(!ModelDb.Event<ThingsBackrooms>().IsAllowed(coopLethalRun),
-            "ThingsBackrooms rejects co-op party when any teammate is at lethal 1-HP / 5-MaxHP.");
+            "ThingsBackrooms rejects co-op party when ALL players are at lethal 1-HP / 5-MaxHP.");
 
-        // 2) ThingsUnlitFire: uses Players.All rather than Players.Any.
+        // 2) ThingsUnlitFire: uses Players.Any so one teammate holding ThingsBorrowedEmber or being dead does not block others.
         RunState unlitRun = CreateRun("gate-unlit-fire-coop", playerCount: 2);
         unlitRun.Act.GenerateRooms(unlitRun.Rng.UpFront, UnlockState.all, isMultiplayer: true);
         unlitRun.Map = unlitRun.Act.CreateMap(unlitRun, false);
@@ -505,14 +526,20 @@ internal static class DepthsEventRandomizationRegression
         assert(ModelDb.Event<ThingsUnlitFire>().IsAllowed(unlitRun),
             "ThingsUnlitFire allows co-op party when all players are alive and lack ThingsBorrowedEmber.");
         unlitRun.Players[1].AddRelicInternal(ModelDb.Relic<ThingsBorrowedEmber>().ToMutable());
+        assert(ModelDb.Event<ThingsUnlitFire>().IsAllowed(unlitRun),
+            "ThingsUnlitFire allows co-op party when at least one living teammate lacks ThingsBorrowedEmber.");
+        unlitRun.Players[0].AddRelicInternal(ModelDb.Relic<ThingsBorrowedEmber>().ToMutable());
         assert(!ModelDb.Event<ThingsUnlitFire>().IsAllowed(unlitRun),
-            "ThingsUnlitFire uses Players.All and rejects co-op party when any teammate already holds ThingsBorrowedEmber.");
+            "ThingsUnlitFire rejects co-op party when ALL living teammates already hold ThingsBorrowedEmber.");
 
         RunState unlitDeadRun = CreateRun("gate-unlit-fire-dead", playerCount: 2);
         unlitDeadRun.Act.GenerateRooms(unlitDeadRun.Rng.UpFront, UnlockState.all, isMultiplayer: true);
         unlitDeadRun.Map = unlitDeadRun.Act.CreateMap(unlitDeadRun, false);
         unlitDeadRun.Players[1].Creature.SetCurrentHpInternal(0m);
+        assert(ModelDb.Event<ThingsUnlitFire>().IsAllowed(unlitDeadRun),
+            "ThingsUnlitFire allows co-op party when at least one living teammate lacks ThingsBorrowedEmber.");
+        unlitDeadRun.Players[0].Creature.SetCurrentHpInternal(0m);
         assert(!ModelDb.Event<ThingsUnlitFire>().IsAllowed(unlitDeadRun),
-            "ThingsUnlitFire rejects co-op party when any teammate is dead.");
+            "ThingsUnlitFire rejects co-op party when ALL players are dead.");
     }
 }

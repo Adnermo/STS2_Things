@@ -39,8 +39,7 @@ public sealed class ThingsSilveredGallery : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && ((player.Creature.CurrentHp > DuplicateDamage && player.Deck.Cards.Any(IsCloneable))
                 || (player.Gold >= PawnGoldCost

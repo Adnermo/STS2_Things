@@ -72,8 +72,7 @@ public sealed class ThingsMossRuneLoom : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && player.Deck.Cards.Any(RuneLoomMinigame.IsEligibleCard));
 

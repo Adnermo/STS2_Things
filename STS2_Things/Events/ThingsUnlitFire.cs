@@ -33,8 +33,7 @@ public sealed class ThingsUnlitFire : ThingsEventModel
 
     public override bool IsAllowed(IRunState runState) =>
         ThingsBorrowedEmber.FindNextRestSites(runState).Count > 0
-        && runState.Players.Count > 0
-        && runState.Players.All(player => !player.Creature.IsDead && player.GetRelic<ThingsBorrowedEmber>() == null);
+        && runState.Players.Any(player => !player.Creature.IsDead && player.GetRelic<ThingsBorrowedEmber>() == null);
 
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "BORROW", "FUEL", "LEAVE");

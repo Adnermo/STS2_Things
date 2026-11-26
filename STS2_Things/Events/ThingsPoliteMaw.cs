@@ -67,24 +67,30 @@ public sealed class ThingsPoliteMaw : ThingsEventModel
     private static bool HasFood(Player player, CardType type) => !player.Creature.IsDead &&
         player.Deck.Cards.Count > 1 && player.Deck.Cards.Any(card => card.IsRemovable && card.Type == type);
 
-    private bool CanEveryoneFeed(CardType type)
-    {
-        var diners = EventOwner.RunState.Players.Where(player => !player.Creature.IsDead).ToArray();
-        return diners.Length > 0 && diners.All(player => HasFood(player, type));
-    }
+    private bool CanAnyoneFeed(CardType type) =>
+        EventOwner.RunState.Players.Any(player => HasFood(player, type));
 
-    private bool CanFeedCurse => EventOwner.RunState.Players.Any(player => HasFood(player, CardType.Curse));
+    private static bool CanFeedPower(Player player) =>
+        HasFood(player, CardType.Power) && player.Creature.MaxHp > PowerMaxHpLoss;
 
-    public override bool IsAllowed(IRunState runState)
-    {
-        return runState.Players.Count > 0 && runState.Players.All(p => !p.Creature.IsDead && p.Creature.CurrentHp > AttackBiteDamage);
-    }
+    private bool CanAnyoneFeedPower =>
+        EventOwner.RunState.Players.Any(CanFeedPower);
+
+    private bool CanFeedCurse => CanAnyoneFeed(CardType.Curse);
+
+    public override bool IsAllowed(IRunState runState) =>
+        runState.Players.Any(player =>
+            !player.Creature.IsDead
+            && ((HasFood(player, CardType.Attack) && player.Creature.CurrentHp > AttackBiteDamage)
+                || (HasFood(player, CardType.Skill) && player.Creature.CurrentHp > SkillNipDamage)
+                || (HasFood(player, CardType.Power) && player.Creature.MaxHp > PowerMaxHpLoss)
+                || HasFood(player, CardType.Curse)));
 
     protected override Task BeforeEventStarted(bool isPreFinished)
     {
         // Reserve once, like native Wongo's featured relic. Revisiting the menu
         // never rolls another relic or consumes another grab-bag entry.
-        if (!isPreFinished && _offeredRelic == null && CanEveryoneFeed(CardType.Power))
+        if (!isPreFinished && _offeredRelic == null && CanFeedPower(EventOwner))
         {
             _offeredRelic = RelicFactory.PullNextRelicFromFront(EventOwner, RelicRarity.Uncommon).ToMutable();
             _offeredRelic.Owner = EventOwner;
@@ -98,28 +104,34 @@ public sealed class ThingsPoliteMaw : ThingsEventModel
 
     protected override IReadOnlyList<EventOption> GenerateInitialOptions()
     {
-        bool attack = CanEveryoneFeed(CardType.Attack), skill = CanEveryoneFeed(CardType.Skill);
-        bool power = CanEveryoneFeed(CardType.Power) && _offeredRelic != null && EventOwner.Creature.MaxHp > PowerMaxHpLoss;
+        bool attack = CanAnyoneFeed(CardType.Attack);
+        bool skill = CanAnyoneFeed(CardType.Skill);
+        bool power = CanAnyoneFeedPower;
+        bool curse = CanFeedCurse;
+
         EventOption attackOption = new(this, attack ? FeedAttack : null,
             InitialOptionKey(attack ? "ATTACK" : "ATTACK_LOCKED"),
             [HoverTipFactory.FromPotion<AttackPotion>()]);
-        if (attack) attackOption.ThatDoesDamage(AttackBiteDamage);
+        if (attack && HasFood(EventOwner, CardType.Attack))
+            attackOption.ThatDoesDamage(AttackBiteDamage);
 
         EventOption skillOption = new(this, skill ? FeedSkill : null,
             InitialOptionKey(skill ? "SKILL" : "SKILL_LOCKED"));
-        if (skill) skillOption.ThatDoesDamage(SkillNipDamage);
+        if (skill && HasFood(EventOwner, CardType.Skill))
+            skillOption.ThatDoesDamage(SkillNipDamage);
 
         EventOption powerOption = new(this, power ? FeedPower : null,
             InitialOptionKey(power ? "POWER" : "POWER_LOCKED"),
             _offeredRelic?.HoverTips ?? Array.Empty<IHoverTip>());
-        if (power) powerOption.ThatDecreasesMaxHp(PowerMaxHpLoss);
+        if (power && CanFeedPower(EventOwner))
+            powerOption.ThatDecreasesMaxHp(PowerMaxHpLoss);
 
         return
         [
             attackOption,
             skillOption,
             powerOption,
-            new EventOption(this, CanFeedCurse ? FeedCurse : null, InitialOptionKey(CanFeedCurse ? "CURSE" : "CURSE_LOCKED")),
+            new EventOption(this, curse ? FeedCurse : null, InitialOptionKey(curse ? "CURSE" : "CURSE_LOCKED")),
             new EventOption(this, Leave, InitialOptionKey("LEAVE")),
         ];
     }
@@ -140,6 +152,7 @@ public sealed class ThingsPoliteMaw : ThingsEventModel
 
     private async Task FeedAttack()
     {
+        if (!HasFood(EventOwner, CardType.Attack)) { Finish("NO_FOOD"); return; }
         if (!await TakeFood(CardType.Attack)) { Finish("ABORTED"); return; }
         await ThingsEventHelpers.DealUnblockableDamageAsync(EventOwner, AttackBiteDamage);
         if (EventOwner.Creature.IsDead) { Finish("ATTACK_LOSS"); return; }
@@ -151,6 +164,7 @@ public sealed class ThingsPoliteMaw : ThingsEventModel
 
     private async Task FeedSkill()
     {
+        if (!HasFood(EventOwner, CardType.Skill)) { Finish("NO_FOOD"); return; }
         if (!await TakeFood(CardType.Skill)) { Finish("ABORTED"); return; }
         await ThingsEventHelpers.DealUnblockableDamageAsync(EventOwner, SkillNipDamage);
         if (EventOwner.Creature.IsDead) { Finish("SKILL_LOSS"); return; }
@@ -160,7 +174,8 @@ public sealed class ThingsPoliteMaw : ThingsEventModel
 
     private async Task FeedPower()
     {
-        if (_offeredRelic == null || !await TakeFood(CardType.Power)) { Finish("ABORTED"); return; }
+        if (!CanFeedPower(EventOwner) || _offeredRelic == null) { Finish("NO_FOOD"); return; }
+        if (!await TakeFood(CardType.Power)) { Finish("ABORTED"); return; }
         await LoseEventOwnerMaxHpAsync(new ThrowingPlayerChoiceContext(), PowerMaxHpLoss);
         if (EventOwner.Creature.IsDead) { Finish("POWER_LOSS"); return; }
         await RelicCmd.Obtain(_offeredRelic, EventOwner);

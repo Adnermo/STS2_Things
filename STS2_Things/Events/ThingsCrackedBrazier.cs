@@ -56,11 +56,10 @@ public sealed class ThingsCrackedBrazier : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
-            && player.Creature.MaxHp > TemperMaxHpLoss
-            && player.Deck.Cards.Any(CanTemper));
+            && ((player.Creature.MaxHp > TemperMaxHpLoss && player.Deck.Cards.Any(CanTemper))
+                || (player.Creature.CurrentHp > BurnDamage && player.Deck.Cards.Any(card => card.IsRemovable))));
 
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "TEMPER", "BURN_CARD", "LEAVE");

@@ -43,11 +43,10 @@ public sealed class ThingsBlindCrabInkwell : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
-            && player.Creature.CurrentHp > PinchDamage
-            && player.Deck.Cards.Any(IsInkyCandidate));
+            && ((player.Creature.CurrentHp > PinchDamage && player.Deck.Cards.Any(IsInkyCandidate))
+                || (player.Creature.CurrentHp > RewriteDamage && player.Deck.Cards.Any(card => CanRewrite(player, card)))));
 
     public override IEnumerable<LocString> GameInfoOptions =>
         DepthsEventDefaults.DescribeOptions(this, "SOAK", "REWRITE", "LEAVE");

@@ -50,6 +50,7 @@ public partial class DepthsProbeNode
         await VerifyRelicWorkshop();
         await VerifyPotionTasting();
         await VerifyNarrowGate();
+        await VerifyMultiplayerPoliteMawAndSafeFallbacks();
     }
 
     private void VerifyAllEventMetadata(string lang)
@@ -567,6 +568,103 @@ public partial class DepthsProbeNode
         await evLeave.CurrentOptions[0].Chosen();
         Assert(evLeave.IsFinished && pLeave.Creature.CurrentHp == 40,
             "NarrowGate empty-deck LEAVE finishes with HP unchanged");
+    }
+
+    private async Task VerifyMultiplayerPoliteMawAndSafeFallbacks()
+    {
+        // 1. PoliteMaw shared voting: P0 has Power + MaxHP > 5, P1 has NO Power -> BOTH see POWER unlocked; P1 finishes cleanly via NO_FOOD.
+        RunState mawCoop = NewRun("maw-coop-power-any", count: 2);
+        Player mawP0 = mawCoop.Players[0];
+        Player mawP1 = mawCoop.Players[1];
+        await CardPileCmd.Add(mawCoop.CreateCard<Inflame>(mawP0), PileType.Deck);
+        var evP0 = await Begin<ThingsPoliteMaw>(mawP0);
+        var evP1 = await Begin<ThingsPoliteMaw>(mawP1);
+        Assert(!evP0.CurrentOptions[2].IsLocked && !evP1.CurrentOptions[2].IsLocked,
+            "PoliteMaw POWER option unlock state is identical across co-op peers when only P0 has a Power");
+        int p1DeckBefore = mawP1.Deck.Cards.Count;
+        int p1MaxHpBefore = mawP1.Creature.MaxHp;
+        int p1RelicsBefore = mawP1.Relics.Count;
+        await evP1.CurrentOptions[2].Chosen();
+        Assert(evP1.IsFinished && mawP1.Deck.Cards.Count == p1DeckBefore
+            && mawP1.Creature.MaxHp == p1MaxHpBefore && mawP1.Relics.Count == p1RelicsBefore,
+            "PoliteMaw POWER skips removal/MaxHP loss/relic for ineligible teammate via NO_FOOD");
+
+        // Also verify low-MaxHP peer (has Power, MaxHP == 5) gets identical unlock state and skips cleanly without dying.
+        RunState mawLowMax = NewRun("maw-coop-power-lowmax", count: 2);
+        Player lowP0 = mawLowMax.Players[0];
+        Player lowP1 = mawLowMax.Players[1];
+        await CardPileCmd.Add(mawLowMax.CreateCard<Inflame>(lowP0), PileType.Deck);
+        await CardPileCmd.Add(mawLowMax.CreateCard<Inflame>(lowP1), PileType.Deck);
+        lowP1.Creature.SetMaxHpInternal(ThingsPoliteMaw.PowerMaxHpLoss);
+        lowP1.Creature.SetCurrentHpInternal(ThingsPoliteMaw.PowerMaxHpLoss);
+        var evLow0 = await Begin<ThingsPoliteMaw>(lowP0);
+        var evLow1 = await Begin<ThingsPoliteMaw>(lowP1);
+        Assert(!evLow0.CurrentOptions[2].IsLocked && !evLow1.CurrentOptions[2].IsLocked,
+            "PoliteMaw POWER option stays peer-uniform even when P1 has MaxHP <= 5");
+        await evLow1.CurrentOptions[2].Chosen();
+        Assert(evLow1.IsFinished && !lowP1.Creature.IsDead && lowP1.Creature.MaxHp == ThingsPoliteMaw.PowerMaxHpLoss,
+            "PoliteMaw POWER skips MaxHP loss for MaxHP <= 5 peer via NO_FOOD");
+
+        // 2. Low-HP safe LEAVE fallbacks for B-class events + full-HP CrowdedWard.
+        RunState runLedger = NewEventTestRun("fallback-ledger-1hp", gold: 0);
+        Player pLedger = runLedger.Players[0];
+        pLedger.Creature.SetCurrentHpInternal(1);
+        var evLedger = await Begin<ThingsWallCrackLedger>(pLedger);
+        Assert(evLedger.CurrentOptions.Count == 4 && evLedger.CurrentOptions[3].TextKey.EndsWith(".LEAVE", StringComparison.Ordinal),
+            "WallCrackLedger exposes safe LEAVE at 1 HP with no pawnable relic");
+        await evLedger.CurrentOptions[3].Chosen();
+        Assert(evLedger.IsFinished && pLedger.Creature.CurrentHp == 1,
+            "WallCrackLedger LEAVE finishes cleanly with 1 HP intact");
+
+        RunState runGate = NewEventTestRun("fallback-gate-1hp", gold: 0);
+        Player pGate = runGate.Players[0];
+        pGate.Creature.SetCurrentHpInternal(1);
+        var evGate = await Begin<ThingsNarrowGate>(pGate);
+        Assert(evGate.CurrentOptions.Count == 5 && evGate.CurrentOptions[4].TextKey.EndsWith(".LEAVE", StringComparison.Ordinal),
+            "NarrowGate exposes safe LEAVE at 1 HP");
+        await evGate.CurrentOptions[4].Chosen();
+        Assert(evGate.IsFinished && pGate.Creature.CurrentHp == 1,
+            "NarrowGate low-HP LEAVE finishes cleanly with 1 HP intact");
+
+        RunState runShop = NewEventTestRun("fallback-workshop-1hp", gold: 0);
+        Player pShop = runShop.Players[0];
+        pShop.Creature.SetCurrentHpInternal(1);
+        var evShop = await Begin<ThingsRelicWorkshop>(pShop);
+        Assert(evShop.CurrentOptions.Count == 4 && evShop.CurrentOptions[3].TextKey.EndsWith(".LEAVE", StringComparison.Ordinal),
+            "RelicWorkshop exposes safe LEAVE at 1 HP with no tradable relic");
+        await evShop.CurrentOptions[3].Chosen();
+        Assert(evShop.IsFinished && pShop.Creature.CurrentHp == 1,
+            "RelicWorkshop low-HP LEAVE finishes cleanly with 1 HP intact");
+
+        RunState runCut = NewEventTestRun("fallback-cut-1hp", gold: 0);
+        Player pCut = runCut.Players[0];
+        pCut.Creature.SetCurrentHpInternal(1);
+        var evCut = await Begin<ThingsCuttingItClose>(pCut);
+        Assert(evCut.CurrentOptions.Count == 3 && !evCut.CurrentOptions[2].IsLocked,
+            "CuttingItClose exposes safe LEAVE at 1 HP");
+        await evCut.CurrentOptions[2].Chosen();
+        Assert(evCut.IsFinished && pCut.Creature.CurrentHp == 1,
+            "CuttingItClose low-HP LEAVE finishes cleanly with 1 HP intact");
+
+        RunState runBack = NewEventTestRun("fallback-backrooms-1hp", gold: 0);
+        Player pBack = runBack.Players[0];
+        pBack.Creature.SetMaxHpInternal(ThingsBackrooms.RestMaxHpLoss);
+        pBack.Creature.SetCurrentHpInternal(1);
+        var evBack = await Begin<ThingsBackrooms>(pBack);
+        Assert(evBack.CurrentOptions.Count == 3 && evBack.CurrentOptions[2].TextKey.EndsWith(".LEAVE", StringComparison.Ordinal),
+            "Backrooms exposes safe LEAVE at 1 HP / 5 MaxHP");
+        await evBack.CurrentOptions[2].Chosen();
+        Assert(evBack.IsFinished && pBack.Creature.CurrentHp == 1,
+            "Backrooms low-HP/MaxHP LEAVE finishes cleanly with 1 HP intact");
+
+        RunState runWard = NewEventTestRun("fallback-ward-fullhp", gold: 100);
+        Player pWard = runWard.Players[0];
+        var evWard = await Begin<ThingsCrowdedWard>(pWard);
+        Assert(evWard.CurrentOptions.Count == 4 && evWard.CurrentOptions[3].TextKey.EndsWith(".LEAVE", StringComparison.Ordinal),
+            "CrowdedWard exposes free LEAVE even when Gold >= 35");
+        await evWard.CurrentOptions[3].Chosen();
+        Assert(evWard.IsFinished && pWard.Gold == 100 && pWard.Creature.CurrentHp == pWard.Creature.MaxHp,
+            "CrowdedWard LEAVE finishes cleanly keeping full HP and 100 Gold unchanged");
     }
 
     private sealed class EventModelStub { }

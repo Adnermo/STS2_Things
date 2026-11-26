@@ -40,8 +40,7 @@ public sealed class ThingsCrookedCounterweight : ThingsEventModel
     ];
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && ((player.Creature.CurrentHp > WeightDamage && player.Deck.Cards.Any(CanEnchant<ThingsWeighted>))
                 || (player.Creature.MaxHp > WatchMaxHpLoss && player.Deck.Cards.Any(CanEnchant<SlumberingEssence>))));

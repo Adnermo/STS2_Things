@@ -6,7 +6,7 @@
 
 原创第二章「深处」 · 8 位专属 Boss · 38 个跨章节事件与 5 款联机小游戏 · 单包双版本零依赖运行
 
-[![Version](https://img.shields.io/badge/Version-v2.0.11-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
+[![Version](https://img.shields.io/badge/Version-v2.0.12-2e7d32?style=flat-square)](https://github.com/adnermo/STS2_Things/releases)
 [![STS2 Support](https://img.shields.io/badge/STS2-v0.111.0%20%7C%20v0.111.1%20%7C%20v0.114.0%20Beta-1565c0?style=flat-square)](docs/DUAL_VERSION_SUPPORT.md)
 [![Steam Workshop](https://img.shields.io/badge/Steam-Workshop-1b2838?style=flat-square&logo=steam)](https://steamcommunity.com/sharedfiles/filedetails/?id=3747607944)
 [![Direct Mirror](https://img.shields.io/badge/国内直链-网盘下载-00838f?style=flat-square)](https://pan.adnermo.online/STS2_Things/latest)

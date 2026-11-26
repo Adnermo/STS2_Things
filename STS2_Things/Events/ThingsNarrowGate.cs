@@ -47,8 +47,7 @@ public sealed class ThingsNarrowGate : ThingsEventModel
     protected override IEnumerable<DynamicVar> CanonicalVars =>
         [new GoldVar(RerollCost), new DamageVar("SqueezeDamage", SqueezeDamage, ValueProp.Unblockable | ValueProp.Unpowered), new DynamicVar("Candidates", CandidateCount)];
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && player.Creature.CurrentHp > SqueezeDamage
             && player.Deck.Cards.Count > 1
@@ -109,6 +108,10 @@ public sealed class ThingsNarrowGate : ThingsEventModel
         }
         // Retain this position even when fewer than three cards are eligible.
         options.Add(new EventOption(this, reroll == "REROLL" ? Reroll : null, InitialOptionKey(reroll)));
+        if (CanRemove && EventOwner.Creature.CurrentHp <= SqueezeDamage)
+        {
+            options.Add(new EventOption(this, Leave, InitialOptionKey("LEAVE")));
+        }
         return options;
     }
 

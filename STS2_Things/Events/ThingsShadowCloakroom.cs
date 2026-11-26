@@ -46,8 +46,7 @@ public sealed class ThingsShadowCloakroom : ThingsEventModel
     private static bool HasSwappableCard(Player player) => player.Deck.Cards.Any(CanSwap);
 
     public override bool IsAllowed(IRunState runState) =>
-        runState.Players.Count > 0
-        && runState.Players.All(player =>
+        runState.Players.Any(player =>
             !player.Creature.IsDead
             && player.GetRelic<ThingsShadowClaimTicket>() == null
             && ((player.Gold >= DepositCost && HasEligibleCard(player))
